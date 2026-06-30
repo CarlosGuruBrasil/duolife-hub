@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { logger } from '@/lib/logger';
+import { rateLimit, rateLimitResponse } from '@/lib/rate-limit';
 
 const partnerSignupSchema = z.object({
   name: z.string().trim().min(2),
@@ -16,6 +17,10 @@ const partnerSignupSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? 'unknown';
+  const { ok, retryAfter } = rateLimit(`signup:${ip}`, 5, 60_000); // 5 cadastros/min por IP
+  if (!ok) return rateLimitResponse(retryAfter);
+
   try {
     await ensureSchema();
     const parsed = partnerSignupSchema.safeParse(await req.json());

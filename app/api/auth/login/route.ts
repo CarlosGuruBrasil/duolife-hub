@@ -7,6 +7,7 @@ import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { logger } from '@/lib/logger';
 import { getJwtSecret } from '@/lib/secrets';
+import { rateLimit, rateLimitResponse } from '@/lib/rate-limit';
 import type { AuthUser } from '@/lib/auth';
 
 const loginSchema = z.object({
@@ -15,6 +16,10 @@ const loginSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? 'unknown';
+  const { ok, retryAfter } = rateLimit(`login:${ip}`, 10, 60_000); // 10 tentativas/min por IP
+  if (!ok) return rateLimitResponse(retryAfter);
+
   try {
     await ensureSchema();
     const parsed = loginSchema.safeParse(await req.json());
