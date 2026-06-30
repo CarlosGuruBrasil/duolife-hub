@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Building2, CheckCircle, Clock, XCircle } from 'lucide-react';
 
@@ -23,7 +23,7 @@ const STATUS_LABELS: Record<string, { label: string; color: string; icon: typeof
   suspended: { label: 'Suspenso',  color: '#b91c1c', icon: XCircle },
 };
 
-export default function AdminParceiros() {
+function AdminParceirosInner() {
   const searchParams = useSearchParams();
   const statusFilter = searchParams.get('status') ?? '';
 
@@ -136,5 +136,13 @@ export default function AdminParceiros() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function AdminParceiros() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-gray-400">Carregando...</div>}>
+      <AdminParceirosInner />
+    </Suspense>
   );
 }
