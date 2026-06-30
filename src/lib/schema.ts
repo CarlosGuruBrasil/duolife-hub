@@ -11,7 +11,7 @@ export async function ensureSchema(): Promise<void> {
       id            TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
       razao_social  TEXT NOT NULL,
       nome_fantasia TEXT,
-      cnpj          TEXT UNIQUE NOT NULL,
+      cnpj          TEXT UNIQUE,
       email         TEXT NOT NULL,
       phone         TEXT,
       address       JSONB NOT NULL DEFAULT '{}',

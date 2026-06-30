@@ -8,6 +8,7 @@ import { ensureSchema } from '@/lib/schema';
 import { logger } from '@/lib/logger';
 import { getJwtSecret } from '@/lib/secrets';
 import { rateLimit, rateLimitResponse } from '@/lib/rate-limit';
+import { createRefreshToken } from '@/lib/refresh-token';
 import type { AuthUser } from '@/lib/auth';
 
 const loginSchema = z.object({
@@ -85,10 +86,15 @@ export async function POST(req: NextRequest) {
       permissions: user.permissions || {},
     };
     const token = jwt.sign(payload, getJwtSecret(), { expiresIn: '8h' });
+    const refreshRaw = await createRefreshToken(user.id);
     const cookieStore = await cookies();
+    const isProduction = process.env.NODE_ENV === 'production';
     cookieStore.set('duolife_token', token, {
-      httpOnly: true, secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax', maxAge: 60 * 60 * 8, path: '/',
+      httpOnly: true, secure: isProduction, sameSite: 'lax', maxAge: 60 * 60 * 8, path: '/',
+    });
+    cookieStore.set('duolife_refresh', refreshRaw, {
+      httpOnly: true, secure: isProduction, sameSite: 'lax',
+      maxAge: Number(process.env.REFRESH_TOKEN_EXPIRES_DAYS ?? 30) * 86_400, path: '/api/auth',
     });
     return Response.json({ ok: true, user: { ...payload } });
 

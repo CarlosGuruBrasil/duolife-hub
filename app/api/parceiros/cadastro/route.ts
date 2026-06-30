@@ -5,10 +5,22 @@ import { ensureSchema } from '@/lib/schema';
 import { logger } from '@/lib/logger';
 import { rateLimit, rateLimitResponse } from '@/lib/rate-limit';
 
+function validarCnpj(cnpj: string): boolean {
+  const n = cnpj.replace(/\D/g, '');
+  if (n.length !== 14 || /^(\d)\1+$/.test(n)) return false;
+  const calc = (len: number) => {
+    let s = 0, pos = len - 7;
+    for (let i = len; i >= 1; i--) { s += Number(n[len - i]) * pos--; if (pos < 2) pos = 9; }
+    const r = s % 11;
+    return r < 2 ? 0 : 11 - r;
+  };
+  return calc(12) === Number(n[12]) && calc(13) === Number(n[13]);
+}
+
 const partnerSignupSchema = z.object({
   name: z.string().trim().min(2),
   company: z.string().trim().min(2),
-  cnpj: z.string().trim().optional(),
+  cnpj: z.string().trim().refine(v => !v || validarCnpj(v), { message: 'CNPJ inválido' }).optional(),
   email: z.string().trim().email(),
   phone: z.string().trim().min(8),
   city: z.string().trim().optional(),
@@ -25,7 +37,8 @@ export async function POST(req: NextRequest) {
     await ensureSchema();
     const parsed = partnerSignupSchema.safeParse(await req.json());
     if (!parsed.success) {
-      return Response.json({ error: 'Campos obrigatórios faltando' }, { status: 400 });
+      const first = parsed.error.issues[0];
+      return Response.json({ error: first?.message ?? 'Campos obrigatórios faltando' }, { status: 400 });
     }
     const { name, company, cnpj, email, phone, city, state, message } = parsed.data;
 
@@ -40,7 +53,7 @@ export async function POST(req: NextRequest) {
       VALUES (
         ${company},
         ${company},
-        ${cnpj || `PENDENTE-${Date.now()}`},
+        ${cnpj || null},
         ${email.toLowerCase()},
         ${phone},
         ${JSON.stringify({ city, state })},
