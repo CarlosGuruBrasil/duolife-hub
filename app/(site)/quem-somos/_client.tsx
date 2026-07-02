@@ -217,7 +217,7 @@ export default function QuemSomosClient() {
       </section>
 
       {/* A Liderança (Fundo Branco) */}
-      <section className="py-20 md:py-28 px-6 bg-[#ffffff]">
+      <section className="pt-32 pb-20 md:pt-36 md:pb-28 px-6 bg-[#ffffff] scroll-mt-28">
         <motion.div
           initial="hidden"
           whileInView="visible"

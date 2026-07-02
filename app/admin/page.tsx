@@ -37,7 +37,7 @@ export default async function AdminDashboard() {
         <p className="text-gray-500 text-sm mt-1">Visão geral da plataforma DuoLife.</p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         {kpis.map((k) => {
           const Icon = k.icon;
           return (

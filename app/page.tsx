@@ -345,7 +345,7 @@ export default function Home() {
 
 
         {/* ================= SEÇÃO 2: QUEM SOMOS E LEGADO ================= */}
-        <section id="sobre" ref={aboutRef} className="py-20 md:py-32 px-6 bg-[#f7faf9] relative border-b border-[#e0eceb] overflow-hidden">
+        <section id="sobre" ref={aboutRef} className="py-20 md:py-32 px-6 bg-[#f7faf9] relative border-b border-[#e0eceb] overflow-hidden scroll-mt-28">
           
           <div className="w-[min(92%,1800px)] mx-auto grid lg:grid-cols-12 gap-16 items-center relative z-10">
             
@@ -404,7 +404,7 @@ export default function Home() {
 
 
         {/* ================= SEÇÃO 3: AS 4 FRENTES ================= */}
-        <section id="solucoes" className="py-20 md:py-32 px-6 bg-[#ffffff] relative border-b border-[#e0eceb] overflow-hidden">
+        <section id="solucoes" className="py-20 md:py-32 px-6 bg-[#ffffff] relative border-b border-[#e0eceb] overflow-hidden scroll-mt-28">
           
           <div className="w-[min(92%,1800px)] mx-auto relative z-10">
             
@@ -703,7 +703,7 @@ export default function Home() {
 
 
         {/* ================= SEÇÃO 8: UNIDADES ================= */}
-        <section id="unidades" className="py-20 md:py-32 px-6 bg-[#ffffff] border-t border-[#e0eceb] relative">
+        <section id="unidades" className="py-20 md:py-32 px-6 bg-[#ffffff] border-t border-[#e0eceb] relative scroll-mt-28">
           <div className="w-[min(92%,1800px)] mx-auto">
             <div className="text-center max-w-2xl mx-auto mb-16">
               <span className="text-xs font-black tracking-widest text-[#0e4a5a] uppercase mb-6 block">Nossas Sedes</span>
@@ -746,7 +746,7 @@ export default function Home() {
 
 
         {/* ================= SEÇÃO 9: FORMULÁRIO DE CAPTURA RÁPIDA ================= */}
-        <section id="contato-lead" className="py-20 md:py-32 px-6 bg-[#f7faf9] border-t border-[#e0eceb] relative overflow-hidden">
+        <section id="contato-lead" className="py-20 md:py-32 px-6 bg-[#f7faf9] border-t border-[#e0eceb] relative overflow-hidden scroll-mt-28">
           
           <div className="absolute top-[40%] right-[-10%] w-[350px] h-[350px] bg-[#00d4e0]/4 rounded-full blur-3xl pointer-events-none" />
 

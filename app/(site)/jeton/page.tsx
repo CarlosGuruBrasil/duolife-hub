@@ -630,7 +630,7 @@ export default function DuoLifeJetonStylePage() {
 
       {/* FOOTER */}
       <footer className="bg-[#162321] text-white py-20 px-6 border-t border-[#233532]">
-        <div className="w-[min(92%,1800px)] mx-auto grid grid-cols-2 md:grid-cols-4 gap-8 md:gap-12 mb-20">
+        <div className="w-[min(92%,1800px)] mx-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8 md:gap-12 mb-20">
           
           <div>
             <div className="flex items-center gap-3 mb-6">
