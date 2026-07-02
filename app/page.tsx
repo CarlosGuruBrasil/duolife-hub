@@ -356,7 +356,7 @@ export default function Home() {
                 Sua retaguarda de confiança desde 1995.
               </h2>
               <p className="text-[#4d686f] font-light leading-relaxed text-lg mb-6">
-                Fundada pelo sócio Ricardo Abramo Padua Mello, a DuoLife Plataforma de Negócios LTDA atua há quase **30 anos** como o elo de conexão estratégico entre corretores parceiros e as principais seguradoras e operadoras de saúde suplementar do Brasil.
+                Fundada pelo sócio Ricardo Abramo Padua Mello, a DuoLife Plataforma de Negócios LTDA atua há quase <strong className="font-black text-[#0e4a5a]">30 anos</strong> como o elo de conexão estratégico entre corretores parceiros e as principais seguradoras e operadoras de saúde suplementar do Brasil.
               </p>
               <p className="text-[#4d686f] font-light leading-relaxed text-base mb-8">
                 Nossa assessoria atua no acolhimento de corretores e consultores. Administramos saúde suplementar, benefícios corporativos e produtos securitários com terceirização ágil de processos e serviços inovadores de suporte comercial e técnico.
