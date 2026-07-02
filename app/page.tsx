@@ -237,7 +237,7 @@ export default function Home() {
       <main className="site-shell bg-[#ffffff] relative">
         
         {/* ================= HERO SECTION (Foto full-bleed à direita) ================= */}
-        <section id="inicio" className="relative isolate overflow-hidden bg-[#072a33] text-[#ffffff] min-h-screen flex items-start">
+        <section id="inicio" className="relative isolate overflow-hidden bg-[#072a33] text-[#ffffff] min-h-[100svh] flex items-start">
           <Image
             src="/duolife-hero-business.png"
             alt="DuoLife B2B Assessoria de Vendas"
@@ -249,7 +249,7 @@ export default function Home() {
           <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#072a33] to-transparent" />
           <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.012)_1px,_transparent_1px),_linear-gradient(90deg,_rgba(255,255,255,0.012)_1px,_transparent_1px)] bg-[size:100px_100px] [mask-image:radial-gradient(ellipse_at_center,_white_70%,_transparent_100%)] pointer-events-none" />
 
-          <div className="relative z-10 w-[min(92%,1800px)] mx-auto px-6 pt-20 pb-24 lg:pt-28 lg:pb-28">
+          <div className="relative z-10 w-[min(92%,1800px)] mx-auto px-6 pt-16 pb-20 md:pt-20 md:pb-24 lg:pt-28 lg:pb-28">
             <div className="max-w-[760px] text-left">
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -345,7 +345,7 @@ export default function Home() {
 
 
         {/* ================= SEÇÃO 2: QUEM SOMOS E LEGADO ================= */}
-        <section id="sobre" ref={aboutRef} className="py-32 px-6 bg-[#f7faf9] relative border-b border-[#e0eceb] overflow-hidden">
+        <section id="sobre" ref={aboutRef} className="py-20 md:py-32 px-6 bg-[#f7faf9] relative border-b border-[#e0eceb] overflow-hidden">
           
           <div className="w-[min(92%,1800px)] mx-auto grid lg:grid-cols-12 gap-16 items-center relative z-10">
             
@@ -404,7 +404,7 @@ export default function Home() {
 
 
         {/* ================= SEÇÃO 3: AS 4 FRENTES ================= */}
-        <section id="solucoes" className="py-32 px-6 bg-[#ffffff] relative border-b border-[#e0eceb] overflow-hidden">
+        <section id="solucoes" className="py-20 md:py-32 px-6 bg-[#ffffff] relative border-b border-[#e0eceb] overflow-hidden">
           
           <div className="w-[min(92%,1800px)] mx-auto relative z-10">
             
@@ -499,7 +499,7 @@ export default function Home() {
 
 
         {/* ================= SEÇÃO 4: LIDERANÇA / EQUIPE ================= */}
-        <section className="py-32 px-6 bg-[#f7faf9] border-b border-[#e0eceb] relative">
+        <section className="py-20 md:py-32 px-6 bg-[#f7faf9] border-b border-[#e0eceb] relative">
           <div className="w-[min(92%,1800px)] mx-auto">
             <div className="text-center max-w-2xl mx-auto mb-20">
               <span className="text-xs font-black tracking-widest text-[#0e4a5a] uppercase mb-6 block">Nossa Liderança</span>
@@ -548,7 +548,7 @@ export default function Home() {
 
 
         {/* ================= SEÇÃO 5: SUPORTE DO COMEÇO AO FIM ================= */}
-        <section id="como-atuamos" className="bg-[#0e4a5a] text-[#ffffff] py-32 px-6 relative overflow-hidden">
+        <section id="como-atuamos" className="bg-[#0e4a5a] text-[#ffffff] py-20 md:py-32 px-6 relative overflow-hidden">
 
           <Image
             src="/duolife-consultant.jpg"
@@ -649,7 +649,7 @@ export default function Home() {
         {/* ================= SEÇÃO 6: METRICS ROW ================= */}
         <section className="py-20 border-b border-[#e0eceb] bg-[#ffffff] relative z-10">
           <div className="w-[min(92%,1800px)] mx-auto px-6">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center divide-y md:divide-y-0 md:divide-x divide-[#e0eceb]">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8 text-center divide-y sm:divide-y-0 md:divide-x divide-[#e0eceb]">
               {metrics.map((metric, i) => (
                 <div className="flex flex-col items-center justify-center pt-6 md:pt-0 md:px-4" key={metric.label}>
                   <strong className="text-4xl md:text-6xl font-black text-[#0e4a5a] leading-none tracking-tight">{metric.value}</strong>
@@ -662,7 +662,7 @@ export default function Home() {
 
 
         {/* ================= SEÇÃO 7: DEPOIMENTOS ================= */}
-        <section className="py-32 px-6 bg-[#f7faf9] relative overflow-hidden">
+        <section className="py-20 md:py-32 px-6 bg-[#f7faf9] relative overflow-hidden">
           <div className="max-w-4xl mx-auto text-center relative z-10">
             <span className="text-xs font-black tracking-widest text-[#0e4a5a] uppercase mb-6 block">Depoimentos</span>
             <h2 className="text-4xl md:text-5.5xl font-black tracking-tight text-[#0e4a5a] uppercase mb-16">
@@ -703,7 +703,7 @@ export default function Home() {
 
 
         {/* ================= SEÇÃO 8: UNIDADES ================= */}
-        <section id="unidades" className="py-32 px-6 bg-[#ffffff] border-t border-[#e0eceb] relative">
+        <section id="unidades" className="py-20 md:py-32 px-6 bg-[#ffffff] border-t border-[#e0eceb] relative">
           <div className="w-[min(92%,1800px)] mx-auto">
             <div className="text-center max-w-2xl mx-auto mb-16">
               <span className="text-xs font-black tracking-widest text-[#0e4a5a] uppercase mb-6 block">Nossas Sedes</span>
@@ -746,7 +746,7 @@ export default function Home() {
 
 
         {/* ================= SEÇÃO 9: FORMULÁRIO DE CAPTURA RÁPIDA ================= */}
-        <section id="contato-lead" className="py-32 px-6 bg-[#f7faf9] border-t border-[#e0eceb] relative overflow-hidden">
+        <section id="contato-lead" className="py-20 md:py-32 px-6 bg-[#f7faf9] border-t border-[#e0eceb] relative overflow-hidden">
           
           <div className="absolute top-[40%] right-[-10%] w-[350px] h-[350px] bg-[#00d4e0]/4 rounded-full blur-3xl pointer-events-none" />
 

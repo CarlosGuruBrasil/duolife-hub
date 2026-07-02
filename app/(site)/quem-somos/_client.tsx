@@ -70,12 +70,12 @@ export default function QuemSomosClient() {
     <div className="bg-[#ffffff] text-[#072a33]">
 
       {/* Hero Section (mesmo idioma visual da home) */}
-      <section className="relative isolate overflow-hidden bg-[#072a33] text-[#ffffff] min-h-screen flex items-start">
+      <section className="relative isolate overflow-hidden bg-[#072a33] text-[#ffffff] min-h-[100svh] flex items-start">
         <Image src="/duolife-broker-woman.jpg" alt="" fill className="object-cover object-[50%_18%]" priority />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_28%,rgba(0,212,224,0.18)_0%,transparent_36%),linear-gradient(180deg,rgba(7,42,51,0.72)_0%,rgba(7,42,51,0.8)_100%)]" />
         <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-[#072a33] to-transparent" />
 
-        <div className="relative z-10 w-[min(92%,1800px)] mx-auto px-6 pt-20 pb-20 lg:pt-28 lg:pb-24">
+        <div className="relative z-10 w-[min(92%,1800px)] mx-auto px-6 pt-16 pb-20 md:pt-20 md:pb-24 lg:pt-28 lg:pb-24">
           <div className="max-w-[760px] text-left">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
@@ -107,7 +107,7 @@ export default function QuemSomosClient() {
       </section>
 
       {/* Seção Quem Somos (Split com foto real) */}
-      <section className="py-28 px-6 bg-[#ffffff] border-b border-[#e0eceb]">
+      <section className="py-20 md:py-28 px-6 bg-[#ffffff] border-b border-[#e0eceb]">
         <motion.div
           initial="hidden"
           whileInView="visible"
@@ -155,7 +155,7 @@ export default function QuemSomosClient() {
       </section>
 
       {/* Diretrizes Culturais (Fundo Off-white) */}
-      <section className="py-28 px-6 bg-[#f7faf9] border-b border-[#e0eceb]">
+      <section className="py-20 md:py-28 px-6 bg-[#f7faf9] border-b border-[#e0eceb]">
         <motion.div
           initial="hidden"
           whileInView="visible"
@@ -217,7 +217,7 @@ export default function QuemSomosClient() {
       </section>
 
       {/* A Liderança (Fundo Branco) */}
-      <section className="py-28 px-6 bg-[#ffffff]">
+      <section className="py-20 md:py-28 px-6 bg-[#ffffff]">
         <motion.div
           initial="hidden"
           whileInView="visible"
