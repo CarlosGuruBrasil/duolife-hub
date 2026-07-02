@@ -3,12 +3,14 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
+import { Eye, EyeOff } from 'lucide-react';
 
 export default function Login() {
   const router = useRouter();
   const [form, setForm] = useState({ email: '', password: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -22,7 +24,6 @@ export default function Login() {
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'Erro ao autenticar'); return; }
-      // Redireciona conforme o role
       if (data.user?.role?.startsWith('duolife_')) {
         router.push('/admin');
       } else {
@@ -56,7 +57,7 @@ export default function Login() {
           <p className="mt-4 text-sm" style={{ color: '#d7e6e8' }}>Portal do Parceiro</p>
         </div>
 
-        <div className="card">
+        <div className="card no-hover">
           <h1 className="text-xl font-black mb-6" style={{ color: 'var(--primary)' }}>Entrar na sua conta</h1>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -68,10 +69,30 @@ export default function Login() {
             </div>
             <div>
               <label className="field-label">Senha</label>
-              <input required type="password" value={form.password}
-                onChange={e => setForm({ ...form, password: e.target.value })}
-                className="form-input"
-                placeholder="••••••••" autoComplete="current-password" />
+              <div style={{ position: 'relative' }}>
+                <input
+                  required
+                  type={showPassword ? 'text' : 'password'}
+                  value={form.password}
+                  onChange={e => setForm({ ...form, password: e.target.value })}
+                  className="form-input"
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  style={{ paddingRight: '2.75rem' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(v => !v)}
+                  aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
+                  style={{
+                    position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)',
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: 'var(--text-light)', padding: '2px', display: 'flex',
+                  }}
+                >
+                  {showPassword ? <EyeOff size={17} /> : <Eye size={17} />}
+                </button>
+              </div>
             </div>
             {error && <p className="text-red-500 text-sm">{error}</p>}
             <button type="submit" disabled={loading} className="btn-primary w-full justify-center py-4 text-base">

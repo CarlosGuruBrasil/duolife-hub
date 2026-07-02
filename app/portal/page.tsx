@@ -3,7 +3,7 @@ import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { ClipboardList, FileText, Mail, MessageCircle, Plus, WalletCards } from 'lucide-react';
+import { ClipboardList, DollarSign, FileText, Mail, MessageCircle, Plus, WalletCards } from 'lucide-react';
 
 export default async function PortalDashboard() {
   const user = await verifyPartnerAuth();
@@ -29,7 +29,7 @@ export default async function PortalDashboard() {
   const kpis = [
     { label: 'Cotações realizadas', value: cotacoesCount.total, icon: ClipboardList, href: '/portal/cotacoes' },
     { label: 'Apólices ativas', value: vendasCount.total, icon: FileText, href: '/portal/vendas' },
-    { label: 'Volume em prêmios', value: `R$ ${Number(vendasCount.volume).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, icon: FileText, href: '/portal/vendas' },
+    { label: 'Volume em prêmios', value: `R$ ${Number(vendasCount.volume).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, icon: DollarSign, href: '/portal/vendas' },
     { label: 'Comissões pendentes', value: `R$ ${Number(comissoesCount.pendente).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, icon: WalletCards, href: '/portal/comissoes' },
   ];
 
@@ -37,7 +37,7 @@ export default async function PortalDashboard() {
     <div>
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-black" style={{ color: 'var(--primary)' }}>Bom dia, {user.name.split(' ')[0]}! 👋</h1>
+          <h1 className="text-2xl font-black" style={{ color: 'var(--primary)' }}>Bom dia, {user.name.split(' ')[0]}.</h1>
           <p className="text-gray-500 text-sm mt-1">Aqui está um resumo da sua conta.</p>
         </div>
         <Link href="/portal/cotacoes/nova" className="btn-primary">

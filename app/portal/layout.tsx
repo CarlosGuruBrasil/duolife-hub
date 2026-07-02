@@ -1,5 +1,7 @@
+'use client';
 import Link from 'next/link';
 import Image from 'next/image';
+import { usePathname } from 'next/navigation';
 import { BarChart3, ClipboardList, FileText, LogOut, UserRound, WalletCards } from 'lucide-react';
 
 const nav = [
@@ -11,32 +13,38 @@ const nav = [
 ];
 
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   return (
     <div className="min-h-screen flex" style={{ background: 'var(--accent-soft)' }}>
       {/* Sidebar */}
       <aside className="w-64 flex flex-col shadow-lg" style={{ background: 'var(--primary)' }}>
         <div className="p-6 border-b" style={{ borderColor: 'rgba(255,255,255,0.1)' }}>
-          <Link href="/" className="brand-plate is-sidebar">
+          <Link href="/" className="flex items-center">
             <Image
               src="/logo-horizontal.png"
               alt="DuoLife Hub de Negócios"
               width={150}
               height={31}
-              className="h-7 w-auto object-contain"
+              className="h-7 w-auto object-contain brightness-0 invert"
               priority
             />
           </Link>
-          <div className="mt-3 text-xs font-bold uppercase tracking-[0.22em]" style={{ color: '#d7e6e8' }}>
-            Portal
+          <div className="mt-3 text-xs font-bold uppercase tracking-[0.22em]" style={{ color: 'rgba(255,255,255,0.45)' }}>
+            Portal do Parceiro
           </div>
         </div>
         <nav className="flex-1 p-4 space-y-1">
           {nav.map((n) => {
             const Icon = n.icon;
+            const active = pathname === n.href;
             return (
             <Link key={n.href} href={n.href}
               className="flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors"
-              style={{ color: '#d7e6e8' }}>
+              style={{
+                color: active ? '#ffffff' : '#a8c8cc',
+                background: active ? 'rgba(255,255,255,0.13)' : 'transparent',
+                fontWeight: active ? 700 : 500,
+              }}>
               <Icon size={17} />
               {n.label}
             </Link>

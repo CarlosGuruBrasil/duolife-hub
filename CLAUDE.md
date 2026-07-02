@@ -2,6 +2,8 @@
 
 **OBRIGATÓRIO:** Leia os arquivos abaixo antes de qualquer ação.
 
-@~/Desktop/ORACULO/MEMORY.md
-@~/Desktop/ORACULO/Projetos/DuoLife Hub.md
-@~/Desktop/ORACULO/CONTEXT.md
+- Memória global: `~/Desktop/ORACULO/MEMORY.md`
+- Contexto do projeto: `~/Desktop/ORACULO/Projetos/DuoLife Hub.md`
+- Protocolo completo: `~/Desktop/ORACULO/CONTEXT.md`
+- Diretrizes de Execução e Portas: `./AGENTS.md`
+
