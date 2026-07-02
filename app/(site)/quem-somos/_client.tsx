@@ -236,29 +236,29 @@ export default function QuemSomosClient() {
             {team.map((member) => (
               <Card3D 
                 key={member.name} 
-                className="group relative overflow-hidden rounded-[32px] border border-[#d8e7e5] bg-[linear-gradient(180deg,#ffffff_0%,#fbfefe_62%,#f5fbfb_100%)] p-8 md:p-10 shadow-[0_24px_70px_rgba(14,74,90,0.08)] hover:-translate-y-1 hover:shadow-[0_30px_80px_rgba(14,74,90,0.14)] transition-all cursor-grab active:cursor-grabbing text-left"
+                className="group relative overflow-hidden rounded-[32px] border border-[#d8e7e5] bg-[linear-gradient(180deg,#ffffff_0%,#fbfefe_62%,#f5fbfb_100%)] p-8 md:p-10 md:min-h-[430px] shadow-[0_24px_70px_rgba(14,74,90,0.08)] hover:-translate-y-1 hover:shadow-[0_30px_80px_rgba(14,74,90,0.14)] transition-all cursor-grab active:cursor-grabbing text-left"
               >
                 <div className="absolute inset-y-0 right-0 w-1/3 bg-gradient-to-l from-[#00d4e0]/5 to-transparent pointer-events-none" />
-                <div className="grid gap-7 md:grid-cols-[188px_minmax(0,1fr)] md:items-start">
-                  <div className="flex justify-start md:self-start">
+                <div className="grid gap-7 md:grid-cols-[160px_minmax(0,1fr)] md:items-start">
+                  <div className="flex items-start justify-start md:self-start md:pt-1">
                     <div className="rounded-full bg-gradient-to-br from-[#0e4a5a]/12 via-white to-[#00d4e0]/18 p-1.5 shadow-[0_18px_34px_rgba(14,74,90,0.12)]">
-                      <div className="relative w-36 h-36 md:w-44 md:h-44 rounded-full overflow-hidden border border-white/90 bg-white">
+                      <div className="relative w-36 h-36 md:w-40 md:h-40 rounded-full overflow-hidden border border-white/90 bg-white">
                         <Image
                           src={member.image}
                           alt={member.name}
                           fill
-                          sizes="(min-width: 768px) 11rem, 9rem"
+                          sizes="(min-width: 768px) 10rem, 9rem"
                           className="object-cover object-center"
                         />
                       </div>
                     </div>
                   </div>
                   <div className="min-w-0">
-                    <span className="inline-flex max-w-full items-center rounded-full border border-[#d8e7e5] bg-white/80 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#7fa8b2] leading-[1.2] whitespace-normal">
+                    <span className="inline-flex w-fit max-w-full items-center rounded-full border border-[#d8e7e5] bg-white/80 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#7fa8b2] leading-[1.2] whitespace-nowrap">
                       {member.role}
                     </span>
-                    <h3 className="mt-4 text-[1.02rem] md:text-[1.08rem] font-black text-[#0e4a5a] uppercase tracking-tight leading-[1.08]">{member.name}</h3>
-                    <p className="mt-4 text-[0.98rem] text-[#435a61] font-normal leading-relaxed max-w-[32ch]">{member.bio}</p>
+                    <h3 className="mt-4 max-w-[14ch] text-[1.02rem] md:text-[1.08rem] font-black text-[#0e4a5a] uppercase tracking-tight leading-[1.06]">{member.name}</h3>
+                    <p className="mt-4 text-[0.98rem] text-[#435a61] font-normal leading-relaxed max-w-[28ch]">{member.bio}</p>
                     <div className="mt-7 pt-4 border-t border-[#e0eceb] text-[10px] text-[#7fa8b2] font-black uppercase tracking-[0.18em]">
                       {member.since}
                     </div>
