@@ -138,7 +138,7 @@ export default function DuoLifeJetonStylePage() {
             className="hidden md:flex items-center gap-6"
           >
             <a 
-              href="https://wa.me/554799153897?text=Olá! Tenho interesse em ser parceiro DuoLife."
+              href="https://wa.me/554799648081?text=Olá! Tenho interesse em ser parceiro DuoLife."
               target="_blank"
               rel="noopener"
               className="text-sm font-bold text-[#526762] hover:text-[#407870] transition-colors duration-200 flex items-center gap-1.5"
@@ -210,7 +210,7 @@ export default function DuoLifeJetonStylePage() {
                 <ArrowRight size={18} />
               </Link>
               <a 
-                href="https://wa.me/554799153897?text=Olá! Tenho interesse em ser parceiro DuoLife."
+                href="https://wa.me/554799648081?text=Olá! Tenho interesse em ser parceiro DuoLife."
                 target="_blank"
                 rel="noopener"
                 className="flex items-center gap-3 bg-white border border-[#d7e3df] text-[#162321] hover:border-[#407870]/30 hover:bg-[#F9FAFB] px-8 py-4.5 rounded-2xl font-bold transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-1"

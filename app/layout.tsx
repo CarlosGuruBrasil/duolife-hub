@@ -86,7 +86,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           {children}
         </SmoothScroll>
         <a
-          href="https://wa.me/554799153897?text=Olá! Gostaria de falar com o time comercial da DuoLife."
+          href="https://wa.me/554799648081?text=Olá! Gostaria de falar com o time comercial da DuoLife."
           target="_blank"
           rel="noopener"
           aria-label="Falar no WhatsApp"
