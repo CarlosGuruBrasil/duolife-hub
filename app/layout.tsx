@@ -67,11 +67,11 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
-      { url: '/favicon-v2.png?v=2', type: 'image/png' },
+      { url: '/favicon-v3.png?v=3', type: 'image/png' },
       { url: '/logo.svg', type: 'image/svg+xml' },
     ],
-    apple: '/favicon-v2.png?v=2',
-    shortcut: '/favicon-v2.png?v=2',
+    apple: '/favicon-v3.png?v=3',
+    shortcut: '/favicon-v3.png?v=3',
   },
   alternates: {
     canonical: BASE_URL,
