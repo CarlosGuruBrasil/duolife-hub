@@ -92,6 +92,49 @@ export async function ensureSchema(): Promise<void> {
     )
   `;
 
+  // Réplica local dos dados do Wix para administração no DuoLife
+  await sql`
+    CREATE TABLE IF NOT EXISTS wix_collections (
+      id             TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      collection_id  TEXT UNIQUE NOT NULL,
+      collection_name TEXT NOT NULL,
+      source_system  TEXT NOT NULL DEFAULT 'wix',
+      last_synced_at TIMESTAMPTZ,
+      sync_cursor    TEXT,
+      is_active      BOOLEAN NOT NULL DEFAULT true,
+      metadata       JSONB NOT NULL DEFAULT '{}',
+      created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS wix_items (
+      id              TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      wix_collection_id TEXT NOT NULL REFERENCES wix_collections(id),
+      wix_item_id     TEXT NOT NULL,
+      external_id     TEXT,
+      document_number TEXT,
+      name            TEXT,
+      email           TEXT,
+      phone           TEXT,
+      status          TEXT,
+      partner_code    TEXT,
+      payload         JSONB NOT NULL DEFAULT '{}',
+      payload_hash    TEXT,
+      wix_created_at  TIMESTAMPTZ,
+      wix_updated_at  TIMESTAMPTZ,
+      synced_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      is_active       BOOLEAN NOT NULL DEFAULT true,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (wix_collection_id, wix_item_id)
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS wix_items_collection_id ON wix_items (wix_collection_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS wix_items_document_number ON wix_items (document_number)`;
+  await sql`CREATE INDEX IF NOT EXISTS wix_items_external_id ON wix_items (external_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS wix_items_partner_code ON wix_items (partner_code)`;
+
   // Taxas de comissão por parceiro
   await sql`
     CREATE TABLE IF NOT EXISTS partner_commission_rates (
@@ -110,6 +153,7 @@ export async function ensureSchema(): Promise<void> {
       id               TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
       partner_id       TEXT REFERENCES partners(id),
       external_id      TEXT,
+      document_number  TEXT,
       nome             TEXT,
       email            TEXT,
       telefone         TEXT,
@@ -128,13 +172,14 @@ export async function ensureSchema(): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS leads_partner_id    ON leads (partner_id)`;
   await sql`CREATE INDEX IF NOT EXISTS leads_data_cadastro ON leads (data_cadastro DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS leads_external_id   ON leads (external_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS leads_document_number ON leads (document_number)`;
 
   // Cotações geradas pelos corretores no portal
   await sql`
     CREATE TABLE IF NOT EXISTS cotacoes (
       id                   TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
       partner_id           TEXT NOT NULL REFERENCES partners(id),
-      partner_user_id      TEXT NOT NULL REFERENCES partner_users(id),
+      partner_user_id      TEXT REFERENCES partner_users(id),
       product_id           TEXT NOT NULL REFERENCES products(id),
       lead_id              TEXT REFERENCES leads(id),
       client_name          TEXT NOT NULL,
@@ -146,6 +191,8 @@ export async function ensureSchema(): Promise<void> {
       premio_calculado     NUMERIC(12,2),
       premio_final         NUMERIC(12,2),
       status               TEXT NOT NULL DEFAULT 'rascunho',
+      flow_type            TEXT NOT NULL DEFAULT 'internal',
+      source_token         TEXT,
       external_ref         TEXT,
       valid_until          DATE,
       notes                TEXT,
@@ -154,8 +201,10 @@ export async function ensureSchema(): Promise<void> {
       updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
+  await sql`ALTER TABLE cotacoes ALTER COLUMN partner_user_id DROP NOT NULL`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_partner_id ON cotacoes (partner_id)`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_status     ON cotacoes (status)`;
+  await sql`CREATE INDEX IF NOT EXISTS cotacoes_source_token ON cotacoes (source_token)`;
 
   // Vendas (apólices emitidas)
   await sql`
@@ -212,6 +261,27 @@ export async function ensureSchema(): Promise<void> {
   `;
   await sql`CREATE INDEX IF NOT EXISTS sync_log_entity  ON sync_log (entity_type, entity_id)`;
   await sql`CREATE INDEX IF NOT EXISTS sync_log_created ON sync_log (created_at DESC)`;
+
+  // Links públicos white-label para contratação externa
+  await sql`
+    CREATE TABLE IF NOT EXISTS public_sale_links (
+      id                TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      token             TEXT UNIQUE NOT NULL,
+      partner_id        TEXT NOT NULL REFERENCES partners(id),
+      product_id        TEXT REFERENCES products(id),
+      flow_type         TEXT NOT NULL DEFAULT 'external',
+      label             TEXT,
+      status            TEXT NOT NULL DEFAULT 'active',
+      expires_at        TIMESTAMPTZ,
+      used_at           TIMESTAMPTZ,
+      metadata          JSONB NOT NULL DEFAULT '{}',
+      created_by_user_id TEXT,
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS public_sale_links_partner_id ON public_sale_links (partner_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS public_sale_links_token      ON public_sale_links (token)`;
 
   // Usuários admin internos da DuoLife
   await sql`
