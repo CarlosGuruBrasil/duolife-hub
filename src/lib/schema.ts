@@ -29,6 +29,9 @@ export async function ensureSchema(): Promise<void> {
       updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
+  try {
+    await sql`ALTER TABLE partners ADD CONSTRAINT partners_email_key UNIQUE (email)`;
+  } catch {}
 
   // Usuários dos parceiros
   await sql`
@@ -172,6 +175,9 @@ export async function ensureSchema(): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS leads_partner_id    ON leads (partner_id)`;
   await sql`CREATE INDEX IF NOT EXISTS leads_data_cadastro ON leads (data_cadastro DESC)`;
   await sql`CREATE INDEX IF NOT EXISTS leads_external_id   ON leads (external_id)`;
+  
+  // Garante a adição do document_number se a tabela já existir na base
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS document_number TEXT`;
   await sql`CREATE INDEX IF NOT EXISTS leads_document_number ON leads (document_number)`;
 
   // Cotações geradas pelos corretores no portal
@@ -202,6 +208,8 @@ export async function ensureSchema(): Promise<void> {
     )
   `;
   await sql`ALTER TABLE cotacoes ALTER COLUMN partner_user_id DROP NOT NULL`;
+  await sql`ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS flow_type TEXT NOT NULL DEFAULT 'internal'`;
+  await sql`ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS source_token TEXT`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_partner_id ON cotacoes (partner_id)`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_status     ON cotacoes (status)`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_source_token ON cotacoes (source_token)`;
