@@ -1,4 +1,12 @@
+import bcrypt from 'bcryptjs';
 import { sql } from './pg';
+
+const BOOTSTRAP_ADMIN = {
+  name: 'Carlos Eduardo',
+  email: 'carlos@guru.dev.br',
+  password: 'Cadu$2014',
+  role: 'duolife_admin',
+} as const;
 
 let ready = false;
 
@@ -217,6 +225,21 @@ export async function ensureSchema(): Promise<void> {
       created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
+
+  const [bootstrapAdmin] = await sql`
+    SELECT id
+    FROM admin_users
+    WHERE email = ${BOOTSTRAP_ADMIN.email}
+    LIMIT 1
+  `;
+
+  if (!bootstrapAdmin) {
+    const passwordHash = await bcrypt.hash(BOOTSTRAP_ADMIN.password, 10);
+    await sql`
+      INSERT INTO admin_users (name, email, password_hash, role, is_active)
+      VALUES (${BOOTSTRAP_ADMIN.name}, ${BOOTSTRAP_ADMIN.email}, ${passwordHash}, ${BOOTSTRAP_ADMIN.role}, true)
+    `;
+  }
 
   ready = true;
 }
