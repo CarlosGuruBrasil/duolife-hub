@@ -2,10 +2,10 @@
 # scripts/dev-clean.sh
 # Inicializa o servidor de desenvolvimento limpando processos zumbis anteriores.
 
-PORT=3000
+PORT="${PORT:-3000}"
 echo "🔍 Verificando processos na porta $PORT..."
 
-# Encontra PIDs escutando na porta 3000
+# Encontra PIDs escutando na porta configurada
 PIDS=$(lsof -t -i:$PORT)
 
 if [ ! -z "$PIDS" ]; then
@@ -22,5 +22,5 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/.." || exit
 
-echo "🚀 Iniciando servidor de desenvolvimento Next.js na pasta: $(pwd)"
-npx next dev
+echo "🚀 Iniciando servidor de desenvolvimento Next.js na pasta: $(pwd) na porta $PORT"
+npx next dev -p "$PORT"

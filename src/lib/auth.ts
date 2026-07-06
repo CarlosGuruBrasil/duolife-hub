@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
+import { sql } from './pg';
 import { getJwtSecret } from './secrets';
 
 export type UserRole =
@@ -18,12 +19,79 @@ export interface AuthUser {
   permissions: Record<string, boolean>;
 }
 
+export function normalizePermissions(value: unknown): Record<string, boolean> {
+  if (!value) return {};
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      return normalizePermissions(parsed);
+    } catch {
+      return {};
+    }
+  }
+  if (typeof value !== 'object' || Array.isArray(value)) return {};
+  return value as Record<string, boolean>;
+}
+
+function isAuthUser(value: unknown): value is AuthUser {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<AuthUser>;
+  return typeof candidate.userId === 'string'
+    && (typeof candidate.partnerId === 'string' || candidate.partnerId === null)
+    && typeof candidate.name === 'string'
+    && typeof candidate.email === 'string'
+    && typeof candidate.role === 'string'
+    && typeof candidate.permissions === 'object'
+    && candidate.permissions !== null;
+}
+
 export async function verifyAuth(): Promise<AuthUser | null> {
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get('duolife_token')?.value;
     if (!token) return null;
-    return jwt.verify(token, getJwtSecret()) as AuthUser;
+
+    const decoded = jwt.verify(token, getJwtSecret());
+    if (!isAuthUser(decoded)) return null;
+
+    if (decoded.role === 'duolife_admin' || decoded.role === 'duolife_staff') {
+      const [admin] = await sql`
+        SELECT id, name, email, role
+        FROM admin_users
+        WHERE id = ${decoded.userId} AND is_active = true
+      `;
+
+      if (!admin) return null;
+
+      return {
+        userId: admin.id,
+        partnerId: null,
+        name: admin.name,
+        email: admin.email,
+        role: admin.role as UserRole,
+        permissions: normalizePermissions({}),
+      };
+    }
+
+    const [partnerUser] = await sql`
+      SELECT pu.id, pu.name, pu.email, pu.role, pu.permissions, pu.partner_id
+      FROM partner_users pu
+      JOIN partners p ON p.id = pu.partner_id
+      WHERE pu.id = ${decoded.userId}
+        AND pu.is_active = true
+        AND p.status = 'active'
+    `;
+
+    if (!partnerUser) return null;
+
+    return {
+      userId: partnerUser.id,
+      partnerId: partnerUser.partner_id,
+      name: partnerUser.name,
+      email: partnerUser.email,
+      role: `partner_${partnerUser.role}` as UserRole,
+      permissions: normalizePermissions(partnerUser.permissions),
+    };
   } catch {
     return null;
   }

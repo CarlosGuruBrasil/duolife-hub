@@ -4,7 +4,7 @@ import { sql } from '@/lib/pg';
 import { getJwtSecret } from '@/lib/secrets';
 import { rotateRefreshToken } from '@/lib/refresh-token';
 import { logger } from '@/lib/logger';
-import type { AuthUser } from '@/lib/auth';
+import { normalizePermissions, type AuthUser } from '@/lib/auth';
 
 export async function POST() {
   const cookieStore = await cookies();
@@ -33,7 +33,7 @@ export async function POST() {
       name: user.name,
       email: user.email,
       role: `partner_${user.role}` as AuthUser['role'],
-      permissions: user.permissions || {},
+      permissions: normalizePermissions(user.permissions),
     };
 
     const token = jwt.sign(payload, getJwtSecret(), { expiresIn: '8h' });

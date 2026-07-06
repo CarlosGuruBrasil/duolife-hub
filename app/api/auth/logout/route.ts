@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { cookies } from 'next/headers';
 import { sql } from '@/lib/pg';
 
-export async function POST() {
+export async function POST(req: Request) {
   const cookieStore = await cookies();
   const raw = cookieStore.get('duolife_refresh')?.value;
 
@@ -14,5 +14,5 @@ export async function POST() {
 
   cookieStore.delete('duolife_token');
   cookieStore.delete('duolife_refresh');
-  return Response.redirect(new URL('/login', process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'));
+  return Response.redirect(new URL('/login', req.url));
 }
