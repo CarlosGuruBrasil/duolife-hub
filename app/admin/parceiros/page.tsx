@@ -4,6 +4,7 @@ export const dynamic = 'force-dynamic';
 
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { Building2, CheckCircle, Clock, XCircle } from 'lucide-react';
 
 interface Parceiro {
@@ -107,6 +108,12 @@ function AdminParceirosInner() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex gap-2 justify-end">
+                        <Link
+                          href={`/admin/parceiros/${p.id}`}
+                          className="btn-outline text-xs px-3 py-1.5 min-h-0"
+                        >
+                          Configurar
+                        </Link>
                         {p.status !== 'active' && (
                           <button
                             onClick={() => updateStatus(p.id, 'active')}

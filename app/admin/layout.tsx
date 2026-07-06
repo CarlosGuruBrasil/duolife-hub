@@ -1,12 +1,13 @@
 import Link from 'next/link';
 import Image from 'next/image';
-import { BarChart3, Building2, FileText, LogOut, Users, WalletCards } from 'lucide-react';
+import { BarChart3, Building2, FileText, LogOut, RefreshCw, Users, WalletCards } from 'lucide-react';
 
 const nav = [
   { href: '/admin', label: 'Dashboard', icon: BarChart3 },
   { href: '/admin/parceiros', label: 'Parceiros', icon: Building2 },
   { href: '/admin/vendas', label: 'Vendas', icon: FileText },
   { href: '/admin/comissoes', label: 'Comissões', icon: WalletCards },
+  { href: '/admin/sync', label: 'Sync', icon: RefreshCw },
   { href: '/admin/usuarios', label: 'Usuários', icon: Users },
 ];
 
