@@ -1,6 +1,6 @@
 import type { MetadataRoute } from 'next';
 
-const BASE_URL = 'https://duolifehub.com.br';
+const BASE_URL = 'https://duolife.com.br';
 
 export default function robots(): MetadataRoute.Robots {
   return {

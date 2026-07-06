@@ -11,7 +11,7 @@ const jakarta = Plus_Jakarta_Sans({
   display: 'swap',
 });
 
-const BASE_URL = 'https://duolifehub.com.br';
+const BASE_URL = 'https://duolife.com.br';
 
 export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
