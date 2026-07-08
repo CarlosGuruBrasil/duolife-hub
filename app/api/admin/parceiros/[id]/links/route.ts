@@ -19,34 +19,39 @@ function appBaseUrl() {
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await verifyAdminAuth();
-  if (!admin) return unauthorized();
+  try {
+    const admin = await verifyAdminAuth();
+    if (!admin) return unauthorized();
 
-  const { id } = await params;
-  await ensureSchema();
+    const { id } = await params;
+    await ensureSchema();
 
-  const links = await sql`
-    SELECT
-      pl.id,
-      pl.token,
-      pl.label,
-      pl.flow_type,
-      pl.status,
-      pl.expires_at,
-      pl.used_at,
-      pl.created_at,
-      pl.updated_at,
-      pl.metadata,
-      pr.name AS product_name,
-      pr.code AS product_code
-    FROM public_sale_links pl
-    LEFT JOIN products pr ON pr.id = pl.product_id
-    WHERE pl.partner_id = ${id}
-    ORDER BY pl.created_at DESC
-    LIMIT 100
-  `;
+    const links = await sql`
+      SELECT
+        pl.id,
+        pl.token,
+        pl.label,
+        pl.flow_type,
+        pl.status,
+        pl.expires_at,
+        pl.used_at,
+        pl.created_at,
+        pl.updated_at,
+        pl.metadata,
+        pr.name AS product_name,
+        pr.code AS product_code
+      FROM public_sale_links pl
+      LEFT JOIN products pr ON pr.id = pl.product_id
+      WHERE pl.partner_id = ${id}
+      ORDER BY pl.created_at DESC
+      LIMIT 100
+    `;
 
-  return Response.json({ links });
+    return Response.json({ links });
+  } catch (err) {
+    logger.error({ err }, 'admin.links.get.failed');
+    return Response.json({ error: 'Erro interno' }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

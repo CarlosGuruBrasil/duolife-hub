@@ -39,65 +39,70 @@ async function resolveLink(token: string) {
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
-  await ensureSchema();
-  const { token } = await params;
+  try {
+    await ensureSchema();
+    const { token } = await params;
 
-  const link = await resolveLink(token);
-  if (!link) return Response.json({ error: 'Link inválido ou expirado' }, { status: 404 });
+    const link = await resolveLink(token);
+    if (!link) return Response.json({ error: 'Link inválido ou expirado' }, { status: 404 });
 
-  return Response.json({
-    link: {
-      token: link.token,
-      label: link.label,
-      flowType: link.flow_type,
-      partner: {
-        id: link.partner_id,
-        razaoSocial: link.razao_social,
-        nomeFantasia: link.nome_fantasia,
-        email: link.email,
-        phone: link.phone,
-        whiteLabel: getWhiteLabelConfig(link.partner_metadata),
+    return Response.json({
+      link: {
+        token: link.token,
+        label: link.label,
+        flowType: link.flow_type,
+        partner: {
+          id: link.partner_id,
+          razaoSocial: link.razao_social,
+          nomeFantasia: link.nome_fantasia,
+          email: link.email,
+          phone: link.phone,
+          whiteLabel: getWhiteLabelConfig(link.partner_metadata),
+        },
+        product: link.product_id ? {
+          id: link.product_id,
+          name: link.product_name,
+          code: link.product_code,
+        } : null,
+        url: `${appBaseUrl()}/contratar/${token}`,
+        usedAt: link.used_at,
+        expiresAt: link.expires_at,
       },
-      product: link.product_id ? {
-        id: link.product_id,
-        name: link.product_name,
-        code: link.product_code,
-      } : null,
-      url: `${appBaseUrl()}/contratar/${token}`,
-      usedAt: link.used_at,
-      expiresAt: link.expires_at,
-    },
-  });
+    });
+  } catch (err) {
+    logger.error({ err }, 'public.link.get.failed');
+    return Response.json({ error: 'Erro interno' }, { status: 500 });
+  }
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
-  await ensureSchema();
+  let link: any = null;
   const { token } = await params;
-
-  const link = await resolveLink(token);
-  if (!link) return Response.json({ error: 'Link inválido ou expirado' }, { status: 404 });
-
-  const parsed = payloadSchema.safeParse(await req.json());
-  if (!parsed.success) {
-    return Response.json({ error: 'Dados inválidos' }, { status: 400 });
-  }
-
-  const data = parsed.data;
-  const documentNumber = data.clientCpfCnpj.replace(/\D/g, '');
-  const phone = data.clientPhone ? data.clientPhone.replace(/\D/g, '') : null;
-  const partnerId = link.partner_id as string;
-  const effectiveProductId = (link.product_id as string | null) || (await sql`
-    SELECT id
-    FROM products
-    WHERE code = 'RC-001'
-    LIMIT 1
-  `)[0]?.id || null;
-
-  if (!effectiveProductId) {
-    return Response.json({ error: 'Produto RC não configurado' }, { status: 422 });
-  }
-
   try {
+    await ensureSchema();
+
+    link = await resolveLink(token);
+    if (!link) return Response.json({ error: 'Link inválido ou expirado' }, { status: 404 });
+
+    const parsed = payloadSchema.safeParse(await req.json());
+    if (!parsed.success) {
+      return Response.json({ error: 'Dados inválidos' }, { status: 400 });
+    }
+
+    const data = parsed.data;
+    const documentNumber = data.clientCpfCnpj.replace(/\D/g, '');
+    const phone = data.clientPhone ? data.clientPhone.replace(/\D/g, '') : null;
+    const partnerId = link.partner_id as string;
+    const effectiveProductId = (link.product_id as string | null) || (await sql`
+      SELECT id
+      FROM products
+      WHERE code = 'RC-001'
+      LIMIT 1
+    `)[0]?.id || null;
+
+    if (!effectiveProductId) {
+      return Response.json({ error: 'Produto RC não configurado' }, { status: 422 });
+    }
     const existingLead = await sql`
       SELECT id
       FROM leads

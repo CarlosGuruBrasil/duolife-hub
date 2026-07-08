@@ -34,75 +34,79 @@ function cleanColor(value: string | undefined | null, fallback: string) {
 }
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await verifyAdminAuth();
-  if (!admin) return unauthorized();
+  try {
+    const admin = await verifyAdminAuth();
+    if (!admin) return unauthorized();
 
-  const { id } = await params;
-  await ensureSchema();
+    const { id } = await params;
+    await ensureSchema();
 
-  const [partner] = await sql`
-    SELECT id, razao_social, nome_fantasia, email, phone, metadata, status, created_at
-    FROM partners
-    WHERE id = ${id}
-    LIMIT 1
-  `;
+    const [partner] = await sql`
+      SELECT id, razao_social, nome_fantasia, email, phone, metadata, status, created_at
+      FROM partners
+      WHERE id = ${id}
+      LIMIT 1
+    `;
 
-  if (!partner) return Response.json({ error: 'Parceiro não encontrado' }, { status: 404 });
+    if (!partner) return Response.json({ error: 'Parceiro não encontrado' }, { status: 404 });
 
-  return Response.json({
-    partner: {
-      ...partner,
-      whiteLabel: getWhiteLabelConfig(partner.metadata),
-    },
-  });
+    return Response.json({
+      partner: {
+        ...partner,
+        whiteLabel: getWhiteLabelConfig(partner.metadata),
+      },
+    });
+  } catch (err) {
+    logger.error({ err }, 'admin.branding.get.failed');
+    return Response.json({ error: 'Erro interno' }, { status: 500 });
+  }
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const admin = await verifyAdminAuth();
-  if (!admin) return unauthorized();
-
   const { id } = await params;
-  await ensureSchema();
-
-  const parsed = whiteLabelSchema.safeParse(await req.json());
-  if (!parsed.success) {
-    return Response.json({ error: 'Configuração white-label inválida' }, { status: 400 });
-  }
-
-  const current = await sql`
-    SELECT metadata
-    FROM partners
-    WHERE id = ${id}
-    LIMIT 1
-  `;
-  if (!current[0]) return Response.json({ error: 'Parceiro não encontrado' }, { status: 404 });
-
-  const body = parsed.data;
-  const whiteLabel = {
-    ...getWhiteLabelConfig(current[0].metadata),
-    slug: body.slug || getWhiteLabelConfig(current[0].metadata).slug,
-    companyName: body.companyName || getWhiteLabelConfig(current[0].metadata).companyName,
-    companySlogan: body.companySlogan || getWhiteLabelConfig(current[0].metadata).companySlogan,
-    companyPhone: body.companyPhone || getWhiteLabelConfig(current[0].metadata).companyPhone,
-    companyEmail: body.companyEmail || getWhiteLabelConfig(current[0].metadata).companyEmail,
-    companyWebsite: body.companyWebsite || getWhiteLabelConfig(current[0].metadata).companyWebsite,
-    logoUrl: body.logoUrl || getWhiteLabelConfig(current[0].metadata).logoUrl,
-    primaryColor: cleanColor(body.primaryColor, getWhiteLabelConfig(current[0].metadata).primaryColor),
-    secondaryColor: cleanColor(body.secondaryColor, getWhiteLabelConfig(current[0].metadata).secondaryColor),
-    accentColor: cleanColor(body.accentColor, getWhiteLabelConfig(current[0].metadata).accentColor),
-    domain: body.domain || getWhiteLabelConfig(current[0].metadata).domain,
-    subdomain: body.subdomain || getWhiteLabelConfig(current[0].metadata).subdomain,
-    institutionText: body.institutionText || getWhiteLabelConfig(current[0].metadata).institutionText,
-    footerText: body.footerText || getWhiteLabelConfig(current[0].metadata).footerText,
-    publicTitle: body.publicTitle || getWhiteLabelConfig(current[0].metadata).publicTitle,
-    publicDescription: body.publicDescription || getWhiteLabelConfig(current[0].metadata).publicDescription,
-    wixCode: body.wixCode || getWhiteLabelConfig(current[0].metadata).wixCode,
-    links: (body.links as WhiteLabelLink[] | undefined) ?? getWhiteLabelConfig(current[0].metadata).links,
-    availableProductIds: body.availableProductIds ?? getWhiteLabelConfig(current[0].metadata).availableProductIds,
-    customTexts: body.customTexts ?? getWhiteLabelConfig(current[0].metadata).customTexts,
-  };
-
   try {
+    const admin = await verifyAdminAuth();
+    if (!admin) return unauthorized();
+
+    await ensureSchema();
+
+    const parsed = whiteLabelSchema.safeParse(await req.json());
+    if (!parsed.success) {
+      return Response.json({ error: 'Configuração white-label inválida' }, { status: 400 });
+    }
+
+    const current = await sql`
+      SELECT metadata
+      FROM partners
+      WHERE id = ${id}
+      LIMIT 1
+    `;
+    if (!current[0]) return Response.json({ error: 'Parceiro não encontrado' }, { status: 404 });
+
+    const body = parsed.data;
+    const whiteLabel = {
+      ...getWhiteLabelConfig(current[0].metadata),
+      slug: body.slug || getWhiteLabelConfig(current[0].metadata).slug,
+      companyName: body.companyName || getWhiteLabelConfig(current[0].metadata).companyName,
+      companySlogan: body.companySlogan || getWhiteLabelConfig(current[0].metadata).companySlogan,
+      companyPhone: body.companyPhone || getWhiteLabelConfig(current[0].metadata).companyPhone,
+      companyEmail: body.companyEmail || getWhiteLabelConfig(current[0].metadata).companyEmail,
+      companyWebsite: body.companyWebsite || getWhiteLabelConfig(current[0].metadata).companyWebsite,
+      logoUrl: body.logoUrl || getWhiteLabelConfig(current[0].metadata).logoUrl,
+      primaryColor: cleanColor(body.primaryColor, getWhiteLabelConfig(current[0].metadata).primaryColor),
+      secondaryColor: cleanColor(body.secondaryColor, getWhiteLabelConfig(current[0].metadata).secondaryColor),
+      accentColor: cleanColor(body.accentColor, getWhiteLabelConfig(current[0].metadata).accentColor),
+      domain: body.domain || getWhiteLabelConfig(current[0].metadata).domain,
+      subdomain: body.subdomain || getWhiteLabelConfig(current[0].metadata).subdomain,
+      institutionText: body.institutionText || getWhiteLabelConfig(current[0].metadata).institutionText,
+      footerText: body.footerText || getWhiteLabelConfig(current[0].metadata).footerText,
+      publicTitle: body.publicTitle || getWhiteLabelConfig(current[0].metadata).publicTitle,
+      publicDescription: body.publicDescription || getWhiteLabelConfig(current[0].metadata).publicDescription,
+      wixCode: body.wixCode || getWhiteLabelConfig(current[0].metadata).wixCode,
+      links: (body.links as WhiteLabelLink[] | undefined) ?? getWhiteLabelConfig(current[0].metadata).links,
+      availableProductIds: body.availableProductIds ?? getWhiteLabelConfig(current[0].metadata).availableProductIds,
+      customTexts: body.customTexts ?? getWhiteLabelConfig(current[0].metadata).customTexts,
+    };
     const [partner] = await sql`
       UPDATE partners
       SET metadata = ${JSON.stringify(mergeWhiteLabelConfig(current[0].metadata, whiteLabel))}::jsonb,
