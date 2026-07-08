@@ -60,6 +60,8 @@ interface FormState {
   ppeRepresenta: string; // 'Sim' | 'Não'
   ppeCargoSelect: string[]; // IDs de 1 a 8
   
+  isRenovacao: string; // 'Sim' | 'Não'
+  
   // Seguro anterior (Condicional)
   seguradora: string;
   vigencia: string;
@@ -102,6 +104,7 @@ const initialForm: FormState = {
   ppeCargos: 'Não',
   ppeRepresenta: 'Não',
   ppeCargoSelect: [],
+  isRenovacao: 'Não',
   seguradora: '',
   vigencia: '',
   limite: '',
@@ -323,7 +326,10 @@ export default function CotacaoFormRC({ adminSelectedPartnerId }: { adminSelecte
     }
 
     if (step === 2) {
-      // Validação básica do Passo 2
+      if (!planoSel) {
+        setError('Selecione um plano antes de continuar.');
+        return;
+      }
       if (!form.faturamentoAntes || !form.faturamentoDepois) {
         setError('Informe o faturamento bruto dos períodos indicados.');
         return;
@@ -336,9 +342,11 @@ export default function CotacaoFormRC({ adminSelectedPartnerId }: { adminSelecte
         setError('Selecione ao menos um cargo público de PPE.');
         return;
       }
-      // Valida seguro anterior se preenchido
-      if (form.seguradora) {
-        if (!form.vigencia || !form.limite || !form.franquiaAnterior || !form.premio || !form.dataRetroativa) {
+    }
+
+    if (step === 3) {
+      if (form.isRenovacao === 'Sim') {
+        if (!form.seguradora || !form.vigencia || !form.limite || !form.franquiaAnterior || !form.premio || !form.dataRetroativa) {
           setError('Preencha todas as informações do seguro anterior.');
           return;
         }
@@ -416,7 +424,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId }: { adminSelecte
       if (zapRes.ok && zapData.ok) {
         setSignUrl(zapData.signUrl);
         setDocToken(zapData.docToken);
-        setStep(4);
+        setStep(5);
       } else {
         setError(zapData.error || 'Erro ao gerar o contrato no ZapSign.');
       }
@@ -503,9 +511,10 @@ export default function CotacaoFormRC({ adminSelectedPartnerId }: { adminSelecte
       <div className="flex justify-between items-center mb-8 border-b border-gray-800 pb-4">
         {[
           { num: 1, label: 'Segurado', icon: FileText },
-          { num: 2, label: 'Declarações', icon: ShieldCheck },
-          { num: 3, label: 'Pagamento', icon: DollarSign },
-          { num: 4, label: 'Assinatura', icon: CreditCard }
+          { num: 2, label: 'Cobertura', icon: ShieldCheck },
+          { num: 3, label: 'Declarações', icon: ShieldCheck },
+          { num: 4, label: 'Pagamento', icon: DollarSign },
+          { num: 5, label: 'Assinatura', icon: CreditCard }
         ].map((s) => {
           const Icon = s.icon;
           return (
@@ -721,11 +730,64 @@ export default function CotacaoFormRC({ adminSelectedPartnerId }: { adminSelecte
         </div>
       )}
 
-      {/* PASSO 2: PERFIL PROFISSIONAL & RISCOS */}
+      {/* PASSO 2: COBERTURA & PERFIL PROFISSIONAL */}
       {step === 2 && (
         <div className="card space-y-6">
-          <h3 className="text-lg font-bold text-accent">2. Informações de Faturamento e Atuação</h3>
+          <h3 className="text-lg font-bold text-accent">2. Seleção de Plano e Cobertura</h3>
           
+          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+            {planos.map((plano) => {
+              const isSelected = planoSel?.tipoDePlano === plano.tipoDePlano;
+              return (
+                <div
+                  key={plano.tipoDePlano}
+                  onClick={() => {
+                    setPlanoSel(plano);
+                    setParcelaSel(null);
+                  }}
+                  className={`border-2 rounded-xl p-5 cursor-pointer transition-all hover:scale-[1.02] flex flex-col justify-between ${
+                    isSelected
+                      ? 'border-accent bg-accent/5 shadow-[0_0_15px_rgba(0,212,224,0.15)]'
+                      : 'border-slate-800 bg-slate-950/80 hover:border-slate-700'
+                  }`}
+                >
+                  <div>
+                    <h4 className="font-bold text-base text-white">{plano.nomeExibido}</h4>
+                    <div className="mt-3 text-2xl font-black text-accent">{plano.cobertura}</div>
+                    <div className="text-xs text-gray-400 mt-1">Limite Máximo de Cobertura</div>
+                  </div>
+
+                  <div className="mt-5 border-t border-slate-800 pt-3 text-sm text-gray-300 space-y-2">
+                    <div>
+                      <span className="text-gray-400 text-xs block">Franquia obrigatória</span>
+                      <span className="font-semibold text-white">{plano.franquia}</span>
+                    </div>
+                    <div>
+                      <span className="text-gray-400 text-xs block">Valor à vista</span>
+                      <span className="font-semibold text-emerald-400">{plano.parcela}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <h3 className="text-lg font-bold text-accent pt-4">Renovação e Perfil</h3>
+          
+          <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl mb-4">
+            <label className="block">
+              <span className="field-label text-white">É uma renovação de apólice?</span>
+              <select
+                value={form.isRenovacao}
+                onChange={(e) => updateField('isRenovacao', e.target.value)}
+                className="form-input md:w-64 mt-2"
+              >
+                <option value="Não">Não</option>
+                <option value="Sim">Sim</option>
+              </select>
+            </label>
+          </div>
+
           <div className="grid gap-5 md:grid-cols-2">
             <label className="block">
               <span className="field-label">Faturamento Bruto Anual (Últimos 12 meses)</span>
@@ -814,130 +876,165 @@ export default function CotacaoFormRC({ adminSelectedPartnerId }: { adminSelecte
             </div>
           )}
 
-          <h3 className="text-lg font-bold text-accent pt-4">Seguro Anterior (Últimos 2 anos)</h3>
-          
-          <div className="grid gap-5 md:grid-cols-3">
-            <label className="block">
-              <span className="field-label">Seguradora</span>
-              <input
-                value={form.seguradora}
-                onChange={(e) => updateField('seguradora', e.target.value)}
-                className="form-input"
-                placeholder="Ex: Porto Seguro"
-              />
-            </label>
-
-            <label className="block">
-              <span className="field-label">Vigência</span>
-              <input
-                type="date"
-                value={form.vigencia}
-                onChange={(e) => updateField('vigencia', e.target.value)}
-                className="form-input"
-              />
-            </label>
-
-            <label className="block">
-              <span className="field-label">Limite Segurado</span>
-              <input
-                value={form.limite}
-                onChange={(e) => updateField('limite', applyMoneyMask(e.target.value))}
-                className="form-input"
-                placeholder="R$ 0,00"
-              />
-            </label>
-
-            <label className="block">
-              <span className="field-label">Franquia</span>
-              <input
-                value={form.franquiaAnterior}
-                onChange={(e) => updateField('franquiaAnterior', applyMoneyMask(e.target.value))}
-                className="form-input"
-                placeholder="R$ 0,00"
-              />
-            </label>
-
-            <label className="block">
-              <span className="field-label">Prêmio Líquido Pago</span>
-              <input
-                value={form.premio}
-                onChange={(e) => updateField('premio', applyMoneyMask(e.target.value))}
-                className="form-input"
-                placeholder="R$ 0,00"
-              />
-            </label>
-
-            <label className="block">
-              <span className="field-label">Data de Retroatividade</span>
-              <input
-                type="date"
-                value={form.dataRetroativa}
-                onChange={(e) => updateField('dataRetroativa', e.target.value)}
-                className="form-input"
-              />
-            </label>
+          <div className="flex justify-between pt-4">
+            <button
+              onClick={handleBack}
+              className="btn btn-secondary flex items-center space-x-2"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span>Voltar</span>
+            </button>
+            <button
+              onClick={handleNext}
+              className="btn btn-primary flex items-center space-x-2"
+            >
+              <span>Avançar</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
+        </div>
+      )}
 
-          <h3 className="text-lg font-bold text-accent pt-4">Questionário de Risco (Underwriting)</h3>
-          
-          <div className="space-y-4">
-            {[
-              {
-                id: 'propostaRecusada',
-                q: 'Já teve proposta de seguro recusada, cancelada ou com recusa de renovação?',
-                det: 'propostaDetalhe'
-              },
-              {
-                id: 'reclamacaoProfissional',
-                q: 'Já houve alguma reclamação, queixa, notificação ou ação judicial de terceiros alegando falha/dano profissional nos últimos 2 anos?',
-                det: 'reclamacaoDetalhe'
-              },
-              {
-                id: 'investigacaoAutoridade',
-                q: 'Responde ou já respondeu a algum processo ético, disciplinar (como OAB) ou administrativo nos últimos 2 anos?',
-                det: 'investigacaoDetalhe'
-              },
-              {
-                id: 'fatoTerceiros',
-                q: 'Tem conhecimento de algum fato, ato, omissão, queixa pendente ou circunstância que possa motivar reclamação judicial no futuro?',
-                det: 'fatoDetalhe'
-              },
-              {
-                id: 'pagouReclamacao',
-                q: 'Já realizou algum pagamento de indenização com recursos próprios por falhas profissionais nos últimos 2 anos?',
-                det: 'pagouDetalhe'
-              }
-            ].map((item) => {
-              const val = form[item.id as keyof FormState] as string;
-              return (
-                <div key={item.id} className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-3">
-                  <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3">
-                    <span className="text-sm text-gray-300 font-medium">{item.q}</span>
-                    <select
-                      value={val}
-                      onChange={(e) => updateField(item.id as keyof FormState, e.target.value)}
-                      className="form-input md:w-32"
-                    >
-                      <option value="Não">Não</option>
-                      <option value="Sim">Sim</option>
-                    </select>
-                  </div>
-                  {val === 'Sim' && (
-                    <label className="block">
-                      <span className="field-label text-red-300 font-semibold">Descreva os detalhes e fatos:</span>
-                      <textarea
-                        required
-                        value={form[item.det as keyof FormState] as string}
-                        onChange={(e) => updateField(item.det as keyof FormState, e.target.value)}
-                        className="form-input min-h-20 border-red-900/50 focus:border-red-500"
-                        placeholder="Informe datas, motivos e valores envolvidos..."
-                      />
-                    </label>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+      {/* PASSO 3: DECLARAÇÕES & HISTÓRICO */}
+      {step === 3 && (
+        <div className="card space-y-6">
+          {form.isRenovacao === 'Sim' && (
+            <>
+              <h3 className="text-lg font-bold text-accent">3. Seguro Anterior (Últimos 2 anos)</h3>
+              
+              <div className="grid gap-5 md:grid-cols-3">
+                <label className="block">
+                  <span className="field-label">Seguradora</span>
+                  <input
+                    value={form.seguradora}
+                    onChange={(e) => updateField('seguradora', e.target.value)}
+                    className="form-input"
+                    placeholder="Ex: Porto Seguro"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="field-label">Vigência</span>
+                  <input
+                    type="date"
+                    value={form.vigencia}
+                    onChange={(e) => updateField('vigencia', e.target.value)}
+                    className="form-input"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="field-label">Limite Segurado</span>
+                  <input
+                    value={form.limite}
+                    onChange={(e) => updateField('limite', applyMoneyMask(e.target.value))}
+                    className="form-input"
+                    placeholder="R$ 0,00"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="field-label">Franquia</span>
+                  <input
+                    value={form.franquiaAnterior}
+                    onChange={(e) => updateField('franquiaAnterior', applyMoneyMask(e.target.value))}
+                    className="form-input"
+                    placeholder="R$ 0,00"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="field-label">Prêmio Líquido Pago</span>
+                  <input
+                    value={form.premio}
+                    onChange={(e) => updateField('premio', applyMoneyMask(e.target.value))}
+                    className="form-input"
+                    placeholder="R$ 0,00"
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="field-label">Data de Retroatividade</span>
+                  <input
+                    type="date"
+                    value={form.dataRetroativa}
+                    onChange={(e) => updateField('dataRetroativa', e.target.value)}
+                    className="form-input"
+                  />
+                </label>
+              </div>
+            </>
+          )}
+
+          {planoSel?.tipoDePlano !== '100k' ? (
+            <>
+              <h3 className="text-lg font-bold text-accent pt-4">Questionário de Risco (Underwriting)</h3>
+              
+              <div className="space-y-4">
+                {[
+                  {
+                    id: 'propostaRecusada',
+                    q: 'Já teve proposta de seguro recusada, cancelada ou com recusa de renovação?',
+                    det: 'propostaDetalhe'
+                  },
+                  {
+                    id: 'reclamacaoProfissional',
+                    q: 'Já houve alguma reclamação, queixa, notificação ou ação judicial de terceiros alegando falha/dano profissional nos últimos 2 anos?',
+                    det: 'reclamacaoDetalhe'
+                  },
+                  {
+                    id: 'investigacaoAutoridade',
+                    q: 'Responde ou já respondeu a algum processo ético, disciplinar (como OAB) ou administrativo nos últimos 2 anos?',
+                    det: 'investigacaoDetalhe'
+                  },
+                  {
+                    id: 'fatoTerceiros',
+                    q: 'Tem conhecimento de algum fato, ato, omissão, queixa pendente ou circunstância que possa motivar reclamação judicial no futuro?',
+                    det: 'fatoDetalhe'
+                  },
+                  {
+                    id: 'pagouReclamacao',
+                    q: 'Já realizou algum pagamento de indenização com recursos próprios por falhas profissionais nos últimos 2 anos?',
+                    det: 'pagouDetalhe'
+                  }
+                ].map((item) => {
+                  const val = form[item.id as keyof FormState] as string;
+                  return (
+                    <div key={item.id} className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-3">
+                      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3">
+                        <span className="text-sm text-gray-300 font-medium">{item.q}</span>
+                        <select
+                          value={val}
+                          onChange={(e) => updateField(item.id as keyof FormState, e.target.value)}
+                          className="form-input md:w-32"
+                        >
+                          <option value="Não">Não</option>
+                          <option value="Sim">Sim</option>
+                        </select>
+                      </div>
+                      {val === 'Sim' && (
+                        <label className="block">
+                          <span className="field-label text-red-300 font-semibold">Descreva os detalhes e fatos:</span>
+                          <textarea
+                            required
+                            value={form[item.det as keyof FormState] as string}
+                            onChange={(e) => updateField(item.det as keyof FormState, e.target.value)}
+                            className="form-input min-h-20 border-red-900/50 focus:border-red-500"
+                            placeholder="Informe datas, motivos e valores envolvidos..."
+                          />
+                        </label>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <div className="bg-emerald-950/20 border border-emerald-500/30 p-5 rounded-xl text-emerald-200">
+              <span className="font-semibold block mb-1">Declarações Simplificadas</span>
+              O plano de R$ 100.000 (100k) selecionado possui isenção do preenchimento do questionário de risco. Você pode avançar.
+            </div>
+          )}
 
           <div className="flex justify-between pt-4">
             <button
@@ -958,47 +1055,10 @@ export default function CotacaoFormRC({ adminSelectedPartnerId }: { adminSelecte
         </div>
       )}
 
-      {/* PASSO 3: COBERTURA E CONDIÇÕES DE PAGAMENTO */}
-      {step === 3 && (
+      {/* PASSO 4: PAGAMENTO */}
+      {step === 4 && (
         <div className="card space-y-6">
-          <h3 className="text-lg font-bold text-accent">3. Seleção de Plano e Cobertura</h3>
-          
-          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-            {planos.map((plano) => {
-              const isSelected = planoSel?.tipoDePlano === plano.tipoDePlano;
-              return (
-                <div
-                  key={plano.tipoDePlano}
-                  onClick={() => {
-                    setPlanoSel(plano);
-                    setParcelaSel(null);
-                  }}
-                  className={`border-2 rounded-xl p-5 cursor-pointer transition-all hover:scale-[1.02] flex flex-col justify-between ${
-                    isSelected
-                      ? 'border-accent bg-accent/5 shadow-[0_0_15px_rgba(0,212,224,0.15)]'
-                      : 'border-slate-800 bg-slate-950/80 hover:border-slate-700'
-                  }`}
-                >
-                  <div>
-                    <h4 className="font-bold text-base text-white">{plano.nomeExibido}</h4>
-                    <div className="mt-3 text-2xl font-black text-accent">{plano.cobertura}</div>
-                    <div className="text-xs text-gray-400 mt-1">Limite Máximo de Cobertura</div>
-                  </div>
-
-                  <div className="mt-5 border-t border-slate-800 pt-3 text-sm text-gray-300 space-y-2">
-                    <div>
-                      <span className="text-gray-400 text-xs block">Franquia obrigatória</span>
-                      <span className="font-semibold text-white">{plano.franquia}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-400 text-xs block">Valor à vista</span>
-                      <span className="font-semibold text-emerald-400">{plano.parcela}</span>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <h3 className="text-lg font-bold text-accent">4. Pagamento</h3>
 
           {/* Cupom Promocional */}
           <div className="bg-slate-900 border border-slate-800 p-5 rounded-xl space-y-4">
@@ -1101,8 +1161,8 @@ export default function CotacaoFormRC({ adminSelectedPartnerId }: { adminSelecte
         </div>
       )}
 
-      {/* PASSO 4: ASSINATURA E PAGAMENTO */}
-      {step === 4 && (
+      {/* PASSO 5: ASSINATURA E PAGAMENTO */}
+      {step === 5 && (
         <div className="card space-y-6">
           <h3 className="text-lg font-bold text-accent">4. Assinatura Digital do Contrato</h3>
 
