@@ -15,7 +15,7 @@ const nav = [
 export default function PortalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   return (
-    <div className="min-h-screen flex" style={{ background: 'var(--accent-soft)' }}>
+    <div className="h-screen flex overflow-hidden" style={{ background: 'var(--accent-soft)' }}>
       {/* Sidebar */}
       <aside className="w-64 flex flex-col shadow-lg" style={{ background: 'var(--primary)' }}>
         <div className="p-6 border-b" style={{ borderColor: 'rgba(255,255,255,0.1)' }}>
@@ -25,7 +25,8 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
               alt="DuoLife Hub de Negócios"
               width={150}
               height={31}
-              className="h-7 w-auto object-contain brightness-0 invert"
+              className="h-7 w-auto object-contain"
+              style={{ filter: 'brightness(0) invert(1)' }}
               priority
             />
           </Link>
@@ -64,7 +65,7 @@ export default function PortalLayout({ children }: { children: React.ReactNode }
       </aside>
 
       {/* Main */}
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-y-auto">
         <div className="p-8">{children}</div>
       </main>
     </div>

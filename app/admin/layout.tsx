@@ -22,7 +22,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               alt="DuoLife Hub de Negócios"
               width={150}
               height={31}
-              className="h-7 w-auto object-contain brightness-0 invert"
+              className="h-7 w-auto object-contain"
+              style={{ filter: 'brightness(0) invert(1)' }}
               priority
             />
           </Link>

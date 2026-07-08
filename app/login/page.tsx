@@ -51,6 +51,7 @@ export default function Login() {
                 height={44}
                 priority
                 className="h-10 w-auto object-contain"
+                style={{ filter: 'brightness(0) invert(1)' }}
               />
             </div>
           </Link>
