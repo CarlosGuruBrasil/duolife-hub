@@ -273,7 +273,7 @@ async function upsertPartnerFromWix(params: {
       razao_social = COALESCE(EXCLUDED.razao_social, partners.razao_social),
       nome_fantasia = COALESCE(EXCLUDED.nome_fantasia, partners.nome_fantasia),
       phone = COALESCE(EXCLUDED.phone, partners.phone),
-      metadata = jsonb_set(COALESCE(partners.metadata, '{}'::jsonb), '{wix}', EXCLUDED.metadata->'wix', true),
+      metadata = COALESCE(partners.metadata, '{}'::jsonb) || EXCLUDED.metadata,
       updated_at = NOW()
     RETURNING id
   `;
