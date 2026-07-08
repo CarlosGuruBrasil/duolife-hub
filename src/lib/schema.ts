@@ -77,6 +77,19 @@ export async function ensureSchema(): Promise<void> {
     )
   `;
 
+  // Tokens para recuperação de senha ("Esqueci minha senha")
+  await sql`
+    CREATE TABLE IF NOT EXISTS password_reset_tokens (
+      id              TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      user_id         TEXT NOT NULL,
+      user_type       TEXT NOT NULL, -- 'partner' or 'admin'
+      token_hash      TEXT UNIQUE NOT NULL,
+      expires_at      TIMESTAMPTZ NOT NULL,
+      used            BOOLEAN NOT NULL DEFAULT false,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
   // Produtos (seguros distribuídos pela DuoLife)
   await sql`
     CREATE TABLE IF NOT EXISTS products (
