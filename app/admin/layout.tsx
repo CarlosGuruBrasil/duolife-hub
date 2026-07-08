@@ -13,7 +13,7 @@ const nav = [
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen flex" style={{ background: 'var(--accent-soft)' }}>
+    <div className="h-screen flex overflow-hidden" style={{ background: 'var(--accent-soft)' }}>
       <aside className="w-64 flex flex-col shadow-lg" style={{ background: 'var(--primary-dark)' }}>
         <div className="p-6 border-b" style={{ borderColor: 'rgba(255,255,255,0.1)' }}>
           <Link href="/" className="brand-plate is-sidebar">
@@ -22,7 +22,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               alt="DuoLife Hub de Negócios"
               width={150}
               height={31}
-              className="h-7 w-auto object-contain"
+              className="h-7 w-auto object-contain brightness-0 invert"
               priority
             />
           </Link>
@@ -30,7 +30,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             Painel Admin
           </div>
         </div>
-        <nav className="flex-1 p-4 space-y-1">
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           {nav.map((n) => {
             const Icon = n.icon;
             return (
@@ -60,9 +60,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-y-auto">
         <div className="p-8">{children}</div>
       </main>
     </div>
+
   );
 }

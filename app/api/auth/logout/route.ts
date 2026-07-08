@@ -14,5 +14,11 @@ export async function POST(req: Request) {
 
   cookieStore.delete('duolife_token');
   cookieStore.delete('duolife_refresh');
-  return Response.redirect(new URL('/login', req.url));
+
+  const proto = req.headers.get('x-forwarded-proto') || 'http';
+  const host = req.headers.get('x-forwarded-host') || req.headers.get('host') || 'localhost:3000';
+  const redirectUrl = `${proto}://${host}/login`;
+
+  return Response.redirect(redirectUrl);
 }
+
