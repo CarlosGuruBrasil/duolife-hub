@@ -176,7 +176,7 @@ export async function POST(
       netValue
     });
 
-  } catch (err: any) {
+  } catch (err: unknown) {
     logger.error({ err, cotacaoId: id }, 'api.portal.gerar-pagamento.failed');
     return Response.json({ error: 'Erro interno ao gerar pagamento' }, { status: 500 });
   }

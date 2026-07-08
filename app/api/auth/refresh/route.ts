@@ -7,11 +7,10 @@ import { logger } from '@/lib/logger';
 import { normalizePermissions, type AuthUser } from '@/lib/auth';
 
 export async function POST() {
-  const cookieStore = await cookies();
-  const raw = cookieStore.get('duolife_refresh')?.value;
-  if (!raw) return Response.json({ error: 'Sessão expirada' }, { status: 401 });
-
   try {
+    const cookieStore = await cookies();
+    const raw = cookieStore.get('duolife_refresh')?.value;
+    if (!raw) return Response.json({ error: 'Sessão expirada' }, { status: 401 });
     const result = await rotateRefreshToken(raw);
     if (!result) return Response.json({ error: 'Sessão expirada. Faça login novamente.' }, { status: 401 });
 
