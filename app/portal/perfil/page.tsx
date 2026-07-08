@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 import PartnerProfileForm from '@/components/portal/PartnerProfileForm';
+import ChangePasswordForm from '@/components/portal/ChangePasswordForm';
 import { verifyPartnerAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
@@ -64,6 +65,7 @@ export default async function PerfilPage() {
       </div>
 
       <PartnerProfileForm partner={partner} />
+      <ChangePasswordForm />
     </div>
   );
 }

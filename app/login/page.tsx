@@ -69,7 +69,12 @@ export default function Login() {
                 placeholder="seu@email.com" autoComplete="email" />
             </div>
             <div>
-              <label className="field-label">Senha</label>
+              <div className="flex justify-between items-center mb-1">
+                <label className="field-label" style={{ marginBottom: 0 }}>Senha</label>
+                <Link href="/login/esqueci-a-senha" className="text-xs text-primary font-semibold hover:underline" style={{ color: 'var(--primary)' }}>
+                  Esqueceu a senha?
+                </Link>
+              </div>
               <div style={{ position: 'relative' }}>
                 <input
                   required
