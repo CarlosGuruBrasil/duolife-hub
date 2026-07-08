@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import CotacaoForm from '@/components/portal/CotacaoForm';
+import CotacaoFormRC from '@/components/portal/CotacaoFormRC';
 import { verifyPartnerAuth } from '@/lib/auth';
 
 export default async function NovaCotacaoPage() {
@@ -13,13 +13,14 @@ export default async function NovaCotacaoPage() {
         <Link href="/portal/cotacoes" className="text-sm font-medium" style={{ color: 'var(--primary)' }}>
           ← Voltar para cotações
         </Link>
-        <h1 className="page-title mt-3">Nova Cotação</h1>
+        <h1 className="page-title mt-3">Nova Proposta / Venda RC ADV</h1>
         <p className="muted mt-1 text-sm">
-          Cadastre os dados iniciais do segurado para iniciar uma cotação de Seguro RC.
+          Preencha as etapas abaixo para emitir a proposta e assinar digitalmente o Seguro de Responsabilidade Civil.
         </p>
       </div>
 
-      <CotacaoForm />
+      <CotacaoFormRC />
     </div>
   );
 }
+
