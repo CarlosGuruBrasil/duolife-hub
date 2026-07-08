@@ -504,10 +504,10 @@ textarea.form-input {
 
 /* Header and footer */
 .site-header {
-  background: rgba(255, 255, 255, 0.75);
+  background: #ffffff;
   border-bottom: 1px solid rgba(14, 74, 90, 0.07);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   left: 0;
   position: fixed;
   right: 0;
@@ -556,9 +556,9 @@ textarea.form-input {
 }
 
 .site-header.is-scrolled {
-  background: rgba(255, 255, 255, 0.85) !important;
-  backdrop-filter: blur(24px) saturate(190%) !important;
-  -webkit-backdrop-filter: blur(24px) saturate(190%) !important;
+  background: #ffffff !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   border-bottom: 1px solid rgba(14, 74, 90, 0.12) !important;
   box-shadow: 0 10px 30px rgba(14, 74, 90, 0.08) !important;
 }

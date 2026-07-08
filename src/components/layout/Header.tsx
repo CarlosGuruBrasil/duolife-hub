@@ -37,7 +37,7 @@ export default function Header({ transparent = false }: HeaderProps) {
   }, []);
 
   return (
-    <header className={`site-header${scrolled ? ' is-scrolled' : ''}`}>
+    <header className={`site-header${scrolled ? ' is-scrolled' : ''}${transparent ? ' header-transparent' : ''}`}>
       <div className="site-header-inner">
         <Link href="/" className="flex items-center shrink-0" aria-label="DuoLife Hub de Negócios">
           <Image
