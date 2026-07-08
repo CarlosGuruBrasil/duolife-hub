@@ -20,7 +20,7 @@ export async function PUT(req: Request) {
 
     // Busca o hash atual do usuário
     const [dbUser] = await sql<{ password_hash: string }[]>`
-      SELECT password_hash FROM partner_users WHERE id = ${user.id}
+      SELECT password_hash FROM partner_users WHERE id = ${user.userId}
     `;
 
     if (!dbUser) {
@@ -38,10 +38,10 @@ export async function PUT(req: Request) {
     await sql`
       UPDATE partner_users 
       SET password_hash = ${newHash} 
-      WHERE id = ${user.id}
+      WHERE id = ${user.userId}
     `;
 
-    logger.info({ userId: user.id }, 'User changed password successfully');
+    logger.info({ userId: user.userId }, 'User changed password successfully');
     
     return NextResponse.json({ success: true });
   } catch (err) {
