@@ -1,5 +1,5 @@
 ---
-name: carlos-context
+trigger: always_on
 ---
 
 # Contexto do Projeto — DuoLife Hub
@@ -26,7 +26,7 @@ Leia: `~/Desktop/ORACULO/CONTEXT.md`
 
 ## Regras para Antigravity
 
-- Não use subagentes paralelos — execute tudo inline e sequencialmente
-- Nunca mais de uma pergunta por mensagem
+- Use subagentes paralelos criando uma ordem escalonada por demanda, cada agente tem que ser especialista na atividade que fará.
+
 - Ao apresentar opções, use lista numerada — aguarde o usuário responder com o número
 - Ao finalizar a sessão, atualize `~/Desktop/ORACULO/MEMORY.md` com o que foi feito
