@@ -96,7 +96,7 @@ export async function GET(
       assinado: false
     });
 
-  } catch (err: any) {
+  } catch (err: unknown) {
     logger.error({ err, cotacaoId: id }, 'api.portal.verificar-assinatura.failed');
     return Response.json({ error: 'Erro interno ao verificar assinatura' }, { status: 500 });
   }

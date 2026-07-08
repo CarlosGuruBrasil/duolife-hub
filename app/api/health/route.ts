@@ -1,4 +1,4 @@
-export function GET() {
+export async function GET() {
   return Response.json({
     ok: true,
     service: 'duolife-hub',

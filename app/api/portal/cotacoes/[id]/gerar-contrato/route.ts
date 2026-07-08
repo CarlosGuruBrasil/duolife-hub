@@ -220,7 +220,7 @@ export async function POST(
       signUrl
     });
 
-  } catch (err: any) {
+  } catch (err: unknown) {
     logger.error({ err, cotacaoId: id }, 'api.portal.gerar-contrato.failed');
     return Response.json({ error: 'Erro interno ao gerar contrato' }, { status: 500 });
   }
