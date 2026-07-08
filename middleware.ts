@@ -4,7 +4,7 @@ import { getEncodedJwtSecret } from '@/lib/secrets';
 
 const JWT_SECRET = getEncodedJwtSecret();
 
-export async function proxy(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const token = req.cookies.get('duolife_token')?.value;
 
