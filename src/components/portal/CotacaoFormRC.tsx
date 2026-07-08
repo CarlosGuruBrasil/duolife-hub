@@ -146,7 +146,7 @@ const AREAS_ATUACAO = [
   { key: 'outros', label: 'Outros' }
 ];
 
-export default function CotacaoFormRC() {
+export default function CotacaoFormRC({ adminSelectedPartnerId }: { adminSelectedPartnerId?: string }) {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<FormState>(initialForm);
@@ -386,7 +386,8 @@ export default function CotacaoFormRC() {
           parcela: parcelaSel.qtd,
           cupomAplicado: cupomAplicado ? cupomCode : null,
           cupomDescontoPercentual: cupomDesconto
-        }
+        },
+        adminSelectedPartnerId
       };
 
       // 1. Cria a cotação

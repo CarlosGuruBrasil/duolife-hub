@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { verifyPartnerAuth, unauthorized } from '@/lib/auth';
+import { verifyAuth, unauthorized } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 
@@ -7,16 +7,20 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const user = await verifyPartnerAuth();
+  const user = await verifyAuth();
   if (!user) return unauthorized();
 
   const { id } = await params;
 
   try {
     // 1. Busca a cotação
-    const [cotacao] = await sql`
-      SELECT * FROM cotacoes WHERE id = ${id} AND partner_id = ${user.partnerId!}
-    `;
+    let cotacaoResult;
+    if (user.role === 'duolife_admin' || user.role === 'duolife_staff') {
+      cotacaoResult = await sql`SELECT * FROM cotacoes WHERE id = ${id}`;
+    } else {
+      cotacaoResult = await sql`SELECT * FROM cotacoes WHERE id = ${id} AND partner_id = ${user.partnerId!}`;
+    }
+    const cotacao = cotacaoResult[0];
 
     if (!cotacao) {
       return Response.json({ error: 'Cotação não encontrada' }, { status: 404 });

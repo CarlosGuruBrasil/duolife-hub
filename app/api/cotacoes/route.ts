@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { verifyPartnerAuth, unauthorized } from '@/lib/auth';
+import { verifyAuth, unauthorized } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { ensureSchema, seedInitialData } from '@/lib/schema';
@@ -15,9 +15,20 @@ const cotacaoSchema = z.object({
   clientData: z.record(z.string(), z.unknown()).optional(),
 });
 
-export async function GET() {
-  const user = await verifyPartnerAuth();
+export async function GET(req: NextRequest) {
+  const user = await verifyAuth();
   if (!user) return unauthorized();
+
+  const url = new URL(req.url);
+  const requestedPartnerId = url.searchParams.get('partnerId');
+
+  // Se for parceiro, força o ID dele. Se for admin, usa o solicitado ou busca todos (se não enviar)
+  let targetPartnerId = user.partnerId;
+  if (user.role === 'duolife_admin' || user.role === 'duolife_staff') {
+    targetPartnerId = requestedPartnerId || null;
+  } else if (!targetPartnerId) {
+    return unauthorized();
+  }
 
   try {
     await ensureSchema();
@@ -38,7 +49,7 @@ export async function GET() {
         p.name AS product_name
       FROM cotacoes c
       JOIN products p ON p.id = c.product_id
-      WHERE c.partner_id = ${user.partnerId!}
+      WHERE ${targetPartnerId ? sql`c.partner_id = ${targetPartnerId}` : sql`1=1`}
       ORDER BY c.created_at DESC
       LIMIT 100
     `;
@@ -51,7 +62,7 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const user = await verifyPartnerAuth();
+  const user = await verifyAuth();
   if (!user) return unauthorized();
 
   try {
@@ -63,7 +74,18 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: 'Dados da cotação inválidos' }, { status: 400 });
     }
 
-    const data = parsed.data;
+    const data = parsed.data as any;
+    
+    // Determinar o partner_id
+    let targetPartnerId = user.partnerId;
+    if (user.role === 'duolife_admin' || user.role === 'duolife_staff') {
+      if (!data.adminSelectedPartnerId) {
+        return Response.json({ error: 'Administradores precisam informar o Parceiro dono da cotação' }, { status: 400 });
+      }
+      targetPartnerId = data.adminSelectedPartnerId;
+    } else if (!targetPartnerId) {
+      return unauthorized();
+    }
     const [product] = await sql`
       SELECT id FROM products WHERE code = 'RC-001' AND is_active = true
     `;
@@ -87,7 +109,7 @@ export async function POST(req: NextRequest) {
         notes
       )
       VALUES (
-        ${user.partnerId!},
+        ${targetPartnerId},
         ${user.userId},
         ${product.id},
         ${data.clientName},
