@@ -14,8 +14,8 @@ const nav = [
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="h-screen flex overflow-hidden" style={{ background: 'var(--accent-soft)' }}>
-      <aside className="w-64 flex flex-col shadow-lg" style={{ background: 'var(--primary-dark)' }}>
+    <div className="min-h-screen flex" style={{ background: 'var(--accent-soft)' }}>
+      <aside className="w-64 h-screen flex flex-col shadow-lg fixed left-0 top-0 z-50" style={{ background: 'var(--primary-dark)' }}>
         <div className="p-6 border-b" style={{ borderColor: 'rgba(255,255,255,0.1)' }}>
           <Link href="/" className="brand-plate is-sidebar">
             <Image
@@ -62,7 +62,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 ml-64 min-h-screen">
         <div className="p-8">{children}</div>
       </main>
     </div>
