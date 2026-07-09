@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import CotacaoFormRC from '@/components/portal/CotacaoFormRC';
 
 type WhiteLabel = {
   companyName: string;
@@ -38,16 +39,6 @@ interface Props {
 export default function ContractPageClient({ token }: Props) {
   const [link, setLink] = useState<ContractLink | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState('');
-  const [form, setForm] = useState({
-    clientName: '',
-    clientCpfCnpj: '',
-    clientEmail: '',
-    clientPhone: '',
-    importanciaSegurada: '',
-    notes: '',
-  });
 
   useEffect(() => {
     (async () => {
@@ -57,34 +48,6 @@ export default function ContractPageClient({ token }: Props) {
       setLoading(false);
     })();
   }, [token]);
-
-  function setField(field: keyof typeof form, value: string) {
-    setForm((current) => ({ ...current, [field]: value }));
-  }
-
-  async function submit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSaving(true);
-    setMessage('');
-
-    const res = await fetch(`/api/public/contratacao/${token}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...form,
-        importanciaSegurada: form.importanciaSegurada ? Number(form.importanciaSegurada) : undefined,
-      }),
-    });
-    const data = await res.json();
-
-    setSaving(false);
-    if (!res.ok) {
-      setMessage(data.error || 'Não foi possível concluir a contratação.');
-      return;
-    }
-
-    setMessage('Contratação recebida. O número da cotação foi gerado com sucesso.');
-  }
 
   if (loading) {
     return <div className="p-8 text-center text-gray-500">Carregando contratação...</div>;
@@ -118,45 +81,10 @@ export default function ContractPageClient({ token }: Props) {
           </div>
         </div>
 
-        <form onSubmit={submit} className="space-y-5 rounded-3xl bg-white p-8 shadow-sm border border-gray-100">
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="block">
-              <span className="field-label">Nome do cliente</span>
-              <input className="form-input" value={form.clientName} onChange={(e) => setField('clientName', e.target.value)} required />
-            </label>
-            <label className="block">
-              <span className="field-label">CPF/CNPJ</span>
-              <input className="form-input" value={form.clientCpfCnpj} onChange={(e) => setField('clientCpfCnpj', e.target.value)} required />
-            </label>
-            <label className="block">
-              <span className="field-label">E-mail</span>
-              <input className="form-input" type="email" value={form.clientEmail} onChange={(e) => setField('clientEmail', e.target.value)} />
-            </label>
-            <label className="block">
-              <span className="field-label">Telefone</span>
-              <input className="form-input" value={form.clientPhone} onChange={(e) => setField('clientPhone', e.target.value)} />
-            </label>
-            <label className="block">
-              <span className="field-label">Importância segurada</span>
-              <input className="form-input" inputMode="decimal" value={form.importanciaSegurada} onChange={(e) => setField('importanciaSegurada', e.target.value)} />
-            </label>
-            <label className="block">
-              <span className="field-label">Produto</span>
-              <input className="form-input" value={link.product ? `${link.product.name} (${link.product.code})` : 'RC padrão'} disabled />
-            </label>
-          </div>
-
-          <label className="block">
-            <span className="field-label">Observações</span>
-            <textarea className="form-input min-h-28" value={form.notes} onChange={(e) => setField('notes', e.target.value)} />
-          </label>
-
-          {message && <p className="text-sm text-gray-700">{message}</p>}
-
-          <button disabled={saving} className="btn-primary px-6 py-3">
-            {saving ? 'Processando...' : 'Concluir contratação'}
-          </button>
-        </form>
+        {/* Formulário de Cotação Dinâmico */}
+        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+          <CotacaoFormRC publicToken={token} />
+        </div>
       </div>
     </div>
   );

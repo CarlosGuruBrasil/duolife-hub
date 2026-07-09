@@ -62,30 +62,56 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const user = await verifyAuth();
-  if (!user) return unauthorized();
-
   try {
     await ensureSchema();
     await seedInitialData();
 
-    const parsed = cotacaoSchema.safeParse(await req.json());
+    const publicToken = req.headers.get('x-public-token');
+    let targetPartnerId: string | null = null;
+    let userId: string | null = null;
+    let sourceToken: string | null = null;
+    let flowType = 'internal';
+
+    if (publicToken) {
+      const [link] = await sql`
+        SELECT partner_id, id, flow_type
+        FROM public_sale_links
+        WHERE token = ${publicToken}
+          AND status = 'active'
+          AND (expires_at IS NULL OR expires_at > NOW())
+        LIMIT 1
+      `;
+      if (!link) return Response.json({ error: 'Token público inválido ou expirado' }, { status: 401 });
+      
+      targetPartnerId = link.partner_id;
+      sourceToken = publicToken;
+      flowType = link.flow_type || 'external';
+    }
+
+    const payloadBody = await req.json();
+    const parsed = cotacaoSchema.safeParse(payloadBody);
     if (!parsed.success) {
       return Response.json({ error: 'Dados da cotação inválidos' }, { status: 400 });
     }
-
     const data = parsed.data as any;
-    
-    // Determinar o partner_id
-    let targetPartnerId = user.partnerId;
-    if (user.role === 'duolife_admin' || user.role === 'duolife_staff') {
-      if (!data.adminSelectedPartnerId) {
-        return Response.json({ error: 'Administradores precisam informar o Parceiro dono da cotação' }, { status: 400 });
+
+    if (!publicToken) {
+      const user = await verifyAuth();
+      if (!user) return unauthorized();
+
+      userId = user.userId;
+      targetPartnerId = user.partnerId;
+
+      if (user.role === 'duolife_admin' || user.role === 'duolife_staff') {
+        if (!data.adminSelectedPartnerId) {
+          return Response.json({ error: 'Administradores precisam informar o Parceiro dono da cotação' }, { status: 400 });
+        }
+        targetPartnerId = data.adminSelectedPartnerId;
+      } else if (!targetPartnerId) {
+        return unauthorized();
       }
-      targetPartnerId = data.adminSelectedPartnerId;
-    } else if (!targetPartnerId) {
-      return unauthorized();
     }
+
     const [product] = await sql`
       SELECT id FROM products WHERE code = 'RC-001' AND is_active = true
     `;
@@ -106,11 +132,13 @@ export async function POST(req: NextRequest) {
         client_data,
         importancia_segurada,
         status,
-        notes
+        notes,
+        flow_type,
+        source_token
       )
       VALUES (
         ${targetPartnerId},
-        ${user.userId},
+        ${userId},
         ${product.id},
         ${data.clientName},
         ${data.clientCpfCnpj},
@@ -119,14 +147,25 @@ export async function POST(req: NextRequest) {
         ${JSON.stringify(data.clientData || {})},
         ${data.importanciaSegurada || null},
         'rascunho',
-        ${data.notes || null}
+        ${data.notes || null},
+        ${flowType},
+        ${sourceToken}
       )
       RETURNING id, status, created_at
     `;
 
+    if (publicToken) {
+      await sql`
+        UPDATE public_sale_links
+        SET used_at = COALESCE(used_at, NOW()),
+            updated_at = NOW()
+        WHERE token = ${publicToken}
+      `;
+    }
+
     return Response.json({ ok: true, cotacao }, { status: 201 });
   } catch (err) {
-    logger.error({ err, partnerId: user.partnerId }, 'cotacoes.create.failed');
+    logger.error({ err }, 'cotacoes.create.failed');
     return Response.json({ error: 'Erro interno' }, { status: 500 });
   }
 }

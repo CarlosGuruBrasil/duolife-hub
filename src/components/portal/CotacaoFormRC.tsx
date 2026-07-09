@@ -149,7 +149,12 @@ const AREAS_ATUACAO = [
   { key: 'outros', label: 'Outros' }
 ];
 
-export default function CotacaoFormRC({ adminSelectedPartnerId }: { adminSelectedPartnerId?: string }) {
+interface CotacaoFormRCProps {
+  adminSelectedPartnerId?: string;
+  publicToken?: string;
+}
+
+export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: CotacaoFormRCProps) {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<FormState>(initialForm);
@@ -178,11 +183,24 @@ export default function CotacaoFormRC({ adminSelectedPartnerId }: { adminSelecte
   const [paymentDueDate, setPaymentDueDate] = useState('');
   const [checkoutId, setCheckoutId] = useState('');
 
+  // ------------------------------------------------------------------
+  // Helper para os headers públicos
+  // ------------------------------------------------------------------
+  const getHeaders = (baseHeaders: Record<string, string> = {}) => {
+    const headers: Record<string, string> = { ...baseHeaders };
+    if (publicToken) {
+      headers['x-public-token'] = publicToken;
+    }
+    return headers;
+  };
+
   // Carrega os planos ao iniciar
   useEffect(() => {
     async function loadPlanos() {
       try {
-        const res = await fetch('/api/portal/planos');
+        const res = await fetch('/api/portal/planos', {
+          headers: getHeaders()
+        });
         const data = await res.json();
         if (data.ok) {
           setPlanos(data.planos);
@@ -261,7 +279,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId }: { adminSelecte
     try {
       const res = await fetch('/api/portal/validar-cupom', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ code: cupomCode })
       });
       const data = await res.json();
@@ -420,7 +438,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId }: { adminSelecte
       // 1. Cria a cotação
       const res = await fetch('/api/cotacoes', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(payload)
       });
       const data = await res.json();
@@ -436,7 +454,8 @@ export default function CotacaoFormRC({ adminSelectedPartnerId }: { adminSelecte
 
       // 2. Chama a API para gerar contrato no ZapSign
       const zapRes = await fetch(`/api/portal/cotacoes/${id}/gerar-contrato`, {
-        method: 'POST'
+        method: 'POST',
+        headers: getHeaders()
       });
       const zapData = await zapRes.json();
 
@@ -462,7 +481,10 @@ export default function CotacaoFormRC({ adminSelectedPartnerId }: { adminSelecte
     setError('');
 
     try {
-      const res = await fetch(`/api/portal/cotacoes/${cotacaoId}/verificar-assinatura`);
+      const res = await fetch(`/api/portal/cotacoes/${cotacaoId}/verificar-assinatura`, {
+        method: 'POST',
+        headers: getHeaders()
+      });
       const data = await res.json();
 
       if (data.ok && data.assinado) {
@@ -485,7 +507,8 @@ export default function CotacaoFormRC({ adminSelectedPartnerId }: { adminSelecte
   async function handleGerarPagamento() {
     try {
       const res = await fetch(`/api/portal/cotacoes/${cotacaoId}/gerar-pagamento`, {
-        method: 'POST'
+        method: 'POST',
+        headers: getHeaders()
       });
       const data = await res.json();
 

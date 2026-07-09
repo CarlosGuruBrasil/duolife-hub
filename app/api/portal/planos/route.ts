@@ -2,9 +2,24 @@ import { verifyPartnerAuth, unauthorized } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 
-export async function GET() {
-  const user = await verifyPartnerAuth();
-  if (!user) return unauthorized();
+export async function GET(req: Request) {
+  const publicToken = req.headers.get('x-public-token');
+  let targetPartnerId: string | null = null;
+  let isAdmin = false;
+
+  if (publicToken) {
+    const [link] = await sql`
+      SELECT partner_id
+      FROM public_sale_links
+      WHERE token = ${publicToken} AND status = 'active'
+    `;
+    if (!link) return Response.json({ error: 'Token público inválido' }, { status: 401 });
+    targetPartnerId = link.partner_id;
+  } else {
+    const user = await verifyPartnerAuth();
+    if (!user) return unauthorized();
+    targetPartnerId = user.partnerId;
+  }
 
   try {
     const items = await sql`
@@ -30,7 +45,7 @@ export async function GET() {
 
     return Response.json({ ok: true, planos });
   } catch (err) {
-    logger.error({ err, partnerId: user.partnerId }, 'api.portal.planos.failed');
+    logger.error({ err, partnerId: targetPartnerId }, 'api.portal.planos.failed');
     return Response.json({ error: 'Erro interno ao buscar planos' }, { status: 500 });
   }
 }

@@ -7,18 +7,36 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const user = await verifyAuth();
-  if (!user) return unauthorized();
+  const publicToken = req.headers.get('x-public-token');
+  let targetPartnerId: string | null = null;
+  let isAdmin = false;
+
+  if (publicToken) {
+    const [link] = await sql`
+      SELECT partner_id
+      FROM public_sale_links
+      WHERE token = ${publicToken} AND status = 'active'
+    `;
+    if (!link) return Response.json({ error: 'Token público inválido' }, { status: 401 });
+    targetPartnerId = link.partner_id;
+  } else {
+    const user = await verifyAuth();
+    if (!user) return unauthorized();
+    targetPartnerId = user.partnerId;
+    if (user.role === 'duolife_admin' || user.role === 'duolife_staff') isAdmin = true;
+  }
 
   const { id } = await params;
 
   try {
     // 1. Busca a cotação
     let cotacaoResult;
-    if (user.role === 'duolife_admin' || user.role === 'duolife_staff') {
+    if (isAdmin) {
       cotacaoResult = await sql`SELECT * FROM cotacoes WHERE id = ${id}`;
+    } else if (publicToken) {
+      cotacaoResult = await sql`SELECT * FROM cotacoes WHERE id = ${id} AND source_token = ${publicToken} AND partner_id = ${targetPartnerId}`;
     } else {
-      cotacaoResult = await sql`SELECT * FROM cotacoes WHERE id = ${id} AND partner_id = ${user.partnerId!}`;
+      cotacaoResult = await sql`SELECT * FROM cotacoes WHERE id = ${id} AND partner_id = ${targetPartnerId}`;
     }
     const cotacao = cotacaoResult[0];
 

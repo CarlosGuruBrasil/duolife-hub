@@ -4,8 +4,23 @@ import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 
 export async function POST(req: NextRequest) {
-  const user = await verifyPartnerAuth();
-  if (!user) return unauthorized();
+  const publicToken = req.headers.get('x-public-token');
+  let targetPartnerId: string | null = null;
+  let isAdmin = false;
+
+  if (publicToken) {
+    const [link] = await sql`
+      SELECT partner_id
+      FROM public_sale_links
+      WHERE token = ${publicToken} AND status = 'active'
+    `;
+    if (!link) return Response.json({ error: 'Token público inválido' }, { status: 401 });
+    targetPartnerId = link.partner_id;
+  } else {
+    const user = await verifyPartnerAuth();
+    if (!user) return unauthorized();
+    targetPartnerId = user.partnerId;
+  }
 
   try {
     const { code } = await req.json();
@@ -71,7 +86,7 @@ export async function POST(req: NextRequest) {
     });
 
   } catch (err) {
-    logger.error({ err, partnerId: user.partnerId }, 'api.portal.validar-cupom.failed');
+    logger.error({ err, partnerId: targetPartnerId }, 'api.portal.validar-cupom.failed');
     return Response.json({ error: 'Erro interno ao validar cupom' }, { status: 500 });
   }
 }
