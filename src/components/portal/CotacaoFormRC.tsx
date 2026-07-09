@@ -292,7 +292,6 @@ export default function CotacaoFormRC({ adminSelectedPartnerId }: { adminSelecte
       { qtd: 2, valor: parseParcela(plano.parcela2X) || (valorComDesconto / 2) },
       { qtd: 3, valor: parseParcela(plano.parcela3X) || (valorComDesconto / 3) },
       { qtd: 4, valor: parseParcela(plano.parcela4X) || (valorComDesconto / 4) },
-      { qtd: 5, valor: parseParcela(plano.parcela5X) || (valorComDesconto / 5) },
       { qtd: 6, valor: parseParcela(plano.parcela6X) || (valorComDesconto / 6) }
     ];
 
@@ -302,7 +301,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId }: { adminSelecte
     }
 
     // Filtra parcelas válidas
-    const validKeys = ['parcela', 'parcela2X', 'parcela3X', 'parcela4X', 'parcela5X', 'parcela6X'];
+    const validKeys = ['parcela', 'parcela2X', 'parcela3X', 'parcela4X', 'parcela6X'];
     return opcoes.filter((op, i) => {
       const key = validKeys[i] as keyof Plano;
       return plano[key] && plano[key] !== '' && plano[key] !== 'R$ 0,00';
@@ -330,17 +329,19 @@ export default function CotacaoFormRC({ adminSelectedPartnerId }: { adminSelecte
         setError('Selecione um plano antes de continuar.');
         return;
       }
-      if (!form.faturamentoAntes || !form.faturamentoDepois) {
-        setError('Informe o faturamento bruto dos períodos indicados.');
-        return;
-      }
-      if (form.atuacao.length === 0) {
-        setError('Selecione ao menos uma área de atuação.');
-        return;
-      }
-      if (form.ppeCargos === 'Sim' && form.ppeCargoSelect.length === 0) {
-        setError('Selecione ao menos um cargo público de PPE.');
-        return;
+      if (planoSel.tipoDePlano !== '100k') {
+        if (!form.faturamentoAntes || !form.faturamentoDepois) {
+          setError('Informe o faturamento bruto dos períodos indicados.');
+          return;
+        }
+        if (form.atuacao.length === 0) {
+          setError('Selecione ao menos uma área de atuação.');
+          return;
+        }
+        if (form.ppeCargos === 'Sim' && form.ppeCargoSelect.length === 0) {
+          setError('Selecione ao menos um cargo público de PPE.');
+          return;
+        }
       }
     }
 
@@ -376,25 +377,43 @@ export default function CotacaoFormRC({ adminSelectedPartnerId }: { adminSelecte
       const valorTotal = parseMoneyToNumber(planoSel.parcela) * (1 - cupomDesconto / 100);
       const valorParcela = parcelaSel.valor;
 
+      const formatDateForWix = (dateStr: string) => {
+        if (!dateStr) return null;
+        return new Date(dateStr + 'T15:00:00Z').toISOString();
+      };
+
+      const payloadClientData: any = {
+        ...form,
+        cpf: form.cpfCnpj.replace(/\D/g, ''),
+        dataNascto: formatDateForWix(form.dataNascto),
+        dataAtividade: formatDateForWix(form.dataAtividade),
+        vigencia: form.vigencia ? formatDateForWix(form.vigencia) : null,
+        dataRetroativa: form.dataRetroativa ? formatDateForWix(form.dataRetroativa) : null,
+        renovacao: form.isRenovacao === 'Sim',
+        atuacao: form.atuacao.length > 0 ? form.atuacao.join(':') : '',
+        ppeCargoSelect: form.ppeCargoSelect.length > 0 ? form.ppeCargoSelect.join(',') : '0',
+        tipo: planoSel.tipoDePlano,
+        nomePlano: planoSel.nomeExibido,
+        planoFranquia: planoSel.franquia,
+        valor: valorTotal,
+        valorParcela: valorParcela,
+        parcela: parcelaSel.qtd,
+        cupomCodigo: cupomAplicado ? cupomCode : null,
+        cupomDesconto: cupomDesconto,
+        valorCobertura: planoSel.cobertura,
+        lgpd: 1
+      };
+
+      delete payloadClientData.cpfCnpj;
+      delete payloadClientData.isRenovacao;
+
       const payload = {
         clientName: form.nome,
         clientCpfCnpj: form.cpfCnpj.replace(/\D/g, ''),
         clientEmail: form.email,
         clientPhone: form.celular,
         importanciaSegurada: parseMoneyToNumber(planoSel.cobertura),
-        clientData: {
-          ...form,
-          tipo: planoSel.tipoDePlano,
-          tipoDePlano: planoSel.tipoDePlano,
-          valorCobertura: planoSel.cobertura,
-          nomePlano: planoSel.nomeExibido,
-          planoFranquia: planoSel.franquia,
-          valor: valorTotal,
-          valorParcela: valorParcela,
-          parcela: parcelaSel.qtd,
-          cupomAplicado: cupomAplicado ? cupomCode : null,
-          cupomDescontoPercentual: cupomDesconto
-        },
+        clientData: payloadClientData,
         adminSelectedPartnerId
       };
 
@@ -788,7 +807,9 @@ export default function CotacaoFormRC({ adminSelectedPartnerId }: { adminSelecte
             </label>
           </div>
 
-          <div className="grid gap-5 md:grid-cols-2">
+          {planoSel?.tipoDePlano !== '100k' && (
+            <>
+              <div className="grid gap-5 md:grid-cols-2">
             <label className="block">
               <span className="field-label">Faturamento Bruto Anual (Últimos 12 meses)</span>
               <input
@@ -874,6 +895,8 @@ export default function CotacaoFormRC({ adminSelectedPartnerId }: { adminSelecte
                 ))}
               </div>
             </div>
+          )}
+            </>
           )}
 
           <div className="flex justify-between pt-4">
@@ -1123,7 +1146,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId }: { adminSelecte
                       }`}
                     >
                       <div className="font-bold text-sm text-gray-200">
-                        {op.qtd}x de {valorExibe}
+                        {op.qtd}x de {valorExibe} {op.qtd === 6 && <span className="text-xs text-orange-400 font-normal">(Juros de 2% a.m.)</span>}
                       </div>
                       <div className="text-xs text-gray-400 mt-1">
                         Total a pagar: {valorTotalExibe}
