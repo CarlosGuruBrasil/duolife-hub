@@ -1,4 +1,4 @@
-import { verifyPartnerAuth, unauthorized } from '@/lib/auth';
+import { verifyAuth, unauthorized } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 
@@ -16,7 +16,7 @@ export async function GET(req: Request) {
     if (!link) return Response.json({ error: 'Token público inválido' }, { status: 401 });
     targetPartnerId = link.partner_id;
   } else {
-    const user = await verifyPartnerAuth();
+    const user = await verifyAuth();
     if (!user) return unauthorized();
     targetPartnerId = user.partnerId;
   }
