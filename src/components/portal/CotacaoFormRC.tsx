@@ -331,7 +331,13 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
     setError('');
     
     if (step === 1) {
-      // Validação básica do Passo 1
+      if (!planoSel) {
+        setError('Selecione um plano antes de continuar.');
+        return;
+      }
+    }
+
+    if (step === 2) {
       if (!form.nome || !form.cpfCnpj || !form.email || !form.celular || !form.oab || !form.dataNascto || !form.dataAtividade) {
         setError('Preencha todos os campos obrigatórios do segurado.');
         return;
@@ -342,12 +348,8 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
       }
     }
 
-    if (step === 2) {
-      if (!planoSel) {
-        setError('Selecione um plano antes de continuar.');
-        return;
-      }
-      if (planoSel.tipoDePlano !== '100k') {
+    if (step === 3) {
+      if (planoSel?.tipoDePlano !== '100k') {
         if (!form.faturamentoAntes || !form.faturamentoDepois) {
           setError('Informe o faturamento bruto dos períodos indicados.');
           return;
@@ -363,7 +365,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
       }
     }
 
-    if (step === 3) {
+    if (step === 4) {
       if (form.isRenovacao === 'Sim') {
         if (!form.seguradora || !form.vigencia || !form.limite || !form.franquiaAnterior || !form.premio || !form.dataRetroativa) {
           setError('Preencha todas as informações do seguro anterior.');
@@ -462,7 +464,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
       if (zapRes.ok && zapData.ok) {
         setSignUrl(zapData.signUrl);
         setDocToken(zapData.docToken);
-        setStep(5);
+        setStep(6);
       } else {
         setError(zapData.error || 'Erro ao gerar o contrato no ZapSign.');
       }
@@ -552,11 +554,12 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
       {/* Indicador de Passos */}
       <div className="flex justify-between items-center mb-8 border-b border-gray-800 pb-4">
         {[
-          { num: 1, label: 'Segurado', icon: FileText },
-          { num: 2, label: 'Cobertura', icon: ShieldCheck },
-          { num: 3, label: 'Declarações', icon: ShieldCheck },
-          { num: 4, label: 'Pagamento', icon: DollarSign },
-          { num: 5, label: 'Assinatura', icon: CreditCard }
+          { num: 1, label: 'Cobertura', icon: ShieldCheck },
+          { num: 2, label: 'Segurado', icon: FileText },
+          { num: 3, label: 'Perfil', icon: FileText },
+          { num: 4, label: 'Declarações', icon: AlertCircle },
+          { num: 5, label: 'Pagamento', icon: DollarSign },
+          { num: 6, label: 'Assinatura', icon: CreditCard }
         ].map((s) => {
           const Icon = s.icon;
           return (
@@ -592,10 +595,10 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
         </div>
       )}
 
-      {/* PASSO 1: DADOS DO SEGURADO */}
-      {step === 1 && (
+      {/* PASSO 2: DADOS DO SEGURADO */}
+      {step === 2 && (
         <div className="card space-y-6">
-          <h3 className="text-lg font-bold text-accent">1. Dados do Proponente / Segurado</h3>
+          <h3 className="text-lg font-bold text-accent">2. Dados do Proponente / Segurado</h3>
           <div className="grid gap-5 md:grid-cols-2">
             <label className="block">
               <span className="field-label">Nome Completo</span>
@@ -760,7 +763,14 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
             </label>
           </div>
 
-          <div className="flex justify-end pt-4">
+          <div className="flex justify-between pt-4">
+            <button
+              onClick={handleBack}
+              className="btn btn-secondary flex items-center space-x-2"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              <span>Voltar</span>
+            </button>
             <button
               onClick={handleNext}
               className="btn btn-primary flex items-center space-x-2"
@@ -772,10 +782,10 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
         </div>
       )}
 
-      {/* PASSO 2: COBERTURA & PERFIL PROFISSIONAL */}
-      {step === 2 && (
+      {/* PASSO 1: COBERTURA */}
+      {step === 1 && (
         <div className="card space-y-6">
-          <h3 className="text-lg font-bold text-accent">2. Seleção de Plano e Cobertura</h3>
+          <h3 className="text-lg font-bold text-accent">1. Seleção de Plano e Cobertura</h3>
           
           <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
             {planos.map((plano) => {
@@ -814,7 +824,23 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
             })}
           </div>
 
-          <h3 className="text-lg font-bold text-accent pt-4">Renovação e Perfil</h3>
+          <div className="flex justify-end pt-4">
+            <button
+              onClick={handleNext}
+              disabled={!planoSel}
+              className="btn btn-primary flex items-center space-x-2"
+            >
+              <span>Avançar</span>
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* PASSO 3: PERFIL PROFISSIONAL */}
+      {step === 3 && (
+        <div className="card space-y-6">
+          <h3 className="text-lg font-bold text-accent">3. Renovação e Perfil</h3>
           
           <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl mb-4">
             <label className="block">
@@ -941,8 +967,8 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
         </div>
       )}
 
-      {/* PASSO 3: DECLARAÇÕES & HISTÓRICO */}
-      {step === 3 && (
+      {/* PASSO 4: DECLARAÇÕES & HISTÓRICO */}
+      {step === 4 && (
         <div className="card space-y-6">
           {form.isRenovacao === 'Sim' && (
             <>
@@ -1101,10 +1127,10 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
         </div>
       )}
 
-      {/* PASSO 4: PAGAMENTO */}
-      {step === 4 && (
+      {/* PASSO 5: PAGAMENTO */}
+      {step === 5 && (
         <div className="card space-y-6">
-          <h3 className="text-lg font-bold text-accent">4. Pagamento</h3>
+          <h3 className="text-lg font-bold text-accent">5. Pagamento</h3>
 
           {/* Cupom Promocional */}
           <div className="bg-slate-900 border border-slate-800 p-5 rounded-xl space-y-4">
@@ -1207,8 +1233,8 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
         </div>
       )}
 
-      {/* PASSO 5: ASSINATURA E PAGAMENTO */}
-      {step === 5 && (
+      {/* PASSO 6: ASSINATURA E PAGAMENTO */}
+      {step === 6 && (
         <div className="card space-y-6">
           <h3 className="text-lg font-bold text-accent">4. Assinatura Digital do Contrato</h3>
 
