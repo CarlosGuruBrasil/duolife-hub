@@ -598,7 +598,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
       {/* PASSO 2: DADOS DO SEGURADO */}
       {step === 2 && (
         <div className="card space-y-6">
-          <h3 className="text-lg font-bold text-accent">2. Dados do Proponente / Segurado</h3>
+          <h3 className="text-lg font-bold text-primary">2. Dados do Proponente / Segurado</h3>
           <div className="grid gap-5 md:grid-cols-2">
             <label className="block">
               <span className="field-label">Nome Completo</span>
@@ -679,7 +679,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
             </label>
           </div>
 
-          <h3 className="text-lg font-bold text-accent pt-4">Endereço de Contato / Comercial</h3>
+          <h3 className="text-lg font-bold text-primary pt-4">Endereço de Contato / Comercial</h3>
           <div className="grid gap-5 md:grid-cols-3">
             <label className="block">
               <span className="field-label">CEP</span>
@@ -785,7 +785,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
       {/* PASSO 1: COBERTURA */}
       {step === 1 && (
         <div className="card space-y-6">
-          <h3 className="text-lg font-bold text-accent">1. Seleção de Plano e Cobertura</h3>
+          <h3 className="text-lg font-bold text-primary">1. Seleção de Plano e Cobertura</h3>
           
           <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
             {planos.map((plano) => {
@@ -840,9 +840,9 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
       {/* PASSO 3: PERFIL PROFISSIONAL */}
       {step === 3 && (
         <div className="card space-y-6">
-          <h3 className="text-lg font-bold text-accent">3. Renovação e Perfil</h3>
+          <h3 className="text-lg font-bold text-primary">3. Renovação e Perfil</h3>
           
-          <div className="bg-slate-900 border border-slate-800 p-4 rounded-xl mb-4">
+          <div className="bg-gray-50 border border-gray-200 p-4 rounded-xl mb-4">
             <label className="block">
               <span className="field-label text-white">É uma renovação de apólice?</span>
               <select
@@ -886,20 +886,20 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
             <span className="field-label mb-2 block">Áreas de Atuação</span>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {AREAS_ATUACAO.map((area) => (
-                <label key={area.key} className="flex items-center space-x-2 cursor-pointer bg-slate-900 border border-slate-800 p-3 rounded-lg hover:border-accent/40 transition-colors">
+                <label key={area.key} className="flex items-center space-x-2 cursor-pointer bg-white border border-gray-200 p-3 rounded-lg hover:border-primary/40 transition-colors">
                   <input
                     type="checkbox"
                     checked={form.atuacao.includes(area.key)}
                     onChange={() => handleCheckboxAtuacao(area.key)}
-                    className="rounded border-slate-700 bg-slate-800 text-accent focus:ring-accent"
+                    className="rounded border-gray-300 bg-white text-primary focus:ring-primary"
                   />
-                  <span className="text-sm text-gray-300">{area.label}</span>
+                  <span className="text-sm text-gray-700">{area.label}</span>
                 </label>
               ))}
             </div>
           </div>
 
-          <h3 className="text-lg font-bold text-accent pt-4">Pessoa Politicamente Exposta (PPE)</h3>
+          <h3 className="text-lg font-bold text-primary pt-4">Pessoa Politicamente Exposta (PPE)</h3>
           
           <div className="grid gap-5 md:grid-cols-2">
             <label className="block">
@@ -928,16 +928,16 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
           </div>
 
           {(form.ppeCargos === 'Sim' || form.ppeRepresenta === 'Sim') && (
-            <div className="bg-slate-950 border border-slate-800 p-4 rounded-xl space-y-3">
+            <div className="bg-gray-50 border border-gray-200 p-4 rounded-xl space-y-3">
               <span className="field-label block font-semibold text-accent">Selecione as funções ocupadas:</span>
               <div className="space-y-2">
                 {CARGOS_PPE.map((cargo) => (
-                  <label key={cargo.id} className="flex items-start space-x-2 cursor-pointer text-sm text-gray-300">
+                  <label key={cargo.id} className="flex items-start space-x-2 cursor-pointer text-sm text-gray-700">
                     <input
                       type="checkbox"
                       checked={form.ppeCargoSelect.includes(cargo.id)}
                       onChange={() => handleCheckboxPpe(cargo.id)}
-                      className="mt-1 rounded border-slate-700 bg-slate-800 text-accent focus:ring-accent"
+                      className="mt-1 rounded border-gray-300 bg-white text-primary focus:ring-primary"
                     />
                     <span>{cargo.text}</span>
                   </label>
@@ -972,7 +972,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
         <div className="card space-y-6">
           {form.isRenovacao === 'Sim' && (
             <>
-              <h3 className="text-lg font-bold text-accent">3. Seguro Anterior (Últimos 2 anos)</h3>
+              <h3 className="text-lg font-bold text-primary">3. Seguro Anterior (Últimos 2 anos)</h3>
               
               <div className="grid gap-5 md:grid-cols-3">
                 <label className="block">
@@ -1040,7 +1040,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
 
           {planoSel?.tipoDePlano !== '100k' ? (
             <>
-              <h3 className="text-lg font-bold text-accent pt-4">Questionário de Risco (Underwriting)</h3>
+              <h3 className="text-lg font-bold text-primary pt-4">Questionário de Risco (Underwriting)</h3>
               
               <div className="space-y-4">
                 {[
@@ -1072,9 +1072,9 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
                 ].map((item) => {
                   const val = form[item.id as keyof FormState] as string;
                   return (
-                    <div key={item.id} className="bg-slate-900 border border-slate-800 p-4 rounded-xl space-y-3">
+                    <div key={item.id} className="bg-gray-50 border border-gray-200 p-4 rounded-xl space-y-3">
                       <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3">
-                        <span className="text-sm text-gray-300 font-medium">{item.q}</span>
+                        <span className="text-sm text-gray-700 font-medium">{item.q}</span>
                         <select
                           value={val}
                           onChange={(e) => updateField(item.id as keyof FormState, e.target.value)}
@@ -1102,7 +1102,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
               </div>
             </>
           ) : (
-            <div className="bg-emerald-950/20 border border-emerald-500/30 p-5 rounded-xl text-emerald-200">
+            <div className="bg-emerald-50 border border-emerald-200 p-5 rounded-xl text-emerald-800">
               <span className="font-semibold block mb-1">Declarações Simplificadas</span>
               O plano de R$ 100.000 (100k) selecionado possui isenção do preenchimento do questionário de risco. Você pode avançar.
             </div>
@@ -1130,10 +1130,10 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
       {/* PASSO 5: PAGAMENTO */}
       {step === 5 && (
         <div className="card space-y-6">
-          <h3 className="text-lg font-bold text-accent">5. Pagamento</h3>
+          <h3 className="text-lg font-bold text-primary">5. Pagamento</h3>
 
           {/* Cupom Promocional */}
-          <div className="bg-slate-900 border border-slate-800 p-5 rounded-xl space-y-4">
+          <div className="bg-gray-50 border border-gray-200 p-5 rounded-xl space-y-4">
             <h4 className="font-bold text-sm text-white flex items-center space-x-2">
               <Percent className="w-4 h-4 text-accent" />
               <span>Cupom Promocional</span>
@@ -1177,7 +1177,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
           {/* Opções de Parcelamento */}
           {planoSel && (
             <div className="space-y-4">
-              <h3 className="text-lg font-bold text-accent">Condições de Pagamento</h3>
+              <h3 className="text-lg font-bold text-primary">Condições de Pagamento</h3>
               <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
                 {getOpcoesParcelamento(planoSel).map((op) => {
                   const isParcSelected = parcelaSel?.qtd === op.qtd;
@@ -1191,13 +1191,13 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
                       className={`border-2 rounded-xl p-4 cursor-pointer transition-colors ${
                         isParcSelected
                           ? 'border-accent bg-accent/5'
-                          : 'border-slate-800 bg-slate-950 hover:border-slate-700'
+                          : 'border-gray-200 bg-white hover:border-gray-300'
                       }`}
                     >
                       <div className="font-bold text-sm text-gray-200">
                         {op.qtd}x de {valorExibe} {op.qtd === 6 && <span className="text-xs text-orange-400 font-normal">(Juros de 2% a.m.)</span>}
                       </div>
-                      <div className="text-xs text-gray-400 mt-1">
+                      <div className="text-xs text-gray-500 mt-1">
                         Total a pagar: {valorTotalExibe}
                       </div>
                     </div>
@@ -1236,16 +1236,16 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
       {/* PASSO 6: ASSINATURA E PAGAMENTO */}
       {step === 6 && (
         <div className="card space-y-6">
-          <h3 className="text-lg font-bold text-accent">4. Assinatura Digital do Contrato</h3>
+          <h3 className="text-lg font-bold text-primary">4. Assinatura Digital do Contrato</h3>
 
           {!contratoAssinado ? (
             <div className="space-y-4">
-              <p className="text-sm text-gray-300">
+              <p className="text-sm text-gray-700">
                 O contrato de proposta foi gerado via **ZapSign**. Por favor, realize a assinatura no painel abaixo:
               </p>
               
               {signUrl && (
-                <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950 h-[500px]">
+                <div className="border border-gray-200 rounded-xl overflow-hidden bg-white h-[500px]">
                   <iframe
                     src={signUrl}
                     className="w-full h-full border-0"
@@ -1254,8 +1254,8 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
                 </div>
               )}
 
-              <div className="flex flex-col md:flex-row md:justify-between items-center gap-4 bg-slate-900 border border-slate-800 p-4 rounded-xl">
-                <span className="text-xs text-gray-400">
+              <div className="flex flex-col md:flex-row md:justify-between items-center gap-4 bg-gray-50 border border-gray-200 p-4 rounded-xl">
+                <span className="text-xs text-gray-500">
                   Após assinar no quadro acima, clique em "Verificar Assinatura" para liberar a fatura de pagamento.
                 </span>
                 <button
@@ -1269,11 +1269,11 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
             </div>
           ) : (
             <div className="space-y-6">
-              <div className="bg-emerald-950/20 border border-emerald-500/30 p-5 rounded-xl flex items-start space-x-4">
+              <div className="bg-emerald-50 border border-emerald-200 p-5 rounded-xl flex items-start space-x-4">
                 <Check className="w-6 h-6 text-emerald-400 flex-shrink-0 mt-1" />
                 <div>
-                  <h4 className="font-bold text-white text-base">Assinatura Digital Concluída</h4>
-                  <p className="text-sm text-gray-300 mt-1">
+                  <h4 className="font-bold text-gray-900 text-base">Assinatura Digital Concluída</h4>
+                  <p className="text-sm text-gray-700 mt-1">
                     A proposta foi assinada e o documento final foi gerado com sucesso.
                   </p>
                 </div>
@@ -1281,9 +1281,9 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
 
               {linkPagamento ? (
                 <div className="space-y-5">
-                  <h3 className="text-lg font-bold text-accent">Pagamento do Seguro (Asaas)</h3>
+                  <h3 className="text-lg font-bold text-primary">Pagamento do Seguro (Asaas)</h3>
                   
-                  <div className="bg-slate-950 border border-slate-800 rounded-xl p-5 space-y-3">
+                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 space-y-3">
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-400">Status</span>
                       <span className="text-emerald-400 font-bold">Fatura Emitida</span>
@@ -1298,11 +1298,11 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
                     </div>
                   </div>
 
-                  <p className="text-sm text-gray-300">
+                  <p className="text-sm text-gray-700">
                     Efetue o pagamento através da fatura oficial abaixo (suporta Boleto e PIX):
                   </p>
 
-                  <div className="border border-slate-800 rounded-xl overflow-hidden bg-slate-950 h-[550px]">
+                  <div className="border border-gray-200 rounded-xl overflow-hidden bg-white h-[550px]">
                     <iframe
                       src={linkPagamento}
                       className="w-full h-full border-0"
@@ -1334,7 +1334,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
               ) : (
                 <div className="flex flex-col items-center justify-center py-10 space-y-3">
                   <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
-                  <p className="text-sm text-gray-300">Gerando cobrança no Asaas...</p>
+                  <p className="text-sm text-gray-700">Gerando cobrança no Asaas...</p>
                 </div>
               )}
             </div>

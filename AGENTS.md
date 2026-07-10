@@ -82,9 +82,15 @@ Todo componente de página tem que ser verificado em pelo menos três larguras a
 4. Conferir que nenhum texto é placeholder.
 5. Conferir sitemap/robots/meta tags da(s) página(s) alterada(s).
 
-### Padrão de Estilo Visual (UI/UX Premium)
+### Padrão de Estilo Visual e Cores (Design System Premium)
 
-- **Tema Claro por Padrão (Light Mode):** A menos que explicitamente solicitado, todo o painel administrativo e interfaces devem usar um esquema de cores claro e altamente legível (fundos brancos `#FFFFFF` ou cinza claro `#F9FAFB`).
-- **Alto Contraste e Legibilidade:** Nunca use textos escuros sobre fundos escuros (ex: textos pretos em cartões grafite). Garanta contraste máximo para informações críticas, como valores monetários e limites.
-- **Cartões e Containers:** Use bordas sutis (`border-gray-200`), sombras leves (`shadow-sm`) e transições suaves (`hover:-translate-y-1`, `hover:shadow-md`) para dar um aspecto refinado e não bruto.
-- **Cores de Destaque:** Para seleção e foco, use cores consistentes (ex: `emerald-500` para sucesso/seleção) para guiar o usuário visualmente.
+- **Tema Claro por Padrão (Light Mode):** Todo o painel administrativo e formulários devem obrigatoriamente seguir o fundo claro do `globals.css` (`var(--surface)` / `#f7faf9`).
+- **Dicionário de Classes Tailwind Obrigatório:**
+  - **Fundo Principal/Container:** `bg-white` ou `bg-gray-50`. **NUNCA** use `bg-slate-900`, `bg-slate-950` ou `zinc-900` em cards.
+  - **Bordas:** `border-gray-200` ou `border-gray-300`. **NUNCA** use `border-slate-800` ou `slate-700`.
+  - **Textos Principais:** `text-gray-900` ou `text-slate-900`. **NUNCA** use `text-white` ou `text-gray-300` sobre fundos brancos.
+  - **Textos Secundários/Apoio:** `text-gray-500`, `text-gray-600` ou `text-gray-700`.
+  - **Destaques:** Títulos e ícones de destaque devem usar `text-primary` (`#0e4a5a`) ou `text-emerald-600`. Evitar `text-accent` puro se houver falta de contraste no fundo claro.
+- **Validação de Contraste:** Caixas de alerta e informativos (ex: "Declarações Simplificadas") devem usar a fórmula: `bg-[cor]-50` + `border-[cor]-200` + `text-[cor]-800`. Nunca use `bg-[cor]-950/20` com `text-[cor]-200` sobre o fundo branco.
+- **Cartões Interativos:** Aplique `border-2 rounded-xl p-5 cursor-pointer transition-all hover:-translate-y-1 hover:shadow-md`.
+

@@ -92,13 +92,13 @@ function Card3D({ children, className = '', style = {} }: Card3DProps) {
 
 export default function SolucoesClient() {
   return (
-    <div className="bg-[#ffffff] text-[#072a33]">
+    <div className="bg-white text-primary-dark">
 
       {/* Hero Section */}
-      <section className="relative isolate overflow-hidden bg-[#072a33] text-[#ffffff] min-h-screen flex items-start">
+      <section className="relative isolate overflow-hidden bg-primary-dark text-white min-h-screen flex items-start">
         <Image src="/duolife-strategy.jpg" alt="" fill className="object-cover object-[50%_24%]" priority />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_28%,rgba(0,212,224,0.18)_0%,transparent_36%),linear-gradient(180deg,rgba(7,42,51,0.72)_0%,rgba(7,42,51,0.8)_100%)]" />
-        <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-[#072a33] to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-primary-dark to-transparent" />
 
         <div className="relative z-10 w-[min(92%,1800px)] mx-auto px-6 pt-20 pb-20 lg:pt-28 lg:pb-24">
           <div className="max-w-[760px] text-left">
@@ -106,7 +106,7 @@ export default function SolucoesClient() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.6 }}
-              className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md text-[#00d4e0] px-4 py-1.5 rounded-full text-xs font-black tracking-widest uppercase mb-8 border border-white/5"
+              className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md text-accent px-4 py-1.5 rounded-full text-xs font-black tracking-widest uppercase mb-8 border border-white/5"
             >
               <Sparkles size={13} />
               Nossas Soluções
@@ -133,7 +133,7 @@ export default function SolucoesClient() {
       </section>
 
       {/* Desafios do Mercado */}
-      <section className="py-28 px-6 bg-white border-b border-[#e0eceb]">
+      <section className="py-28 px-6 bg-white border-b border-border">
         <motion.div
           initial="hidden"
           whileInView="visible"
@@ -143,7 +143,7 @@ export default function SolucoesClient() {
         >
           <div className="text-center max-w-2xl mx-auto mb-20">
             <span className="text-xs font-black tracking-widest text-[#ef4444] uppercase mb-6 block">Fricção no Dia a Dia</span>
-            <h2 className="text-3xl md:text-5.5xl font-black tracking-tight text-[#0e4a5a] uppercase">
+            <h2 className="text-3xl md:text-5.5xl font-black tracking-tight text-primary uppercase">
               Onde o corretor perde velocidade.
             </h2>
           </div>
@@ -168,7 +168,7 @@ export default function SolucoesClient() {
       </section>
 
       {/* Os 4 Pilares da Assessoria */}
-      <section className="py-28 px-6 bg-[#f7faf9] border-b border-[#e0eceb]">
+      <section className="py-28 px-6 bg-surface border-b border-border">
         <div className="w-[min(92%,1800px)] mx-auto">
           <motion.div
             initial="hidden"
@@ -177,8 +177,8 @@ export default function SolucoesClient() {
             variants={fadeUp}
             className="text-center max-w-2xl mx-auto mb-20"
           >
-            <span className="text-xs font-black tracking-widest text-[#0e4a5a] uppercase mb-6 block">Modelo DuoLife</span>
-            <h2 className="text-4xl md:text-5.5xl font-black tracking-tight text-[#0e4a5a] uppercase">
+            <span className="text-xs font-black tracking-widest text-primary uppercase mb-6 block">Modelo DuoLife</span>
+            <h2 className="text-4xl md:text-5.5xl font-black tracking-tight text-primary uppercase">
               Assessoria em Quatro Frentes
             </h2>
           </motion.div>
@@ -199,24 +199,24 @@ export default function SolucoesClient() {
                   >
                     <div className="relative w-full h-[250px]">
                       <Image src={pillar.image} alt={pillar.title} fill className="object-cover object-top" />
-                      <div className="absolute inset-0 bg-[#0e4a5a]/20" />
+                      <div className="absolute inset-0 bg-primary/20" />
                     </div>
 
                     <div className="p-8 text-left flex-grow flex flex-col justify-between">
                       <div>
                         <div className="flex gap-4 items-center mb-4">
-                          <div className="w-10 h-10 bg-[#0e4a5a]/5 rounded-xl flex items-center justify-center text-[#0e4a5a]">
+                          <div className="w-10 h-10 bg-primary/5 rounded-xl flex items-center justify-center text-primary">
                             <Icon size={18} />
                           </div>
-                          <h3 className="text-2xl font-black text-[#0e4a5a] uppercase tracking-tight">{pillar.title}</h3>
+                          <h3 className="text-2xl font-black text-primary uppercase tracking-tight">{pillar.title}</h3>
                         </div>
                         <p className="text-sm text-[#4d686f] font-light leading-relaxed mb-6">{pillar.desc}</p>
                       </div>
 
                       <ul className="space-y-3 pt-6 border-t border-[#edf4f2]">
                         {pillar.items.map((item) => (
-                          <li key={item} className="flex items-center gap-2.5 text-xs text-[#0e4a5a] font-bold">
-                            <div className="w-4 h-4 rounded-full bg-[#00d4e0]/10 flex items-center justify-center text-[#00d4e0]">
+                          <li key={item} className="flex items-center gap-2.5 text-xs text-primary font-bold">
+                            <div className="w-4 h-4 rounded-full bg-accent/10 flex items-center justify-center text-accent">
                               <Check size={10} strokeWidth={3} />
                             </div>
                             {item}
@@ -233,18 +233,18 @@ export default function SolucoesClient() {
       </section>
 
       {/* Produto em Destaque: Responsabilidade Civil */}
-      <section className="py-28 px-6 bg-[#ffffff]">
+      <section className="py-28 px-6 bg-white">
         <motion.div
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true, margin: '-80px' }}
           variants={fadeUp}
-          className="w-[min(92%,1800px)] mx-auto bg-[#0e4a5a] rounded-[48px] p-8 md:p-16 text-white grid lg:grid-cols-12 gap-12 items-center relative overflow-hidden shadow-2xl"
+          className="w-[min(92%,1800px)] mx-auto bg-primary rounded-[48px] p-8 md:p-16 text-white grid lg:grid-cols-12 gap-12 items-center relative overflow-hidden shadow-2xl"
         >
           <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-[radial-gradient(circle,_rgba(0,212,224,0.15)_0%,_transparent_60%)] pointer-events-none" />
           
           <div className="lg:col-span-7 text-left relative z-10">
-            <span className="text-[#00d4e0] text-xs font-black uppercase tracking-widest mb-4 block">Seguro RC em Foco</span>
+            <span className="text-accent text-xs font-black uppercase tracking-widest mb-4 block">Seguro RC em Foco</span>
             <h2 className="text-3xl md:text-5xl font-black uppercase tracking-tight leading-tight mb-6">
               Seguro de Responsabilidade Civil Profissional (RC).
             </h2>
@@ -260,7 +260,7 @@ export default function SolucoesClient() {
                 'Atendimento operacional especializado'
               ].map((item, idx) => (
                 <div key={idx} className="flex items-center gap-2.5 text-xs font-bold text-white/90">
-                  <div className="w-4.5 h-4.5 rounded-full bg-[#00d4e0]/20 text-[#00d4e0] flex items-center justify-center">
+                  <div className="w-4.5 h-4.5 rounded-full bg-accent/20 text-accent flex items-center justify-center">
                     <Check size={11} strokeWidth={3} />
                   </div>
                   {item}
@@ -276,10 +276,10 @@ export default function SolucoesClient() {
       </section>
 
       {/* CTA Final */}
-      <section className="bg-[#072a33] text-white py-24 px-6 relative overflow-hidden text-center">
+      <section className="bg-primary-dark text-white py-24 px-6 relative overflow-hidden text-center">
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-[radial-gradient(circle,_rgba(0,212,224,0.12)_0%,_transparent_60%)] pointer-events-none" />
         <div className="max-w-3xl mx-auto relative z-10">
-          <span className="text-[#00d4e0] text-xs font-black uppercase tracking-widest mb-4 block">Parceria Ativa</span>
+          <span className="text-accent text-xs font-black uppercase tracking-widest mb-4 block">Parceria Ativa</span>
           <h2 className="text-3xl md:text-5xl font-black tracking-tight uppercase mb-8">
             Vamos destravar seus resultados juntos?
           </h2>
@@ -289,7 +289,7 @@ export default function SolucoesClient() {
           <div className="flex justify-center">
             <Link 
               href="/seja-parceiro" 
-              className="bg-[#00d4e0] hover:bg-[#00b2be] text-[#072a33] px-10 py-5 rounded-full font-black text-sm transition-all duration-300 transform hover:-translate-y-0.5 shadow-lg shadow-[#00d4e0]/10"
+              className="bg-accent hover:bg-[#00b2be] text-primary-dark px-10 py-5 rounded-full font-black text-sm transition-all duration-300 transform hover:-translate-y-0.5 shadow-lg shadow-accent/10"
             >
               Fazer Cadastro de Parceiro
             </Link>
