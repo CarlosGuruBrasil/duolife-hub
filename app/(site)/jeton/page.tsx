@@ -87,7 +87,7 @@ export default function DuoLifeJetonStylePage() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#F7FAF9] text-[#162321] antialiased selection:bg-[#407870]/10 selection:text-[#407870] relative overflow-hidden">
+    <div className="min-h-screen bg-surface text-[#162321] antialiased selection:bg-[#407870]/10 selection:text-[#407870] relative overflow-hidden">
       
       {/* Decorative Radial Background (Mesh Gradient Effect) */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full w-[min(92%,1800px)] h-[600px] bg-[radial-gradient(circle_at_top,_rgba(64,120,112,0.08)_0%,_transparent_65%)] pointer-events-none -z-10" />
@@ -264,7 +264,7 @@ export default function DuoLifeJetonStylePage() {
               </div>
 
               {/* Vidas na Carteira Input */}
-              <div className="bg-[#F7FAF9] rounded-2xl p-5 border border-[#edf4f2] relative mb-4 hover:border-[#407870]/20 transition-colors duration-300">
+              <div className="bg-surface rounded-2xl p-5 border border-[#edf4f2] relative mb-4 hover:border-[#407870]/20 transition-colors duration-300">
                 <label className="block text-[10px] font-extrabold uppercase tracking-wider text-[#82918e] mb-2">Vidas sob gestão</label>
                 <div className="flex items-center justify-between gap-4">
                   <input 
@@ -299,7 +299,7 @@ export default function DuoLifeJetonStylePage() {
                                 setVidas(v);
                                 setShowVidasDropdown(false);
                               }}
-                              className="w-full text-left px-4 py-2 hover:bg-[#F7FAF9] text-xs font-bold transition-colors"
+                              className="w-full text-left px-4 py-2 hover:bg-surface text-xs font-bold transition-colors"
                             >
                               {v} Vidas
                             </button>
@@ -312,7 +312,7 @@ export default function DuoLifeJetonStylePage() {
               </div>
 
               {/* Slider for Hours */}
-              <div className="bg-[#F7FAF9] rounded-2xl p-5 border border-[#edf4f2] relative mb-6 hover:border-[#407870]/20 transition-colors duration-300">
+              <div className="bg-surface rounded-2xl p-5 border border-[#edf4f2] relative mb-6 hover:border-[#407870]/20 transition-colors duration-300">
                 <div className="flex justify-between items-center mb-1">
                   <label className="block text-[10px] font-extrabold uppercase tracking-wider text-[#82918e]">Tempo gasto em burocracia</label>
                   <span className="text-sm font-black text-[#407870]">{horasOperacionais}h / sem</span>
@@ -419,7 +419,7 @@ export default function DuoLifeJetonStylePage() {
             <motion.div 
               variants={fadeUp}
               whileHover={{ y: -6, scale: 1.015, boxShadow: '0 25px 50px -12px rgba(64,120,112,0.15)' }}
-              className="bg-[#F7FAF9] rounded-[32px] p-8 border border-[#d7e3df]/60 transition-all duration-300 flex flex-col justify-between group h-[380px] overflow-hidden relative"
+              className="bg-surface rounded-[32px] p-8 border border-[#d7e3df]/60 transition-all duration-300 flex flex-col justify-between group h-[380px] overflow-hidden relative"
             >
               <div>
                 <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-[#edf4f2] text-[#407870] group-hover:bg-[#407870] group-hover:text-white transition-all duration-300">
@@ -455,7 +455,7 @@ export default function DuoLifeJetonStylePage() {
             <motion.div 
               variants={fadeUp}
               whileHover={{ y: -6, scale: 1.015, boxShadow: '0 25px 50px -12px rgba(64,120,112,0.15)' }}
-              className="bg-[#F7FAF9] rounded-[32px] p-8 border border-[#d7e3df]/60 transition-all duration-300 flex flex-col justify-between group h-[380px] overflow-hidden relative"
+              className="bg-surface rounded-[32px] p-8 border border-[#d7e3df]/60 transition-all duration-300 flex flex-col justify-between group h-[380px] overflow-hidden relative"
             >
               <div>
                 <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-[#edf4f2] text-[#407870] group-hover:bg-[#407870] group-hover:text-white transition-all duration-300">
@@ -484,7 +484,7 @@ export default function DuoLifeJetonStylePage() {
             <motion.div 
               variants={fadeUp}
               whileHover={{ y: -6, scale: 1.015, boxShadow: '0 25px 50px -12px rgba(64,120,112,0.15)' }}
-              className="bg-[#F7FAF9] rounded-[32px] p-8 border border-[#d7e3df]/60 transition-all duration-300 flex flex-col justify-between group h-[380px] overflow-hidden relative"
+              className="bg-surface rounded-[32px] p-8 border border-[#d7e3df]/60 transition-all duration-300 flex flex-col justify-between group h-[380px] overflow-hidden relative"
             >
               <div>
                 <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-[#edf4f2] text-[#407870] group-hover:bg-[#407870] group-hover:text-white transition-all duration-300">
@@ -520,7 +520,7 @@ export default function DuoLifeJetonStylePage() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               whileHover={{ y: -6, scale: 1.01, boxShadow: '0 25px 50px -12px rgba(64,120,112,0.15)' }}
-              className="md:col-span-3 bg-[#F7FAF9] rounded-[32px] p-8 border border-[#d7e3df]/60 transition-all duration-300 flex flex-col justify-between group min-h-[300px]"
+              className="md:col-span-3 bg-surface rounded-[32px] p-8 border border-[#d7e3df]/60 transition-all duration-300 flex flex-col justify-between group min-h-[300px]"
             >
               <div className="flex flex-col md:flex-row gap-6 items-start">
                 <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-[#edf4f2] shrink-0 text-[#407870] group-hover:bg-[#407870] group-hover:text-white transition-all duration-300">
@@ -548,7 +548,7 @@ export default function DuoLifeJetonStylePage() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               whileHover={{ y: -6, scale: 1.01, boxShadow: '0 25px 50px -12px rgba(64,120,112,0.15)' }}
-              className="md:col-span-2 bg-[#F7FAF9] rounded-[32px] p-8 border border-[#d7e3df]/60 transition-all duration-300 flex flex-col justify-between group min-h-[300px]"
+              className="md:col-span-2 bg-surface rounded-[32px] p-8 border border-[#d7e3df]/60 transition-all duration-300 flex flex-col justify-between group min-h-[300px]"
             >
               <div>
                 <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm border border-[#edf4f2] text-[#407870] group-hover:bg-[#407870] group-hover:text-white transition-all duration-300">
@@ -574,7 +574,7 @@ export default function DuoLifeJetonStylePage() {
       </section>
 
       {/* PROVA SOCIAL COM TRANSIÇÕES DE HOVER (Depoimentos DuoLife) */}
-      <section className="py-28 px-6 bg-[#F7FAF9]">
+      <section className="py-28 px-6 bg-surface">
         <div className="w-[min(92%,1800px)] mx-auto">
           
           <div className="flex flex-col md:flex-row md:items-end justify-between mb-20">

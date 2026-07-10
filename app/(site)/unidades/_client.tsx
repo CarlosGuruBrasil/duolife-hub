@@ -59,13 +59,13 @@ function Card3D({ children, className = '', style = {} }: Card3DProps) {
 
 export default function UnidadesClient() {
   return (
-    <div className="bg-[#ffffff] text-[#072a33]">
+    <div className="bg-white text-primary-dark">
 
       {/* Hero Section */}
-      <section className="relative isolate overflow-hidden bg-[#072a33] text-[#ffffff] min-h-screen flex items-start">
+      <section className="relative isolate overflow-hidden bg-primary-dark text-white min-h-screen flex items-start">
         <Image src="/duolife-sc-cities.jpg" alt="" fill className="object-cover object-[50%_34%]" priority />
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_28%,rgba(0,212,224,0.18)_0%,transparent_36%),linear-gradient(180deg,rgba(7,42,51,0.72)_0%,rgba(7,42,51,0.8)_100%)]" />
-        <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-[#072a33] to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-primary-dark to-transparent" />
 
         <div className="relative z-10 w-[min(92%,1800px)] mx-auto px-6 pt-20 pb-20 lg:pt-28 lg:pb-24">
           <div className="max-w-[760px] text-left">
@@ -73,7 +73,7 @@ export default function UnidadesClient() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.6 }}
-              className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md text-[#00d4e0] px-4 py-1.5 rounded-full text-xs font-black tracking-widest uppercase mb-8 border border-white/5"
+              className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md text-accent px-4 py-1.5 rounded-full text-xs font-black tracking-widest uppercase mb-8 border border-white/5"
             >
               <Sparkles size={13} />
               Nossas Sedes
@@ -99,7 +99,7 @@ export default function UnidadesClient() {
       </section>
 
       {/* Grid de Unidades */}
-      <section className="py-28 px-6 bg-[#f7faf9] border-b border-[#e0eceb]">
+      <section className="py-28 px-6 bg-surface border-b border-border">
         <motion.div
           initial="hidden"
           whileInView="visible"
@@ -112,11 +112,11 @@ export default function UnidadesClient() {
               const Icon = unit.icon;
               return (
                 <Card3D 
-                  className="bg-white border border-[#e0eceb] rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between cursor-grab active:cursor-grabbing text-left" 
+                  className="bg-white border border-border rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between cursor-grab active:cursor-grabbing text-left" 
                   key={unit.name}
                 >
                   <div>
-                    <div className="relative h-64 w-full rounded-2xl overflow-hidden mb-6 border border-[#e0eceb]">
+                    <div className="relative h-64 w-full rounded-2xl overflow-hidden mb-6 border border-border">
                       <Image
                         src={unit.image}
                         alt={unit.name}
@@ -124,25 +124,25 @@ export default function UnidadesClient() {
                         sizes="(max-width: 768px) 100vw, 30vw"
                         className="object-cover object-top"
                       />
-                      <div className="absolute top-4 right-4 w-10 h-10 rounded-xl bg-white/90 backdrop-blur-sm flex items-center justify-center text-[#0e4a5a] shadow-sm">
+                      <div className="absolute top-4 right-4 w-10 h-10 rounded-xl bg-white/90 backdrop-blur-sm flex items-center justify-center text-primary shadow-sm">
                         <Icon size={20} />
                       </div>
                     </div>
 
-                    <h2 className="mb-3 text-xl font-black leading-tight text-[#0e4a5a] uppercase tracking-tight">
+                    <h2 className="mb-3 text-xl font-black leading-tight text-primary uppercase tracking-tight">
                       {unit.name}
                     </h2>
                     
                     <div className="muted space-y-1.5 text-sm text-[#4d686f] font-light">
                       <p>{unit.address}</p>
                       <p>{unit.neighborhood}</p>
-                      <p className="font-bold text-[#0e4a5a]">{unit.city}</p>
-                      <p className="text-xs text-[#7fa8b2]">CEP {unit.cep}</p>
+                      <p className="font-bold text-primary">{unit.city}</p>
+                      <p className="text-xs text-secondary">CEP {unit.cep}</p>
                     </div>
                   </div>
 
                   <a 
-                    className="mt-6 rounded-2xl border-2 border-[#0e4a5a] text-[#0e4a5a] hover:bg-[#0e4a5a] hover:text-white text-center py-3.5 text-xs font-black uppercase tracking-wider transition-all duration-300" 
+                    className="mt-6 rounded-2xl border-2 border-primary text-primary hover:bg-primary hover:text-white text-center py-3.5 text-xs font-black uppercase tracking-wider transition-all duration-300" 
                     href={unit.maps} 
                     rel="noopener noreferrer" 
                     target="_blank"
@@ -168,8 +168,8 @@ export default function UnidadesClient() {
           <div className="grid lg:grid-cols-12 gap-16 items-center">
 
             <div className="lg:col-span-7 text-left">
-              <span className="text-xs font-black tracking-widest text-[#0e4a5a] uppercase mb-6 block">Abrangência</span>
-              <h2 className="text-3xl md:text-5xl font-black text-[#0e4a5a] uppercase leading-tight mb-6">Base regional, visão nacional.</h2>
+              <span className="text-xs font-black tracking-widest text-primary uppercase mb-6 block">Abrangência</span>
+              <h2 className="text-3xl md:text-5xl font-black text-primary uppercase leading-tight mb-6">Base regional, visão nacional.</h2>
               <p className="text-[#4d686f] font-light leading-relaxed text-lg mb-8">
                 A DuoLife mantém presença física em pontos estratégicos de Santa Catarina e relacionamento comercial preferencial para apoiar corretores e consultores de seguros corporativos em diversas regiões do Brasil.
               </p>
@@ -177,7 +177,7 @@ export default function UnidadesClient() {
               <div className="flex flex-wrap gap-2.5">
                 {['Santa Catarina', 'Paraná', 'Rio Grande do Sul', 'São Paulo', 'Rio de Janeiro', 'Todo o Brasil'].map((region) => (
                   <span
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-[#00d4e0]/10 text-[#0e4a5a] text-xs font-bold transition-all duration-300"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-accent/10 text-primary text-xs font-bold transition-all duration-300"
                     key={region}
                   >
                     <MapPin size={13} strokeWidth={2.5} /> {region}
@@ -186,7 +186,7 @@ export default function UnidadesClient() {
               </div>
             </div>
 
-            <div className="lg:col-span-5 relative h-[380px] rounded-[32px] overflow-hidden shadow-xl border border-[#e0eceb]">
+            <div className="lg:col-span-5 relative h-[380px] rounded-[32px] overflow-hidden shadow-xl border border-border">
               <Image
                 src="/duolife-sc-cities.jpg"
                 alt="Cidades de Santa Catarina atendidas pela DuoLife"
