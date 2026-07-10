@@ -797,26 +797,26 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
                     setPlanoSel(plano);
                     setParcelaSel(null);
                   }}
-                  className={`border-2 rounded-xl p-5 cursor-pointer transition-all hover:scale-[1.02] flex flex-col justify-between ${
+                  className={`border-2 rounded-xl p-5 cursor-pointer transition-all hover:-translate-y-1 hover:shadow-md flex flex-col justify-between ${
                     isSelected
-                      ? 'border-accent bg-accent/5 shadow-[0_0_15px_rgba(0,212,224,0.15)]'
-                      : 'border-slate-800 bg-slate-950/80 hover:border-slate-700'
+                      ? 'border-emerald-500 bg-emerald-50/50 shadow-sm'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
                   }`}
                 >
                   <div>
-                    <h4 className="font-bold text-base text-white">{plano.nomeExibido}</h4>
-                    <div className="mt-3 text-2xl font-black text-accent">{plano.cobertura}</div>
-                    <div className="text-xs text-gray-400 mt-1">Limite Máximo de Cobertura</div>
+                    <h4 className="font-bold text-base text-gray-900">{plano.nomeExibido}</h4>
+                    <div className="mt-2 text-2xl font-black text-emerald-600">{plano.cobertura}</div>
+                    <div className="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wide">Limite Máximo</div>
                   </div>
 
-                  <div className="mt-5 border-t border-slate-800 pt-3 text-sm text-gray-300 space-y-2">
-                    <div>
-                      <span className="text-gray-400 text-xs block">Franquia obrigatória</span>
-                      <span className="font-semibold text-white">{plano.franquia}</span>
+                  <div className="mt-5 border-t border-gray-100 pt-4 text-sm space-y-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-500 text-xs font-medium">Franquia</span>
+                      <span className="font-semibold text-gray-900">{plano.franquia}</span>
                     </div>
-                    <div>
-                      <span className="text-gray-400 text-xs block">Valor à vista</span>
-                      <span className="font-semibold text-emerald-400">{plano.parcela}</span>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-500 text-xs font-medium">Valor à vista</span>
+                      <span className="font-bold text-emerald-600">{plano.parcela}</span>
                     </div>
                   </div>
                 </div>

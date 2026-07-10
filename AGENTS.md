@@ -82,3 +82,9 @@ Todo componente de página tem que ser verificado em pelo menos três larguras a
 4. Conferir que nenhum texto é placeholder.
 5. Conferir sitemap/robots/meta tags da(s) página(s) alterada(s).
 
+### Padrão de Estilo Visual (UI/UX Premium)
+
+- **Tema Claro por Padrão (Light Mode):** A menos que explicitamente solicitado, todo o painel administrativo e interfaces devem usar um esquema de cores claro e altamente legível (fundos brancos `#FFFFFF` ou cinza claro `#F9FAFB`).
+- **Alto Contraste e Legibilidade:** Nunca use textos escuros sobre fundos escuros (ex: textos pretos em cartões grafite). Garanta contraste máximo para informações críticas, como valores monetários e limites.
+- **Cartões e Containers:** Use bordas sutis (`border-gray-200`), sombras leves (`shadow-sm`) e transições suaves (`hover:-translate-y-1`, `hover:shadow-md`) para dar um aspecto refinado e não bruto.
+- **Cores de Destaque:** Para seleção e foco, use cores consistentes (ex: `emerald-500` para sucesso/seleção) para guiar o usuário visualmente.
