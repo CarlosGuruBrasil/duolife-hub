@@ -88,7 +88,7 @@ export default async function PortalDashboard() {
             Nossa equipe está disponível para ajudar você em qualquer etapa da jornada de vendas.
           </p>
           <div className="flex gap-3 flex-wrap">
-            <a href="https://wa.me/554799648081" target="_blank" rel="noopener"
+            <a href="https://wa.me/5547991533897" target="_blank" rel="noopener"
               className="btn-accent text-sm py-2">
               <MessageCircle size={16} /> WhatsApp Comercial
             </a>

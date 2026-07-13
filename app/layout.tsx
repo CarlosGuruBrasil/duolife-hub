@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import { Plus_Jakarta_Sans } from 'next/font/google';
 import { MessageCircle } from 'lucide-react';
 import './globals.css';
-import SmoothScroll from '@/components/providers/SmoothScroll';
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
@@ -81,11 +80,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="pt-BR" className={`${jakarta.variable} h-full`}>
       <body className="min-h-full flex flex-col" style={{ fontFamily: 'var(--font-jakarta), Inter, system-ui, sans-serif' }}>
-        <SmoothScroll>
-          {children}
-        </SmoothScroll>
+        {children}
         <a
-          href="https://wa.me/554799648081?text=Olá! Gostaria de falar com o time comercial da DuoLife."
+          href="https://wa.me/5547991533897?text=Olá! Gostaria de falar com o time comercial da DuoLife."
           target="_blank"
           rel="noopener"
           aria-label="Falar no WhatsApp"

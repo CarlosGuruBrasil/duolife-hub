@@ -112,7 +112,7 @@ export default function UnidadesClient() {
               const Icon = unit.icon;
               return (
                 <Card3D 
-                  className="bg-white border border-border rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between cursor-grab active:cursor-grabbing text-left" 
+                  className="bg-white border border-border rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between text-left" 
                   key={unit.name}
                 >
                   <div>

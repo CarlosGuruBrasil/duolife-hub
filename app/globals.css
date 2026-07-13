@@ -61,6 +61,13 @@ button {
   -webkit-tap-highlight-color: transparent;
 }
 
+/* ponytail: Plus Jakarta Sans só carrega até weight 800 (ver layout.tsx); a classe
+   font-black do Tailwind pede 900, que o browser sintetiza (faux-bold borrado).
+   Trava font-black em 800, o peso mais forte que a fonte realmente tem. */
+.font-black {
+  font-weight: 800;
+}
+
 a {
   color: inherit;
   text-decoration: none;

@@ -128,7 +128,7 @@ export default function SejaParceiroClient() {
         <div className="w-[min(92%,1800px)] mx-auto">
           <div className="text-center max-w-2xl mx-auto mb-20">
             <span className="text-xs font-black tracking-widest text-primary uppercase mb-6 block">Vantagens de Parceria</span>
-            <h2 className="text-3xl md:text-5.5xl font-black tracking-tight text-primary uppercase">O que você ganha conosco</h2>
+            <h2 className="text-3xl md:text-[3.5rem] font-black tracking-tight text-primary uppercase">O que você ganha conosco</h2>
           </div>
 
           <div className="grid md:grid-cols-3 gap-8 mb-20">
@@ -137,7 +137,7 @@ export default function SejaParceiroClient() {
               return (
                 <Card3D 
                   key={b.title} 
-                  className="bg-surface border border-border rounded-3xl p-6 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow text-left cursor-grab active:cursor-grabbing"
+                  className="bg-surface border border-border rounded-3xl p-6 shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow text-left"
                 >
                   <div className="flex gap-4 items-start">
                     <div className="w-10 h-10 rounded-xl bg-primary/5 text-primary flex items-center justify-center shrink-0">
