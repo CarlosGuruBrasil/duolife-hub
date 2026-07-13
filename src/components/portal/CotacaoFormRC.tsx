@@ -203,7 +203,13 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
         });
         const data = await res.json();
         if (data.ok) {
-          setPlanos(data.planos);
+          // ponytail: "Millhões" (com L duplo) vem assim da coleção "Planos" no
+          // Wix — integração é read-only, então corrige aqui em vez de lá.
+          const planosCorrigidos = (data.planos as Plano[]).map((p) => ({
+            ...p,
+            nomeExibido: p.nomeExibido?.replace('Millhões', 'Milhões'),
+          }));
+          setPlanos(planosCorrigidos);
         }
       } catch (err) {
         console.error('Erro ao buscar planos:', err);

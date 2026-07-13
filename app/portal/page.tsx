@@ -90,7 +90,7 @@ export default async function PortalDashboard() {
           <div className="flex gap-3 flex-wrap">
             <a href="https://wa.me/5547996486081" target="_blank" rel="noopener"
               className="btn-accent text-sm py-2">
-              <MessageCircle size={16} /> WhatsApp Comercial
+              <MessageCircle size={16} /> Falar no WhatsApp
             </a>
             <a href="mailto:operacional@duolife.net.br"
               className="btn-outline text-sm py-2">
