@@ -104,7 +104,7 @@ export default function PartnerWhiteLabelClient({ partner, products, links }: Pr
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        label: linkLabel,
+        label: linkLabel || undefined,
         productId: linkProductId || undefined,
         flowType: linkFlowType,
         expiresInDays: Number(linkExpiresInDays) || 30,

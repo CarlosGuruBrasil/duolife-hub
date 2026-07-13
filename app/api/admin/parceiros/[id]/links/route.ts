@@ -6,9 +6,14 @@ import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
 import { verifyAdminAuth, unauthorized } from '@/lib/auth';
 
+// ponytail: campos opcionais vindo de inputs de formulário chegam como ''
+// (não undefined) quando vazios — .optional() sozinho não cobre isso, min(1)
+// rejeitava a string vazia e derrubava a geração de link com "Dados inválidos".
+const emptyToUndefined = (v: unknown) => (v === '' ? undefined : v);
+
 const linkSchema = z.object({
-  productId: z.string().trim().min(1).optional(),
-  label: z.string().trim().min(1).optional(),
+  productId: z.preprocess(emptyToUndefined, z.string().trim().min(1).optional()),
+  label: z.preprocess(emptyToUndefined, z.string().trim().min(1).optional()),
   flowType: z.enum(['internal', 'external']).optional(),
   expiresInDays: z.coerce.number().int().positive().max(3650).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
