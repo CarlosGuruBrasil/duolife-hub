@@ -165,7 +165,7 @@ export default function QuemSomosClient() {
         >
           <div className="text-center max-w-2xl mx-auto mb-20">
             <span className="text-xs font-black tracking-widest text-primary uppercase mb-6 block">Princípios</span>
-            <h2 className="text-4xl md:text-5.5xl font-black tracking-tight text-primary uppercase">
+            <h2 className="text-4xl md:text-[3.5rem] font-black tracking-tight text-primary uppercase">
               Missão, visão e valores.
             </h2>
           </div>
@@ -227,7 +227,7 @@ export default function QuemSomosClient() {
         >
           <div className="text-center max-w-2xl mx-auto mb-20">
             <span className="text-xs font-black tracking-widest text-primary uppercase mb-6 block">Liderança</span>
-            <h2 className="text-4xl md:text-5.5xl font-black tracking-tight text-primary uppercase">
+            <h2 className="text-4xl md:text-[3.5rem] font-black tracking-tight text-primary uppercase">
               Sócios e Diretores
             </h2>
           </div>
@@ -236,7 +236,7 @@ export default function QuemSomosClient() {
             {team.map((member) => (
               <Card3D 
                 key={member.name} 
-                className="group relative overflow-hidden rounded-[32px] border border-border bg-[linear-gradient(180deg,#ffffff_0%,#fbfefe_62%,#f5fbfb_100%)] p-8 md:p-10 shadow-[0_24px_70px_rgba(14,74,90,0.08)] hover:-translate-y-1 hover:shadow-[0_30px_80px_rgba(14,74,90,0.14)] transition-all cursor-grab active:cursor-grabbing text-center"
+                className="group relative overflow-hidden rounded-[32px] border border-border bg-[linear-gradient(180deg,#ffffff_0%,#fbfefe_62%,#f5fbfb_100%)] p-8 md:p-10 shadow-[0_24px_70px_rgba(14,74,90,0.08)] hover:-translate-y-1 hover:shadow-[0_30px_80px_rgba(14,74,90,0.14)] transition-all text-center"
               >
                 <div className="absolute inset-y-0 right-0 w-1/3 bg-gradient-to-l from-accent/5 to-transparent pointer-events-none" />
                 <div className="relative flex h-full flex-col items-center">

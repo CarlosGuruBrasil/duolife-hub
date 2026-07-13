@@ -143,7 +143,7 @@ export default function SolucoesClient() {
         >
           <div className="text-center max-w-2xl mx-auto mb-20">
             <span className="text-xs font-black tracking-widest text-[#ef4444] uppercase mb-6 block">Fricção no Dia a Dia</span>
-            <h2 className="text-3xl md:text-5.5xl font-black tracking-tight text-primary uppercase">
+            <h2 className="text-3xl md:text-[3.5rem] font-black tracking-tight text-primary uppercase">
               Onde o corretor perde velocidade.
             </h2>
           </div>
@@ -178,7 +178,7 @@ export default function SolucoesClient() {
             className="text-center max-w-2xl mx-auto mb-20"
           >
             <span className="text-xs font-black tracking-widest text-primary uppercase mb-6 block">Modelo DuoLife</span>
-            <h2 className="text-4xl md:text-5.5xl font-black tracking-tight text-primary uppercase">
+            <h2 className="text-4xl md:text-[3.5rem] font-black tracking-tight text-primary uppercase">
               Assessoria em Quatro Frentes
             </h2>
           </motion.div>

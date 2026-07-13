@@ -52,7 +52,7 @@ const pillars = [
   {
     id: 'posvenda',
     title: 'Pós-Venda & Relacionamento',
-    desc: 'Garantimos a intermediação ágil de sinistros, renovações e manutenções com operadoras de saúde e seguradoras, garantindo a retention da sua base.',
+    desc: 'Garantimos a intermediação ágil de sinistros, renovações e manutenções com operadoras de saúde e seguradoras, garantindo a retenção da sua base.',
     icon: Headphones
   }
 ];
@@ -122,7 +122,7 @@ const leadership = [
   {
     name: 'Ricardo Abramo Padua Mello',
     role: 'CEO / Sócio-Fundador',
-    bio: 'Lidera a DuoLife desde a sua fundação inalterada em 1995, consolidando a marca como referência de qualidade e ética na distribuição de benefícios corporativos e estruturação técnica.',
+    bio: 'Lidera a DuoLife desde a sua fundação em 1995, consolidando a marca como referência de qualidade e ética na distribuição de benefícios corporativos e estruturação técnica.',
     image: '/team/ricardo-abramo-padua-mello.png'
   },
   {
@@ -249,7 +249,7 @@ export default function Home() {
           <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-primary-dark to-transparent" />
           <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.012)_1px,_transparent_1px),_linear-gradient(90deg,_rgba(255,255,255,0.012)_1px,_transparent_1px)] bg-[size:100px_100px] [mask-image:radial-gradient(ellipse_at_center,_white_70%,_transparent_100%)] pointer-events-none" />
 
-          <div className="relative z-10 w-[min(92%,1800px)] mx-auto px-6 pt-16 pb-20 md:pt-20 md:pb-24 lg:pt-28 lg:pb-28">
+          <div className="relative z-10 w-[min(92%,1800px)] mx-auto px-6 pt-28 pb-20 md:pt-20 md:pb-24 lg:pt-28 lg:pb-28">
             <div className="max-w-[760px] text-left">
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
@@ -293,7 +293,7 @@ export default function Home() {
                   <ArrowRight size={16} />
                 </Link>
                 <a
-                  href="https://wa.me/554799648081?text=Olá! Gostaria de falar com o time comercial da DuoLife."
+                  href="https://wa.me/5547991533897?text=Olá! Gostaria de falar com o time comercial da DuoLife."
                   target="_blank"
                   rel="noopener"
                   className="flex items-center justify-center gap-2 bg-transparent border border-white/20 hover:border-white hover:bg-white/5 text-white px-10 py-5 rounded-full font-bold text-sm transition-all duration-300"
@@ -306,7 +306,7 @@ export default function Home() {
 
             <div className="mt-14 inline-flex bg-primary-dark/60 backdrop-blur-xl border border-white/10 px-5 py-4 rounded-[24px] shadow-2xl max-w-[220px]">
               <div>
-                <div className="text-accent font-black text-3.5xl tracking-tight leading-none">+180</div>
+                <div className="text-accent font-black text-[2rem] tracking-tight leading-none">+180</div>
                 <div className="text-[10px] text-white/80 uppercase font-black tracking-wider mt-1.5 font-sans">Corretores Parceiros ativos</div>
               </div>
             </div>
@@ -352,7 +352,7 @@ export default function Home() {
             {/* Lado Esquerdo: Dados e História */}
             <div className="lg:col-span-7 flex flex-col justify-center text-left">
               <span className="text-xs font-black tracking-widest text-primary uppercase mb-6 block">Nossa Trajetória</span>
-              <h2 className="text-4xl md:text-5.5xl font-black tracking-tight leading-[1.15] text-primary uppercase mb-6">
+              <h2 className="text-4xl md:text-[3.5rem] font-black tracking-tight leading-[1.15] text-primary uppercase mb-6">
                 Sua retaguarda de confiança desde 1995.
               </h2>
               <p className="text-[#4d686f] font-light leading-relaxed text-lg mb-6">
@@ -411,7 +411,7 @@ export default function Home() {
             {/* Cabeçalho de Seção */}
             <div className="text-center max-w-2xl mx-auto mb-20">
               <span className="text-xs font-black tracking-widest text-primary uppercase mb-6 block">Nossas Frentes de Apoio</span>
-              <h2 className="text-4xl md:text-5.5xl font-black tracking-tight text-primary uppercase">
+              <h2 className="text-4xl md:text-[3.5rem] font-black tracking-tight text-primary uppercase">
                 Destravando resultados de ponta a ponta.
               </h2>
               <p className="mt-4 text-sm text-[#4d686f] font-light leading-relaxed">
@@ -503,7 +503,7 @@ export default function Home() {
           <div className="w-[min(92%,1800px)] mx-auto">
             <div className="text-center max-w-2xl mx-auto mb-20">
               <span className="text-xs font-black tracking-widest text-primary uppercase mb-6 block">Nossa Liderança</span>
-              <h2 className="text-4xl md:text-5.5xl font-black tracking-tight text-primary uppercase">
+              <h2 className="text-4xl md:text-[3.5rem] font-black tracking-tight text-primary uppercase">
                 Quem está por trás do suporte.
               </h2>
               <p className="mt-4 text-sm text-[#4d686f] font-light leading-relaxed">
@@ -563,7 +563,7 @@ export default function Home() {
             {/* Lado Esquerdo - Mockup de Painel / Dashboard Minimalista com Efeito 3D */}
             <div className="lg:col-span-6 flex justify-center order-2 lg:order-1 relative z-10">
               <Card3D 
-                className="w-full max-w-[480px] bg-primary-dark/60 backdrop-blur-xl border border-white/10 rounded-[32px] p-8 shadow-2xl relative overflow-hidden cursor-grab active:cursor-grabbing text-left"
+                className="w-full max-w-[480px] bg-primary-dark/60 backdrop-blur-xl border border-white/10 rounded-[32px] p-8 shadow-2xl relative overflow-hidden text-left"
               >
                 {/* Header do Mockup */}
                 <div className="flex items-center justify-between mb-8 border-b border-white/5 pb-4">
@@ -617,7 +617,7 @@ export default function Home() {
               <div className="mb-4 inline-flex w-fit items-center rounded-full border border-accent/25 bg-accent px-3 py-1 shadow-[0_10px_24px_rgba(0,212,224,0.18)]">
                 <span className="text-xs font-black tracking-widest text-[#062832] uppercase">Como Atuamos</span>
               </div>
-              <h2 className="max-w-[12ch] text-4xl md:text-5.5xl font-black tracking-tight leading-[1.12] uppercase mb-12 text-[#f8ffff] drop-shadow-[0_2px_12px_rgba(0,0,0,0.42)]">
+              <h2 className="max-w-[12ch] text-4xl md:text-[3.5rem] font-black tracking-tight leading-[1.12] uppercase mb-12 text-[#f8ffff] drop-shadow-[0_2px_12px_rgba(0,0,0,0.42)]">
                 O elo em toda a <br />jornada de vendas.
               </h2>
 
@@ -665,7 +665,7 @@ export default function Home() {
         <section className="py-20 md:py-32 px-6 bg-surface relative overflow-hidden">
           <div className="max-w-4xl mx-auto text-center relative z-10">
             <span className="text-xs font-black tracking-widest text-primary uppercase mb-6 block">Depoimentos</span>
-            <h2 className="text-4xl md:text-5.5xl font-black tracking-tight text-primary uppercase mb-16">
+            <h2 className="text-4xl md:text-[3.5rem] font-black tracking-tight text-primary uppercase mb-16">
               Quem cresce conosco.
             </h2>
 
@@ -674,7 +674,7 @@ export default function Home() {
               {testimonials.map((t) => (
                 <Card3D 
                   key={t.author}
-                  className="bg-white border border-border rounded-3xl p-8 shadow-md flex flex-col justify-between hover:shadow-lg transition-all duration-300 cursor-grab active:cursor-grabbing"
+                  className="bg-white border border-border rounded-3xl p-8 shadow-md flex flex-col justify-between hover:shadow-lg transition-all duration-300"
                 >
                   <div>
                     <div className="flex gap-1 text-accent mb-6">
@@ -707,7 +707,7 @@ export default function Home() {
           <div className="w-[min(92%,1800px)] mx-auto">
             <div className="text-center max-w-2xl mx-auto mb-16">
               <span className="text-xs font-black tracking-widest text-primary uppercase mb-6 block">Nossas Sedes</span>
-              <h2 className="text-4xl md:text-5.5xl font-black tracking-tight text-primary uppercase">
+              <h2 className="text-4xl md:text-[3.5rem] font-black tracking-tight text-primary uppercase">
                 Onde estamos fisicamente.
               </h2>
               <p className="mt-4 text-sm text-[#4d686f] font-light">
@@ -719,7 +719,7 @@ export default function Home() {
               {units.map((unit, idx) => (
                 <Card3D 
                   key={idx} 
-                  className="bg-surface border border-border rounded-3xl p-8 flex flex-col justify-between hover:border-primary/20 transition-all duration-300 cursor-grab active:cursor-grabbing text-left"
+                  className="bg-surface border border-border rounded-3xl p-8 flex flex-col justify-between hover:border-primary/20 transition-all duration-300 text-left"
                 >
                   <div>
                     <div className="w-10 h-10 rounded-xl bg-primary/5 text-primary flex items-center justify-center mb-6">
@@ -755,7 +755,7 @@ export default function Home() {
             {/* Lado Esquerdo - Apelo Comercial */}
             <div className="lg:col-span-6 text-left">
               <span className="text-xs font-black tracking-widest text-primary uppercase mb-6 block">Fale Conosco</span>
-              <h2 className="text-4xl md:text-5.5xl font-black tracking-tight text-primary uppercase mb-6 leading-tight">
+              <h2 className="text-4xl md:text-[3.5rem] font-black tracking-tight text-primary uppercase mb-6 leading-tight">
                 Pronto para destravar seus resultados?
               </h2>
               <p className="text-[#4d686f] font-light leading-relaxed text-lg mb-8">
