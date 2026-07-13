@@ -82,7 +82,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-full flex flex-col" style={{ fontFamily: 'var(--font-jakarta), Inter, system-ui, sans-serif' }}>
         {children}
         <a
-          href="https://wa.me/5547991533897?text=Olá! Gostaria de falar com o time comercial da DuoLife."
+          href="https://wa.me/5547996486081?text=Olá! Gostaria de falar com o time comercial da DuoLife."
           target="_blank"
           rel="noopener"
           aria-label="Falar no WhatsApp"

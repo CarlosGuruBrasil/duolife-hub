@@ -41,7 +41,7 @@ export default function ContatoClient() {
     event.preventDefault();
     setStatus('sending');
     const message = `Olá! Me chamo ${form.name}. ${form.message} (${form.email} / ${form.phone})`;
-    window.open(`https://wa.me/5547991533897?text=${encodeURIComponent(message)}`, '_blank');
+    window.open(`https://wa.me/5547996486081?text=${encodeURIComponent(message)}`, '_blank');
     setStatus('sent');
   }
 
