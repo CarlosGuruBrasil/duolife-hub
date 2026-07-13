@@ -6,8 +6,7 @@ import { motion } from 'framer-motion';
 import { BriefcaseBusiness, Camera, Mail, MessageCircle, Phone, Sparkles } from 'lucide-react';
 
 const contacts = [
-  { icon: Phone, label: 'Comercial', value: '(47) 99153-3897', href: 'tel:+5547991533897' },
-  { icon: Phone, label: 'Operacional', value: '(47) 99648-6081', href: 'tel:+5547996486081' },
+  { icon: Phone, label: 'Telefone', value: '(47) 99648-6081', href: 'tel:+5547996486081' },
   { icon: Mail, label: 'E-mail Comercial', value: 'comercial@duolife.net.br', href: 'mailto:comercial@duolife.net.br' },
   { icon: Mail, label: 'E-mail Operacional', value: 'operacional@duolife.net.br', href: 'mailto:operacional@duolife.net.br' },
   { icon: Camera, label: 'Instagram', value: '@duolife.hub', href: 'https://www.instagram.com/duolife.hub' },
