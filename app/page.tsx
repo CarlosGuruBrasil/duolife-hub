@@ -1,11 +1,10 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import Image from 'next/image';
 import Link from 'next/link';
-import { motion, useScroll, useTransform } from 'framer-motion';
 import {
   ArrowRight,
   ArrowUpRight,
@@ -166,17 +165,6 @@ export default function Home() {
   const [form, setForm] = useState({ name: '', email: '', phone: '', company: '', message: '' });
   const [formStatus, setFormStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
 
-  // Refs e Hooks para o efeito Parallax/Floating no Scroll
-  const sectionRef = useRef<HTMLDivElement>(null);
-  const aboutRef = useRef<HTMLDivElement>(null);
-
-  const { scrollY } = useScroll();
-
-  // Movimentos de paralaxe calculados no scroll
-  const yHeroImg1 = useTransform(scrollY, [0, 800], [0, -40]);
-  const yHeroImg2 = useTransform(scrollY, [0, 800], [0, -100]);
-  const yAboutImg = useTransform(scrollY, [150, 1500], [-70, 70]);
-
   // Envio do formulário de captura rápida
   async function handleLeadSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -206,26 +194,39 @@ export default function Home() {
 
   // Monitorar scroll para atualizar a âncora ativa do menu de pílula
   useEffect(() => {
-    const handleScroll = () => {
-      setShowDock(window.scrollY > window.innerHeight * 0.7);
-      const scrollPos = window.scrollY + 200;
-      const inicioSec = document.getElementById('inicio');
-      const solucoesSec = document.getElementById('solucoes');
-      const comoAtuamosSec = document.getElementById('como-atuamos');
-      const unidadesSec = document.getElementById('unidades');
+    let ticking = false;
 
-      if (unidadesSec && scrollPos >= unidadesSec.offsetTop) {
-        setActiveAnchor('unidades');
-      } else if (comoAtuamosSec && scrollPos >= comoAtuamosSec.offsetTop) {
-        setActiveAnchor('como-atuamos');
-      } else if (solucoesSec && scrollPos >= solucoesSec.offsetTop) {
-        setActiveAnchor('solucoes');
-      } else {
-        setActiveAnchor('inicio');
+    const handleScroll = () => {
+      if (ticking) {
+        return;
       }
+
+      ticking = true;
+      window.requestAnimationFrame(() => {
+        const shouldShowDock = window.scrollY > window.innerHeight * 0.7;
+        const scrollPos = window.scrollY + 200;
+        const solucoesSec = document.getElementById('solucoes');
+        const comoAtuamosSec = document.getElementById('como-atuamos');
+        const unidadesSec = document.getElementById('unidades');
+
+        let nextAnchor = 'inicio';
+
+        if (unidadesSec && scrollPos >= unidadesSec.offsetTop) {
+          nextAnchor = 'unidades';
+        } else if (comoAtuamosSec && scrollPos >= comoAtuamosSec.offsetTop) {
+          nextAnchor = 'como-atuamos';
+        } else if (solucoesSec && scrollPos >= solucoesSec.offsetTop) {
+          nextAnchor = 'solucoes';
+        }
+
+        setShowDock((current) => (current === shouldShowDock ? current : shouldShowDock));
+        setActiveAnchor((current) => (current === nextAnchor ? current : nextAnchor));
+        ticking = false;
+      });
     };
 
-    window.addEventListener('scroll', handleScroll);
+    handleScroll();
+    window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
@@ -325,7 +326,7 @@ export default function Home() {
 
 
         {/* ================= SEÇÃO 2: QUEM SOMOS E LEGADO ================= */}
-        <section id="sobre" ref={aboutRef} className="py-20 md:py-32 px-6 bg-surface relative border-b border-border overflow-hidden scroll-mt-28">
+        <section id="sobre" className="py-20 md:py-32 px-6 bg-surface relative border-b border-border overflow-hidden scroll-mt-28">
           
           <div className="w-[min(92%,1800px)] mx-auto grid lg:grid-cols-12 gap-16 items-center relative z-10">
             
@@ -361,17 +362,14 @@ export default function Home() {
 
             {/* Lado Direito: Imagem de Escritório com Paralaxe Vertical */}
             <div className="lg:col-span-5 relative h-[500px] rounded-[36px] overflow-hidden border border-border shadow-2xl">
-              <motion.div
-                style={{ y: yAboutImg }}
-                className="absolute inset-0 h-[118%] w-full"
-              >
+              <div className="absolute inset-0 h-full w-full">
                 <Image
                   src="/duolife-office.jpg"
                   alt="Escritório DuoLife Florianópolis"
                   fill
                   className="object-cover object-bottom"
                 />
-              </motion.div>
+              </div>
               <div className="absolute inset-0 bg-gradient-to-t from-primary-dark/60 via-transparent to-transparent pointer-events-none" />
               <div className="absolute bottom-8 left-8 right-8 bg-primary-dark/60 backdrop-blur-xl border border-white/10 p-6 rounded-2xl text-left text-white">
                 <div className="text-xs font-black uppercase tracking-wider text-accent">Foco no Relacionamento</div>

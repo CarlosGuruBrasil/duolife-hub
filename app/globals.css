@@ -43,7 +43,6 @@
 
 html {
   background: var(--surface);
-  scroll-behavior: smooth;
 }
 
 body {
