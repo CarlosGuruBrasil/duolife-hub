@@ -61,11 +61,13 @@ async function ensureSchema() {
       name          TEXT NOT NULL,
       email         TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
-      role          TEXT NOT NULL DEFAULT 'seller',
+      role          TEXT NOT NULL DEFAULT 'broker',
+      manager_user_id TEXT REFERENCES partner_users(id),
       permissions   JSONB NOT NULL DEFAULT '{}',
       is_active     BOOLEAN NOT NULL DEFAULT true,
       last_login_at TIMESTAMPTZ,
-      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
 }
@@ -105,15 +107,17 @@ async function main() {
         SET partner_id = ${partner.id},
             name = ${partnerName},
             password_hash = ${passwordHash},
-            role = 'admin',
+            role = 'director',
             permissions = ${JSON.stringify({})}::jsonb,
-            is_active = true
+            is_active = true,
+            manager_user_id = null,
+            updated_at = NOW()
         WHERE id = ${existingUser.id}
       `;
     } else {
       await tx`
-        INSERT INTO partner_users (partner_id, name, email, password_hash, role, permissions, is_active)
-        VALUES (${partner.id}, ${partnerName}, ${partnerEmail}, ${passwordHash}, 'admin', ${JSON.stringify({})}::jsonb, true)
+        INSERT INTO partner_users (partner_id, name, email, password_hash, role, manager_user_id, permissions, is_active, updated_at)
+        VALUES (${partner.id}, ${partnerName}, ${partnerEmail}, ${passwordHash}, 'director', null, ${JSON.stringify({})}::jsonb, true, NOW())
       `;
     }
 

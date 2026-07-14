@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { verifyPartnerAuth } from '@/lib/auth';
+import { getPartnerAccessContext, verifyPartnerAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 
@@ -35,28 +35,51 @@ function formatDate(value: string | null) {
 export default async function ComissoesPage() {
   const user = await verifyPartnerAuth();
   if (!user) redirect('/login');
+  const access = await getPartnerAccessContext(user);
+  if (!access) redirect('/login');
 
   await ensureSchema();
 
-  const comissoes = await sql<ComissaoRow[]>`
-    SELECT
-      cm.id,
-      cm.amount,
-      cm.rate,
-      cm.status,
-      cm.reference_month,
-      cm.payment_date,
-      s.policy_number,
-      p.name AS product_name,
-      c.client_name
-    FROM commissions cm
-    JOIN sales s ON s.id = cm.sale_id
-    JOIN products p ON p.id = s.product_id
-    JOIN cotacoes c ON c.id = s.cotacao_id
-    WHERE cm.partner_id = ${user.partnerId!}
-    ORDER BY cm.created_at DESC
-    LIMIT 100
-  `;
+  const comissoes = access.visibleUserIds === null
+    ? await sql<ComissaoRow[]>`
+        SELECT
+          cm.id,
+          cm.amount,
+          cm.rate,
+          cm.status,
+          cm.reference_month,
+          cm.payment_date,
+          s.policy_number,
+          p.name AS product_name,
+          c.client_name
+        FROM commissions cm
+        JOIN sales s ON s.id = cm.sale_id
+        JOIN products p ON p.id = s.product_id
+        JOIN cotacoes c ON c.id = s.cotacao_id
+        WHERE cm.partner_id = ${access.partnerId}
+        ORDER BY cm.created_at DESC
+        LIMIT 100
+      `
+    : await sql<ComissaoRow[]>`
+        SELECT
+          cm.id,
+          cm.amount,
+          cm.rate,
+          cm.status,
+          cm.reference_month,
+          cm.payment_date,
+          s.policy_number,
+          p.name AS product_name,
+          c.client_name
+        FROM commissions cm
+        JOIN sales s ON s.id = cm.sale_id
+        JOIN products p ON p.id = s.product_id
+        JOIN cotacoes c ON c.id = s.cotacao_id
+        WHERE cm.partner_id = ${access.partnerId}
+          AND c.partner_user_id IN ${sql(access.visibleUserIds)}
+        ORDER BY cm.created_at DESC
+        LIMIT 100
+      `;
 
   const pending = comissoes
     .filter((comissao) => comissao.status === 'pendente' || comissao.status === 'aprovada')

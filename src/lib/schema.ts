@@ -41,13 +41,22 @@ export async function ensureSchema(): Promise<void> {
       name          TEXT NOT NULL,
       email         TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
-      role          TEXT NOT NULL DEFAULT 'seller',
+      role          TEXT NOT NULL DEFAULT 'broker',
+      manager_user_id TEXT REFERENCES partner_users(id),
       permissions   JSONB NOT NULL DEFAULT '{}',
       is_active     BOOLEAN NOT NULL DEFAULT true,
       last_login_at TIMESTAMPTZ,
-      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
+  await sql`ALTER TABLE partner_users ADD COLUMN IF NOT EXISTS manager_user_id TEXT REFERENCES partner_users(id)`;
+  await sql`ALTER TABLE partner_users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`;
+  await sql`CREATE INDEX IF NOT EXISTS partner_users_partner_id ON partner_users (partner_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS partner_users_manager_user_id ON partner_users (manager_user_id)`;
+  await sql`UPDATE partner_users SET role = 'director' WHERE role = 'admin'`;
+  await sql`UPDATE partner_users SET role = 'broker' WHERE role = 'seller'`;
+  await sql`UPDATE partner_users SET role = 'partner' WHERE role = 'viewer'`;
 
   // API tokens para integração máquina-a-máquina (ex: Wix → DuoLife)
   await sql`

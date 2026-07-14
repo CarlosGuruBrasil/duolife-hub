@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Plus } from 'lucide-react';
-import { verifyPartnerAuth } from '@/lib/auth';
+import { getPartnerAccessContext, verifyPartnerAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema, seedInitialData } from '@/lib/schema';
 
@@ -37,26 +37,46 @@ function formatDate(value: string) {
 export default async function CotacoesPage() {
   const user = await verifyPartnerAuth();
   if (!user) redirect('/login');
+  const access = await getPartnerAccessContext(user);
+  if (!access) redirect('/login');
 
   await ensureSchema();
   await seedInitialData();
 
-  const cotacoes = await sql<CotacaoRow[]>`
-    SELECT
-      c.id,
-      c.client_name,
-      c.client_cpf_cnpj,
-      c.importancia_segurada,
-      c.premio_final,
-      c.status,
-      c.created_at,
-      p.name AS product_name
-    FROM cotacoes c
-    JOIN products p ON p.id = c.product_id
-    WHERE c.partner_id = ${user.partnerId!}
-    ORDER BY c.created_at DESC
-    LIMIT 100
-  `;
+  const cotacoes = access.visibleUserIds === null
+    ? await sql<CotacaoRow[]>`
+        SELECT
+          c.id,
+          c.client_name,
+          c.client_cpf_cnpj,
+          c.importancia_segurada,
+          c.premio_final,
+          c.status,
+          c.created_at,
+          p.name AS product_name
+        FROM cotacoes c
+        JOIN products p ON p.id = c.product_id
+        WHERE c.partner_id = ${access.partnerId}
+        ORDER BY c.created_at DESC
+        LIMIT 100
+      `
+    : await sql<CotacaoRow[]>`
+        SELECT
+          c.id,
+          c.client_name,
+          c.client_cpf_cnpj,
+          c.importancia_segurada,
+          c.premio_final,
+          c.status,
+          c.created_at,
+          p.name AS product_name
+        FROM cotacoes c
+        JOIN products p ON p.id = c.product_id
+        WHERE c.partner_id = ${access.partnerId}
+          AND c.partner_user_id IN ${sql(access.visibleUserIds)}
+        ORDER BY c.created_at DESC
+        LIMIT 100
+      `;
 
   return (
     <div>

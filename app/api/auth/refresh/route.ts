@@ -4,7 +4,7 @@ import { sql } from '@/lib/pg';
 import { getJwtSecret } from '@/lib/secrets';
 import { rotateRefreshToken } from '@/lib/refresh-token';
 import { logger } from '@/lib/logger';
-import { normalizePermissions, type AuthUser } from '@/lib/auth';
+import { normalizePartnerRole, normalizePermissions, toPartnerUserRole, type AuthUser } from '@/lib/auth';
 
 export async function POST() {
   try {
@@ -15,7 +15,7 @@ export async function POST() {
     if (!result) return Response.json({ error: 'Sessão expirada. Faça login novamente.' }, { status: 401 });
 
     const [user] = await sql`
-      SELECT pu.id, pu.name, pu.email, pu.role, pu.permissions, pu.partner_id,
+      SELECT pu.id, pu.name, pu.email, pu.role, pu.permissions, pu.partner_id, pu.manager_user_id,
              p.status as partner_status
       FROM partner_users pu
       JOIN partners p ON p.id = pu.partner_id
@@ -31,7 +31,9 @@ export async function POST() {
       partnerId: user.partner_id,
       name: user.name,
       email: user.email,
-      role: `partner_${user.role}` as AuthUser['role'],
+      role: toPartnerUserRole(normalizePartnerRole(user.role)),
+      partnerRole: normalizePartnerRole(user.role),
+      managerUserId: user.manager_user_id,
       permissions: normalizePermissions(user.permissions),
     };
 

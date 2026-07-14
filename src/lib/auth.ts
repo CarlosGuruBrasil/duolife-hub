@@ -6,9 +6,12 @@ import { getJwtSecret } from './secrets';
 export type UserRole =
   | 'duolife_admin'
   | 'duolife_staff'
-  | 'partner_admin'
-  | 'partner_seller'
-  | 'partner_viewer';
+  | 'partner_director'
+  | 'partner_manager'
+  | 'partner_broker'
+  | 'partner_partner';
+
+export type PartnerRole = 'director' | 'manager' | 'broker' | 'partner';
 
 export interface AuthUser {
   userId:      string;
@@ -16,7 +19,37 @@ export interface AuthUser {
   name:        string;
   email:       string;
   role:        UserRole;
+  partnerRole?: PartnerRole | null;
+  managerUserId?: string | null;
   permissions: Record<string, boolean>;
+}
+
+export interface PartnerAccessContext {
+  partnerId: string;
+  role: PartnerRole;
+  visibleUserIds: string[] | null;
+}
+
+export function normalizePartnerRole(value: unknown): PartnerRole {
+  switch (String(value || '').toLowerCase()) {
+    case 'admin':
+    case 'director':
+      return 'director';
+    case 'manager':
+      return 'manager';
+    case 'seller':
+    case 'broker':
+      return 'broker';
+    case 'viewer':
+    case 'partner':
+      return 'partner';
+    default:
+      return 'broker';
+  }
+}
+
+export function toPartnerUserRole(role: PartnerRole): UserRole {
+  return `partner_${role}` as UserRole;
 }
 
 export function normalizePermissions(value: unknown): Record<string, boolean> {
@@ -69,12 +102,14 @@ export async function verifyAuth(): Promise<AuthUser | null> {
         name: admin.name,
         email: admin.email,
         role: admin.role as UserRole,
+        partnerRole: null,
+        managerUserId: null,
         permissions: normalizePermissions({}),
       };
     }
 
     const [partnerUser] = await sql`
-      SELECT pu.id, pu.name, pu.email, pu.role, pu.permissions, pu.partner_id
+      SELECT pu.id, pu.name, pu.email, pu.role, pu.permissions, pu.partner_id, pu.manager_user_id
       FROM partner_users pu
       JOIN partners p ON p.id = pu.partner_id
       WHERE pu.id = ${decoded.userId}
@@ -89,7 +124,9 @@ export async function verifyAuth(): Promise<AuthUser | null> {
       partnerId: partnerUser.partner_id,
       name: partnerUser.name,
       email: partnerUser.email,
-      role: `partner_${partnerUser.role}` as UserRole,
+      role: toPartnerUserRole(normalizePartnerRole(partnerUser.role)),
+      partnerRole: normalizePartnerRole(partnerUser.role),
+      managerUserId: partnerUser.manager_user_id,
       permissions: normalizePermissions(partnerUser.permissions),
     };
   } catch {
@@ -109,6 +146,65 @@ export async function verifyPartnerAuth(): Promise<AuthUser | null> {
   if (!user) return null;
   if (user.partnerId && user.role.startsWith('partner_')) return user;
   return null;
+}
+
+export function isInternalUser(user: AuthUser): boolean {
+  return user.role === 'duolife_admin' || user.role === 'duolife_staff';
+}
+
+export function isDevUser(user: AuthUser): boolean {
+  return user.role === 'duolife_admin';
+}
+
+export function hasPartnerWideAccess(user: AuthUser): boolean {
+  return user.partnerRole === 'director';
+}
+
+export function canManageOwnCompany(user: AuthUser): boolean {
+  return user.partnerRole === 'director';
+}
+
+export async function getPartnerAccessContext(user: AuthUser): Promise<PartnerAccessContext | null> {
+  if (!user.partnerId || !user.partnerRole) return null;
+
+  if (user.partnerRole === 'director') {
+    return {
+      partnerId: user.partnerId,
+      role: user.partnerRole,
+      visibleUserIds: null,
+    };
+  }
+
+  if (user.partnerRole === 'manager') {
+    const rows = await sql<{ id: string }[]>`
+      WITH RECURSIVE team AS (
+        SELECT id
+        FROM partner_users
+        WHERE id = ${user.userId}
+          AND partner_id = ${user.partnerId}
+          AND is_active = true
+        UNION
+        SELECT pu.id
+        FROM partner_users pu
+        JOIN team t ON pu.manager_user_id = t.id
+        WHERE pu.partner_id = ${user.partnerId}
+          AND pu.is_active = true
+      )
+      SELECT id FROM team
+    `;
+
+    return {
+      partnerId: user.partnerId,
+      role: user.partnerRole,
+      visibleUserIds: rows.map((row) => row.id),
+    };
+  }
+
+  return {
+    partnerId: user.partnerId,
+    role: user.partnerRole,
+    visibleUserIds: [user.userId],
+  };
 }
 
 export function signToken(payload: AuthUser): string {

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { ensureSchema } from '@/lib/schema';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
-import { verifyAdminAuth, unauthorized } from '@/lib/auth';
+import { isDevUser, verifyAdminAuth, unauthorized } from '@/lib/auth';
 
 // ponytail: campos opcionais vindo de inputs de formulário chegam como ''
 // (não undefined) quando vazios — .optional() sozinho não cobre isso, min(1)
@@ -27,6 +27,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const admin = await verifyAdminAuth();
     if (!admin) return unauthorized();
+    if (!isDevUser(admin)) return Response.json({ error: 'Links públicos são exclusivos do perfil dev' }, { status: 403 });
 
     const { id } = await params;
     await ensureSchema();
@@ -62,6 +63,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const admin = await verifyAdminAuth();
   if (!admin) return unauthorized();
+  if (!isDevUser(admin)) return Response.json({ error: 'Links públicos são exclusivos do perfil dev' }, { status: 403 });
 
   const { id } = await params;
   await ensureSchema();

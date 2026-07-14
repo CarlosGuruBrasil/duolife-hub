@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { verifyAdminAuth } from '@/lib/auth';
+import { isDevUser, verifyAdminAuth } from '@/lib/auth';
 import { ensureSchema } from '@/lib/schema';
 import { sql } from '@/lib/pg';
 import { getWhiteLabelConfig } from '@/lib/white-label';
@@ -23,6 +23,17 @@ interface LinkRow {
   created_at: string;
   product_name: string | null;
   product_code: string | null;
+}
+
+interface PartnerUserRow {
+  id: string;
+  name: string;
+  email: string;
+  role: 'director' | 'manager' | 'broker' | 'partner';
+  manager_user_id: string | null;
+  is_active: boolean;
+  last_login_at: string | null;
+  created_at: string;
 }
 
 export default async function PartnerDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -65,6 +76,28 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
     ORDER BY pl.created_at DESC
   `;
 
+  const partnerUsers = await sql<PartnerUserRow[]>`
+    SELECT
+      pu.id,
+      pu.name,
+      pu.email,
+      pu.role,
+      pu.manager_user_id,
+      pu.is_active,
+      pu.last_login_at,
+      pu.created_at
+    FROM partner_users pu
+    WHERE pu.partner_id = ${id}
+    ORDER BY
+      CASE pu.role
+        WHEN 'director' THEN 1
+        WHEN 'manager' THEN 2
+        WHEN 'broker' THEN 3
+        ELSE 4
+      END,
+      pu.created_at ASC
+  `;
+
   return (
     <PartnerWhiteLabelClient
       partner={{
@@ -79,6 +112,8 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
       }}
       products={products}
       links={links}
+      partnerUsers={partnerUsers}
+      canManageConfig={isDevUser(user)}
     />
   );
 }

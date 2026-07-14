@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { verifyAuth, unauthorized } from '@/lib/auth';
+import { getPartnerAccessContext, isInternalUser, verifyAuth, unauthorized } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { ensureSchema, seedInitialData } from '@/lib/schema';
@@ -25,35 +25,78 @@ export async function GET(req: NextRequest) {
 
   // Se for parceiro, força o ID dele. Se for admin, usa o solicitado ou busca todos (se não enviar)
   let targetPartnerId = user.partnerId;
-  if (user.role === 'duolife_admin' || user.role === 'duolife_staff') {
+  let access = null;
+  if (isInternalUser(user)) {
     targetPartnerId = requestedPartnerId || null;
   } else if (!targetPartnerId) {
     return unauthorized();
+  } else {
+    access = await getPartnerAccessContext(user);
   }
 
   try {
     await ensureSchema();
     await seedInitialData();
 
-    const cotacoes = await sql`
-      SELECT
-        c.id,
-        c.client_name,
-        c.client_cpf_cnpj,
-        c.client_email,
-        c.client_phone,
-        c.importancia_segurada,
-        c.premio_final,
-        c.status,
-        c.valid_until,
-        c.created_at,
-        p.name AS product_name
-      FROM cotacoes c
-      JOIN products p ON p.id = c.product_id
-      WHERE ${targetPartnerId ? sql`c.partner_id = ${targetPartnerId}` : sql`1=1`}
-      ORDER BY c.created_at DESC
-      LIMIT 100
-    `;
+    const cotacoes = !targetPartnerId
+      ? await sql`
+          SELECT
+            c.id,
+            c.client_name,
+            c.client_cpf_cnpj,
+            c.client_email,
+            c.client_phone,
+            c.importancia_segurada,
+            c.premio_final,
+            c.status,
+            c.valid_until,
+            c.created_at,
+            p.name AS product_name
+          FROM cotacoes c
+          JOIN products p ON p.id = c.product_id
+          ORDER BY c.created_at DESC
+          LIMIT 100
+        `
+      : !access || access.visibleUserIds === null
+        ? await sql`
+            SELECT
+              c.id,
+              c.client_name,
+              c.client_cpf_cnpj,
+              c.client_email,
+              c.client_phone,
+              c.importancia_segurada,
+              c.premio_final,
+              c.status,
+              c.valid_until,
+              c.created_at,
+              p.name AS product_name
+            FROM cotacoes c
+            JOIN products p ON p.id = c.product_id
+            WHERE c.partner_id = ${targetPartnerId}
+            ORDER BY c.created_at DESC
+            LIMIT 100
+          `
+        : await sql`
+            SELECT
+              c.id,
+              c.client_name,
+              c.client_cpf_cnpj,
+              c.client_email,
+              c.client_phone,
+              c.importancia_segurada,
+              c.premio_final,
+              c.status,
+              c.valid_until,
+              c.created_at,
+              p.name AS product_name
+            FROM cotacoes c
+            JOIN products p ON p.id = c.product_id
+            WHERE c.partner_id = ${targetPartnerId}
+              AND c.partner_user_id IN ${sql(access.visibleUserIds)}
+            ORDER BY c.created_at DESC
+            LIMIT 100
+          `;
 
     return Response.json({ cotacoes });
   } catch (err) {
@@ -103,11 +146,12 @@ export async function POST(req: NextRequest) {
       userId = user.userId;
       targetPartnerId = user.partnerId;
 
-      if (user.role === 'duolife_admin' || user.role === 'duolife_staff') {
+      if (isInternalUser(user)) {
         if (!data.adminSelectedPartnerId) {
           return Response.json({ error: 'Administradores precisam informar o Parceiro dono da cotação' }, { status: 400 });
         }
         targetPartnerId = data.adminSelectedPartnerId;
+        userId = null;
       } else if (!targetPartnerId) {
         return unauthorized();
       }

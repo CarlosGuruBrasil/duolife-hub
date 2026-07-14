@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Plus } from 'lucide-react';
-import { verifyPartnerAuth } from '@/lib/auth';
+import { getPartnerAccessContext, verifyPartnerAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 
@@ -37,28 +37,51 @@ function formatDate(value: string) {
 export default async function VendasPage() {
   const user = await verifyPartnerAuth();
   if (!user) redirect('/login');
+  const access = await getPartnerAccessContext(user);
+  if (!access) redirect('/login');
 
   await ensureSchema();
 
-  const vendas = await sql<VendaRow[]>`
-    SELECT
-      s.id,
-      s.policy_number,
-      s.premio_total,
-      s.commission_rate,
-      s.commission_amount,
-      s.status,
-      s.issue_date,
-      s.expiry_date,
-      p.name AS product_name,
-      c.client_name
-    FROM sales s
-    JOIN products p ON p.id = s.product_id
-    JOIN cotacoes c ON c.id = s.cotacao_id
-    WHERE s.partner_id = ${user.partnerId!}
-    ORDER BY s.issue_date DESC, s.created_at DESC
-    LIMIT 100
-  `;
+  const vendas = access.visibleUserIds === null
+    ? await sql<VendaRow[]>`
+        SELECT
+          s.id,
+          s.policy_number,
+          s.premio_total,
+          s.commission_rate,
+          s.commission_amount,
+          s.status,
+          s.issue_date,
+          s.expiry_date,
+          p.name AS product_name,
+          c.client_name
+        FROM sales s
+        JOIN products p ON p.id = s.product_id
+        JOIN cotacoes c ON c.id = s.cotacao_id
+        WHERE s.partner_id = ${access.partnerId}
+        ORDER BY s.issue_date DESC, s.created_at DESC
+        LIMIT 100
+      `
+    : await sql<VendaRow[]>`
+        SELECT
+          s.id,
+          s.policy_number,
+          s.premio_total,
+          s.commission_rate,
+          s.commission_amount,
+          s.status,
+          s.issue_date,
+          s.expiry_date,
+          p.name AS product_name,
+          c.client_name
+        FROM sales s
+        JOIN products p ON p.id = s.product_id
+        JOIN cotacoes c ON c.id = s.cotacao_id
+        WHERE s.partner_id = ${access.partnerId}
+          AND c.partner_user_id IN ${sql(access.visibleUserIds)}
+        ORDER BY s.issue_date DESC, s.created_at DESC
+        LIMIT 100
+      `;
 
   const totalPremios = vendas.reduce((sum, venda) => sum + Number(venda.premio_total || 0), 0);
   const totalComissoes = vendas.reduce((sum, venda) => sum + Number(venda.commission_amount || 0), 0);

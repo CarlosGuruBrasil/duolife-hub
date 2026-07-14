@@ -9,7 +9,7 @@ import { logger } from '@/lib/logger';
 import { getJwtSecret } from '@/lib/secrets';
 import { rateLimit, rateLimitResponse } from '@/lib/rate-limit';
 import { createRefreshToken } from '@/lib/refresh-token';
-import { normalizePermissions, type AuthUser } from '@/lib/auth';
+import { normalizePartnerRole, normalizePermissions, toPartnerUserRole, type AuthUser } from '@/lib/auth';
 
 const loginSchema = z.object({
   email: z.string().trim().email(),
@@ -46,6 +46,8 @@ export async function POST(req: NextRequest) {
         name: admin.name,
         email: admin.email,
         role: admin.role as AuthUser['role'],
+        partnerRole: null,
+        managerUserId: null,
         permissions: {},
       };
       const token = jwt.sign(payload, getJwtSecret(), { expiresIn: '8h' });
@@ -59,7 +61,7 @@ export async function POST(req: NextRequest) {
 
     // Tenta usuário de parceiro
     const [user] = await sql`
-      SELECT pu.id, pu.name, pu.email, pu.password_hash, pu.role, pu.permissions, pu.partner_id,
+      SELECT pu.id, pu.name, pu.email, pu.password_hash, pu.role, pu.permissions, pu.partner_id, pu.manager_user_id,
              p.status as partner_status
       FROM partner_users pu
       JOIN partners p ON p.id = pu.partner_id
@@ -82,7 +84,9 @@ export async function POST(req: NextRequest) {
       partnerId: user.partner_id,
       name: user.name,
       email: user.email,
-      role: `partner_${user.role}` as AuthUser['role'],
+      role: toPartnerUserRole(normalizePartnerRole(user.role)),
+      partnerRole: normalizePartnerRole(user.role),
+      managerUserId: user.manager_user_id,
       permissions: normalizePermissions(user.permissions),
     };
     const token = jwt.sign(payload, getJwtSecret(), { expiresIn: '8h' });

@@ -1,4 +1,4 @@
-import { verifyPartnerAuth } from '@/lib/auth';
+import { getPartnerAccessContext, verifyPartnerAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { redirect } from 'next/navigation';
@@ -8,22 +8,45 @@ import { ClipboardList, DollarSign, FileText, Mail, MessageCircle, Plus, WalletC
 export default async function PortalDashboard() {
   const user = await verifyPartnerAuth();
   if (!user) redirect('/login');
+  const access = await getPartnerAccessContext(user);
+  if (!access) redirect('/login');
   await ensureSchema();
 
   // KPIs do parceiro
-  const [cotacoesCount] = await sql`
-    SELECT COUNT(*) as total FROM cotacoes WHERE partner_id = ${user.partnerId!}
-  `;
-  const [vendasCount] = await sql`
-    SELECT COUNT(*) as total, COALESCE(SUM(premio_total), 0) as volume
-    FROM sales WHERE partner_id = ${user.partnerId!} AND status = 'ativa'
-  `;
-  const [comissoesCount] = await sql`
-    SELECT COALESCE(SUM(amount), 0) as pendente
-    FROM commissions WHERE partner_id = ${user.partnerId!} AND status = 'pendente'
-  `;
+  const [cotacoesCount] = access.visibleUserIds === null
+    ? await sql`SELECT COUNT(*) as total FROM cotacoes WHERE partner_id = ${access.partnerId}`
+    : await sql`SELECT COUNT(*) as total FROM cotacoes WHERE partner_id = ${access.partnerId} AND partner_user_id IN ${sql(access.visibleUserIds)}`;
+  const [vendasCount] = access.visibleUserIds === null
+    ? await sql`
+        SELECT COUNT(*) as total, COALESCE(SUM(s.premio_total), 0) as volume
+        FROM sales s
+        WHERE s.partner_id = ${access.partnerId} AND s.status = 'ativa'
+      `
+    : await sql`
+        SELECT COUNT(*) as total, COALESCE(SUM(s.premio_total), 0) as volume
+        FROM sales s
+        JOIN cotacoes c ON c.id = s.cotacao_id
+        WHERE s.partner_id = ${access.partnerId}
+          AND s.status = 'ativa'
+          AND c.partner_user_id IN ${sql(access.visibleUserIds)}
+      `;
+  const [comissoesCount] = access.visibleUserIds === null
+    ? await sql`
+        SELECT COALESCE(SUM(amount), 0) as pendente
+        FROM commissions
+        WHERE partner_id = ${access.partnerId} AND status = 'pendente'
+      `
+    : await sql`
+        SELECT COALESCE(SUM(cm.amount), 0) as pendente
+        FROM commissions cm
+        JOIN sales s ON s.id = cm.sale_id
+        JOIN cotacoes c ON c.id = s.cotacao_id
+        WHERE cm.partner_id = ${access.partnerId}
+          AND cm.status = 'pendente'
+          AND c.partner_user_id IN ${sql(access.visibleUserIds)}
+      `;
   const [leadsCount] = await sql`
-    SELECT COUNT(*) as total FROM leads WHERE partner_id = ${user.partnerId!}
+    SELECT COUNT(*) as total FROM leads WHERE partner_id = ${access.partnerId}
   `;
 
   const kpis = [

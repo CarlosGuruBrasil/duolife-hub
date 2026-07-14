@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
-import { verifyPartnerAuth } from '@/lib/auth';
+import { getPartnerAccessContext, verifyPartnerAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 
@@ -41,66 +41,126 @@ const statusLabel: Record<string, string> = {
 export default async function PortalClienteDetalhePage({ params }: { params: Promise<{ id: string }> }) {
   const user = await verifyPartnerAuth();
   if (!user) redirect('/login');
+  const access = await getPartnerAccessContext(user);
+  if (!access) redirect('/login');
 
   await ensureSchema();
   const { id } = await params;
 
-  const [client] = await sql`
-    SELECT id, full_name, document_number, email, phone
-    FROM insurance_clients
-    WHERE id = ${id}
-      AND EXISTS (
-        SELECT 1
-        FROM cotacoes c
-        WHERE c.client_id = insurance_clients.id
-          AND c.partner_id = ${user.partnerId!}
-      )
-    LIMIT 1
-  `;
+  const [client] = access.visibleUserIds === null
+    ? await sql`
+        SELECT id, full_name, document_number, email, phone
+        FROM insurance_clients
+        WHERE id = ${id}
+          AND EXISTS (
+            SELECT 1
+            FROM cotacoes c
+            WHERE c.client_id = insurance_clients.id
+              AND c.partner_id = ${access.partnerId}
+          )
+        LIMIT 1
+      `
+    : await sql`
+        SELECT id, full_name, document_number, email, phone
+        FROM insurance_clients
+        WHERE id = ${id}
+          AND EXISTS (
+            SELECT 1
+            FROM cotacoes c
+            WHERE c.client_id = insurance_clients.id
+              AND c.partner_id = ${access.partnerId}
+              AND c.partner_user_id IN ${sql(access.visibleUserIds)}
+          )
+        LIMIT 1
+      `;
 
   if (!client) notFound();
 
-  const quotes = await sql`
-    SELECT
-      c.id,
-      c.status,
-      c.created_at,
-      c.premio_final,
-      c.importancia_segurada,
-      p.name AS product_name,
-      po.status AS payment_status,
-      po.installment_count,
-      po.paid_installments,
-      sd.status AS signature_status,
-      sd.signed_file_url
-    FROM cotacoes c
-    JOIN products p ON p.id = c.product_id
-    LEFT JOIN payment_orders po ON po.cotacao_id = c.id
-    LEFT JOIN signature_documents sd ON sd.cotacao_id = c.id
-    WHERE c.client_id = ${id}
-      AND c.partner_id = ${user.partnerId!}
-    ORDER BY c.created_at DESC
-  `;
+  const quotes = access.visibleUserIds === null
+    ? await sql`
+        SELECT
+          c.id,
+          c.status,
+          c.created_at,
+          c.premio_final,
+          c.importancia_segurada,
+          p.name AS product_name,
+          po.status AS payment_status,
+          po.installment_count,
+          po.paid_installments,
+          sd.status AS signature_status,
+          sd.signed_file_url
+        FROM cotacoes c
+        JOIN products p ON p.id = c.product_id
+        LEFT JOIN payment_orders po ON po.cotacao_id = c.id
+        LEFT JOIN signature_documents sd ON sd.cotacao_id = c.id
+        WHERE c.client_id = ${id}
+          AND c.partner_id = ${access.partnerId}
+        ORDER BY c.created_at DESC
+      `
+    : await sql`
+        SELECT
+          c.id,
+          c.status,
+          c.created_at,
+          c.premio_final,
+          c.importancia_segurada,
+          p.name AS product_name,
+          po.status AS payment_status,
+          po.installment_count,
+          po.paid_installments,
+          sd.status AS signature_status,
+          sd.signed_file_url
+        FROM cotacoes c
+        JOIN products p ON p.id = c.product_id
+        LEFT JOIN payment_orders po ON po.cotacao_id = c.id
+        LEFT JOIN signature_documents sd ON sd.cotacao_id = c.id
+        WHERE c.client_id = ${id}
+          AND c.partner_id = ${access.partnerId}
+          AND c.partner_user_id IN ${sql(access.visibleUserIds)}
+        ORDER BY c.created_at DESC
+      `;
 
-  const installments = await sql`
-    SELECT
-      pi.id,
-      pi.cotacao_id,
-      pi.installment_number,
-      pi.status,
-      pi.amount,
-      pi.due_date,
-      pi.paid_at,
-      pi.bank_slip_url,
-      pi.invoice_url,
-      p.name AS product_name
-    FROM payment_installments pi
-    JOIN cotacoes c ON c.id = pi.cotacao_id
-    JOIN products p ON p.id = c.product_id
-    WHERE pi.client_id = ${id}
-      AND c.partner_id = ${user.partnerId!}
-    ORDER BY pi.due_date ASC NULLS LAST, pi.installment_number ASC
-  `;
+  const installments = access.visibleUserIds === null
+    ? await sql`
+        SELECT
+          pi.id,
+          pi.cotacao_id,
+          pi.installment_number,
+          pi.status,
+          pi.amount,
+          pi.due_date,
+          pi.paid_at,
+          pi.bank_slip_url,
+          pi.invoice_url,
+          p.name AS product_name
+        FROM payment_installments pi
+        JOIN cotacoes c ON c.id = pi.cotacao_id
+        JOIN products p ON p.id = c.product_id
+        WHERE pi.client_id = ${id}
+          AND c.partner_id = ${access.partnerId}
+        ORDER BY pi.due_date ASC NULLS LAST, pi.installment_number ASC
+      `
+    : await sql`
+        SELECT
+          pi.id,
+          pi.cotacao_id,
+          pi.installment_number,
+          pi.status,
+          pi.amount,
+          pi.due_date,
+          pi.paid_at,
+          pi.bank_slip_url,
+          pi.invoice_url,
+          p.name AS product_name
+        FROM payment_installments pi
+        JOIN cotacoes c ON c.id = pi.cotacao_id
+        JOIN products p ON p.id = c.product_id
+        WHERE pi.client_id = ${id}
+          AND c.partner_id = ${access.partnerId}
+          AND c.partner_user_id IN ${sql(access.visibleUserIds)}
+        ORDER BY pi.due_date ASC NULLS LAST, pi.installment_number ASC
+      `;
 
   return (
     <div className="space-y-8">
