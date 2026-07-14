@@ -251,40 +251,20 @@ export default function Home() {
 
           <div className="relative z-10 w-[min(92%,1800px)] mx-auto px-6 pt-28 pb-20 md:pt-20 md:pb-24 lg:pt-28 lg:pb-28">
             <div className="max-w-[760px] text-left">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.6 }}
-                className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md text-accent px-4 py-1.5 rounded-full text-xs font-black tracking-widest uppercase mb-8 border border-white/5 self-start"
-              >
+              <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md text-accent px-4 py-1.5 rounded-full text-xs font-black tracking-widest uppercase mb-8 border border-white/5 self-start shadow-[0_10px_30px_rgba(7,42,51,0.18)]">
                 <Sparkles size={13} />
                 Assessoria Técnico-Comercial B2B
-              </motion.div>
+              </div>
 
-              <motion.h1
-                initial="hidden"
-                animate="visible"
-                variants={fadeUp}
-                className="hero-title-wrap text-4xl md:text-6xl lg:text-[76px] xl:text-[84px] font-black tracking-[-0.03em] leading-[1.02] uppercase mb-6 text-gradient-shimmer drop-shadow-[0_8px_24px_rgba(0,0,0,0.32)]"
-              >
+              <h1 className="hero-title-wrap text-4xl md:text-6xl lg:text-[76px] xl:text-[84px] font-black tracking-[-0.03em] leading-[1.02] uppercase mb-6 text-white drop-shadow-[0_8px_24px_rgba(0,0,0,0.32)]">
                 Mais foco nas Vendas. <span className="text-gradient-shimmer font-black">Menos burocracia</span>.
-              </motion.h1>
+              </h1>
 
-              <motion.p
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.15 }}
-                className="text-base md:text-lg text-white/84 leading-relaxed font-light mb-10 max-w-xl text-left drop-shadow-[0_2px_10px_rgba(0,0,0,0.22)]"
-              >
+              <p className="text-base md:text-lg text-white/84 leading-relaxed font-light mb-10 max-w-xl text-left drop-shadow-[0_2px_10px_rgba(0,0,0,0.22)]">
                 Na DuoLife, somos Especialistas em Destravar Resultados. Oferecemos suporte completo — Comercial, Técnico, Operacional e de Pós-venda — para que corretores e consultores foquem no que fazem de melhor.
-              </motion.p>
+              </p>
 
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8, delay: 0.3 }}
-                className="flex flex-col sm:flex-row gap-4"
-              >
+              <div className="flex flex-col sm:flex-row gap-4">
                 <Link
                   href="/seja-parceiro"
                   className="flex items-center justify-center gap-2 bg-accent hover:bg-[#00b2be] text-primary-dark px-10 py-5 rounded-full font-black text-sm transition-all duration-300 transform hover:-translate-y-0.5 shadow-lg shadow-accent/10"
@@ -301,7 +281,7 @@ export default function Home() {
                   <Phone size={15} />
                   Falar no WhatsApp
                 </a>
-              </motion.div>
+              </div>
             </div>
 
             <div className="mt-14 inline-flex bg-primary-dark/60 backdrop-blur-xl border border-white/10 px-5 py-4 rounded-[24px] shadow-2xl max-w-[220px]">
@@ -511,15 +491,15 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="grid md:grid-cols-3 gap-8">
+            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-8">
               {leadership.map((member) => (
                 <Card3D 
                   key={member.name} 
-                  className="group relative overflow-hidden rounded-[32px] border border-border bg-[linear-gradient(180deg,#ffffff_0%,#fbfefe_62%,#f5fbfb_100%)] p-8 md:p-10 shadow-[0_24px_70px_rgba(14,74,90,0.08)] flex flex-col justify-between text-left transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_30px_80px_rgba(14,74,90,0.14)]"
+                  className="group relative overflow-hidden rounded-[32px] border border-border bg-[linear-gradient(180deg,#ffffff_0%,#fbfefe_62%,#f5fbfb_100%)] p-8 md:p-10 shadow-[0_28px_80px_rgba(14,74,90,0.12)] flex h-full flex-col text-left transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_34px_90px_rgba(14,74,90,0.18)]"
                 >
                   <div className="absolute inset-y-0 right-0 w-1/3 bg-gradient-to-l from-accent/5 to-transparent pointer-events-none" />
-                  <div className="grid gap-7 md:grid-cols-[176px_1fr] md:items-center">
-                    <div className="flex justify-start">
+                  <div className="flex h-full flex-col gap-7">
+                    <div className="flex justify-center">
                       <div className="rounded-full bg-gradient-to-br from-primary/12 via-white to-accent/18 p-1.5 shadow-[0_18px_34px_rgba(14,74,90,0.12)]">
                         <div className="relative w-36 h-36 md:w-44 md:h-44 rounded-full overflow-hidden border border-white/90 bg-white">
                           <Image
@@ -532,12 +512,14 @@ export default function Home() {
                         </div>
                       </div>
                     </div>
-                    <div className="min-w-0">
-                      <span className="inline-flex max-w-full items-center rounded-full border border-border bg-white/80 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-secondary leading-[1.2] whitespace-nowrap">
-                        {member.role}
-                      </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex justify-center">
+                        <span className="inline-flex max-w-full items-center justify-center rounded-full border border-border bg-white/80 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-secondary leading-[1.2] whitespace-normal break-words text-center shadow-[0_8px_24px_rgba(14,74,90,0.06)]">
+                          {member.role}
+                        </span>
+                      </div>
                       <h3 className="mt-4 text-[1.05rem] md:text-[1.15rem] font-black text-primary uppercase tracking-tight leading-[1.08]">{member.name}</h3>
-                      <p className="mt-4 text-[0.98rem] text-[#435a61] font-normal leading-relaxed max-w-[32ch]">{member.bio}</p>
+                      <p className="mt-4 text-[0.98rem] text-[#435a61] font-normal leading-relaxed">{member.bio}</p>
                     </div>
                   </div>
                 </Card3D>

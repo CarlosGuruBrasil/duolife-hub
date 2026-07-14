@@ -3,7 +3,7 @@
 import React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
+import InternalPageHero from '@/components/site/InternalPageHero';
 import {
   ArrowRight,
   BriefcaseBusiness,
@@ -15,32 +15,11 @@ import {
   ShieldCheck,
   TriangleAlert,
   Zap,
-  Sparkles,
   Phone,
   ArrowUpRight,
   TrendingDown,
   Check
 } from 'lucide-react';
-
-const fadeUp = {
-  hidden: { opacity: 0, y: 30 },
-  visible: { 
-    opacity: 1, 
-    y: 0,
-    transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] as const }
-  }
-};
-
-const staggerContainer = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1,
-      delayChildren: 0.1
-    }
-  }
-};
 
 const pillars = [
   {
@@ -95,52 +74,22 @@ export default function SolucoesClient() {
     <div className="bg-white text-primary-dark">
 
       {/* Hero Section */}
-      <section className="relative isolate overflow-hidden bg-primary-dark text-white min-h-screen flex items-start">
-        <Image src="/duolife-strategy.jpg" alt="" fill className="object-cover object-[50%_24%]" priority />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_28%,rgba(0,212,224,0.18)_0%,transparent_36%),linear-gradient(180deg,rgba(7,42,51,0.72)_0%,rgba(7,42,51,0.8)_100%)]" />
-        <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-primary-dark to-transparent" />
-
-        <div className="relative z-10 w-[min(92%,1800px)] mx-auto px-6 pt-20 pb-20 lg:pt-28 lg:pb-24">
-          <div className="max-w-[760px] text-left">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.6 }}
-              className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md text-accent px-4 py-1.5 rounded-full text-xs font-black tracking-widest uppercase mb-8 border border-white/5"
-            >
-              <Sparkles size={13} />
-              Nossas Soluções
-            </motion.div>
-            <motion.h1
-              initial="hidden"
-              animate="visible"
-              variants={fadeUp}
-              className="hero-title-wrap-wide hero-title-wrap text-4xl md:text-6xl lg:text-[76px] xl:text-[84px] font-black tracking-[-0.03em] leading-[1.02] uppercase mb-6 text-gradient-shimmer drop-shadow-[0_8px_24px_rgba(0,0,0,0.32)]"
-            >
-              <span className="block">Suporte completo para os seus</span>
-              <span className="block">negócios fluírem.</span>
-            </motion.h1>
-            <motion.p
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.15 }}
-              className="text-base md:text-lg text-white/84 leading-relaxed font-light mb-10 max-w-xl drop-shadow-[0_2px_10px_rgba(0,0,0,0.22)]"
-            >
-              A DuoLife atua como a retaguarda estratégica de corretores e consultores, fornecendo capacitação comercial e técnica para acelerar a contratação de benefícios.
-            </motion.p>
-          </div>
-        </div>
-      </section>
+      <InternalPageHero
+        badge="Nossas Soluções"
+        imageSrc="/duolife-strategy.jpg"
+        imageClassName="object-cover object-[50%_24%]"
+        title={
+          <>
+            <span className="block">Suporte completo para os seus</span>
+            <span className="block text-gradient-shimmer">negócios fluírem.</span>
+          </>
+        }
+        description="A DuoLife atua como a retaguarda estratégica de corretores e consultores, fornecendo capacitação comercial e técnica para acelerar a contratação de benefícios."
+      />
 
       {/* Desafios do Mercado */}
       <section className="py-28 px-6 bg-white border-b border-border">
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: '-80px' }}
-          variants={fadeUp}
-          className="w-[min(92%,1800px)] mx-auto"
-        >
+        <div className="w-[min(92%,1800px)] mx-auto">
           <div className="text-center max-w-2xl mx-auto mb-20">
             <span className="text-xs font-black tracking-widest text-[#ef4444] uppercase mb-6 block">Fricção no Dia a Dia</span>
             <h2 className="text-3xl md:text-[3.5rem] font-black tracking-tight text-primary uppercase">
@@ -164,36 +113,24 @@ export default function SolucoesClient() {
               </div>
             ))}
           </div>
-        </motion.div>
+        </div>
       </section>
 
       {/* Os 4 Pilares da Assessoria */}
       <section className="py-28 px-6 bg-surface border-b border-border">
         <div className="w-[min(92%,1800px)] mx-auto">
-          <motion.div
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, margin: '-80px' }}
-            variants={fadeUp}
-            className="text-center max-w-2xl mx-auto mb-20"
-          >
+          <div className="text-center max-w-2xl mx-auto mb-20">
             <span className="text-xs font-black tracking-widest text-primary uppercase mb-6 block">Modelo DuoLife</span>
             <h2 className="text-4xl md:text-[3.5rem] font-black tracking-tight text-primary uppercase">
               Assessoria em Quatro Frentes
             </h2>
-          </motion.div>
+          </div>
 
-          <motion.div
-            initial="hidden"
-            whileInView="visible"
-            viewport={{ once: true, margin: '-80px' }}
-            variants={staggerContainer}
-            className="grid md:grid-cols-2 gap-8"
-          >
+          <div className="grid md:grid-cols-2 gap-8">
             {pillars.map((pillar) => {
               const Icon = pillar.icon;
               return (
-                <motion.div key={pillar.title} variants={fadeUp}>
+                <div key={pillar.title}>
                   <Card3D
                     className="bg-white rounded-[32px] overflow-hidden border border-[#d7e3df] shadow-sm flex flex-col justify-between hover:shadow-md transition-shadow group h-auto min-h-[500px]"
                   >
@@ -225,22 +162,16 @@ export default function SolucoesClient() {
                       </ul>
                     </div>
                   </Card3D>
-                </motion.div>
+                </div>
               );
             })}
-          </motion.div>
+          </div>
         </div>
       </section>
 
       {/* Produto em Destaque: Responsabilidade Civil */}
       <section className="py-28 px-6 bg-white">
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: '-80px' }}
-          variants={fadeUp}
-          className="w-[min(92%,1800px)] mx-auto bg-primary rounded-[48px] p-8 md:p-16 text-white grid lg:grid-cols-12 gap-12 items-center relative overflow-hidden shadow-2xl"
-        >
+        <div className="w-[min(92%,1800px)] mx-auto bg-primary rounded-[48px] p-8 md:p-16 text-white grid lg:grid-cols-12 gap-12 items-center relative overflow-hidden shadow-2xl">
           <div className="absolute top-0 right-0 w-[400px] h-[400px] bg-[radial-gradient(circle,_rgba(0,212,224,0.15)_0%,_transparent_60%)] pointer-events-none" />
           
           <div className="lg:col-span-7 text-left relative z-10">
@@ -272,7 +203,7 @@ export default function SolucoesClient() {
           <div className="lg:col-span-5 relative h-[320px] rounded-[32px] overflow-hidden border border-white/10 shadow-xl">
             <Image src="/duolife-team-success.jpg" alt="Seguro RC DuoLife" fill className="object-cover" />
           </div>
-        </motion.div>
+        </div>
       </section>
 
       {/* CTA Final */}

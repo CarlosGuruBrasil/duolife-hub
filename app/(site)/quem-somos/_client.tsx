@@ -3,8 +3,8 @@
 import React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
-import { ArrowRight, Eye, Handshake, Lightbulb, Scale, Star, Target, Users, Sparkles, Check } from 'lucide-react';
+import { ArrowRight, Eye, Handshake, Lightbulb, Scale, Star, Target, Users, Check } from 'lucide-react';
+import InternalPageHero from '@/components/site/InternalPageHero';
 
 const team = [
   { 
@@ -37,15 +37,6 @@ const values = [
   { icon: Lightbulb, title: 'Inovação', desc: 'Tecnologia moderna e melhoria contínua a serviço de resultados práticos.' },
 ];
 
-const fadeUp = {
-  hidden: { opacity: 0, y: 30 },
-  visible: { 
-    opacity: 1, 
-    y: 0,
-    transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] as const }
-  }
-};
-
 interface Card3DProps {
   children: React.ReactNode;
   className?: string;
@@ -70,51 +61,21 @@ export default function QuemSomosClient() {
     <div className="bg-white text-primary-dark">
 
       {/* Hero Section (mesmo idioma visual da home) */}
-      <section className="relative isolate overflow-hidden bg-primary-dark text-white min-h-[100svh] flex items-start">
-        <Image src="/duolife-broker-woman.jpg" alt="" fill className="object-cover object-[50%_18%]" priority />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_28%,rgba(0,212,224,0.18)_0%,transparent_36%),linear-gradient(180deg,rgba(7,42,51,0.72)_0%,rgba(7,42,51,0.8)_100%)]" />
-        <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-primary-dark to-transparent" />
-
-        <div className="relative z-10 w-[min(92%,1800px)] mx-auto px-6 pt-16 pb-20 md:pt-20 md:pb-24 lg:pt-28 lg:pb-24">
-          <div className="max-w-[760px] text-left">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.6 }}
-              className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md text-accent px-4 py-1.5 rounded-full text-xs font-black tracking-widest uppercase mb-8 border border-white/5"
-            >
-              <Sparkles size={13} />
-              Nossa História
-            </motion.div>
-            <motion.h1
-              initial="hidden"
-              animate="visible"
-              variants={fadeUp}
-              className="hero-title-wrap text-4xl md:text-6xl lg:text-[76px] xl:text-[84px] font-black tracking-[-0.03em] leading-[1.02] uppercase mb-6 text-gradient-shimmer drop-shadow-[0_8px_24px_rgba(0,0,0,0.32)]"
-            >
-              O elo entre corretores, clientes e seguradoras.
-            </motion.h1>
-            <motion.p
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.15 }}
-              className="text-base md:text-lg text-white/84 leading-relaxed font-light mb-10 max-w-xl drop-shadow-[0_2px_10px_rgba(0,0,0,0.22)]"
-            >
-              A DuoLife é uma assessoria de negócios especializada no acolhimento e retaguarda técnico-operacional de corretores e consultores de seguros de saúde suplementar e benefícios corporativos.
-            </motion.p>
-          </div>
-        </div>
-      </section>
+      <InternalPageHero
+        badge="Nossa História"
+        imageSrc="/duolife-broker-woman.jpg"
+        imageClassName="object-cover object-[50%_18%]"
+        title={
+          <>
+            O elo entre <span className="text-gradient-shimmer font-black">corretores</span>, clientes e seguradoras.
+          </>
+        }
+        description="A DuoLife é uma assessoria de negócios especializada no acolhimento e retaguarda técnico-operacional de corretores e consultores de seguros de saúde suplementar e benefícios corporativos."
+      />
 
       {/* Seção Quem Somos (Split com foto real) */}
       <section className="py-20 md:py-28 px-6 bg-white border-b border-border">
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: '-80px' }}
-          variants={fadeUp}
-          className="w-[min(92%,1800px)] mx-auto grid lg:grid-cols-12 gap-16 items-center"
-        >
+        <div className="w-[min(92%,1800px)] mx-auto grid lg:grid-cols-12 gap-16 items-center">
 
           <div className="lg:col-span-7 text-left">
             <span className="text-xs font-black tracking-widest text-primary uppercase mb-6 block">Nossa Essência</span>
@@ -151,18 +112,12 @@ export default function QuemSomosClient() {
             />
           </div>
 
-        </motion.div>
+        </div>
       </section>
 
       {/* Diretrizes Culturais (Fundo Off-white) */}
       <section className="py-20 md:py-28 px-6 bg-surface border-b border-border">
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: '-80px' }}
-          variants={fadeUp}
-          className="w-[min(92%,1800px)] mx-auto"
-        >
+        <div className="w-[min(92%,1800px)] mx-auto">
           <div className="text-center max-w-2xl mx-auto mb-20">
             <span className="text-xs font-black tracking-widest text-primary uppercase mb-6 block">Princípios</span>
             <h2 className="text-4xl md:text-[3.5rem] font-black tracking-tight text-primary uppercase">
@@ -213,18 +168,12 @@ export default function QuemSomosClient() {
             })}
           </div>
 
-        </motion.div>
+        </div>
       </section>
 
       {/* A Liderança (Fundo Branco) */}
       <section className="pt-32 pb-20 md:pt-36 md:pb-28 px-6 bg-white scroll-mt-28">
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: '-80px' }}
-          variants={fadeUp}
-          className="w-[min(92%,1800px)] mx-auto"
-        >
+        <div className="w-[min(92%,1800px)] mx-auto">
           <div className="text-center max-w-2xl mx-auto mb-20">
             <span className="text-xs font-black tracking-widest text-primary uppercase mb-6 block">Liderança</span>
             <h2 className="text-4xl md:text-[3.5rem] font-black tracking-tight text-primary uppercase">
@@ -236,7 +185,7 @@ export default function QuemSomosClient() {
             {team.map((member) => (
               <Card3D 
                 key={member.name} 
-                className="group relative overflow-hidden rounded-[32px] border border-border bg-[linear-gradient(180deg,#ffffff_0%,#fbfefe_62%,#f5fbfb_100%)] p-8 md:p-10 shadow-[0_24px_70px_rgba(14,74,90,0.08)] hover:-translate-y-1 hover:shadow-[0_30px_80px_rgba(14,74,90,0.14)] transition-all text-center"
+                className="group relative overflow-hidden rounded-[32px] border border-border bg-[linear-gradient(180deg,#ffffff_0%,#fbfefe_62%,#f5fbfb_100%)] p-8 md:p-10 shadow-[0_28px_80px_rgba(14,74,90,0.12)] hover:-translate-y-1 hover:shadow-[0_34px_90px_rgba(14,74,90,0.18)] transition-all text-center"
               >
                 <div className="absolute inset-y-0 right-0 w-1/3 bg-gradient-to-l from-accent/5 to-transparent pointer-events-none" />
                 <div className="relative flex h-full flex-col items-center">
@@ -251,9 +200,11 @@ export default function QuemSomosClient() {
                       />
                     </div>
                   </div>
-                  <span className="mt-7 inline-flex max-w-full items-center justify-center rounded-full border border-border bg-white/80 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-secondary leading-[1.2]">
-                    {member.role}
-                  </span>
+                  <div className="mt-7 flex justify-center">
+                    <span className="inline-flex max-w-full items-center justify-center rounded-full border border-border bg-white/80 px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-secondary leading-[1.2] shadow-[0_8px_24px_rgba(14,74,90,0.06)]">
+                      {member.role}
+                    </span>
+                  </div>
                   <h3 className="mt-4 text-[1.08rem] font-black uppercase leading-[1.08] tracking-tight text-primary md:text-[1.14rem]">{member.name}</h3>
                   <p className="mx-auto mt-4 max-w-[32ch] text-[0.98rem] font-normal leading-relaxed text-[#435a61]">{member.bio}</p>
                   <div className="mt-7 w-full border-t border-border pt-4 text-[10px] font-black uppercase tracking-[0.18em] text-secondary">
@@ -263,7 +214,7 @@ export default function QuemSomosClient() {
               </Card3D>
             ))}
           </div>
-        </motion.div>
+        </div>
       </section>
 
       {/* CTA Final */}

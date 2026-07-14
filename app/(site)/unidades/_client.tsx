@@ -2,8 +2,8 @@
 
 import React from 'react';
 import Image from 'next/image';
-import { motion } from 'framer-motion';
-import { Building2, FlaskConical, MapPin, Waves, Sparkles, ArrowUpRight } from 'lucide-react';
+import { Building2, FlaskConical, MapPin, Waves } from 'lucide-react';
+import InternalPageHero from '@/components/site/InternalPageHero';
 
 const units = [
   {
@@ -15,6 +15,8 @@ const units = [
     maps: 'https://maps.google.com/?q=Av.+Aluísio+Pires+Condeixa,+2550,+Joinville,+SC',
     icon: Building2,
     image: '/duolife-office.jpg',
+    type: 'Base Comercial',
+    note: 'Ponto de apoio para reuniões com parceiros, alinhamentos comerciais e relacionamento institucional na região norte de Santa Catarina.',
   },
   {
     name: 'Centro Empresarial Corporate Park',
@@ -24,7 +26,9 @@ const units = [
     cep: '88050-000',
     maps: 'https://maps.google.com/?q=Rod.+José+Carlos+Daux,+8600,+Florianópolis,+SC',
     icon: Waves,
-    image: '/duolife-team-meeting.jpg',
+    image: '/duolife-sc-cities.jpg',
+    type: 'Base Executiva',
+    note: 'Estrutura de atendimento para reuniões estratégicas, conexões com operadoras e apoio à operação regional da Grande Florianópolis.',
   },
   {
     name: 'CDTEC — Condomínio de Desenvolvimento Tecnológico',
@@ -34,18 +38,11 @@ const units = [
     cep: '89202-200',
     maps: 'https://maps.google.com/?q=Rua+São+Paulo,+31,+Joinville,+SC',
     icon: FlaskConical,
-    image: '/duolife-partners-board.jpg',
+    image: '/duolife-office.jpg',
+    type: 'Base Operacional',
+    note: 'Unidade voltada ao suporte técnico-operacional e à coordenação das demandas do parceiro no dia a dia.',
   },
 ];
-
-const fadeUp = {
-  hidden: { opacity: 0, y: 30 },
-  visible: { 
-    opacity: 1, 
-    y: 0,
-    transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] as const }
-  }
-};
 
 interface Card3DProps {
   children: React.ReactNode;
@@ -62,57 +59,40 @@ export default function UnidadesClient() {
     <div className="bg-white text-primary-dark">
 
       {/* Hero Section */}
-      <section className="relative isolate overflow-hidden bg-primary-dark text-white min-h-screen flex items-start">
-        <Image src="/duolife-sc-cities.jpg" alt="" fill className="object-cover object-[50%_34%]" priority />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_28%,rgba(0,212,224,0.18)_0%,transparent_36%),linear-gradient(180deg,rgba(7,42,51,0.72)_0%,rgba(7,42,51,0.8)_100%)]" />
-        <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-primary-dark to-transparent" />
-
-        <div className="relative z-10 w-[min(92%,1800px)] mx-auto px-6 pt-20 pb-20 lg:pt-28 lg:pb-24">
-          <div className="max-w-[760px] text-left">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.6 }}
-              className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md text-accent px-4 py-1.5 rounded-full text-xs font-black tracking-widest uppercase mb-8 border border-white/5"
-            >
-              <Sparkles size={13} />
-              Nossas Sedes
-            </motion.div>
-            <motion.h1
-              initial="hidden"
-              animate="visible"
-              variants={fadeUp}
-              className="hero-title-wrap text-4xl md:text-6xl lg:text-[76px] xl:text-[84px] font-black tracking-[-0.03em] leading-[1.02] uppercase mb-6 text-gradient-shimmer drop-shadow-[0_8px_24px_rgba(0,0,0,0.32)]"
-            >
-              Presença em Santa Catarina. Atendimento nacional.
-            </motion.h1>
-            <motion.p
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.15 }}
-              className="text-base md:text-lg text-white/84 leading-relaxed font-light mb-10 max-w-xl drop-shadow-[0_2px_10px_rgba(0,0,0,0.22)]"
-            >
-              Unidades em Joinville e Florianópolis dão base para uma operação próxima, com suporte técnico e operacional de excelência para corretores parceiros em todo o Brasil.
-            </motion.p>
-          </div>
-        </div>
-      </section>
+      <InternalPageHero
+        badge="Nossas Sedes"
+        imageSrc="/duolife-sc-cities.jpg"
+        imageClassName="object-cover object-[50%_34%]"
+        title={
+          <>
+            Presença em <span className="text-gradient-shimmer font-black">Santa Catarina</span>. Atendimento nacional.
+          </>
+        }
+        description="Unidades em Joinville e Florianópolis dão base para uma operação próxima, com suporte técnico e operacional de excelência para corretores parceiros em todo o Brasil."
+      />
 
       {/* Grid de Unidades */}
       <section className="py-28 px-6 bg-surface border-b border-border">
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: '-80px' }}
-          variants={fadeUp}
-          className="w-[min(92%,1800px)] mx-auto"
-        >
+        <div className="w-[min(92%,1800px)] mx-auto">
+          <div className="mb-16 grid gap-6 md:grid-cols-3">
+            {[
+              { value: '3', label: 'bases de atendimento em SC' },
+              { value: '2', label: 'cidades estratégicas de operação' },
+              { value: 'Brasil', label: 'cobertura comercial apoiada pelas unidades' },
+            ].map((item) => (
+              <div key={item.label} className="rounded-[28px] border border-border bg-white p-6 shadow-[0_18px_50px_rgba(14,74,90,0.06)] text-left">
+                <div className="text-4xl font-black leading-none tracking-tight text-primary">{item.value}</div>
+                <div className="mt-3 text-[11px] font-black uppercase tracking-[0.16em] text-secondary">{item.label}</div>
+              </div>
+            ))}
+          </div>
+
           <div className="grid md:grid-cols-3 gap-8">
             {units.map((unit) => {
               const Icon = unit.icon;
               return (
                 <Card3D 
-                  className="bg-white border border-border rounded-3xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between text-left" 
+                  className="bg-white border border-border rounded-3xl p-6 shadow-[0_20px_55px_rgba(14,74,90,0.08)] hover:shadow-[0_26px_65px_rgba(14,74,90,0.12)] transition-shadow flex flex-col justify-between text-left" 
                   key={unit.name}
                 >
                   <div>
@@ -127,6 +107,9 @@ export default function UnidadesClient() {
                       <div className="absolute top-4 right-4 w-10 h-10 rounded-xl bg-white/90 backdrop-blur-sm flex items-center justify-center text-primary shadow-sm">
                         <Icon size={20} />
                       </div>
+                      <div className="absolute left-4 bottom-4 inline-flex items-center rounded-full border border-white/40 bg-[#072a33]/75 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-white backdrop-blur-md">
+                        {unit.type}
+                      </div>
                     </div>
 
                     <h2 className="mb-3 text-xl font-black leading-tight text-primary uppercase tracking-tight">
@@ -139,6 +122,9 @@ export default function UnidadesClient() {
                       <p className="font-bold text-primary">{unit.city}</p>
                       <p className="text-xs text-secondary">CEP {unit.cep}</p>
                     </div>
+                    <p className="mt-5 border-t border-border pt-5 text-sm font-light leading-relaxed text-[#435a61]">
+                      {unit.note}
+                    </p>
                   </div>
 
                   <a 
@@ -149,22 +135,16 @@ export default function UnidadesClient() {
                   >
                     Ver no Google Maps
                   </a>
-                </Card3D>
-              );
-            })}
+              </Card3D>
+            );
+          })}
           </div>
-        </motion.div>
+        </div>
       </section>
 
       {/* Seção Abrangência */}
       <section className="py-28 px-6 bg-white">
-        <motion.div
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: '-80px' }}
-          variants={fadeUp}
-          className="w-[min(92%,1800px)] mx-auto"
-        >
+        <div className="w-[min(92%,1800px)] mx-auto">
           <div className="grid lg:grid-cols-12 gap-16 items-center">
 
             <div className="lg:col-span-7 text-left">
@@ -194,10 +174,16 @@ export default function UnidadesClient() {
                 sizes="(max-width: 768px) 100vw, 40vw"
                 className="object-cover"
               />
+              <div className="absolute inset-x-5 bottom-5 rounded-2xl border border-white/15 bg-[#072a33]/72 p-4 text-white backdrop-blur-md">
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-accent">Atendimento com presença regional</div>
+                <p className="mt-2 text-sm font-light leading-relaxed text-white/82">
+                  Reuniões estratégicas, relacionamento com parceiros e retaguarda técnico-operacional sustentados por uma base física em Santa Catarina.
+                </p>
+              </div>
             </div>
 
           </div>
-        </motion.div>
+        </div>
       </section>
 
     </div>
