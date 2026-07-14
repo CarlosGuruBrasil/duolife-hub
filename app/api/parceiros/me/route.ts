@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { verifyPartnerAuth, unauthorized } from '@/lib/auth';
+import { canManageOwnCompany, verifyPartnerAuth, unauthorized } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
@@ -41,6 +41,9 @@ export async function GET() {
 export async function PUT(req: NextRequest) {
   const user = await verifyPartnerAuth();
   if (!user) return unauthorized();
+  if (!canManageOwnCompany(user)) {
+    return Response.json({ error: 'Somente o admin da empresa pode editar estes dados' }, { status: 403 });
+  }
 
   try {
     await ensureSchema();

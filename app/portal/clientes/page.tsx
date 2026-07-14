@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ArrowRight, Users } from 'lucide-react';
-import { verifyPartnerAuth } from '@/lib/auth';
+import { getPartnerAccessContext, verifyPartnerAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 
@@ -52,48 +52,95 @@ function formatDate(value: string) {
 export default async function PortalClientesPage() {
   const user = await verifyPartnerAuth();
   if (!user) redirect('/login');
+  const access = await getPartnerAccessContext(user);
+  if (!access) redirect('/login');
 
   await ensureSchema();
 
-  const clients = await sql<ClientRow[]>`
-    SELECT
-      ic.id,
-      ic.full_name,
-      ic.document_number,
-      ic.email,
-      ic.phone,
-      COUNT(DISTINCT c.product_id)::int AS products_count,
-      COUNT(DISTINCT c.id)::int AS cotacoes_count,
-      (
-        SELECT c2.status
-        FROM cotacoes c2
-        WHERE c2.client_id = ic.id
-          AND c2.partner_id = ${user.partnerId!}
-        ORDER BY c2.created_at DESC
-        LIMIT 1
-      ) AS last_quote_status,
-      (
-        SELECT po.status
-        FROM payment_orders po
-        WHERE po.client_id = ic.id
-          AND po.partner_id = ${user.partnerId!}
-        ORDER BY po.created_at DESC
-        LIMIT 1
-      ) AS last_payment_status,
-      COALESCE(SUM(po.paid_installments), 0)::int AS paid_installments,
-      COALESCE(SUM(po.installment_count), 0)::int AS total_installments,
-      MAX(COALESCE(po.updated_at, c.updated_at, ic.updated_at))::text AS updated_at
-    FROM insurance_clients ic
-    JOIN cotacoes c
-      ON c.client_id = ic.id
-     AND c.partner_id = ${user.partnerId!}
-    LEFT JOIN payment_orders po
-      ON po.client_id = ic.id
-     AND po.partner_id = ${user.partnerId!}
-    GROUP BY ic.id, ic.full_name, ic.document_number, ic.email, ic.phone
-    ORDER BY MAX(COALESCE(po.updated_at, c.updated_at, ic.updated_at)) DESC
-    LIMIT 200
-  `;
+  const clients = access.visibleUserIds === null
+    ? await sql<ClientRow[]>`
+        SELECT
+          ic.id,
+          ic.full_name,
+          ic.document_number,
+          ic.email,
+          ic.phone,
+          COUNT(DISTINCT c.product_id)::int AS products_count,
+          COUNT(DISTINCT c.id)::int AS cotacoes_count,
+          (
+            SELECT c2.status
+            FROM cotacoes c2
+            WHERE c2.client_id = ic.id
+              AND c2.partner_id = ${access.partnerId}
+            ORDER BY c2.created_at DESC
+            LIMIT 1
+          ) AS last_quote_status,
+          (
+            SELECT po.status
+            FROM payment_orders po
+            WHERE po.client_id = ic.id
+              AND po.partner_id = ${access.partnerId}
+            ORDER BY po.created_at DESC
+            LIMIT 1
+          ) AS last_payment_status,
+          COALESCE(SUM(po.paid_installments), 0)::int AS paid_installments,
+          COALESCE(SUM(po.installment_count), 0)::int AS total_installments,
+          MAX(COALESCE(po.updated_at, c.updated_at, ic.updated_at))::text AS updated_at
+        FROM insurance_clients ic
+        JOIN cotacoes c
+          ON c.client_id = ic.id
+         AND c.partner_id = ${access.partnerId}
+        LEFT JOIN payment_orders po
+          ON po.client_id = ic.id
+         AND po.partner_id = ${access.partnerId}
+        GROUP BY ic.id, ic.full_name, ic.document_number, ic.email, ic.phone
+        ORDER BY MAX(COALESCE(po.updated_at, c.updated_at, ic.updated_at)) DESC
+        LIMIT 200
+      `
+    : await sql<ClientRow[]>`
+        SELECT
+          ic.id,
+          ic.full_name,
+          ic.document_number,
+          ic.email,
+          ic.phone,
+          COUNT(DISTINCT c.product_id)::int AS products_count,
+          COUNT(DISTINCT c.id)::int AS cotacoes_count,
+          (
+            SELECT c2.status
+            FROM cotacoes c2
+            WHERE c2.client_id = ic.id
+              AND c2.partner_id = ${access.partnerId}
+              AND c2.partner_user_id IN ${sql(access.visibleUserIds)}
+            ORDER BY c2.created_at DESC
+            LIMIT 1
+          ) AS last_quote_status,
+          (
+            SELECT po.status
+            FROM payment_orders po
+            JOIN cotacoes c3 ON c3.id = po.cotacao_id
+            WHERE po.client_id = ic.id
+              AND po.partner_id = ${access.partnerId}
+              AND c3.partner_user_id IN ${sql(access.visibleUserIds)}
+            ORDER BY po.created_at DESC
+            LIMIT 1
+          ) AS last_payment_status,
+          COALESCE(SUM(po.paid_installments), 0)::int AS paid_installments,
+          COALESCE(SUM(po.installment_count), 0)::int AS total_installments,
+          MAX(COALESCE(po.updated_at, c.updated_at, ic.updated_at))::text AS updated_at
+        FROM insurance_clients ic
+        JOIN cotacoes c
+          ON c.client_id = ic.id
+         AND c.partner_id = ${access.partnerId}
+         AND c.partner_user_id IN ${sql(access.visibleUserIds)}
+        LEFT JOIN payment_orders po
+          ON po.client_id = ic.id
+         AND po.partner_id = ${access.partnerId}
+         AND po.cotacao_id = c.id
+        GROUP BY ic.id, ic.full_name, ic.document_number, ic.email, ic.phone
+        ORDER BY MAX(COALESCE(po.updated_at, c.updated_at, ic.updated_at)) DESC
+        LIMIT 200
+      `;
 
   return (
     <div>

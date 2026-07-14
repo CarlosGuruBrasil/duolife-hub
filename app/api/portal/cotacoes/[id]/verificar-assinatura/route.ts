@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { verifyAuth, unauthorized } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
+import { getAccessibleQuoteById } from '@/lib/access';
 
 export async function POST(
   req: NextRequest,
@@ -9,7 +10,7 @@ export async function POST(
 ) {
   const publicToken = req.headers.get('x-public-token');
   let targetPartnerId: string | null = null;
-  let isAdmin = false;
+  let user = null;
 
   if (publicToken) {
     const [link] = await sql`
@@ -20,24 +21,17 @@ export async function POST(
     if (!link) return Response.json({ error: 'Token público inválido' }, { status: 401 });
     targetPartnerId = link.partner_id;
   } else {
-    const user = await verifyAuth();
+    user = await verifyAuth();
     if (!user) return unauthorized();
     targetPartnerId = user.partnerId;
-    if (user.role === 'duolife_admin' || user.role === 'duolife_staff') isAdmin = true;
   }
 
   const { id } = await params;
 
   try {
-    let cotacaoResult;
-    if (isAdmin) {
-      cotacaoResult = await sql`SELECT * FROM cotacoes WHERE id = ${id}`;
-    } else if (publicToken) {
-      cotacaoResult = await sql`SELECT * FROM cotacoes WHERE id = ${id} AND source_token = ${publicToken} AND partner_id = ${targetPartnerId}`;
-    } else {
-      cotacaoResult = await sql`SELECT * FROM cotacoes WHERE id = ${id} AND partner_id = ${targetPartnerId}`;
-    }
-    const cotacao = cotacaoResult[0];
+    const cotacao = publicToken
+      ? (await sql`SELECT * FROM cotacoes WHERE id = ${id} AND source_token = ${publicToken} AND partner_id = ${targetPartnerId}`)[0]
+      : await getAccessibleQuoteById(id, user!);
 
     if (!cotacao) {
       return Response.json({ error: 'Cotação não encontrada' }, { status: 404 });

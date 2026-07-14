@@ -13,6 +13,7 @@ interface PartnerProfileFormProps {
       street?: string;
     } | null;
   };
+  canEdit: boolean;
 }
 
 interface FormState {
@@ -24,7 +25,7 @@ interface FormState {
   street: string;
 }
 
-export default function PartnerProfileForm({ partner }: PartnerProfileFormProps) {
+export default function PartnerProfileForm({ partner, canEdit }: PartnerProfileFormProps) {
   const [form, setForm] = useState<FormState>({
     nomeFantasia: partner.nome_fantasia || '',
     email: partner.email,
@@ -77,6 +78,7 @@ export default function PartnerProfileForm({ partner }: PartnerProfileFormProps)
             value={form.nomeFantasia}
             onChange={(event) => updateField('nomeFantasia', event.target.value)}
             className="form-input"
+            disabled={!canEdit}
           />
         </label>
 
@@ -88,6 +90,7 @@ export default function PartnerProfileForm({ partner }: PartnerProfileFormProps)
             value={form.email}
             onChange={(event) => updateField('email', event.target.value)}
             className="form-input"
+            disabled={!canEdit}
           />
         </label>
 
@@ -97,6 +100,7 @@ export default function PartnerProfileForm({ partner }: PartnerProfileFormProps)
             value={form.phone}
             onChange={(event) => updateField('phone', event.target.value)}
             className="form-input"
+            disabled={!canEdit}
           />
         </label>
 
@@ -106,6 +110,7 @@ export default function PartnerProfileForm({ partner }: PartnerProfileFormProps)
             value={form.city}
             onChange={(event) => updateField('city', event.target.value)}
             className="form-input"
+            disabled={!canEdit}
           />
         </label>
 
@@ -116,6 +121,7 @@ export default function PartnerProfileForm({ partner }: PartnerProfileFormProps)
             value={form.state}
             onChange={(event) => updateField('state', event.target.value.toUpperCase())}
             className="form-input uppercase"
+            disabled={!canEdit}
           />
         </label>
 
@@ -125,6 +131,7 @@ export default function PartnerProfileForm({ partner }: PartnerProfileFormProps)
             value={form.street}
             onChange={(event) => updateField('street', event.target.value)}
             className="form-input"
+            disabled={!canEdit}
           />
         </label>
       </div>
@@ -135,8 +142,14 @@ export default function PartnerProfileForm({ partner }: PartnerProfileFormProps)
         </p>
       )}
 
+      {!canEdit ? (
+        <p className="text-sm text-amber-700">
+          Apenas o admin da empresa pode alterar os dados cadastrais da corretora.
+        </p>
+      ) : null}
+
       <div className="flex justify-end">
-        <button type="submit" disabled={status === 'saving'} className="btn-primary justify-center px-6 py-3">
+        <button type="submit" disabled={status === 'saving' || !canEdit} className="btn-primary justify-center px-6 py-3">
           {status === 'saving' ? 'Salvando...' : 'Salvar perfil'}
         </button>
       </div>

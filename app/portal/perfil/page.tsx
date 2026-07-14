@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation';
 import PartnerProfileForm from '@/components/portal/PartnerProfileForm';
+import PartnerTeamManager from '@/components/portal/PartnerTeamManager';
 import ChangePasswordForm from '@/components/portal/ChangePasswordForm';
-import { verifyPartnerAuth } from '@/lib/auth';
+import { canManageOwnCompany, verifyPartnerAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 
@@ -21,6 +22,17 @@ interface PartnerRow {
   created_at: string;
 }
 
+interface TeamUserRow {
+  id: string;
+  name: string;
+  email: string;
+  role: 'director' | 'manager' | 'broker' | 'partner';
+  manager_user_id: string | null;
+  is_active: boolean;
+  last_login_at: string | null;
+  created_at: string;
+}
+
 const statusLabel: Record<string, string> = {
   pending: 'Pendente',
   active: 'Ativo',
@@ -31,6 +43,7 @@ const statusLabel: Record<string, string> = {
 export default async function PerfilPage() {
   const user = await verifyPartnerAuth();
   if (!user) redirect('/login');
+  const canManageCompany = canManageOwnCompany(user);
 
   await ensureSchema();
 
@@ -41,6 +54,30 @@ export default async function PerfilPage() {
   `;
 
   if (!partner) redirect('/login');
+
+  const teamUsers = canManageCompany
+    ? await sql<TeamUserRow[]>`
+        SELECT
+          id,
+          name,
+          email,
+          role,
+          manager_user_id,
+          is_active,
+          last_login_at,
+          created_at
+        FROM partner_users
+        WHERE partner_id = ${user.partnerId!}
+        ORDER BY
+          CASE role
+            WHEN 'director' THEN 1
+            WHEN 'manager' THEN 2
+            WHEN 'broker' THEN 3
+            ELSE 4
+          END,
+          created_at ASC
+      `
+    : [];
 
   return (
     <div>
@@ -64,7 +101,8 @@ export default async function PerfilPage() {
         </div>
       </div>
 
-      <PartnerProfileForm partner={partner} />
+      <PartnerProfileForm partner={partner} canEdit={canManageCompany} />
+      {canManageCompany ? <div className="mt-6"><PartnerTeamManager users={teamUsers} /></div> : null}
       <ChangePasswordForm />
     </div>
   );

@@ -15,7 +15,8 @@ export interface PartnerUser {
   partner_id: string;
   name: string;
   email: string;
-  role: 'admin' | 'seller' | 'viewer';
+  role: 'director' | 'manager' | 'broker' | 'partner';
+  manager_user_id?: string | null;
   is_active: boolean;
   last_login_at?: string;
 }

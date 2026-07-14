@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { ensureSchema } from '@/lib/schema';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
-import { verifyAdminAuth, unauthorized } from '@/lib/auth';
+import { isDevUser, verifyAdminAuth, unauthorized } from '@/lib/auth';
 import { getWhiteLabelConfig, mergeWhiteLabelConfig, type WhiteLabelLink } from '@/lib/white-label';
 
 const whiteLabelSchema = z.object({
@@ -37,6 +37,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
   try {
     const admin = await verifyAdminAuth();
     if (!admin) return unauthorized();
+    if (!isDevUser(admin)) return Response.json({ error: 'Ajustes de white-label são exclusivos do perfil dev' }, { status: 403 });
 
     const { id } = await params;
     await ensureSchema();
@@ -67,6 +68,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   try {
     const admin = await verifyAdminAuth();
     if (!admin) return unauthorized();
+    if (!isDevUser(admin)) return Response.json({ error: 'Ajustes de white-label são exclusivos do perfil dev' }, { status: 403 });
 
     await ensureSchema();
 

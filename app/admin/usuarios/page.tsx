@@ -18,6 +18,11 @@ interface AdminUserRow {
   created_at: string;
 }
 
+const INTERNAL_ROLE_LABEL: Record<string, string> = {
+  duolife_admin: 'Dev',
+  duolife_staff: 'Operação',
+};
+
 async function createOrUpdateAdmin(formData: FormData) {
   'use server';
 
@@ -137,7 +142,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
 
       <div className="mb-6 card">
         <div className="mb-4 flex items-center gap-2 font-bold" style={{ color: 'var(--primary)' }}>
-          <UserPlus size={18} /> {editing ? 'Editar admin' : 'Criar admin'}
+          <UserPlus size={18} /> {editing ? 'Editar acesso interno' : 'Criar acesso interno'}
         </div>
         <form action={createOrUpdateAdmin} className="grid gap-4 md:grid-cols-4">
           <input type="hidden" name="id" value={editing?.id || ''} />
@@ -162,8 +167,8 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
           <label className="block">
             <span className="field-label">Perfil</span>
             <select name="role" defaultValue={editing?.role || 'duolife_staff'} className="form-input">
-              <option value="duolife_staff">Staff</option>
-              <option value="duolife_admin">Admin</option>
+              <option value="duolife_staff">Operação</option>
+              <option value="duolife_admin">Dev</option>
             </select>
           </label>
           <div className="md:col-span-4 flex justify-end">
@@ -212,7 +217,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
                   <tr key={admin.id} className="table-row">
                     <td className="px-5 py-4 font-semibold" style={{ color: 'var(--primary)' }}>{admin.name}</td>
                     <td className="px-5 py-4 text-gray-600">{admin.email}</td>
-                    <td className="px-5 py-4 text-gray-600">{admin.role}</td>
+                    <td className="px-5 py-4 text-gray-600">{INTERNAL_ROLE_LABEL[admin.role] || admin.role}</td>
                     <td className="px-5 py-4">
                       <span className="status-pill">{admin.is_active ? 'Ativo' : 'Inativo'}</span>
                     </td>
