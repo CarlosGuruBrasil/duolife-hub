@@ -6,6 +6,7 @@ const nav = [
   { href: '/admin', label: 'Dashboard', icon: BarChart3 },
   { href: '/admin/parceiros', label: 'Parceiros', icon: Building2 },
   { href: '/admin/cotacoes', label: 'Cotações', icon: Briefcase },
+  { href: '/admin/clientes', label: 'Clientes', icon: Users },
   { href: '/admin/vendas', label: 'Vendas', icon: FileText },
   { href: '/admin/comissoes', label: 'Comissões', icon: WalletCards },
   { href: '/admin/sync', label: 'Sync', icon: RefreshCw },

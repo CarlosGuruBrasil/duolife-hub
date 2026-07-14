@@ -4,6 +4,7 @@ import { verifyAuth, unauthorized } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { ensureSchema, seedInitialData } from '@/lib/schema';
+import { upsertInsuranceClient } from '@/lib/insurance-ops';
 
 const cotacaoSchema = z.object({
   clientName: z.string().trim().min(2),
@@ -120,8 +121,21 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: 'Produto RC não configurado' }, { status: 422 });
     }
 
+    const client = await upsertInsuranceClient({
+      documentNumber: data.clientCpfCnpj,
+      fullName: data.clientName,
+      email: data.clientEmail || null,
+      phone: data.clientPhone || null,
+      birthDate: typeof data.clientData?.dataNascto === 'string' ? data.clientData.dataNascto : null,
+      metadata: {
+        source: publicToken ? 'public_link' : 'portal',
+        partnerId: targetPartnerId,
+      },
+    });
+
     const [cotacao] = await sql`
       INSERT INTO cotacoes (
+        client_id,
         partner_id,
         partner_user_id,
         product_id,
@@ -137,6 +151,7 @@ export async function POST(req: NextRequest) {
         source_token
       )
       VALUES (
+        ${client.id},
         ${targetPartnerId},
         ${userId},
         ${product.id},

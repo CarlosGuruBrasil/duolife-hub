@@ -103,6 +103,18 @@ export async function POST(
         WHERE id = ${cotacao.id}
       `;
 
+      await sql`
+        UPDATE signature_documents
+        SET
+          status = 'signed',
+          signed_file_url = ${pdfLink},
+          signed_at = COALESCE(signed_at, NOW()),
+          raw_payload = ${JSON.stringify(resJson)}::jsonb,
+          updated_at = NOW()
+        WHERE cotacao_id = ${cotacao.id}
+          AND provider = 'zapsign'
+      `;
+
       return Response.json({
         ok: true,
         status: 'assinado',

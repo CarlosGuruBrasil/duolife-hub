@@ -193,10 +193,29 @@ export async function ensureSchema(): Promise<void> {
   await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS document_number TEXT`;
   await sql`CREATE INDEX IF NOT EXISTS leads_document_number ON leads (document_number)`;
 
+  // Clientes finais segurados
+  await sql`
+    CREATE TABLE IF NOT EXISTS insurance_clients (
+      id                TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      document_number   TEXT NOT NULL,
+      document_type     TEXT NOT NULL DEFAULT 'cpf',
+      full_name         TEXT NOT NULL,
+      email             TEXT,
+      phone             TEXT,
+      birth_date        DATE,
+      metadata          JSONB NOT NULL DEFAULT '{}',
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (document_number)
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS insurance_clients_email ON insurance_clients (email)`;
+
   // Cotações geradas pelos corretores no portal
   await sql`
     CREATE TABLE IF NOT EXISTS cotacoes (
       id                   TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      client_id            TEXT REFERENCES insurance_clients(id),
       partner_id           TEXT NOT NULL REFERENCES partners(id),
       partner_user_id      TEXT REFERENCES partner_users(id),
       product_id           TEXT NOT NULL REFERENCES products(id),
@@ -220,18 +239,21 @@ export async function ensureSchema(): Promise<void> {
       updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
+  await sql`ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS client_id TEXT REFERENCES insurance_clients(id)`;
   await sql`ALTER TABLE cotacoes ALTER COLUMN partner_user_id DROP NOT NULL`;
   await sql`ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS flow_type TEXT NOT NULL DEFAULT 'internal'`;
   await sql`ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS source_token TEXT`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_partner_id ON cotacoes (partner_id)`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_status     ON cotacoes (status)`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_source_token ON cotacoes (source_token)`;
+  await sql`CREATE INDEX IF NOT EXISTS cotacoes_client_id ON cotacoes (client_id)`;
 
   // Vendas (apólices emitidas)
   await sql`
     CREATE TABLE IF NOT EXISTS sales (
       id                   TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
       cotacao_id           TEXT NOT NULL REFERENCES cotacoes(id),
+      client_id            TEXT REFERENCES insurance_clients(id),
       partner_id           TEXT NOT NULL REFERENCES partners(id),
       product_id           TEXT NOT NULL REFERENCES products(id),
       policy_number        TEXT UNIQUE,
@@ -247,7 +269,9 @@ export async function ensureSchema(): Promise<void> {
       updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
+  await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS client_id TEXT REFERENCES insurance_clients(id)`;
   await sql`CREATE INDEX IF NOT EXISTS sales_partner_id ON sales (partner_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS sales_client_id ON sales (client_id)`;
 
   // Comissões a pagar
   await sql`
@@ -303,6 +327,110 @@ export async function ensureSchema(): Promise<void> {
   `;
   await sql`CREATE INDEX IF NOT EXISTS public_sale_links_partner_id ON public_sale_links (partner_id)`;
   await sql`CREATE INDEX IF NOT EXISTS public_sale_links_token      ON public_sale_links (token)`;
+
+  // Documentos de assinatura eletrônica
+  await sql`
+    CREATE TABLE IF NOT EXISTS signature_documents (
+      id                    TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      cotacao_id            TEXT NOT NULL REFERENCES cotacoes(id),
+      client_id             TEXT REFERENCES insurance_clients(id),
+      provider              TEXT NOT NULL DEFAULT 'zapsign',
+      external_document_id  TEXT,
+      template_id           TEXT,
+      sign_url              TEXT,
+      signed_file_url       TEXT,
+      status                TEXT NOT NULL DEFAULT 'pending',
+      signed_at             TIMESTAMPTZ,
+      last_event_type       TEXT,
+      raw_payload           JSONB NOT NULL DEFAULT '{}',
+      created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (provider, external_document_id)
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS signature_documents_cotacao_id ON signature_documents (cotacao_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS signature_documents_client_id ON signature_documents (client_id)`;
+
+  // Operações financeiras por cotação/produto
+  await sql`
+    CREATE TABLE IF NOT EXISTS payment_orders (
+      id                        TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      cotacao_id                TEXT NOT NULL REFERENCES cotacoes(id),
+      client_id                 TEXT REFERENCES insurance_clients(id),
+      partner_id                TEXT NOT NULL REFERENCES partners(id),
+      product_id                TEXT NOT NULL REFERENCES products(id),
+      provider                  TEXT NOT NULL DEFAULT 'asaas',
+      provider_customer_id      TEXT,
+      external_payment_id       TEXT,
+      external_installment_id   TEXT,
+      billing_type              TEXT,
+      status                    TEXT NOT NULL DEFAULT 'pending',
+      amount_total              NUMERIC(12,2),
+      installment_count         INTEGER NOT NULL DEFAULT 1,
+      paid_installments         INTEGER NOT NULL DEFAULT 0,
+      paid_amount               NUMERIC(12,2) NOT NULL DEFAULT 0,
+      due_date                  DATE,
+      invoice_url               TEXT,
+      bank_slip_url             TEXT,
+      pix_qr_code_url           TEXT,
+      description               TEXT,
+      raw_payload               JSONB NOT NULL DEFAULT '{}',
+      created_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at                TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS payment_orders_cotacao_id ON payment_orders (cotacao_id)`;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS payment_orders_unique_cotacao ON payment_orders (cotacao_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS payment_orders_client_id ON payment_orders (client_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS payment_orders_external_payment_id ON payment_orders (external_payment_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS payment_orders_external_installment_id ON payment_orders (external_installment_id)`;
+
+  // Parcelas individuais da cobrança
+  await sql`
+    CREATE TABLE IF NOT EXISTS payment_installments (
+      id                      TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      payment_order_id        TEXT NOT NULL REFERENCES payment_orders(id) ON DELETE CASCADE,
+      cotacao_id              TEXT NOT NULL REFERENCES cotacoes(id),
+      client_id               TEXT REFERENCES insurance_clients(id),
+      provider                TEXT NOT NULL DEFAULT 'asaas',
+      external_payment_id     TEXT NOT NULL,
+      external_installment_id TEXT,
+      installment_number      INTEGER NOT NULL DEFAULT 1,
+      status                  TEXT NOT NULL DEFAULT 'pending',
+      billing_type            TEXT,
+      amount                  NUMERIC(12,2),
+      net_amount              NUMERIC(12,2),
+      due_date                DATE,
+      paid_at                 TIMESTAMPTZ,
+      invoice_url             TEXT,
+      bank_slip_url           TEXT,
+      pix_qr_code_url         TEXT,
+      raw_payload             JSONB NOT NULL DEFAULT '{}',
+      created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at              TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (provider, external_payment_id)
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS payment_installments_order_id ON payment_installments (payment_order_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS payment_installments_cotacao_id ON payment_installments (cotacao_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS payment_installments_client_id ON payment_installments (client_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS payment_installments_external_installment_id ON payment_installments (external_installment_id)`;
+
+  // Trilhas de webhook para auditoria e reprocessamento
+  await sql`
+    CREATE TABLE IF NOT EXISTS webhook_events (
+      id              TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      provider        TEXT NOT NULL,
+      event_type      TEXT,
+      external_id     TEXT,
+      signature_valid BOOLEAN,
+      payload         JSONB NOT NULL DEFAULT '{}',
+      processed       BOOLEAN NOT NULL DEFAULT false,
+      error_message   TEXT,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS webhook_events_provider_created_at ON webhook_events (provider, created_at DESC)`;
 
   // Usuários admin internos da DuoLife
   await sql`

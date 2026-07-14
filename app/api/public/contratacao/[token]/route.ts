@@ -5,6 +5,7 @@ import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
 import { getWhiteLabelConfig } from '@/lib/white-label';
 import { logSyncEvent } from '@/lib/wix-sync';
+import { upsertInsuranceClient } from '@/lib/insurance-ops';
 
 const payloadSchema = z.object({
   clientName: z.string().trim().min(2),
@@ -103,6 +104,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
     if (!effectiveProductId) {
       return Response.json({ error: 'Produto RC não configurado' }, { status: 422 });
     }
+
+    const client = await upsertInsuranceClient({
+      documentNumber: data.clientCpfCnpj,
+      fullName: data.clientName,
+      email: data.clientEmail || null,
+      phone: data.clientPhone || null,
+      birthDate: typeof data.clientData?.dataNascto === 'string' ? data.clientData.dataNascto : null,
+      metadata: {
+        source: 'public_link',
+        token,
+        partnerId,
+      },
+    });
+
     const existingLead = await sql`
       SELECT id
       FROM leads
@@ -178,6 +193,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
 
     const [cotacao] = await sql`
       INSERT INTO cotacoes (
+        client_id,
         partner_id,
         partner_user_id,
         product_id,
@@ -196,6 +212,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ tok
         metadata
       )
       VALUES (
+        ${client.id},
         ${partnerId},
         ${null},
         ${effectiveProductId},

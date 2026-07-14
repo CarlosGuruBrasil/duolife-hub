@@ -146,27 +146,28 @@ export async function POST(
 
     const paymentJson = JSON.parse(paymentResText);
 
-    // Se for parcelado, pegamos os dados do primeiro pagamento/fatura
+    // Se for parcelado, buscamos as cobranças filhas para rastrear cada parcela.
     let checkoutId = paymentJson.id;
     let linkBoleto = paymentJson.bankSlipUrl || paymentJson.invoiceUrl;
     let netValue = paymentJson.netValue;
+    let installmentsPayload = [paymentJson];
+    let externalInstallmentId = paymentJson.installment || null;
 
-    if (qtdParcelas > 1 && paymentJson.installments) {
-      // Para parcelamento, o Asaas retorna uma lista das cobranças geradas
-      // Ou podemos consultar a lista de pagamentos do parcelamento
-      checkoutId = paymentJson.installment; // ID do parcelamento pai
-      
-      // Tentativa de obter as cobranças filhas para pegar o link da primeira parcela
+    if (qtdParcelas > 1 && paymentJson.installment) {
+      externalInstallmentId = paymentJson.installment;
+      checkoutId = paymentJson.id;
+
       try {
-        const listRes = await fetch(`${asaasBaseUrl}/payments?installment=${checkoutId}`, {
+        const listRes = await fetch(`${asaasBaseUrl}/payments?installment=${paymentJson.installment}`, {
           headers: { 'access_token': asaasKey }
         });
         if (listRes.ok) {
           const listJson = await listRes.json();
           if (listJson.data && listJson.data.length > 0) {
-            // Ordena as parcelas pelo vencimento ou pela propriedade 'installmentNumber'
             const sorted = listJson.data.sort((a: any, b: any) => (a.installmentNumber || 0) - (b.installmentNumber || 0));
+            installmentsPayload = sorted;
             linkBoleto = sorted[0].bankSlipUrl || sorted[0].invoiceUrl;
+            checkoutId = sorted[0].id || checkoutId;
             netValue = sorted.reduce((sum: number, item: any) => sum + (Number(item.netValue) || 0), 0);
           }
         }
@@ -175,10 +176,128 @@ export async function POST(
       }
     }
 
+    const [paymentOrder] = await sql<{ id: string }[]>`
+      INSERT INTO payment_orders (
+        cotacao_id,
+        client_id,
+        partner_id,
+        product_id,
+        provider,
+        provider_customer_id,
+        external_payment_id,
+        external_installment_id,
+        billing_type,
+        status,
+        amount_total,
+        installment_count,
+        due_date,
+        invoice_url,
+        bank_slip_url,
+        description,
+        raw_payload,
+        updated_at
+      )
+      VALUES (
+        ${cotacao.id},
+        ${cotacao.client_id || null},
+        ${cotacao.partner_id},
+        ${cotacao.product_id},
+        'asaas',
+        ${clienteId},
+        ${paymentJson.id || null},
+        ${externalInstallmentId},
+        ${paymentJson.billingType || 'BOLETO'},
+        ${String(paymentJson.status || 'PENDING').toLowerCase()},
+        ${valorTotal},
+        ${qtdParcelas},
+        ${dueDateStr},
+        ${paymentJson.invoiceUrl || null},
+        ${paymentJson.bankSlipUrl || null},
+        ${descricao},
+        ${JSON.stringify(paymentJson)}::jsonb,
+        NOW()
+      )
+      ON CONFLICT (cotacao_id)
+      DO UPDATE SET
+        provider_customer_id = EXCLUDED.provider_customer_id,
+        external_payment_id = EXCLUDED.external_payment_id,
+        external_installment_id = EXCLUDED.external_installment_id,
+        billing_type = EXCLUDED.billing_type,
+        status = EXCLUDED.status,
+        amount_total = EXCLUDED.amount_total,
+        installment_count = EXCLUDED.installment_count,
+        due_date = EXCLUDED.due_date,
+        invoice_url = EXCLUDED.invoice_url,
+        bank_slip_url = EXCLUDED.bank_slip_url,
+        description = EXCLUDED.description,
+        raw_payload = EXCLUDED.raw_payload,
+        updated_at = NOW()
+      RETURNING id
+    `;
+
+    const paymentOrderId = paymentOrder?.id;
+
+    if (paymentOrderId) {
+      for (const installment of installmentsPayload) {
+        await sql`
+          INSERT INTO payment_installments (
+            payment_order_id,
+            cotacao_id,
+            client_id,
+            provider,
+            external_payment_id,
+            external_installment_id,
+            installment_number,
+            status,
+            billing_type,
+            amount,
+            net_amount,
+            due_date,
+            invoice_url,
+            bank_slip_url,
+            pix_qr_code_url,
+            raw_payload,
+            updated_at
+          )
+          VALUES (
+            ${paymentOrderId},
+            ${cotacao.id},
+            ${cotacao.client_id || null},
+            'asaas',
+            ${installment.id},
+            ${installment.installment || paymentJson.installment || null},
+            ${Number(installment.installmentNumber) || 1},
+            ${String(installment.status || 'PENDING').toLowerCase()},
+            ${installment.billingType || paymentJson.billingType || 'BOLETO'},
+            ${Number(installment.value) || valorParcela},
+            ${Number(installment.netValue) || null},
+            ${installment.dueDate || dueDateStr},
+            ${installment.invoiceUrl || null},
+            ${installment.bankSlipUrl || null},
+            ${installment.pixTransaction || installment.pixQrCodeUrl || null},
+            ${JSON.stringify(installment)}::jsonb,
+            NOW()
+          )
+          ON CONFLICT (provider, external_payment_id)
+          DO UPDATE SET
+            status = EXCLUDED.status,
+            net_amount = EXCLUDED.net_amount,
+            due_date = EXCLUDED.due_date,
+            invoice_url = EXCLUDED.invoice_url,
+            bank_slip_url = EXCLUDED.bank_slip_url,
+            pix_qr_code_url = EXCLUDED.pix_qr_code_url,
+            raw_payload = EXCLUDED.raw_payload,
+            updated_at = NOW()
+        `;
+      }
+    }
+
     // 5. Atualiza a cotação no Banco
     clientData.checkoutId = checkoutId;
     clientData.linkBoleto = linkBoleto;
     clientData.dataVencimento = dueDateStr;
+    clientData.paymentOrderId = paymentOrderId || null;
+    clientData.externalInstallmentId = externalInstallmentId;
 
     await sql`
       UPDATE cotacoes
