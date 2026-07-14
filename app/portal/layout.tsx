@@ -2,11 +2,12 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
-import { BarChart3, ClipboardList, FileText, LogOut, UserRound, WalletCards } from 'lucide-react';
+import { BarChart3, ClipboardList, FileText, LogOut, UserRound, Users, WalletCards } from 'lucide-react';
 
 const nav = [
   { href: '/portal', label: 'Dashboard', icon: BarChart3 },
   { href: '/portal/cotacoes', label: 'Cotações', icon: ClipboardList },
+  { href: '/portal/clientes', label: 'Clientes', icon: Users },
   { href: '/portal/vendas', label: 'Vendas', icon: FileText },
   { href: '/portal/comissoes', label: 'Comissões', icon: WalletCards },
   { href: '/portal/perfil', label: 'Perfil', icon: UserRound },

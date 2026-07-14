@@ -188,13 +188,14 @@ export async function POST(
     }));
 
     // 6. Faz o POST para o ZapSign
+    const sandbox = process.env.ZAPSIGN_SANDBOX === 'true';
     const payload = {
       template_id: templateId,
       signer_name: cotacao.client_name,
       signer_email: cotacao.client_email || 'suporte@duolife.net.br',
       send_automatic_email: false,
       send_automatic_whatsapp: false,
-      sandbox: true,
+      sandbox,
       lang: "pt-br",
       data: dataArray,
       external_id: cotacao.id
@@ -234,6 +235,37 @@ export async function POST(
         client_data = ${JSON.stringify(clientData)},
         updated_at = NOW()
       WHERE id = ${cotacao.id}
+    `;
+
+    await sql`
+      INSERT INTO signature_documents (
+        cotacao_id,
+        client_id,
+        provider,
+        external_document_id,
+        template_id,
+        sign_url,
+        status,
+        raw_payload,
+        updated_at
+      )
+      VALUES (
+        ${cotacao.id},
+        ${cotacao.client_id || null},
+        'zapsign',
+        ${docToken},
+        ${templateId},
+        ${signUrl || null},
+        'pending',
+        ${JSON.stringify(resJson)}::jsonb,
+        NOW()
+      )
+      ON CONFLICT (provider, external_document_id)
+      DO UPDATE SET
+        template_id = EXCLUDED.template_id,
+        sign_url = EXCLUDED.sign_url,
+        raw_payload = EXCLUDED.raw_payload,
+        updated_at = NOW()
     `;
 
     return Response.json({

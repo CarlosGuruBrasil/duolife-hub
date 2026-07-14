@@ -46,8 +46,21 @@ export interface Lead {
   source_system: string;
 }
 
+export interface InsuranceClient {
+  id: string;
+  document_number: string;
+  document_type: 'cpf' | 'cnpj';
+  full_name: string;
+  email?: string;
+  phone?: string;
+  birth_date?: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Cotacao {
   id: string;
+  client_id?: string;
   partner_id: string;
   partner_user_id: string;
   product_id: string;
@@ -59,7 +72,7 @@ export interface Cotacao {
   importancia_segurada?: number;
   premio_calculado?: number;
   premio_final?: number;
-  status: 'rascunho' | 'enviada' | 'aprovada' | 'recusada' | 'expirada' | 'emitida';
+  status: 'rascunho' | 'enviada' | 'contrato_gerado' | 'assinado' | 'pagamento_gerado' | 'aprovada' | 'recusada' | 'expirada' | 'emitida';
   valid_until?: string;
   notes?: string;
   created_at: string;
@@ -68,6 +81,7 @@ export interface Cotacao {
 export interface Sale {
   id: string;
   cotacao_id: string;
+  client_id?: string;
   partner_id: string;
   product_id: string;
   policy_number?: string;
@@ -91,6 +105,47 @@ export interface Commission {
   reference_month?: string;
   payment_date?: string;
   created_at: string;
+}
+
+export interface PaymentOrder {
+  id: string;
+  cotacao_id: string;
+  client_id?: string;
+  partner_id: string;
+  product_id: string;
+  provider: string;
+  provider_customer_id?: string;
+  external_payment_id?: string;
+  external_installment_id?: string;
+  billing_type?: string;
+  status: string;
+  amount_total?: number;
+  installment_count: number;
+  paid_installments: number;
+  paid_amount: number;
+  due_date?: string;
+  invoice_url?: string;
+  bank_slip_url?: string;
+  description?: string;
+}
+
+export interface PaymentInstallment {
+  id: string;
+  payment_order_id: string;
+  cotacao_id: string;
+  client_id?: string;
+  provider: string;
+  external_payment_id: string;
+  external_installment_id?: string;
+  installment_number: number;
+  status: string;
+  billing_type?: string;
+  amount?: number;
+  net_amount?: number;
+  due_date?: string;
+  paid_at?: string;
+  invoice_url?: string;
+  bank_slip_url?: string;
 }
 
 export interface ApiResponse<T = unknown> {
