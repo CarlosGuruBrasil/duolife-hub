@@ -86,9 +86,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           target="_blank"
           rel="noopener"
           aria-label="Falar no WhatsApp"
-          className="fixed bottom-6 right-6 z-[60] flex items-center justify-center w-14 h-14 rounded-full bg-[#25D366] text-white shadow-[0_8px_24px_rgba(0,0,0,0.25)] transition-transform duration-200 hover:scale-110"
+          className="fixed right-4 bottom-[calc(env(safe-area-inset-bottom)+1rem)] z-[60] flex h-12 w-12 items-center justify-center rounded-full bg-[#25D366] text-white shadow-[0_8px_24px_rgba(0,0,0,0.25)] transition-transform duration-200 hover:scale-110 md:bottom-6 md:right-6 md:h-14 md:w-14"
         >
-          <MessageCircle size={28} strokeWidth={2} />
+          <MessageCircle className="h-6 w-6 md:h-7 md:w-7" strokeWidth={2} />
         </a>
       </body>
     </html>

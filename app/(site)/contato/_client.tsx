@@ -1,9 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import Image from 'next/image';
-import { motion } from 'framer-motion';
-import { BriefcaseBusiness, Camera, Mail, MessageCircle, Phone, Sparkles } from 'lucide-react';
+import { BriefcaseBusiness, Camera, Mail, MessageCircle, Phone } from 'lucide-react';
+import InternalPageHero from '@/components/site/InternalPageHero';
 
 const contacts = [
   { icon: Phone, label: 'Telefone', value: '(47) 99648-6081', href: 'tel:+5547996486081' },
@@ -48,41 +47,17 @@ export default function ContatoClient() {
     <div className="bg-white text-primary-dark">
 
       {/* Hero Section */}
-      <section className="relative isolate overflow-hidden bg-primary-dark text-white min-h-screen flex items-start">
-        <Image src="/duolife-team-meeting.jpg" alt="" fill className="object-cover object-[50%_22%]" priority />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_28%,rgba(0,212,224,0.18)_0%,transparent_36%),linear-gradient(180deg,rgba(7,42,51,0.72)_0%,rgba(7,42,51,0.8)_100%)]" />
-        <div className="absolute inset-x-0 bottom-0 h-36 bg-gradient-to-t from-primary-dark to-transparent" />
-
-        <div className="relative z-10 w-[min(92%,1800px)] mx-auto px-6 pt-20 pb-20 lg:pt-28 lg:pb-24">
-          <div className="max-w-[760px] text-left">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.6 }}
-              className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md text-accent px-4 py-1.5 rounded-full text-xs font-black tracking-widest uppercase mb-8 border border-white/5"
-            >
-              <Sparkles size={13} />
-              Fale Conosco
-            </motion.div>
-            <motion.h1
-              initial="hidden"
-              animate="visible"
-              variants={fadeUp}
-              className="hero-title-wrap text-4xl md:text-6xl lg:text-[76px] xl:text-[84px] font-black tracking-[-0.03em] leading-[1.02] uppercase mb-6 text-gradient-shimmer drop-shadow-[0_8px_24px_rgba(0,0,0,0.32)]"
-            >
-              Escolha o canal mais <span className="text-accent">direto para falar</span>.
-            </motion.h1>
-            <motion.p
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.15 }}
-              className="text-base md:text-lg text-white/84 leading-relaxed font-light mb-10 max-w-xl drop-shadow-[0_2px_10px_rgba(0,0,0,0.22)]"
-            >
-              Atendimento comercial e operacional ágil de segunda a sexta, das 8h às 18h.
-            </motion.p>
-          </div>
-        </div>
-      </section>
+      <InternalPageHero
+        badge="Fale Conosco"
+        imageSrc="/duolife-team-meeting.jpg"
+        imageClassName="object-cover object-[50%_22%]"
+        title={
+          <>
+            Escolha o canal mais <span className="text-gradient-shimmer font-black">direto para falar</span>.
+          </>
+        }
+        description="Atendimento comercial e operacional ágil de segunda a sexta, das 8h às 18h."
+      />
 
       {/* Split de Contato e Canais */}
       <section className="py-28 px-6 bg-white border-b border-border">
@@ -95,6 +70,23 @@ export default function ContatoClient() {
             <p className="text-[#4d686f] font-light leading-relaxed text-base mb-8">
               Utilize nossos canais abaixo para falar diretamente com o setor necessário. Oferecemos respostas rápidas no WhatsApp.
             </p>
+
+            <div className="grid gap-4 sm:grid-cols-2 mb-8">
+              <div className="rounded-[28px] border border-border bg-surface p-6 shadow-[0_18px_50px_rgba(14,74,90,0.05)]">
+                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-secondary">Resposta Comercial</div>
+                <div className="mt-3 text-3xl font-black leading-none tracking-tight text-primary">Ágil</div>
+                <p className="mt-3 text-sm font-light leading-relaxed text-[#435a61]">
+                  Conversas direcionadas para oportunidades, onboarding de parceiros e alinhamentos de carteira.
+                </p>
+              </div>
+              <div className="rounded-[28px] border border-border bg-white p-6 shadow-[0_18px_50px_rgba(14,74,90,0.05)]">
+                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-secondary">Suporte Operacional</div>
+                <div className="mt-3 text-3xl font-black leading-none tracking-tight text-primary">Direto</div>
+                <p className="mt-3 text-sm font-light leading-relaxed text-[#435a61]">
+                  Canal preparado para demandas do dia a dia com acompanhamento próximo e resposta objetiva.
+                </p>
+              </div>
+            </div>
 
             <div className="grid sm:grid-cols-2 gap-4">
               {contacts.map((c) => {
@@ -110,9 +102,9 @@ export default function ContatoClient() {
                     <div className="w-10 h-10 rounded-xl bg-primary/5 text-primary flex items-center justify-center shrink-0">
                       <Icon size={18} />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <span className="block text-[10px] font-black text-secondary uppercase tracking-wider">{c.label}</span>
-                      <strong className="text-sm font-black text-primary tracking-tight">{c.value}</strong>
+                      <strong className="block text-sm font-black text-primary tracking-tight break-words">{c.value}</strong>
                     </div>
                   </a>
                 );
@@ -127,6 +119,13 @@ export default function ContatoClient() {
               
               <h3 className="text-2xl font-black text-primary uppercase tracking-tight mb-2">Envie uma Mensagem</h3>
               <p className="text-[#4d686f] text-sm font-light mb-8">Preparamos uma mensagem que será aberta automaticamente no seu WhatsApp comercial.</p>
+              <div className="mb-8 flex flex-wrap gap-2.5">
+                {['Comercial', 'Operacional', 'Parcerias', 'Suporte diário'].map((tag) => (
+                  <span key={tag} className="inline-flex items-center rounded-full bg-accent/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-primary">
+                    {tag}
+                  </span>
+                ))}
+              </div>
 
               {status === 'sent' ? (
                 <div className="py-12 text-center">
@@ -137,30 +136,44 @@ export default function ContatoClient() {
                   <p className="text-[#4d686f] text-xs font-light mt-2">O WhatsApp Web ou App foi aberto no seu dispositivo.</p>
                 </div>
               ) : (
-                <form onSubmit={handleSubmit} className="space-y-6 relative z-10">
-                  <div>
+                <form onSubmit={handleSubmit} className="space-y-7 relative z-10">
+                  <div className="rounded-[28px] border border-border bg-surface/80 p-5">
+                    <div className="mb-4 text-[10px] font-black uppercase tracking-[0.16em] text-secondary">Quem está entrando em contato</div>
                     <label className="block text-[10px] font-black text-primary uppercase tracking-wider mb-2">Seu Nome Completo *</label>
                     <input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
                       className="w-full bg-surface border border-border rounded-xl px-4 py-3.5 text-sm text-primary placeholder-secondary/70 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors" placeholder="João Silva" />
                   </div>
 
-                  <div className="grid sm:grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-[10px] font-black text-primary uppercase tracking-wider mb-2">E-mail Corporativo *</label>
-                      <input required type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
-                        className="w-full bg-surface border border-border rounded-xl px-4 py-3.5 text-sm text-primary placeholder-secondary/70 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors" placeholder="seu@email.com" />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-black text-primary uppercase tracking-wider mb-2">WhatsApp / Telefone *</label>
-                      <input required value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })}
-                        className="w-full bg-surface border border-border rounded-xl px-4 py-3.5 text-sm text-primary placeholder-secondary/70 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors" placeholder="(47) 99999-9999" />
+                  <div className="rounded-[28px] border border-border bg-white p-5">
+                    <div className="mb-4 text-[10px] font-black uppercase tracking-[0.16em] text-secondary">Como podemos responder</div>
+                    <div className="grid sm:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-[10px] font-black text-primary uppercase tracking-wider mb-2">E-mail Corporativo *</label>
+                        <input required type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
+                          className="w-full bg-surface border border-border rounded-xl px-4 py-3.5 text-sm text-primary placeholder-secondary/70 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors" placeholder="seu@email.com" />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-black text-primary uppercase tracking-wider mb-2">WhatsApp / Telefone *</label>
+                        <input required value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })}
+                          className="w-full bg-surface border border-border rounded-xl px-4 py-3.5 text-sm text-primary placeholder-secondary/70 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors" placeholder="(47) 99999-9999" />
+                      </div>
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-[10px] font-black text-primary uppercase tracking-wider mb-2">Mensagem *</label>
-                    <textarea required value={form.message} onChange={e => setForm({ ...form, message: e.target.value })}
-                      className="w-full bg-surface border border-border rounded-xl px-4 py-3.5 text-sm text-primary placeholder-secondary/70 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors" rows={4} placeholder="Como a DuoLife pode ajudar a sua corretora hoje?" />
+                  <div className="rounded-[28px] border border-border bg-surface/80 p-5">
+                    <div className="mb-4 text-[10px] font-black uppercase tracking-[0.16em] text-secondary">Sua necessidade</div>
+                    <div className="grid sm:grid-cols-2 gap-3 mb-5">
+                      {['Quero falar com o comercial', 'Preciso de suporte operacional', 'Tenho interesse em parceria', 'Quero entender os serviços'].map((item) => (
+                        <div key={item} className="rounded-2xl border border-border bg-white px-4 py-3 text-xs font-bold text-primary">
+                          {item}
+                        </div>
+                      ))}
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black text-primary uppercase tracking-wider mb-2">Mensagem *</label>
+                      <textarea required value={form.message} onChange={e => setForm({ ...form, message: e.target.value })}
+                        className="w-full bg-white border border-border rounded-xl px-4 py-3.5 text-sm text-primary placeholder-secondary/70 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors" rows={4} placeholder="Como a DuoLife pode ajudar a sua corretora hoje?" />
+                    </div>
                   </div>
 
                   <button type="submit" disabled={status === 'sending'}
@@ -168,6 +181,9 @@ export default function ContatoClient() {
                   >
                     {status === 'sending' ? 'Preparando...' : 'Iniciar Conversa no WhatsApp'}
                   </button>
+                  <p className="text-center text-xs font-light leading-relaxed text-[#667f86]">
+                    Ao clicar, abrimos a conversa com a mensagem pronta para agilizar o seu atendimento.
+                  </p>
                 </form>
               )}
             </Card3D>
