@@ -3,9 +3,60 @@ import { sql } from './pg';
 import { getBootstrapAdminConfig } from './secrets';
 
 let ready = false;
+let readyPromise: Promise<void> | null = null;
+
+const REQUIRED_TABLES = [
+  'admin_users',
+  'partners',
+  'partner_users',
+  'products',
+  'leads',
+  'wix_collections',
+  'wix_items',
+  'sync_log',
+] as const;
+
+function shouldRunRuntimeSchemaSetup(): boolean {
+  return process.env.ALLOW_RUNTIME_SCHEMA === 'true' || process.env.NODE_ENV !== 'production';
+}
 
 export async function ensureSchema(): Promise<void> {
   if (ready) return;
+  if (!readyPromise) {
+    readyPromise = shouldRunRuntimeSchemaSetup()
+      ? runRuntimeSchemaSetup()
+      : verifyRequiredSchema();
+  }
+
+  try {
+    await readyPromise;
+    ready = true;
+  } catch (error) {
+    readyPromise = null;
+    throw error;
+  }
+}
+
+async function verifyRequiredSchema(): Promise<void> {
+  const rows = await sql<{ table_name: string }[]>`
+    SELECT table_name
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_name = ANY(${REQUIRED_TABLES as unknown as string[]})
+  `;
+
+  const existingTables = new Set(rows.map((row) => row.table_name));
+  const missingTables = REQUIRED_TABLES.filter((tableName) => !existingTables.has(tableName));
+
+  if (missingTables.length > 0) {
+    throw new Error(
+      `Schema da DuoLife incompleto em produção. Tabelas ausentes: ${missingTables.join(', ')}. ` +
+      'Habilite ALLOW_RUNTIME_SCHEMA temporariamente ou execute a trilha controlada de migração.'
+    );
+  }
+}
+
+async function runRuntimeSchemaSetup(): Promise<void> {
   const bootstrapAdminConfig = getBootstrapAdminConfig();
 
   // Parceiros (corretoras)
@@ -464,7 +515,6 @@ export async function ensureSchema(): Promise<void> {
     `;
   }
 
-  ready = true;
 }
 
 export async function seedInitialData(): Promise<void> {

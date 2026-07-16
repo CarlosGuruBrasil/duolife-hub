@@ -1,6 +1,6 @@
 # PROJECT_STATE.md — DuoLife Hub
 
-Atualizado em: 2026-07-16 15:10 BRT
+Atualizado em: 2026-07-16 15:33 BRT
 
 ## Objetivo operacional
 Transformar a DuoLife em um portal/admin operacional estável, com banco isolado, integrações preservadas, documentação de retomada e execução por squad virtual.
@@ -86,7 +86,6 @@ Transformar a DuoLife em um portal/admin operacional estável, com banco isolado
 - Encerrar rollback temporário da base antiga
 
 ## Pendências críticas
-- Remover credenciais sensíveis hardcoded de `src/lib/schema.ts`
 - Parar de depender de criação de schema distribuída em runtime
 - Validar fluxo real do admin sync do Wix em produção
 - Validar fluxos de cotação/venda que hoje estão vazios na base
@@ -97,7 +96,16 @@ Transformar a DuoLife em um portal/admin operacional estável, com banco isolado
 - Depois de cada mudança: registrar resultado e evidência mínima
 - Se os tokens acabarem: retomar sempre por este arquivo e pelo ORÁCULO
 
+## Evidências do fechamento da Fase 1
+- Deploy de produção do commit `8e9b4a719cd51eeae4011ee3e92b952a8b0982a6` concluído no Coolify em `2026-07-16 18:29:24 UTC`
+- Novo container ativo em produção: `nne294wcr9butmdbvc6ph33a-182554950156`
+- Imagem ativa em produção: `nne294wcr9butmdbvc6ph33a:8e9b4a719cd51eeae4011ee3e92b952a8b0982a6`
+- Banco confirmado no container ativo: host `r2ux7wb4r1nhug69ym1unjr2`
+- `GET https://duolife.com.br/api/health` validado com `200` em `2026-07-16`
+- `POST https://duolife.com.br/api/auth/login` validado com `carlos@guru.dev.br`
+- `GET https://duolife.com.br/api/auth/me` validado após login em `2026-07-16`
+
 ## Próximo passo exato
 1. Auditar `src/lib/schema.ts`, `src/lib/auth.ts`, `app/api/auth/*`, `app/api/admin/sync/wix/pull/route.ts` e `app/api/webhook/wix/route.ts`
-2. Remover segredos hardcoded e preparar mecanismo seguro de bootstrap
-3. Planejar substituição gradual do `ensureSchema()` por migração controlada
+2. Reduzir o `ensureSchema()` para bootstrap controlado e preparar trilha de migração explícita
+3. Validar contratos do sync Wix somente em modo pull, com falha limpa quando credenciais não existirem
