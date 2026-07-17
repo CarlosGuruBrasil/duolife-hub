@@ -1,6 +1,6 @@
 # PROJECT_STATE.md — DuoLife Hub
 
-Atualizado em: 2026-07-16 15:33 BRT
+Atualizado em: 2026-07-16 15:38 BRT
 
 ## Objetivo operacional
 Transformar a DuoLife em um portal/admin operacional estável, com banco isolado, integrações preservadas, documentação de retomada e execução por squad virtual.
@@ -106,6 +106,44 @@ Transformar a DuoLife em um portal/admin operacional estável, com banco isolado
 - `GET https://duolife.com.br/api/auth/me` validado após login em `2026-07-16`
 
 ## Próximo passo exato
-1. Auditar `src/lib/schema.ts`, `src/lib/auth.ts`, `app/api/auth/*`, `app/api/admin/sync/wix/pull/route.ts` e `app/api/webhook/wix/route.ts`
-2. Reduzir o `ensureSchema()` para bootstrap controlado e preparar trilha de migração explícita
-3. Validar contratos do sync Wix somente em modo pull, com falha limpa quando credenciais não existirem
+1. Aguardar o deploy do commit `ffd7e547fc7d336d312c6c17ddb59ee22a676232` finalizar no Coolify (`mea0frjf2eq1z7lya38fnj3d`)
+2. Validar em produção que o container ativo trocou para a imagem `ffd7e547...` e que `health`/login seguem íntegros
+3. Seguir para auditoria do sync Wix somente em modo pull, com falha limpa quando credenciais não existirem
+
+## Fase 2 em andamento
+- Commit local/publicado: `ffd7e547fc7d336d312c6c17ddb59ee22a676232`
+- Objetivo: impedir DDL implícito em produção e transformar `ensureSchema()` em verificação segura por padrão
+- Build local aprovado em `2026-07-16`
+- Deploy de produção em andamento no Coolify: `mea0frjf2eq1z7lya38fnj3d`
+
+## Estado atual da API Wix NET4LIFE em 2026-07-16
+- Produção DuoLife saudável no commit `ffd7e547fc7d336d312c6c17ddb59ee22a676232`
+- Causa raiz identificada:
+  - o ambiente estava com `WIX_SITE_ID` apontando para o account id `49416bac-8e5b-45c8-9b61-6c27502b9ccb`, que não é um MetaSite válido para as rotas de Data API da NET4LIFE
+- Correção aplicada no Coolify:
+  - `WIX_SITE_ID` de produção e preview ajustado para `36a9dd1d-86a0-4b88-b6f1-4fe09f75b3a9`
+  - `WIX_API_KEY` e `WIX_SITE_ID` mantidos apenas como runtime env
+  - redeploy forçado da app `nne294wcr9butmdbvc6ph33a`
+- Validação final executada a partir do container ativo de produção `nne294wcr9butmdbvc6ph33a-203648600985`
+- Resultado final:
+  - `GET https://www.wixapis.com/wix-data/v2/collections` => `200`
+  - `POST https://www.wixapis.com/wix-data/v2/items/query` para `Import1` => `200`
+  - `GET https://duolife.com.br/api/health` => `200`
+- Conclusão operacional:
+  - a DuoLife voltou a conectar na API Wix da NET4LIFE em produção
+  - a falha não era no cliente da aplicação, mas na configuração do `WIX_SITE_ID`
+
+## Refatoração da área admin em 2026-07-16
+- Objetivo desta etapa:
+  - aproximar a DuoLife do teor informacional da admin da Net4Life sem copiar a estrutura visual de forma literal
+  - organizar a operação RC em uma shell própria, com dashboard executivo-operacional e módulo de relatórios
+- Mudanças aplicadas:
+  - nova shell admin com navegação por blocos operacionais e de rede
+  - dashboard `/admin` refeito com filtros mensais, cards de KPI, funil comercial, parceiros em destaque, eventos recentes e saúde das integrações
+  - novo módulo `/admin/relatorios` com visão detalhada de status de cotações, cobrança, parceiros, pendências financeiras e falhas de sync
+  - consultas consolidadas movidas para `src/lib/admin-reporting.ts`
+- Evidência técnica:
+  - `npm run build` aprovado em `2026-07-16`
+  - rotas validadas no build: `/admin`, `/admin/relatorios`, `/admin/cotacoes`, `/admin/vendas`, `/admin/comissoes`, `/admin/parceiros`, `/admin/clientes`, `/admin/usuarios`, `/admin/sync`
+- Próximo passo recomendado:
+  - validar a experiência navegando em produção e decidir a próxima camada: permissões finas por perfil operacional ou aprofundamento dos relatórios/ações
