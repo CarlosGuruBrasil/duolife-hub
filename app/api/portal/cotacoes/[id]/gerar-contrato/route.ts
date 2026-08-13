@@ -42,10 +42,13 @@ export async function POST(
     const valorTotal = Number(cotacao.premio_final || cotacao.premio_calculado || 0);
 
     // 2. Determina o template do ZapSign
+    const isRenovacao = clientData.renovacao === true || clientData.renovacao === 'true' || clientData.renovacao === 'Sim';
     const isPlano100k = clientData.tipoDePlano === '100k' || clientData.tipo === '100k';
-    const templateId = isPlano100k
-      ? process.env.ZAPSIGN_TEMPLATE_100K
-      : process.env.ZAPSIGN_TEMPLATE_OFICIAL;
+    const templateId = isRenovacao
+      ? process.env.ZAPSIGN_TEMPLATE_RENOVACAO
+      : isPlano100k
+        ? process.env.ZAPSIGN_TEMPLATE_100K
+        : process.env.ZAPSIGN_TEMPLATE_OFICIAL;
 
     if (!templateId) {
       return Response.json({ error: 'Template do ZapSign não configurado' }, { status: 422 });
