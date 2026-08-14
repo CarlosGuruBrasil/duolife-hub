@@ -20,9 +20,9 @@ export interface BootstrapAdminConfig {
 }
 
 const DEV_BOOTSTRAP_ADMIN: BootstrapAdminConfig = {
-  name: 'Carlos Eduardo',
-  email: 'carlos@guru.dev.br',
-  password: '[REDACTED]',
+  name: 'Dev Local',
+  email: 'dev-local@duolife.invalid',
+  password: 'dev-only-not-a-real-password',
   role: 'duolife_admin',
 };
 

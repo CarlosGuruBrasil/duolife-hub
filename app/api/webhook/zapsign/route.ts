@@ -2,17 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ensureSchema } from '@/lib/schema';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
+import { verifyWebhookToken } from '@/lib/webhook-auth';
 
 function isAuthorized(req: NextRequest) {
   const secret = process.env.ZAPSIGN_WEBHOOK_SECRET;
-  if (!secret) return true;
 
   const headerSecret =
     req.headers.get('x-zapsign-webhook-secret') ||
-    req.headers.get('x-webhook-secret') ||
-    req.headers.get('authorization');
+    req.headers.get('x-webhook-secret');
+  if (verifyWebhookToken(headerSecret, secret)) return true;
 
-  return headerSecret === secret || headerSecret === `Bearer ${secret}`;
+  const auth = req.headers.get('authorization');
+  const bearer = auth?.startsWith('Bearer ') ? auth.slice(7) : auth;
+  return verifyWebhookToken(bearer ?? null, secret);
 }
 
 function normalizeStatus(payload: any) {

@@ -14,7 +14,7 @@ export async function POST(_req: NextRequest) {
     logger.error({ err, adminId: admin.userId }, 'admin.wix.pull.failed');
     return Response.json({
       ok: false,
-      error: err instanceof Error ? err.message : 'Erro ao sincronizar Wix',
+      error: 'Erro ao sincronizar Wix. Verifique os logs do servidor para detalhes.',
     }, { status: 503 });
   }
 }

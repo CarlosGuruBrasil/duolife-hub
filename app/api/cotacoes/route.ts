@@ -177,6 +177,8 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    const premioCalculado = Number(data.clientData?.valor) || null;
+
     const [cotacao] = await sql`
       INSERT INTO cotacoes (
         client_id,
@@ -189,6 +191,7 @@ export async function POST(req: NextRequest) {
         client_phone,
         client_data,
         importancia_segurada,
+        premio_calculado,
         status,
         notes,
         flow_type,
@@ -205,6 +208,7 @@ export async function POST(req: NextRequest) {
         ${data.clientPhone || null},
         ${JSON.stringify(data.clientData || {})},
         ${data.importanciaSegurada || null},
+        ${premioCalculado},
         'rascunho',
         ${data.notes || null},
         ${flowType},

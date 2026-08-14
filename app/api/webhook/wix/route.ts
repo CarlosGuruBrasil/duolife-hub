@@ -3,25 +3,20 @@ import { ensureSchema } from '@/lib/schema';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { findPartnerByWixCode, logSyncEvent, normalizeWixRecord } from '@/lib/wix-sync';
-
-function getWebhookSecret() {
-  return process.env.WEBHOOK_SECRET || '';
-}
+import { verifyWebhookToken } from '@/lib/webhook-auth';
 
 function isAuthorized(req: NextRequest) {
-  const secret = getWebhookSecret();
-  if (!secret) return true;
+  const secret = process.env.WEBHOOK_SECRET;
 
   const headerSecret =
     req.headers.get('x-duolife-webhook-secret') ||
     req.headers.get('x-webhook-secret') ||
     req.headers.get('x-wix-webhook-secret');
-  if (headerSecret === secret) return true;
+  if (verifyWebhookToken(headerSecret, secret)) return true;
 
-  const auth = req.headers.get('authorization') || '';
-  if (auth === secret || auth === `Bearer ${secret}`) return true;
-
-  return false;
+  const auth = req.headers.get('authorization');
+  const bearer = auth?.startsWith('Bearer ') ? auth.slice(7) : auth;
+  return verifyWebhookToken(bearer ?? null, secret);
 }
 
 async function resolveLead(partnerId: string | null, externalId: string | null, documentNumber: string | null) {

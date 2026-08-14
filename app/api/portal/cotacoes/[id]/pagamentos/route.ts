@@ -15,9 +15,9 @@ export async function GET(
     const [link] = await sql`
       SELECT partner_id
       FROM public_sale_links
-      WHERE token = ${publicToken} AND status = 'active'
+      WHERE token = ${publicToken} AND status = 'active' AND (expires_at IS NULL OR expires_at > NOW())
     `;
-    if (!link) return Response.json({ error: 'Token público inválido' }, { status: 401 });
+    if (!link) return Response.json({ error: 'Token público inválido ou expirado' }, { status: 401 });
     targetPartnerId = link.partner_id;
   } else {
     user = await verifyAuth();

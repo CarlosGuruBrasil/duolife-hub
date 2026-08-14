@@ -16,9 +16,9 @@ export async function POST(
     const [link] = await sql`
       SELECT partner_id
       FROM public_sale_links
-      WHERE token = ${publicToken} AND status = 'active'
+      WHERE token = ${publicToken} AND status = 'active' AND (expires_at IS NULL OR expires_at > NOW())
     `;
-    if (!link) return Response.json({ error: 'Token público inválido' }, { status: 401 });
+    if (!link) return Response.json({ error: 'Token público inválido ou expirado' }, { status: 401 });
     targetPartnerId = link.partner_id;
   } else {
     user = await verifyAuth();
@@ -89,9 +89,25 @@ export async function POST(
     }
 
     // 3. Prepara os valores e parcelamento
-    const valorTotal = Number(cotacao.premio_final || cotacao.premio_calculado || 0);
+    const valorTotal = Number(cotacao.premio_final || cotacao.premio_calculado || clientData.valor || 0);
     const qtdParcelas = Number(clientData.parcela) || 1;
     const valorParcela = Number(clientData.valorParcela) || valorTotal;
+
+    if (!valorTotal || valorTotal <= 0) {
+      logger.error({ cotacaoId: cotacao.id }, 'api.portal.gerar-pagamento.valor_invalido');
+      return Response.json({ error: 'Cotação sem valor de prêmio calculado — não é possível gerar cobrança' }, { status: 422 });
+    }
+
+    // Idempotência: já existe uma cobrança gerada para esta cotação, não cria outra no Asaas.
+    if (clientData.checkoutId) {
+      return Response.json({
+        ok: true,
+        checkoutId: clientData.checkoutId,
+        linkBoleto: clientData.linkBoleto,
+        dueDate: clientData.dataVencimento,
+        alreadyExisted: true,
+      });
+    }
 
     // Data de vencimento: 3 dias a partir de hoje
     const dataVencimento = new Date();

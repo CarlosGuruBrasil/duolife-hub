@@ -16,9 +16,9 @@ export async function POST(
     const [link] = await sql`
       SELECT partner_id
       FROM public_sale_links
-      WHERE token = ${publicToken} AND status = 'active'
+      WHERE token = ${publicToken} AND status = 'active' AND (expires_at IS NULL OR expires_at > NOW())
     `;
-    if (!link) return Response.json({ error: 'Token público inválido' }, { status: 401 });
+    if (!link) return Response.json({ error: 'Token público inválido ou expirado' }, { status: 401 });
     targetPartnerId = link.partner_id;
   } else {
     user = await verifyAuth();
@@ -39,7 +39,22 @@ export async function POST(
     }
 
     const clientData = cotacao.client_data || {};
-    const valorTotal = Number(cotacao.premio_final || cotacao.premio_calculado || 0);
+    const valorTotal = Number(cotacao.premio_final || cotacao.premio_calculado || clientData.valor || 0);
+
+    if (!valorTotal || valorTotal <= 0) {
+      logger.error({ cotacaoId: cotacao.id }, 'api.portal.gerar-contrato.valor_invalido');
+      return Response.json({ error: 'Cotação sem valor de prêmio calculado — não é possível gerar contrato' }, { status: 422 });
+    }
+
+    // Idempotência: já existe um contrato gerado para esta cotação, não cria outro documento no ZapSign.
+    if (clientData.contratoToken) {
+      return Response.json({
+        ok: true,
+        docToken: clientData.contratoToken,
+        signUrl: clientData.signUrl,
+        alreadyExisted: true,
+      });
+    }
 
     // 2. Determina o template do ZapSign
     const isRenovacao = clientData.renovacao === true || clientData.renovacao === 'true' || clientData.renovacao === 'Sim';

@@ -2,8 +2,13 @@ import { NextRequest } from 'next/server';
 import { verifyAuth, unauthorized } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
+import { rateLimit, rateLimitResponse } from '@/lib/rate-limit';
 
 export async function POST(req: NextRequest) {
+  const ip = req.headers.get('x-forwarded-for') || 'unknown';
+  const { ok: rateOk, retryAfter } = rateLimit(`validar-cupom:${ip}`, 15, 60_000); // 15 tentativas/min por IP
+  if (!rateOk) return rateLimitResponse(retryAfter);
+
   const publicToken = req.headers.get('x-public-token');
   let targetPartnerId: string | null = null;
   let isAdmin = false;
@@ -12,9 +17,9 @@ export async function POST(req: NextRequest) {
     const [link] = await sql`
       SELECT partner_id
       FROM public_sale_links
-      WHERE token = ${publicToken} AND status = 'active'
+      WHERE token = ${publicToken} AND status = 'active' AND (expires_at IS NULL OR expires_at > NOW())
     `;
-    if (!link) return Response.json({ error: 'Token público inválido' }, { status: 401 });
+    if (!link) return Response.json({ error: 'Token público inválido ou expirado' }, { status: 401 });
     targetPartnerId = link.partner_id;
   } else {
     const user = await verifyAuth();

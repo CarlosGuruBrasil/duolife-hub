@@ -3,6 +3,7 @@ import { ensureSchema } from '@/lib/schema';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
 import { ensureSaleForPaidQuote } from '@/lib/insurance-ops';
+import { verifyWebhookToken } from '@/lib/webhook-auth';
 
 function normalizeAsaasStatus(value: string | null | undefined) {
   return String(value || '').toLowerCase();
@@ -24,12 +25,11 @@ export async function POST(req: NextRequest) {
   try {
     await ensureSchema();
     const authHeader = req.headers.get('asaas-access-token');
-    // Se você configurou um token de webhook no painel do Asaas, coloque no .env como ASAAS_WEBHOOK_SECRET
     const secret = process.env.ASAAS_WEBHOOK_SECRET;
-    
-    // Se temos um secret configurado no sistema e ele é diferente do recebido, bloqueamos.
-    if (secret && authHeader !== secret) {
-      logger.warn({ ip: req.headers.get('x-forwarded-for') }, 'Asaas Webhook unauthorized attempt');
+
+    // Fail-closed: sem secret configurado ou token que não bate, a requisição é sempre rejeitada.
+    if (!verifyWebhookToken(authHeader, secret)) {
+      logger.warn({ ip: req.headers.get('x-forwarded-for'), hasSecretConfigured: Boolean(secret) }, 'Asaas Webhook unauthorized attempt');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
         'asaas',
         ${event},
         ${payment.id},
-        ${secret ? true : null},
+        true,
         ${JSON.stringify(payload)}::jsonb,
         false
       )
