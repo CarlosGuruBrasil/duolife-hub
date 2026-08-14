@@ -3,6 +3,7 @@ import { verifyAuth, unauthorized } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { getAccessibleQuoteById } from '@/lib/access';
+import { parseJsonbField } from '@/lib/json-safe';
 
 export async function POST(
   req: NextRequest,
@@ -38,7 +39,7 @@ export async function POST(
       return Response.json({ error: 'Cotação não encontrada' }, { status: 404 });
     }
 
-    const clientData = cotacao.client_data || {};
+    const clientData = parseJsonbField<Record<string, any>>(cotacao.client_data);
     const asaasKey = process.env.ASAAS_API_KEY;
     const asaasBaseUrl = process.env.ASAAS_BASE_URL || 'https://sandbox.asaas.com/api/v3';
 

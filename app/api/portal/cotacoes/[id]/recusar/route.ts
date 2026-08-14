@@ -3,6 +3,7 @@ import { verifyAuth, unauthorized } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { getAccessibleQuoteById } from '@/lib/access';
+import { parseJsonbField } from '@/lib/json-safe';
 
 const ESTADOS_TERMINAIS = ['aprovada', 'recusada', 'expirada'];
 
@@ -28,7 +29,7 @@ export async function POST(
     const body = await req.json().catch(() => ({}));
     const motivo = typeof body?.motivo === 'string' ? body.motivo.slice(0, 500) : null;
 
-    const clientData = cotacao.client_data || {};
+    const clientData = parseJsonbField<Record<string, any>>(cotacao.client_data);
     clientData.recusadoEm = new Date().toISOString();
     clientData.recusadoMotivo = motivo;
     clientData.recusadoPor = user.userId;

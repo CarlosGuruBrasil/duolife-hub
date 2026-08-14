@@ -3,6 +3,7 @@ import { verifyAuth, unauthorized } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { getAccessibleQuoteById } from '@/lib/access';
+import { parseJsonbField } from '@/lib/json-safe';
 
 export async function POST(
   req: NextRequest,
@@ -43,11 +44,11 @@ export async function POST(
         ok: true,
         status: cotacao.status,
         assinado: true,
-        contratoPdf: cotacao.client_data?.contratoPdf || ''
+        contratoPdf: parseJsonbField<Record<string, any>>(cotacao.client_data).contratoPdf || ''
       });
     }
 
-    const clientData = cotacao.client_data || {};
+    const clientData = parseJsonbField<Record<string, any>>(cotacao.client_data);
     const docToken = clientData.contratoToken;
 
     if (!docToken) {

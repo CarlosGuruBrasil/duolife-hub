@@ -3,6 +3,7 @@ import { ensureSchema } from '@/lib/schema';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
 import { verifyWebhookToken } from '@/lib/webhook-auth';
+import { parseJsonbField } from '@/lib/json-safe';
 
 function isAuthorized(req: NextRequest) {
   const secret = process.env.ZAPSIGN_WEBHOOK_SECRET;
@@ -152,7 +153,7 @@ export async function POST(req: NextRequest) {
         LIMIT 1
       `;
 
-      const clientData = cotacao?.client_data || {};
+      const clientData = parseJsonbField<Record<string, any>>(cotacao?.client_data);
       if (signedFileUrl) clientData.contratoPdf = signedFileUrl;
       clientData.assinadoEm = clientData.assinadoEm || new Date().toISOString();
 
