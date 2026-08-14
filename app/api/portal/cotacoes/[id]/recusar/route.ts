@@ -35,7 +35,7 @@ export async function POST(
 
     await sql`
       UPDATE cotacoes
-      SET status = 'recusada', client_data = ${JSON.stringify(clientData)}, updated_at = NOW()
+      SET status = 'recusada', client_data = ${JSON.stringify(clientData)}::jsonb, updated_at = NOW()
       WHERE id = ${cotacao.id}
     `;
 

@@ -314,7 +314,7 @@ export async function POST(
       SET
         status = 'pagamento_gerado',
         premio_final = ${valorTotal},
-        client_data = ${JSON.stringify(clientData)},
+        client_data = ${JSON.stringify(clientData)}::jsonb,
         updated_at = NOW()
       WHERE id = ${cotacao.id}
     `;

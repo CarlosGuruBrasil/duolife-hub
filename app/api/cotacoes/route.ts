@@ -231,7 +231,7 @@ export async function POST(req: NextRequest) {
         ${data.clientCpfCnpj},
         ${data.clientEmail || null},
         ${data.clientPhone || null},
-        ${JSON.stringify(data.clientData || {})},
+        ${JSON.stringify(data.clientData || {})}::jsonb,
         ${data.importanciaSegurada || null},
         ${premioCalculado},
         'rascunho',

@@ -92,7 +92,7 @@ export async function POST(
         UPDATE cotacoes
         SET
           status = 'assinado',
-          client_data = ${JSON.stringify(clientData)},
+          client_data = ${JSON.stringify(clientData)}::jsonb,
           updated_at = NOW()
         WHERE id = ${cotacao.id}
       `;
