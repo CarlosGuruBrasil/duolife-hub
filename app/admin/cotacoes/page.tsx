@@ -1,8 +1,9 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Plus } from 'lucide-react';
-import { verifyAuth } from '@/lib/auth';
+import { verifyAuth, isDevUser } from '@/lib/auth';
 import { sql } from '@/lib/pg';
+import { DeleteCotacaoButton } from './_delete-button';
 
 interface AdminCotacaoRow {
   id: string;
@@ -54,6 +55,8 @@ export default async function AdminCotacoesPage() {
   if (!user || (user.role !== 'duolife_admin' && user.role !== 'duolife_staff')) {
     redirect('/login');
   }
+
+  const canDelete = isDevUser(user);
 
   const cotacoes = await sql<AdminCotacaoRow[]>`
     SELECT
@@ -115,6 +118,7 @@ export default async function AdminCotacoesPage() {
                     <th className="px-6 py-4 font-semibold text-gray-500 uppercase tracking-wider text-xs text-right">Prêmio</th>
                     <th className="px-6 py-4 font-semibold text-gray-500 uppercase tracking-wider text-xs text-center">Status</th>
                     <th className="px-6 py-4 font-semibold text-gray-500 uppercase tracking-wider text-xs text-right">Data</th>
+                    {canDelete && <th className="px-6 py-4 font-semibold text-gray-500 uppercase tracking-wider text-xs text-center">Dev</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -140,6 +144,11 @@ export default async function AdminCotacoesPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-gray-500 text-xs text-right font-medium">{formatDate(cotacao.created_at)}</td>
+                      {canDelete && (
+                        <td className="px-6 py-4 text-center">
+                          <DeleteCotacaoButton id={cotacao.id} clientName={cotacao.client_name} />
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
