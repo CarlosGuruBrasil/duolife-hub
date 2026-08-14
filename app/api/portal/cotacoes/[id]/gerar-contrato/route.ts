@@ -306,7 +306,9 @@ export async function POST(
     }
 
     const resJson = JSON.parse(responseText);
-    const docToken = resJson.doc_token;
+    // A resposta real de /models/create-doc/ traz o identificador do documento em "token",
+    // não "doc_token" (esse último é usado em outros payloads da ZapSign, ex. webhooks).
+    const docToken = resJson.token;
     const signUrl = resJson.signers?.[0]?.sign_url || '';
 
     // 7. Atualiza a cotação no Banco
