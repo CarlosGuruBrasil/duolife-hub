@@ -72,6 +72,7 @@ export async function POST(req: NextRequest) {
             telefone = COALESCE(${normalized.telefone}, telefone),
             origem = COALESCE(${normalized.origem}, origem),
             status = COALESCE(${normalized.status}, status),
+            status_cliente = COALESCE(${normalized.statusCliente}, status_cliente),
             raw = ${JSON.stringify(normalized.raw)}::jsonb,
             synced_at = NOW(),
             source_system = ${normalized.sourceSystem}
@@ -88,6 +89,7 @@ export async function POST(req: NextRequest) {
             telefone,
             origem,
             status,
+            status_cliente,
             raw,
             synced_at,
             source_system
@@ -101,6 +103,7 @@ export async function POST(req: NextRequest) {
             ${normalized.telefone},
             ${normalized.origem},
             ${normalized.status},
+            ${normalized.statusCliente},
             ${JSON.stringify(normalized.raw)}::jsonb,
             NOW(),
             ${normalized.sourceSystem}

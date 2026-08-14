@@ -38,6 +38,15 @@ export async function GET(req: NextRequest) {
     await ensureSchema();
     await seedInitialData();
 
+    // Expira automaticamente cotações que passaram do prazo sem avançar (evita ficarem presas
+    // indefinidamente em 'rascunho'/'enviada'/'contrato_gerado' inflando o funil).
+    await sql`
+      UPDATE cotacoes
+      SET status = 'expirada', updated_at = NOW()
+      WHERE valid_until IS NOT NULL AND valid_until < CURRENT_DATE
+        AND status IN ('rascunho', 'enviada', 'contrato_gerado')
+    `;
+
     const cotacoes = !targetPartnerId
       ? await sql`
           SELECT
@@ -179,6 +188,20 @@ export async function POST(req: NextRequest) {
 
     const premioCalculado = Number(data.clientData?.valor) || null;
 
+    // Renovação como conceito de primeira classe (não só uma flag solta em client_data.renovacao).
+    // Tenta linkar com a cotação aprovada mais recente do mesmo cliente, quando existir.
+    const isRenewal = data.clientData?.renovacao === true || data.clientData?.renovacao === 'true';
+    let renewedFromCotacaoId: string | null = null;
+    if (isRenewal) {
+      const [previous] = await sql`
+        SELECT id FROM cotacoes
+        WHERE client_id = ${client.id} AND status = 'aprovada'
+        ORDER BY created_at DESC
+        LIMIT 1
+      `;
+      renewedFromCotacaoId = previous?.id || null;
+    }
+
     const [cotacao] = await sql`
       INSERT INTO cotacoes (
         client_id,
@@ -195,7 +218,9 @@ export async function POST(req: NextRequest) {
         status,
         notes,
         flow_type,
-        source_token
+        source_token,
+        is_renewal,
+        renewed_from_cotacao_id
       )
       VALUES (
         ${client.id},
@@ -212,7 +237,9 @@ export async function POST(req: NextRequest) {
         'rascunho',
         ${data.notes || null},
         ${flowType},
-        ${sourceToken}
+        ${sourceToken},
+        ${isRenewal},
+        ${renewedFromCotacaoId}
       )
       RETURNING id, status, created_at
     `;

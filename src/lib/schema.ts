@@ -248,6 +248,11 @@ async function runRuntimeSchemaSetup(): Promise<void> {
   await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS document_number TEXT`;
   await sql`CREATE INDEX IF NOT EXISTS leads_document_number ON leads (document_number)`;
 
+  // status_cliente: campo mais granular/atual da NET4LIFE (Vigente/Em atraso/Cancelado/Em negociação),
+  // mantido separado de "status" (que reflete statusGeral, mais genérico: Negócio Fechado/Pendente/Inativo)
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS status_cliente TEXT`;
+  await sql`CREATE INDEX IF NOT EXISTS leads_status_cliente ON leads (status_cliente)`;
+
   // Clientes finais segurados
   await sql`
     CREATE TABLE IF NOT EXISTS insurance_clients (
@@ -298,10 +303,15 @@ async function runRuntimeSchemaSetup(): Promise<void> {
   await sql`ALTER TABLE cotacoes ALTER COLUMN partner_user_id DROP NOT NULL`;
   await sql`ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS flow_type TEXT NOT NULL DEFAULT 'internal'`;
   await sql`ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS source_token TEXT`;
+  // Renovação como conceito de primeira classe — antes só existia como flag solta em client_data.renovacao
+  await sql`ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS is_renewal BOOLEAN NOT NULL DEFAULT false`;
+  await sql`ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS renewed_from_cotacao_id TEXT REFERENCES cotacoes(id)`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_partner_id ON cotacoes (partner_id)`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_status     ON cotacoes (status)`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_source_token ON cotacoes (source_token)`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_client_id ON cotacoes (client_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS cotacoes_is_renewal ON cotacoes (is_renewal)`;
+  await sql`CREATE INDEX IF NOT EXISTS cotacoes_renewed_from ON cotacoes (renewed_from_cotacao_id)`;
 
   // Vendas (apólices emitidas)
   await sql`
@@ -405,6 +415,32 @@ async function runRuntimeSchemaSetup(): Promise<void> {
   `;
   await sql`CREATE INDEX IF NOT EXISTS signature_documents_cotacao_id ON signature_documents (cotacao_id)`;
   await sql`CREATE INDEX IF NOT EXISTS signature_documents_client_id ON signature_documents (client_id)`;
+  // Garante no máximo 1 contrato ativo por cotação a nível de banco, não só via checagem em aplicação
+  // (clientData.contratoToken pode ser perdido/resetado sem essa garantia).
+  await sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS signature_documents_unique_active_cotacao
+    ON signature_documents (cotacao_id)
+    WHERE status NOT IN ('cancelled', 'refused')
+  `;
+
+  // Controle de uso de cupom promocional — o Wix só guarda um contador estático (quantidadeUsada)
+  // que nunca é incrementado pelo DuoLife; aqui mantemos o controle real e atômico do lado do DuoLife.
+  await sql`
+    CREATE TABLE IF NOT EXISTS cupom_usos (
+      cupom_codigo TEXT PRIMARY KEY,
+      usos         INTEGER NOT NULL DEFAULT 0,
+      limite       INTEGER,
+      updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`
+    CREATE TABLE IF NOT EXISTS cupom_uso_eventos (
+      id           TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      cupom_codigo TEXT NOT NULL,
+      cotacao_id   TEXT NOT NULL UNIQUE REFERENCES cotacoes(id),
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
 
   // Operações financeiras por cotação/produto
   await sql`

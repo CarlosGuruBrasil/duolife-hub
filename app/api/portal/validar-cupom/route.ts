@@ -76,11 +76,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Quantidade
+    // Quantidade — usa o contador real do DuoLife (cupom_usos), não o quantidadeUsada estático do Wix,
+    // que nunca é incrementado de volta.
     const limite = Number(cupom.quantidade) || 0;
-    const usados = Number(cupom.quantidadeUsada) || 0;
-    if (limite > 0 && usados >= limite) {
-      return Response.json({ ok: false, error: 'Cupom esgotado' }, { status: 400 });
+    if (limite > 0) {
+      const [uso] = await sql`
+        SELECT usos FROM cupom_usos WHERE cupom_codigo = ${cupom.codigo}
+      `;
+      const usados = Number(uso?.usos) || 0;
+      if (usados >= limite) {
+        return Response.json({ ok: false, error: 'Cupom esgotado' }, { status: 400 });
+      }
     }
 
     return Response.json({

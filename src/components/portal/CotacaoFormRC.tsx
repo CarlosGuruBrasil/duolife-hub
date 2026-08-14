@@ -123,16 +123,10 @@ const initialForm: FormState = {
   pagouDetalhe: '',
 };
 
-const CARGOS_PPE = [
-  { id: '1', text: 'Detentores de mandatos eletivos dos Poderes Executivo e Legislativo da União' },
-  { id: '2', text: 'Membros do Tribunal de Contas da União e Procurador-Geral junto ao TCU' },
-  { id: '3', text: 'Membros do Conselho Federal da OAB e Conselhos Seccionais' },
-  { id: '4', text: 'Ministros de Estado e ocupantes de cargos de escalão equivalente' },
-  { id: '5', text: 'Presidentes, vice-presidentes e diretores de autarquias e fundações públicas' },
-  { id: '6', text: 'Membros do CNJ, do STF e dos Tribunais Superiores' },
-  { id: '7', text: 'Membros do Conselho Nacional do Ministério Público e Procuradores-Gerais' },
-  { id: '8', text: 'Membros do Tribunal de Contas da União e o Procurador-Geral do Ministério Público junto ao TCU' }
-];
+interface CargoPPE {
+  id: string;
+  text: string;
+}
 
 const AREAS_ATUACAO = [
   { key: 'civil', label: 'Civil' },
@@ -159,6 +153,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<FormState>(initialForm);
   const [planos, setPlanos] = useState<Plano[]>([]);
+  const [cargosPpe, setCargosPpe] = useState<CargoPPE[]>([]);
   const [planoSel, setPlanoSel] = useState<Plano | null>(null);
   const [parcelaSel, setParcelaSel] = useState<{ qtd: number; valor: number } | null>(null);
   
@@ -216,6 +211,25 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
       }
     }
     loadPlanos();
+  }, []);
+
+  // Carrega os cargos PPE ao iniciar — vem do Wix ao vivo, mesma coleção que o contrato usa,
+  // pra garantir que o texto exibido no formulário seja sempre o mesmo que vai pro contrato assinado.
+  useEffect(() => {
+    async function loadCargosPpe() {
+      try {
+        const res = await fetch('/api/portal/ppe-cargos', {
+          headers: getHeaders()
+        });
+        const data = await res.json();
+        if (data.ok) {
+          setCargosPpe(data.cargos as CargoPPE[]);
+        }
+      } catch (err) {
+        console.error('Erro ao buscar cargos PPE:', err);
+      }
+    }
+    loadCargosPpe();
   }, []);
 
   // Máscaras e Formatações
@@ -937,7 +951,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
             <div className="bg-gray-50 border border-gray-200 p-4 rounded-xl space-y-3">
               <span className="field-label block font-semibold text-accent">Selecione as funções ocupadas:</span>
               <div className="space-y-2">
-                {CARGOS_PPE.map((cargo) => (
+                {cargosPpe.map((cargo) => (
                   <label key={cargo.id} className="flex items-start space-x-2 cursor-pointer text-sm text-gray-700">
                     <input
                       type="checkbox"

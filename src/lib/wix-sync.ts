@@ -9,6 +9,7 @@ export interface NormalizedWixRecord {
   telefone: string | null;
   origem: string;
   status: string;
+  statusCliente: string | null;
   sourceSystem: string;
   partnerWixCode: string | null;
   productCode: string | null;
@@ -44,7 +45,10 @@ export function normalizeWixRecord(body: unknown): NormalizedWixRecord {
   const email = normalizeMaybeString(raw.email)?.toLowerCase() ?? null;
   const telefone = normalizeDigits(raw.celular) || normalizeDigits(raw.telefone) || normalizeDigits(raw.phone) || null;
   const origem = normalizeMaybeString(raw.origem) || normalizeMaybeString(raw.source) || 'wix';
-  const status = normalizeMaybeString(raw.statusGeral) || normalizeMaybeString(raw.status) || 'novo';
+  // statusCliente é o campo mais granular/atual (Vigente/Em atraso/Cancelado); statusGeral é o mais genérico.
+  // raw.status/raw.cargo NÃO representam status de lead (texto de parcela/cargo profissional) — não usar como fallback.
+  const statusCliente = normalizeMaybeString(raw.statusCliente) || normalizeMaybeString(raw.StatusCliente) || null;
+  const status = statusCliente || normalizeMaybeString(raw.statusGeral) || 'novo';
   const sourceSystem = normalizeMaybeString(raw.source_system) || 'wix';
   const partnerWixCode =
     normalizeMaybeString(raw.codigoVenda) ||
@@ -63,6 +67,7 @@ export function normalizeWixRecord(body: unknown): NormalizedWixRecord {
     telefone,
     origem,
     status,
+    statusCliente,
     sourceSystem,
     partnerWixCode,
     productCode,

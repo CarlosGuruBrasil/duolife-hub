@@ -40,14 +40,27 @@ export async function POST(
 
     const clientData = cotacao.client_data || {};
     const valorTotal = Number(cotacao.premio_final || cotacao.premio_calculado || clientData.valor || 0);
+    const qtdParcelasContrato = Number(clientData.parcela) || 1;
+    const valorParcelaContrato = Number(clientData.valorParcela) || valorTotal;
+    // Quando parcelado, o total efetivamente cobrado (com juros já embutidos na parcela) pode ser
+    // maior que o valor à vista — não usar valorTotal sozinho como "o que o cliente paga".
+    const valorTotalComJuros = qtdParcelasContrato > 1 ? valorParcelaContrato * qtdParcelasContrato : valorTotal;
 
     if (!valorTotal || valorTotal <= 0) {
       logger.error({ cotacaoId: cotacao.id }, 'api.portal.gerar-contrato.valor_invalido');
       return Response.json({ error: 'Cotação sem valor de prêmio calculado — não é possível gerar contrato' }, { status: 422 });
     }
 
-    // Idempotência: já existe um contrato gerado para esta cotação, não cria outro documento no ZapSign.
-    if (clientData.contratoToken) {
+    // Idempotência: já existe um contrato gerado para esta cotação, não cria outro documento no ZapSign —
+    // a menos que o link de assinatura já tenha passado do prazo de validade do ZapSign (~30 dias), caso
+    // em que geramos um novo documento em vez de reaproveitar um signUrl morto indefinidamente.
+    const SIGN_URL_MAX_AGE_DAYS = 25;
+    const contratoGeradoEm = clientData.contratoGeradoEm ? new Date(clientData.contratoGeradoEm) : null;
+    const signUrlExpirado = contratoGeradoEm
+      ? (Date.now() - contratoGeradoEm.getTime()) > SIGN_URL_MAX_AGE_DAYS * 24 * 60 * 60 * 1000
+      : false;
+
+    if (clientData.contratoToken && !signUrlExpirado) {
       return Response.json({
         ok: true,
         docToken: clientData.contratoToken,
@@ -57,16 +70,72 @@ export async function POST(
     }
 
     // 2. Determina o template do ZapSign
+    // Prioridade: plano 100k sempre usa o template 100k (mesmo em renovação — 61% das renovações reais
+    // são do plano 100k, que já tem coleta de dados simplificada compatível). Renovação de outros planos
+    // usa o template de renovação; senão, o template oficial.
     const isRenovacao = clientData.renovacao === true || clientData.renovacao === 'true' || clientData.renovacao === 'Sim';
-    const isPlano100k = clientData.tipoDePlano === '100k' || clientData.tipo === '100k';
-    const templateId = isRenovacao
-      ? process.env.ZAPSIGN_TEMPLATE_RENOVACAO
-      : isPlano100k
-        ? process.env.ZAPSIGN_TEMPLATE_100K
+    const isPlano100k = clientData.tipo === '100k';
+    const templateId = isPlano100k
+      ? process.env.ZAPSIGN_TEMPLATE_100K
+      : isRenovacao
+        ? process.env.ZAPSIGN_TEMPLATE_RENOVACAO
         : process.env.ZAPSIGN_TEMPLATE_OFICIAL;
 
     if (!templateId) {
       return Response.json({ error: 'Template do ZapSign não configurado' }, { status: 422 });
+    }
+
+    // 2b. Consome o uso do cupom promocional (se houver) de forma atômica e idempotente por cotação.
+    // O Wix só guarda um contador estático (quantidadeUsada) que nunca é escrito de volta — aqui o
+    // DuoLife mantém o controle real. Se o limite já foi atingido, não bloqueamos a venda (o cliente já
+    // viu o preço com desconto e fechou negócio), só registramos o excesso para auditoria.
+    const cupomCodigo = clientData.cupomCodigo ? String(clientData.cupomCodigo).trim() : null;
+    if (cupomCodigo) {
+      try {
+        const [evento] = await sql`
+          INSERT INTO cupom_uso_eventos (cupom_codigo, cotacao_id)
+          VALUES (${cupomCodigo}, ${cotacao.id})
+          ON CONFLICT (cotacao_id) DO NOTHING
+          RETURNING id
+        `;
+
+        if (evento) {
+          const cupomItens = await sql`
+            SELECT payload FROM wix_items
+            WHERE wix_collection_id IN (
+              SELECT id FROM wix_collections WHERE collection_id = 'CUPOMPROMOCIONAL'
+            )
+            AND is_active = true
+          `;
+          const cupomData = cupomItens
+            .map(r => {
+              try {
+                const parsed = typeof r.payload === 'string' ? JSON.parse(r.payload) : r.payload;
+                return parsed?.item?.data || null;
+              } catch {
+                return null;
+              }
+            })
+            .find(c => c && String(c.codigo).toLowerCase() === cupomCodigo.toLowerCase());
+
+          const limite = Number(cupomData?.quantidade) || null;
+
+          const [resultado] = await sql`
+            INSERT INTO cupom_usos (cupom_codigo, usos, limite)
+            VALUES (${cupomCodigo}, 1, ${limite})
+            ON CONFLICT (cupom_codigo) DO UPDATE
+            SET usos = cupom_usos.usos + 1, limite = COALESCE(EXCLUDED.limite, cupom_usos.limite), updated_at = NOW()
+            WHERE cupom_usos.usos < COALESCE(cupom_usos.limite, 2147483647)
+            RETURNING usos
+          `;
+
+          if (!resultado) {
+            logger.warn({ cupomCodigo, cotacaoId: cotacao.id }, 'api.portal.gerar-contrato.cupom_limite_excedido');
+          }
+        }
+      } catch (err) {
+        logger.error({ err, cupomCodigo, cotacaoId: cotacao.id }, 'api.portal.gerar-contrato.cupom_consumo_failed');
+      }
     }
 
     // 3. Busca a descrição de cargos PPE se aplicável
@@ -174,15 +243,18 @@ export async function POST(
 
       // Dados de seguro anterior (opcional)
       "seguradora": clientData.seguradora || ' ',
-      "franquia": clientData.franquia || ' ',
+      "franquia": clientData.franquiaAnterior || ' ',
       "vigencia": clientData.vigencia ? formatData(clientData.vigencia) : ' ',
       "premio": clientData.premio || ' ',
       "limite": clientData.limite || ' ',
       "dataRetroativa": clientData.dataRetroativa ? formatData(clientData.dataRetroativa) : 'Início de Vigência',
 
       // Variáveis do Plano / Parcelamento
+      // "valor" é o prêmio à vista; "valorTotalParcelado" é o total efetivamente cobrado quando parcelado
+      // com juros (ex: 6x já embute 2% a.m.) — os dois podem divergir, por isso expomos ambos ao contrato.
       "tipo": clientData.valorCobertura || 'Plano Padrão',
       "valor": formatMoeda(valorTotal),
+      "valorTotalParcelado": formatMoeda(valorTotalComJuros),
       "planoParcela": clientData.parcela && Number(clientData.parcela) > 1 ? `${clientData.parcela} parcelas` : '1x',
       "planoValorParcela": formatMoeda(clientData.valorParcela || valorTotal),
       "planoFranquia": clientData.planoFranquia || ' ',
@@ -239,6 +311,7 @@ export async function POST(
     // 7. Atualiza a cotação no Banco
     clientData.contratoToken = docToken;
     clientData.signUrl = signUrl;
+    clientData.contratoGeradoEm = new Date().toISOString();
 
     await sql`
       UPDATE cotacoes
@@ -248,6 +321,16 @@ export async function POST(
         updated_at = NOW()
       WHERE id = ${cotacao.id}
     `;
+
+    // Se estamos regenerando por expiração, o documento antigo precisa sair do estado "ativo"
+    // antes do insert abaixo, senão colide com o índice único parcial (1 documento ativo por cotação).
+    if (signUrlExpirado) {
+      await sql`
+        UPDATE signature_documents
+        SET status = 'expired', updated_at = NOW()
+        WHERE cotacao_id = ${cotacao.id} AND status NOT IN ('cancelled', 'refused', 'expired')
+      `;
+    }
 
     await sql`
       INSERT INTO signature_documents (

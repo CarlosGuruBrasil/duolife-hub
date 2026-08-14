@@ -74,7 +74,11 @@ async function upsertItem(params: {
   const name = normalizeMaybeString(data.nome) || normalizeMaybeString(data.name) || normalizeMaybeString(data.nomeExibido) || null;
   const email = normalizeMaybeString(data.email)?.toLowerCase() || null;
   const phone = normalizeDigits(data.celular) || normalizeDigits(data.telefone) || normalizeDigits(data.phone) || null;
-  const status = normalizeMaybeString(data.statusGeral) || normalizeMaybeString(data.status) || normalizeMaybeString(data.cargo) || null;
+  // statusCliente é o campo mais granular/atual mantido pela operação (Vigente/Em atraso/Cancelado/Em negociação);
+  // statusGeral é mais genérico (Negócio Fechado/Pendente/Inativo). data.status e data.cargo NÃO são status de lead
+  // (são texto de parcela/cargo profissional) e não devem entrar no fallback.
+  const statusCliente = normalizeMaybeString(data.statusCliente) || normalizeMaybeString(data.StatusCliente) || null;
+  const status = statusCliente || normalizeMaybeString(data.statusGeral) || null;
   const partnerCode =
     normalizeMaybeString(data.codigoVenda) ||
     normalizeMaybeString(data.codigoParceiro) ||
@@ -141,14 +145,14 @@ async function upsertItem(params: {
       is_active = true
   `;
 
-  return { externalId, documentNumber, name, email, phone, status, partnerCode, data };
+  return { externalId, documentNumber, name, email, phone, status, statusCliente, partnerCode, data };
 }
 
 async function upsertLeadFromWix(params: {
   collectionId: string;
   mirror: Awaited<ReturnType<typeof upsertItem>>;
 }) {
-  const { externalId, documentNumber, name, email, phone, status, partnerCode, data } = params.mirror;
+  const { externalId, documentNumber, name, email, phone, status, statusCliente, partnerCode, data } = params.mirror;
   if (!externalId && !documentNumber) return null;
 
   const partner = await findPartnerByWixCode(partnerCode);
@@ -184,6 +188,7 @@ async function upsertLeadFromWix(params: {
         telefone = COALESCE(${phone}, telefone),
         origem = 'wix',
         status = COALESCE(${status || 'novo'}, status),
+        status_cliente = COALESCE(${statusCliente}, status_cliente),
         raw = ${JSON.stringify(raw)}::jsonb,
         synced_at = NOW(),
         source_system = 'wix',
@@ -204,6 +209,7 @@ async function upsertLeadFromWix(params: {
       telefone,
       origem,
       status,
+      status_cliente,
       raw,
       synced_at,
       source_system,
@@ -219,6 +225,7 @@ async function upsertLeadFromWix(params: {
       ${phone},
       'wix',
       ${status || 'novo'},
+      ${statusCliente},
       ${JSON.stringify(raw)}::jsonb,
       NOW(),
       'wix',
