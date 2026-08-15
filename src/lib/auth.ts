@@ -156,10 +156,6 @@ export function isDevUser(user: AuthUser): boolean {
   return user.role === 'duolife_admin';
 }
 
-export function hasPartnerWideAccess(user: AuthUser): boolean {
-  return user.partnerRole === 'director';
-}
-
 export function canManageOwnCompany(user: AuthUser): boolean {
   return user.partnerRole === 'director';
 }
@@ -205,10 +201,6 @@ export async function getPartnerAccessContext(user: AuthUser): Promise<PartnerAc
     role: user.partnerRole,
     visibleUserIds: [user.userId],
   };
-}
-
-export function signToken(payload: AuthUser): string {
-  return jwt.sign(payload, getJwtSecret(), { expiresIn: '15m' });
 }
 
 export function unauthorized() {

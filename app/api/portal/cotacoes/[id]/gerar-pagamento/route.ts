@@ -250,6 +250,10 @@ export async function POST(
 
     if (paymentOrderId) {
       for (const installment of installmentsPayload) {
+        if (!installment.id) {
+          logger.error({ installment, cotacaoId: cotacao.id }, 'api.portal.gerar-pagamento.installment_sem_id');
+          continue;
+        }
         await sql`
           INSERT INTO payment_installments (
             payment_order_id,
