@@ -4,6 +4,8 @@ import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { getAccessibleQuoteById } from '@/lib/access';
 import { parseJsonbField } from '@/lib/json-safe';
+import { calcularPrecoServidor } from '@/lib/pricing';
+import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
 
 export async function POST(
   req: NextRequest,
@@ -37,6 +39,10 @@ export async function POST(
 
     if (!cotacao) {
       return Response.json({ error: 'Cotação não encontrada' }, { status: 404 });
+    }
+
+    if (ESTADOS_TERMINAIS.includes(cotacao.status)) {
+      return Response.json({ error: `Cotação já está em estado final (${cotacao.status}) — não é possível gerar cobrança` }, { status: 422 });
     }
 
     const clientData = parseJsonbField<Record<string, any>>(cotacao.client_data);
@@ -86,13 +92,30 @@ export async function POST(
 
       const clientJson = JSON.parse(clientResText);
       clienteId = clientJson.id;
+      if (!clienteId) {
+        logger.error({ cotacaoId: cotacao.id, body: clientResText }, 'api.portal.gerar-pagamento.asaas_customer_sem_id');
+        return Response.json({ error: 'Resposta inesperada da Asaas ao cadastrar cliente' }, { status: 502 });
+      }
       clientData.clienteId = clienteId;
     }
 
-    // 3. Prepara os valores e parcelamento
-    const valorTotal = Number(cotacao.premio_final || cotacao.premio_calculado || clientData.valor || 0);
-    const qtdParcelas = Number(clientData.parcela) || 1;
-    const valorParcela = Number(clientData.valorParcela) || valorTotal;
+    // 3. Prepara os valores e parcelamento — recalculado no servidor a partir da tabela real de
+    // planos/cupom, nunca aceito de clientData.valor/valorParcela (esses vêm do cliente e são forjáveis).
+    const tipoDePlano = clientData.tipo || clientData.tipoDePlano || null;
+    const preco = await calcularPrecoServidor({
+      tipoDePlano,
+      qtdParcelasSolicitada: Number(clientData.parcela) || 1,
+      cupomCodigo: clientData.cupomCodigo || null,
+    });
+
+    if (!preco) {
+      logger.error({ cotacaoId: cotacao.id, tipoDePlano }, 'api.portal.gerar-pagamento.plano_nao_encontrado');
+      return Response.json({ error: 'Não foi possível recalcular o preço do plano — cotação inconsistente' }, { status: 422 });
+    }
+
+    const valorTotal = preco.valorTotal;
+    const qtdParcelas = preco.qtdParcelas;
+    const valorParcela = preco.valorParcela;
 
     if (!valorTotal || valorTotal <= 0) {
       logger.error({ cotacaoId: cotacao.id }, 'api.portal.gerar-pagamento.valor_invalido');

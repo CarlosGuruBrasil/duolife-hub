@@ -4,6 +4,8 @@ import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { getAccessibleQuoteById } from '@/lib/access';
 import { parseJsonbField } from '@/lib/json-safe';
+import { calcularPrecoServidor } from '@/lib/pricing';
+import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
 
 export async function POST(
   req: NextRequest,
@@ -39,10 +41,23 @@ export async function POST(
       return Response.json({ error: 'Cotação não encontrada' }, { status: 404 });
     }
 
+    if (ESTADOS_TERMINAIS.includes(cotacao.status)) {
+      return Response.json({ error: `Cotação já está em estado final (${cotacao.status}) — não é possível gerar contrato` }, { status: 422 });
+    }
+
     const clientData = parseJsonbField<Record<string, any>>(cotacao.client_data);
-    const valorTotal = Number(cotacao.premio_final || cotacao.premio_calculado || clientData.valor || 0);
-    const qtdParcelasContrato = Number(clientData.parcela) || 1;
-    const valorParcelaContrato = Number(clientData.valorParcela) || valorTotal;
+
+    // Preço recalculado no servidor a partir da tabela real de planos/cupom — nunca aceito de
+    // clientData.valor/valorParcela, que vêm do cliente e são forjáveis.
+    const preco = await calcularPrecoServidor({
+      tipoDePlano: clientData.tipo || clientData.tipoDePlano || null,
+      qtdParcelasSolicitada: Number(clientData.parcela) || 1,
+      cupomCodigo: clientData.cupomCodigo || null,
+    });
+
+    const valorTotal = preco?.valorTotal ?? Number(cotacao.premio_final || cotacao.premio_calculado || 0);
+    const qtdParcelasContrato = preco?.qtdParcelas ?? 1;
+    const valorParcelaContrato = preco?.valorParcela ?? valorTotal;
     // Quando parcelado, o total efetivamente cobrado (com juros já embutidos na parcela) pode ser
     // maior que o valor à vista — não usar valorTotal sozinho como "o que o cliente paga".
     const valorTotalComJuros = qtdParcelasContrato > 1 ? valorParcelaContrato * qtdParcelasContrato : valorTotal;
@@ -309,6 +324,10 @@ export async function POST(
     // A resposta real de /models/create-doc/ traz o identificador do documento em "token",
     // não "doc_token" (esse último é usado em outros payloads da ZapSign, ex. webhooks).
     const docToken = resJson.token;
+    if (!docToken) {
+      logger.error({ cotacaoId: cotacao.id, body: responseText }, 'api.portal.gerar-contrato.zapsign_sem_token');
+      return Response.json({ error: 'Resposta inesperada da ZapSign ao criar documento' }, { status: 502 });
+    }
     const signUrl = resJson.signers?.[0]?.sign_url || '';
 
     // 7. Atualiza a cotação no Banco

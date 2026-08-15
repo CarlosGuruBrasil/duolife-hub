@@ -34,7 +34,7 @@ export async function sendMail({ to, subject, html }: SendMailOptions) {
     });
 
     const info = await transporter.sendMail({
-      from: process.env.SMTP_FROM || '"DuoLife Hub" <noreply@duolife.com.br>',
+      from: process.env.EMAIL_FROM || process.env.SMTP_FROM || '"DuoLife Hub" <noreply@duolife.com.br>',
       to,
       subject,
       html,

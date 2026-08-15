@@ -5,8 +5,7 @@ import { verifyAuth, isDevUser } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { DeleteCotacaoButton } from './_delete-button';
 import { RecusarCotacaoButton } from './_recusar-button';
-
-const ESTADOS_TERMINAIS = ['aprovada', 'recusada', 'expirada'];
+import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
 
 interface AdminCotacaoRow {
   id: string;

@@ -21,6 +21,20 @@ function isRefundedEvent(event: string) {
   return event === 'PAYMENT_REFUNDED' || event === 'PAYMENT_DELETED';
 }
 
+// payment.pixTransaction vem como objeto ({ encodedImage, payload, expirationDate, ... }) na
+// maioria dos eventos da Asaas, não como URL — gravar o objeto direto na coluna TEXT quebraria
+// o parâmetro do postgres.js. Extrai o payload (copia-e-cola do Pix) quando disponível.
+function extractPixPayload(pixTransaction: unknown): string | null {
+  if (!pixTransaction) return null;
+  if (typeof pixTransaction === 'string') return pixTransaction;
+  if (typeof pixTransaction === 'object') {
+    const obj = pixTransaction as Record<string, unknown>;
+    if (typeof obj.payload === 'string') return obj.payload;
+    if (typeof obj.qrCode === 'string') return obj.qrCode;
+  }
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   try {
     await ensureSchema();
@@ -101,7 +115,7 @@ export async function POST(req: NextRequest) {
           END,
           invoice_url = COALESCE(${payment.invoiceUrl || null}, invoice_url),
           bank_slip_url = COALESCE(${payment.bankSlipUrl || null}, bank_slip_url),
-          pix_qr_code_url = COALESCE(${payment.pixTransaction || null}, pix_qr_code_url),
+          pix_qr_code_url = COALESCE(${extractPixPayload(payment.pixTransaction)}, pix_qr_code_url),
           raw_payload = ${JSON.stringify(payment)}::jsonb,
           updated_at = NOW()
         WHERE id = ${installment.id}
@@ -141,7 +155,7 @@ export async function POST(req: NextRequest) {
           due_date = COALESCE(${payment.dueDate || summary.latest_due_date || null}, due_date),
           invoice_url = COALESCE(${payment.invoiceUrl || null}, invoice_url),
           bank_slip_url = COALESCE(${payment.bankSlipUrl || null}, bank_slip_url),
-          pix_qr_code_url = COALESCE(${payment.pixTransaction || null}, pix_qr_code_url),
+          pix_qr_code_url = COALESCE(${extractPixPayload(payment.pixTransaction)}, pix_qr_code_url),
           raw_payload = ${JSON.stringify(payment)}::jsonb,
           updated_at = NOW()
         WHERE id = ${installment.payment_order_id}

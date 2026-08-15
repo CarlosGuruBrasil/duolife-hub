@@ -4,8 +4,7 @@ import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { getAccessibleQuoteById } from '@/lib/access';
 import { parseJsonbField } from '@/lib/json-safe';
-
-const ESTADOS_TERMINAIS = ['aprovada', 'recusada', 'expirada'];
+import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
 
 export async function POST(
   req: NextRequest,

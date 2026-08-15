@@ -5,6 +5,7 @@ import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { ensureSchema, seedInitialData } from '@/lib/schema';
 import { upsertInsuranceClient } from '@/lib/insurance-ops';
+import { calcularPrecoServidor } from '@/lib/pricing';
 
 const cotacaoSchema = z.object({
   clientName: z.string().trim().min(2),
@@ -186,7 +187,26 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    const premioCalculado = Number(data.clientData?.valor) || null;
+    // O preço nunca é aceito do cliente — recalculado aqui a partir da tabela real de planos
+    // e do cupom validado no servidor, pra fechar a brecha de manipulação de valor.
+    const clientDataInput = (data.clientData || {}) as Record<string, unknown>;
+    const preco = await calcularPrecoServidor({
+      tipoDePlano: (clientDataInput.tipo as string) || (clientDataInput.tipoDePlano as string) || null,
+      qtdParcelasSolicitada: Number(clientDataInput.parcela) || 1,
+      cupomCodigo: clientDataInput.cupomCodigo as string | null | undefined,
+    });
+
+    if (!preco) {
+      return Response.json({ error: 'Não foi possível calcular o preço do plano selecionado' }, { status: 422 });
+    }
+
+    const clientDataFinal = {
+      ...clientDataInput,
+      valor: preco.valorTotal,
+      valorParcela: preco.valorParcela,
+      parcela: preco.qtdParcelas,
+    };
+    const premioCalculado = preco.valorTotal;
 
     // Renovação como conceito de primeira classe (não só uma flag solta em client_data.renovacao).
     // Tenta linkar com a cotação aprovada mais recente do mesmo cliente, quando existir.
@@ -231,7 +251,7 @@ export async function POST(req: NextRequest) {
         ${data.clientCpfCnpj},
         ${data.clientEmail || null},
         ${data.clientPhone || null},
-        ${JSON.stringify(data.clientData || {})}::jsonb,
+        ${JSON.stringify(clientDataFinal)}::jsonb,
         ${data.importanciaSegurada || null},
         ${premioCalculado},
         'rascunho',
