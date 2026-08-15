@@ -4,6 +4,9 @@ import { Plus } from 'lucide-react';
 import { verifyAuth, isDevUser } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { DeleteCotacaoButton } from './_delete-button';
+import { RecusarCotacaoButton } from './_recusar-button';
+
+const ESTADOS_TERMINAIS = ['aprovada', 'recusada', 'expirada'];
 
 interface AdminCotacaoRow {
   id: string;
@@ -118,6 +121,7 @@ export default async function AdminCotacoesPage() {
                     <th className="px-6 py-4 font-semibold text-gray-500 uppercase tracking-wider text-xs text-right">Prêmio</th>
                     <th className="px-6 py-4 font-semibold text-gray-500 uppercase tracking-wider text-xs text-center">Status</th>
                     <th className="px-6 py-4 font-semibold text-gray-500 uppercase tracking-wider text-xs text-right">Data</th>
+                    <th className="px-6 py-4 font-semibold text-gray-500 uppercase tracking-wider text-xs text-center">Ações</th>
                     {canDelete && <th className="px-6 py-4 font-semibold text-gray-500 uppercase tracking-wider text-xs text-center">Dev</th>}
                   </tr>
                 </thead>
@@ -125,7 +129,7 @@ export default async function AdminCotacoesPage() {
                   {cotacoes.map((cotacao) => (
                     <tr key={cotacao.id} className="hover:bg-gray-50/80 transition-colors duration-150 group">
                       <td className="px-6 py-4">
-                        <div className="font-semibold text-gray-900">{cotacao.client_name}</div>
+                        <Link href={`/admin/cotacoes/${cotacao.id}`} className="font-semibold text-gray-900 hover:text-[#10b981] hover:underline">{cotacao.client_name}</Link>
                         <div className="text-xs text-gray-500 mt-0.5">{cotacao.client_cpf_cnpj}</div>
                       </td>
                       <td className="px-6 py-4">
@@ -144,6 +148,11 @@ export default async function AdminCotacoesPage() {
                         </span>
                       </td>
                       <td className="px-6 py-4 text-gray-500 text-xs text-right font-medium">{formatDate(cotacao.created_at)}</td>
+                      <td className="px-6 py-4 text-center">
+                        {!ESTADOS_TERMINAIS.includes(cotacao.status) && (
+                          <RecusarCotacaoButton id={cotacao.id} clientName={cotacao.client_name} />
+                        )}
+                      </td>
                       {canDelete && (
                         <td className="px-6 py-4 text-center">
                           <DeleteCotacaoButton id={cotacao.id} clientName={cotacao.client_name} />

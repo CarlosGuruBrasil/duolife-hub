@@ -225,6 +225,21 @@ export default function PartnerWhiteLabelClient({ partner, products, links, part
     setMessage(res.ok ? 'Status atualizado. Atualize a página para refletir a mudança.' : (data.error || 'Falha ao atualizar status.'));
   }
 
+  async function sendUserInvite(userId: string) {
+    setSaving(true);
+    setMessage('');
+
+    const res = await fetch(`/api/admin/parceiros/${partner.id}/usuarios/convite`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
+    const data = await res.json();
+
+    setSaving(false);
+    setMessage(res.ok ? 'Convite enviado por e-mail.' : (data.error || 'Falha ao enviar convite.'));
+  }
+
   return (
     <div>
       <div className="mb-8">
@@ -440,6 +455,15 @@ export default function PartnerWhiteLabelClient({ partner, products, links, part
                         <button type="button" className="btn-outline text-xs px-3 py-1.5 min-h-0" onClick={() => startEditUser(teamUser)}>
                           Editar
                         </button>
+                        {teamUser.is_active && (
+                          <button
+                            type="button"
+                            className="btn-outline text-xs px-3 py-1.5 min-h-0"
+                            onClick={() => sendUserInvite(teamUser.id)}
+                          >
+                            Enviar convite
+                          </button>
+                        )}
                         <button
                           type="button"
                           className="btn-outline text-xs px-3 py-1.5 min-h-0"
