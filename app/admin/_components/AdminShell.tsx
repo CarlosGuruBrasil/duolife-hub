@@ -110,7 +110,7 @@ export default function AdminShell({ children, user }: AdminShellProps) {
   return (
     <div className="min-h-screen bg-[#f7faf9]">
       {/* 1. Full-Width Top Header Bar (100% Tela Cheia no topo com Logo DuoLife Oficial) */}
-      <header className="fixed top-0 left-0 right-0 z-50 flex h-16 w-full items-center justify-between border-b border-gray-200/80 bg-white/90 px-6 backdrop-blur-md shadow-xs">
+      <header className="fixed top-0 left-0 right-0 z-50 flex h-16 w-full items-center justify-between border-b border-gray-200/80 bg-white/95 px-6 backdrop-blur-md shadow-xs">
         {/* Left Side: Logo + Sidebar Toggle + Breadcrumb */}
         <div className="flex items-center gap-5">
           <button
@@ -231,18 +231,17 @@ export default function AdminShell({ children, user }: AdminShellProps) {
         />
       )}
 
-      {/* 2. Sidebar de Navegação (Posicionada abaixo do cabeçalho de tela cheia) */}
+      {/* 2. Sidebar de Navegação (Com Alto Contraste e Texto Claro no Fundo Petróleo) */}
       <aside
-        className={`fixed left-0 top-16 bottom-0 z-40 flex flex-col shadow-xl transition-all duration-300 ${
+        className={`fixed left-0 top-16 bottom-0 z-40 flex flex-col shadow-xl transition-all duration-300 bg-[#072a33] ${
           open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         } ${collapsed ? 'w-20' : 'w-64'}`}
-        style={{ background: 'var(--primary)' }}
       >
-        <nav className="flex-1 p-3 space-y-4 overflow-y-auto">
+        <nav className="flex-1 p-3 space-y-5 overflow-y-auto">
           {navSections.map((section) => (
-            <div key={section.title} className="space-y-1">
+            <div key={section.title} className="space-y-1.5">
               {!collapsed && (
-                <div className="px-3 text-[10px] font-black uppercase tracking-wider text-[#00d4e0]">
+                <div className="px-3 pt-2 text-[11px] font-black uppercase tracking-wider text-[#00d4e0]">
                   {section.title}
                 </div>
               )}
@@ -256,12 +255,13 @@ export default function AdminShell({ children, user }: AdminShellProps) {
                     onClick={() => setOpen(false)}
                     className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs transition-all ${
                       active
-                        ? 'bg-white/15 text-white font-bold border border-white/20 shadow-xs'
-                        : 'text-[#a8c8cc] hover:bg-white/10 hover:text-white font-semibold'
+                        ? 'bg-white/20 text-white font-extrabold border border-white/25 shadow-sm'
+                        : 'text-[#e0f2f5] hover:bg-white/12 hover:text-white font-bold'
                     }`}
+                    style={{ color: active ? '#ffffff' : '#d5ebf0' }}
                     title={item.label}
                   >
-                    <Icon className={`h-4 w-4 shrink-0 ${active ? 'text-[#00d4e0]' : ''}`} />
+                    <Icon className={`h-4 w-4 shrink-0 ${active ? 'text-[#00d4e0]' : 'text-[#8acbd6]'}`} />
                     {!collapsed && (
                       <div className="min-w-0">
                         <div className="leading-tight truncate">{item.label}</div>
@@ -274,13 +274,15 @@ export default function AdminShell({ children, user }: AdminShellProps) {
           ))}
         </nav>
 
-        <div className="p-3 border-t" style={{ borderColor: 'rgba(255,255,255,0.1)' }}>
+        {/* Footer do Sidebar com Margem para Evitar Sobreposição com Dev Widgets */}
+        <div className="p-3 pb-8 border-t border-white/10">
           <form action="/api/auth/logout" method="POST">
             <button
               type="submit"
-              className="flex w-full items-center gap-3 px-3.5 py-2.5 rounded-xl text-left text-xs font-semibold transition-colors text-red-300 hover:bg-white/10 hover:text-red-200"
+              className="flex w-full items-center gap-3 px-3.5 py-2.5 rounded-xl text-left text-xs font-bold transition-all text-red-200 hover:bg-white/10 hover:text-white"
+              style={{ color: '#fca5a5' }}
             >
-              <LogOut className="h-4 w-4 shrink-0" />
+              <LogOut className="h-4 w-4 shrink-0 text-red-300" />
               {!collapsed && <span>Sair da operação</span>}
             </button>
           </form>
