@@ -191,7 +191,9 @@ async function runRuntimeSchemaSetup(): Promise<void> {
   await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS renewal_enabled BOOLEAN NOT NULL DEFAULT true`;
   await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS requires_underwriting BOOLEAN NOT NULL DEFAULT false`;
   await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS required_documents JSONB NOT NULL DEFAULT '[]'`;
-  await sql`UPDATE products SET product_type = 'insurance', flow_key = 'rc_professional_v1', pricing_strategy = 'rc_wix_planos_v1', policy_prefix = 'DL-RC' WHERE code = 'RC-001'`;
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS integration_type TEXT NOT NULL DEFAULT 'full_journey'`;
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS external_link_url TEXT`;
+  await sql`UPDATE products SET product_type = 'insurance', flow_key = 'rc_professional_v1', pricing_strategy = 'rc_wix_planos_v1', policy_prefix = 'DL-RC', integration_type = 'full_journey' WHERE code LIKE 'RC-%'`;
 
   // Habilitação comercial é diferente de comissão: um parceiro só deve operar uma oferta
   // que a DuoLife disponibilizou explicitamente para ele.

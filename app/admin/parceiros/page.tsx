@@ -67,18 +67,19 @@ function AdminParceirosInner() {
   }
 
   return (
-    <div>
-      <div className="flex items-center gap-3 mb-8">
-        <Building2 size={24} style={{ color: 'var(--primary)' }} />
+    <div className="space-y-6">
+      {/* Header no Container Oficial admin-hero-card */}
+      <section className="admin-hero-card">
         <div>
-          <h1 className="text-2xl font-black" style={{ color: 'var(--primary)' }}>Parceiros</h1>
-          <p className="text-gray-500 text-sm">
-            {statusFilter ? `Filtro: ${STATUS_LABELS[statusFilter]?.label ?? statusFilter}` : 'Todos os parceiros'}
+          <span className="admin-eyebrow">REDE & CORRETORAS</span>
+          <h1 className="admin-page-title">Parceiros</h1>
+          <p className="admin-page-copy">
+            {statusFilter ? `Filtro: ${STATUS_LABELS[statusFilter]?.label ?? statusFilter}` : 'Gestão de parceiros e corretoras habilitadas.'}
           </p>
         </div>
-      </div>
+      </section>
 
-      <div className="card p-0 overflow-hidden">
+      <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden">
         {loading ? (
           <div className="p-8 text-center text-gray-400">Carregando...</div>
         ) : parceiros.length === 0 ? (

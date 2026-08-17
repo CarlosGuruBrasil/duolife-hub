@@ -30,18 +30,6 @@ const units = [
     type: 'Base Executiva',
     note: 'Estrutura de atendimento para reuniões estratégicas, conexões com operadoras e apoio à operação regional da Grande Florianópolis.',
   },
-  {
-    name: 'CDTEC — Condomínio de Desenvolvimento Tecnológico',
-    address: 'Rua São Paulo, 31 — Sala 06',
-    neighborhood: 'Centro',
-    city: 'Joinville — SC',
-    cep: '89202-200',
-    maps: 'https://maps.google.com/?q=Rua+São+Paulo,+31,+Joinville,+SC',
-    icon: FlaskConical,
-    image: '/duolife-office.jpg',
-    type: 'Base Operacional',
-    note: 'Unidade voltada ao suporte técnico-operacional e à coordenação das demandas do parceiro no dia a dia.',
-  },
 ];
 
 interface Card3DProps {

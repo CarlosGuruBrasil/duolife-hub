@@ -3,7 +3,7 @@ import UnidadesClient from './_client';
 
 export const metadata: Metadata = {
   title: 'Unidades',
-  description: 'DuoLife Hub de Negócios em Joinville e Florianópolis. Unidades ACIJ, Corporate Park e CDTEC com atuação nacional.',
+  description: 'DuoLife Hub de Negócios em Joinville e Florianópolis. Unidades ACIJ e Corporate Park com atuação nacional.',
   alternates: { canonical: 'https://duolife.com.br/unidades' },
   openGraph: {
     title: 'Unidades | DuoLife Hub de Negócios',

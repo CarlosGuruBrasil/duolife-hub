@@ -99,14 +99,18 @@ export default async function AdminClientesPage() {
   `;
 
   return (
-    <div className="bg-[#F9FAFB] min-h-screen -m-6 p-6 sm:p-10 font-sans">
-      <div className="max-w-[1440px] mx-auto">
-        <div className="mb-10">
-          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Clientes</h1>
-          <p className="text-base text-gray-500 mt-2">Base consolidada dos segurados com produtos, assinatura e parcelas.</p>
+    <div className="space-y-6">
+      {/* Header no Container Oficial admin-hero-card */}
+      <section className="admin-hero-card">
+        <div>
+          <span className="admin-eyebrow">CARTEIRA & SEGURADOS</span>
+          <h1 className="admin-page-title">Clientes</h1>
+          <p className="admin-page-copy">Base consolidada dos segurados com produtos, assinatura e parcelas.</p>
         </div>
+      </section>
 
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      {/* Main Content Card */}
+      <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden">
           {clients.length === 0 ? (
             <div className="px-6 py-20 text-center flex flex-col items-center justify-center">
               <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4 text-gray-400">
@@ -166,7 +170,6 @@ export default async function AdminClientesPage() {
             </div>
           )}
         </div>
-      </div>
     </div>
   );
 }

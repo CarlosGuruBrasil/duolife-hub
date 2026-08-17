@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { verifyAdminAuth } from '@/lib/auth';
 import { ensureSchema } from '@/lib/schema';
 import { getAdminReportData, getRecentMonthOptions } from '@/lib/admin-reporting';
+import AdminPeriodFilterBar from '../_components/AdminPeriodFilterBar';
 
 function formatCurrency(value: number) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -13,10 +14,6 @@ function formatDateTime(value: string) {
     dateStyle: 'short',
     timeStyle: 'short',
   }).format(new Date(value));
-}
-
-function monthHref(value: string) {
-  return `/admin/relatorios?month=${value}`;
 }
 
 export default async function AdminRelatoriosPage({
@@ -31,33 +28,32 @@ export default async function AdminRelatoriosPage({
 
   const params = searchParams ? await searchParams : {};
   const monthParam = typeof params.month === 'string' ? params.month : undefined;
+  const startParam = typeof params.start === 'string' ? params.start : undefined;
+  const endParam = typeof params.end === 'string' ? params.end : undefined;
+
   const [data, monthOptions] = await Promise.all([
-    getAdminReportData(monthParam),
-    Promise.resolve(getRecentMonthOptions(6)),
+    getAdminReportData(monthParam, startParam, endParam),
+    Promise.resolve(getRecentMonthOptions(24)),
   ]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-sans">
       <section className="admin-hero-card">
         <div>
-          <span className="admin-eyebrow">Relatórios</span>
+          <span className="admin-eyebrow">RELATÓRIOS & DESEMPENHO</span>
           <h1 className="admin-page-title">Indicadores detalhados</h1>
           <p className="admin-page-copy">
             Consolidação de produção, financeiro, cobrança e integrações para {data.period.label}.
           </p>
         </div>
-        <div className="admin-pill-row">
-          {monthOptions.map((option) => (
-            <Link
-              key={option.value}
-              href={monthHref(option.value)}
-              className={`admin-filter-pill ${option.value === data.period.monthKey ? 'is-active' : ''}`}
-            >
-              {option.label}
-            </Link>
-          ))}
-        </div>
       </section>
+
+      {/* Bar de Filtros Escalável de Período */}
+      <AdminPeriodFilterBar
+        currentMonthKey={data.period.monthKey}
+        monthOptions={monthOptions}
+        baseUrl="/admin/relatorios"
+      />
 
       <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="card no-hover">

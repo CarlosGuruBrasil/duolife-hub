@@ -76,24 +76,24 @@ export default async function AdminCotacoesPage() {
   `;
 
   return (
-    <div className="bg-[#F9FAFB] min-h-screen -m-6 p-6 sm:p-10 font-sans">
-      <div className="max-w-[1440px] mx-auto">
-        {/* Header Section */}
-        <div className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Cotações Gerais</h1>
-            <p className="text-base text-gray-500 mt-2">Visualize todas as cotações geradas na plataforma.</p>
-          </div>
-          <Link 
-            href="/admin/cotacoes/nova" 
-            className="inline-flex items-center gap-2 px-6 py-3 bg-[#10b981] text-white font-semibold rounded-lg shadow-md hover:shadow-lg hover:-translate-y-0.5 hover:bg-[#059669] transition-all duration-200"
-          >
-            <Plus size={18} strokeWidth={2.5} /> Nova Cotação
-          </Link>
+    <div className="space-y-6">
+      {/* Header Section no Container Oficial admin-hero-card */}
+      <section className="admin-hero-card flex-row items-center justify-between">
+        <div>
+          <span className="admin-eyebrow">COTAÇÕES & PROPOSTAS</span>
+          <h1 className="admin-page-title">Cotações Gerais</h1>
+          <p className="admin-page-copy">Visualize todas as cotações geradas na plataforma.</p>
         </div>
+        <Link 
+          href="/admin/cotacoes/nova" 
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#00d4e0] text-[#072a33] font-black rounded-xl shadow-xs hover:bg-[#00b8c4] transition-all text-xs uppercase tracking-wider shrink-0"
+        >
+          <Plus size={16} strokeWidth={2.5} /> Nova Cotação
+        </Link>
+      </section>
 
-        {/* Main Content Card */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      {/* Main Content Card */}
+      <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden">
           {cotacoes.length === 0 ? (
             <div className="px-6 py-20 text-center flex flex-col items-center justify-center">
               <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4">
@@ -155,7 +155,6 @@ export default async function AdminCotacoesPage() {
             </div>
           )}
         </div>
-      </div>
     </div>
   );
 }

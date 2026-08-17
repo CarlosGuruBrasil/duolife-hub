@@ -190,11 +190,64 @@ function formatMonthLabel(date: Date) {
   }).format(date);
 }
 
-export function resolveAdminPeriod(monthParam?: string): AdminPeriod {
+export function resolveAdminPeriod(monthParam?: string, startDateParam?: string, endDateParam?: string): AdminPeriod {
+  const now = new Date();
+  
+  // 1. Período Customizado (De / Até)
+  if (startDateParam && endDateParam && /^\d{4}-\d{2}-\d{2}$/.test(startDateParam) && /^\d{4}-\d{2}-\d{2}$/.test(endDateParam)) {
+    const startObj = new Date(`${startDateParam}T00:00:00`);
+    const endObj = new Date(`${endDateParam}T23:59:59`);
+    const durationMs = endObj.getTime() - startObj.getTime();
+    const prevStartObj = new Date(startObj.getTime() - durationMs);
+
+    return {
+      monthKey: 'custom',
+      label: `Período Customizado (${new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(startObj)} - ${new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(endObj)})`,
+      start: startDateParam,
+      endExclusive: `${endDateParam}T23:59:59`,
+      previousStart: formatDateIso(prevStartObj),
+      previousEndExclusive: startDateParam,
+    };
+  }
+
+  // 2. Atalho: Últimos 3 Meses
+  if (monthParam === 'last-3-months') {
+    const current = startOfMonth(now);
+    const start3Months = addMonths(current, -2);
+    const next = addMonths(current, 1);
+    const prevStart3Months = addMonths(start3Months, -3);
+
+    return {
+      monthKey: 'last-3-months',
+      label: 'Últimos 3 Meses',
+      start: formatDateIso(start3Months),
+      endExclusive: formatDateIso(next),
+      previousStart: formatDateIso(prevStart3Months),
+      previousEndExclusive: formatDateIso(start3Months),
+    };
+  }
+
+  // 3. Atalho: Ano Atual
+  if (monthParam === `year-${now.getFullYear()}`) {
+    const startYear = `${now.getFullYear()}-01-01`;
+    const nextYear = `${now.getFullYear() + 1}-01-01`;
+    const prevYearStart = `${now.getFullYear() - 1}-01-01`;
+
+    return {
+      monthKey: `year-${now.getFullYear()}`,
+      label: `Ano Atual (${now.getFullYear()})`,
+      start: startYear,
+      endExclusive: nextYear,
+      previousStart: prevYearStart,
+      previousEndExclusive: startYear,
+    };
+  }
+
+  // 4. Mês Selecionado ou Mês Atual (Padrão)
   const isValidMonth = typeof monthParam === 'string' && /^\d{4}-\d{2}$/.test(monthParam);
   const baseDate = isValidMonth
     ? new Date(`${monthParam}-01T00:00:00`)
-    : new Date();
+    : now;
   const current = startOfMonth(baseDate);
   const next = addMonths(current, 1);
   const previous = addMonths(current, -1);
@@ -209,7 +262,7 @@ export function resolveAdminPeriod(monthParam?: string): AdminPeriod {
   };
 }
 
-export function getRecentMonthOptions(count = 6): AdminMonthOption[] {
+export function getRecentMonthOptions(count = 24): AdminMonthOption[] {
   const now = startOfMonth(new Date());
   return Array.from({ length: count }, (_, index) => {
     const month = addMonths(now, -index);
@@ -333,8 +386,12 @@ function buildMetricCards(summary: DashboardSummary, previous: DashboardSummary)
   ];
 }
 
-export async function getAdminDashboardData(monthParam?: string): Promise<AdminDashboardData> {
-  const period = resolveAdminPeriod(monthParam);
+export async function getAdminDashboardData(
+  monthParam?: string,
+  startDateParam?: string,
+  endDateParam?: string
+): Promise<AdminDashboardData> {
+  const period = resolveAdminPeriod(monthParam, startDateParam, endDateParam);
   const [summary, previousSummary, funnelRows, productRows, partnerRows, eventRows, syncRows] = await Promise.all([
     getSummary(period.start, period.endExclusive),
     getSummary(period.previousStart, period.previousEndExclusive),
@@ -506,8 +563,12 @@ export async function getAdminDashboardData(monthParam?: string): Promise<AdminD
   };
 }
 
-export async function getAdminReportData(monthParam?: string): Promise<AdminReportData> {
-  const period = resolveAdminPeriod(monthParam);
+export async function getAdminReportData(
+  monthParam?: string,
+  startDateParam?: string,
+  endDateParam?: string
+): Promise<AdminReportData> {
+  const period = resolveAdminPeriod(monthParam, startDateParam, endDateParam);
   const [quoteStatuses, paymentStatuses, partnerRows, overduePayments, syncErrors] = await Promise.all([
     sql<{
       status: string;

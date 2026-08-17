@@ -9,6 +9,8 @@ const schema = z.object({
   code: z.string().trim().toUpperCase().regex(/^[A-Z0-9-]+$/).max(40),
   category: z.string().trim().min(2).max(80),
   productType: z.enum(['insurance', 'service']),
+  integrationType: z.enum(['full_journey', 'external_link']).default('full_journey'),
+  externalLinkUrl: z.string().trim().optional(),
   providerName: z.string().trim().max(120).optional(),
   description: z.string().trim().max(600).optional(),
   publicTitle: z.string().trim().max(160).optional(),
@@ -33,7 +35,7 @@ export async function GET() {
   if (!isDevUser(admin)) return Response.json({ error: 'Sem permissão para gerenciar produtos' }, { status: 403 });
   try {
     const [products, partners] = await Promise.all([
-      sql`SELECT id, name, code, category, product_type, insurer_name, description, base_commission_rate, min_premium, flow_key, is_active, is_quoteable, public_title, target_audience, insurer_cnpj, validity_days, sale_recognition, renewal_enabled, requires_underwriting, required_documents, (SELECT count(*)::int FROM partner_product_availability ppa WHERE ppa.product_id = products.id AND ppa.is_active) AS partners_count FROM products ORDER BY created_at DESC`,
+      sql`SELECT id, name, code, category, product_type, integration_type, external_link_url, insurer_name, description, base_commission_rate, min_premium, flow_key, is_active, is_quoteable, public_title, target_audience, insurer_cnpj, validity_days, sale_recognition, renewal_enabled, requires_underwriting, required_documents, (SELECT count(*)::int FROM partner_product_availability ppa WHERE ppa.product_id = products.id AND ppa.is_active) AS partners_count FROM products ORDER BY created_at DESC`,
       sql`SELECT id, razao_social, nome_fantasia FROM partners WHERE status = 'active' ORDER BY COALESCE(nome_fantasia, razao_social)`,
     ]);
     return Response.json({ products, partners });
@@ -50,13 +52,13 @@ export async function POST(req: NextRequest) {
   const parsed = schema.safeParse(await req.json());
   if (!parsed.success) return Response.json({ error: 'Dados do produto inválidos' }, { status: 400 });
   const input = parsed.data;
-  const rcFlow = input.useRcJourney;
+  const rcFlow = input.useRcJourney && input.integrationType === 'full_journey';
   if (rcFlow && input.productType !== 'insurance') return Response.json({ error: 'O fluxo RC só pode ser usado em seguros' }, { status: 422 });
   if (input.availability === 'selected' && input.partnerIds.length === 0) return Response.json({ error: 'Selecione ao menos um parceiro' }, { status: 422 });
   try {
     const [product] = await sql`
-      INSERT INTO products (name, code, category, insurer_name, insurer_cnpj, description, public_title, target_audience, base_commission_rate, min_premium, is_active, product_type, flow_key, pricing_strategy, policy_prefix, is_quoteable, is_contractable, is_payable, validity_days, sale_recognition, renewal_enabled, requires_underwriting, required_documents)
-      VALUES (${input.name}, ${input.code}, ${input.category}, ${input.providerName || null}, ${input.insurerCnpj || null}, ${input.description || null}, ${input.publicTitle || null}, ${input.targetAudience || null}, ${input.commissionRate}, ${input.minPremium}, true, ${input.productType}, ${rcFlow ? 'rc_professional_v1' : 'manual_v1'}, ${rcFlow ? 'rc_wix_planos_v1' : 'manual_v1'}, ${rcFlow ? (input.policyPrefix || 'DL-RC') : null}, ${rcFlow}, ${rcFlow}, ${rcFlow}, ${input.validityDays}, ${input.saleRecognition}, ${input.renewalEnabled}, ${input.requiresUnderwriting}, ${JSON.stringify(input.requiredDocuments)}::jsonb)
+      INSERT INTO products (name, code, category, insurer_name, insurer_cnpj, description, public_title, target_audience, base_commission_rate, min_premium, is_active, product_type, integration_type, external_link_url, flow_key, pricing_strategy, policy_prefix, is_quoteable, is_contractable, is_payable, validity_days, sale_recognition, renewal_enabled, requires_underwriting, required_documents)
+      VALUES (${input.name}, ${input.code}, ${input.category}, ${input.providerName || null}, ${input.insurerCnpj || null}, ${input.description || null}, ${input.publicTitle || null}, ${input.targetAudience || null}, ${input.commissionRate}, ${input.minPremium}, true, ${input.productType}, ${input.integrationType}, ${input.externalLinkUrl || null}, ${rcFlow ? 'rc_professional_v1' : 'manual_v1'}, ${rcFlow ? 'rc_wix_planos_v1' : 'manual_v1'}, ${rcFlow ? (input.policyPrefix || 'DL-RC') : null}, ${rcFlow || !!input.externalLinkUrl}, ${rcFlow}, ${rcFlow}, ${input.validityDays}, ${input.saleRecognition}, ${input.renewalEnabled}, ${input.requiresUnderwriting}, ${JSON.stringify(input.requiredDocuments)}::jsonb)
       RETURNING id, name, code
     `;
     const partnerIds = input.availability === 'all_active'

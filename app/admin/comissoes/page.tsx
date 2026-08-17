@@ -74,35 +74,41 @@ export default async function AdminComissoesPage() {
     .reduce((sum, comissao) => sum + Number(comissao.amount), 0);
 
   return (
-    <div>
-      <div className="mb-8">
-        <div className="flex items-center gap-3">
-          <WalletCards size={24} style={{ color: 'var(--primary)' }} />
-          <div>
-            <h1 className="text-2xl font-black" style={{ color: 'var(--primary)' }}>Comissões</h1>
-            <p className="text-gray-500 text-sm mt-1">Extrato financeiro consolidado da plataforma.</p>
-          </div>
+    <div className="space-y-6">
+      {/* Header no Container Oficial admin-hero-card */}
+      <section className="admin-hero-card">
+        <div>
+          <span className="admin-eyebrow">FINANCEIRO & REPASSE</span>
+          <h1 className="admin-page-title">Comissões</h1>
+          <p className="admin-page-copy">Extrato financeiro consolidado da plataforma.</p>
         </div>
-      </div>
+      </section>
 
-      <div className="mb-6 grid gap-4 md:grid-cols-3">
-        <div className="card">
-          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">A receber</div>
-          <div className="mt-2 text-2xl font-black" style={{ color: 'var(--primary)' }}>{formatCurrency(pending)}</div>
+      {/* Cards de Métricas Grid Padronizado */}
+      <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="admin-metric-card tone-warning">
+          <div className="admin-metric-label">A Receber</div>
+          <div className="admin-metric-value">{formatCurrency(pending)}</div>
+          <div className="admin-metric-hint">comissões em aberto</div>
         </div>
-        <div className="card">
-          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Pagas</div>
-          <div className="mt-2 text-2xl font-black" style={{ color: 'var(--primary)' }}>{formatCurrency(paid)}</div>
-        </div>
-        <div className="card">
-          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Lançamentos</div>
-          <div className="mt-2 text-2xl font-black" style={{ color: 'var(--primary)' }}>{comissoes.length}</div>
-        </div>
-      </div>
 
-      <div className="card overflow-hidden p-0">
+        <div className="admin-metric-card tone-success">
+          <div className="admin-metric-label">Pagas</div>
+          <div className="admin-metric-value">{formatCurrency(paid)}</div>
+          <div className="admin-metric-hint">baixas repassadas</div>
+        </div>
+
+        <div className="admin-metric-card">
+          <div className="admin-metric-label">Total Lançamentos</div>
+          <div className="admin-metric-value">{comissoes.length}</div>
+          <div className="admin-metric-hint">registros no extrato</div>
+        </div>
+      </section>
+
+      {/* Tabela de Comissões Padronizada */}
+      <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden">
         {comissoes.length === 0 ? (
-          <div className="p-8 text-center text-gray-400">Nenhuma comissão lançada.</div>
+          <div className="px-6 py-16 text-center text-xs font-bold text-gray-400">Nenhuma comissão lançada.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1180px] text-left text-sm">

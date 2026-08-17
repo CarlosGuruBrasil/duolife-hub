@@ -129,20 +129,19 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
   const editing = editId ? admins.find((admin) => admin.id === editId) ?? null : null;
 
   return (
-    <div>
-      <div className="mb-8">
-        <div className="flex items-center gap-3">
-          <Shield size={24} style={{ color: 'var(--primary)' }} />
-          <div>
-            <h1 className="text-2xl font-black" style={{ color: 'var(--primary)' }}>Usuários</h1>
-            <p className="text-gray-500 text-sm mt-1">Administração de acessos internos da DuoLife.</p>
-          </div>
+    <div className="space-y-6">
+      {/* Header no Container Oficial admin-hero-card */}
+      <section className="admin-hero-card">
+        <div>
+          <span className="admin-eyebrow">SEGURANÇA & ACESSOS</span>
+          <h1 className="admin-page-title">Usuários</h1>
+          <p className="admin-page-copy">Administração de acessos internos da DuoLife.</p>
         </div>
-      </div>
+      </section>
 
-      <div className="mb-6 card">
-        <div className="mb-4 flex items-center gap-2 font-bold" style={{ color: 'var(--primary)' }}>
-          <UserPlus size={18} /> {editing ? 'Editar acesso interno' : 'Criar acesso interno'}
+      <div className="bg-white rounded-2xl border border-gray-200/80 p-6 shadow-xs">
+        <div className="mb-4 flex items-center gap-2 font-black text-[#072a33]">
+          <UserPlus size={18} className="text-[#00d4e0]" /> {editing ? 'Editar acesso interno' : 'Criar acesso interno'}
         </div>
         <form action={createOrUpdateAdmin} className="grid gap-4 md:grid-cols-4">
           <input type="hidden" name="id" value={editing?.id || ''} />
@@ -196,7 +195,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
         </p>
       </div>
 
-      <div className="card overflow-hidden p-0">
+      <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden">
         {admins.length === 0 ? (
           <div className="p-8 text-center text-gray-400">Nenhum usuário admin encontrado.</div>
         ) : (

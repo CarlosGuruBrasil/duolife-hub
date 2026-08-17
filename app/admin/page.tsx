@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { verifyAdminAuth } from '@/lib/auth';
 import { ensureSchema } from '@/lib/schema';
 import { getAdminDashboardData, getRecentMonthOptions } from '@/lib/admin-reporting';
+import AdminPeriodFilterBar from './_components/AdminPeriodFilterBar';
 
 function formatCurrency(value: number) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -40,34 +41,33 @@ export default async function AdminDashboard({
 
   const params = searchParams ? await searchParams : {};
   const monthParam = typeof params.month === 'string' ? params.month : undefined;
+  const startParam = typeof params.start === 'string' ? params.start : undefined;
+  const endParam = typeof params.end === 'string' ? params.end : undefined;
+
   const [data, monthOptions] = await Promise.all([
-    getAdminDashboardData(monthParam),
-    Promise.resolve(getRecentMonthOptions(6)),
+    getAdminDashboardData(monthParam, startParam, endParam),
+    Promise.resolve(getRecentMonthOptions(24)),
   ]);
   const funnelMax = Math.max(...data.funnel.map((item) => item.count), 1);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 font-sans">
       <section className="admin-hero-card">
         <div>
-          <span className="admin-eyebrow">Dashboard</span>
+          <span className="admin-eyebrow">DASHBOARD</span>
           <h1 className="admin-page-title">Visão geral</h1>
           <p className="admin-page-copy">
-            Acompanhe cotações, emissões, cobranças, comissões e a operação da DuoLife.
+            Acompanhe cotações, emissões, cobranças, comissões e a operação da DuoLife em tempo real.
           </p>
         </div>
-        <div className="admin-pill-row">
-          {monthOptions.map((option) => (
-            <Link
-              key={option.value}
-              href={monthHref(option.value)}
-              className={`admin-filter-pill ${option.value === data.period.monthKey ? 'is-active' : ''}`}
-            >
-              {option.label}
-            </Link>
-          ))}
-        </div>
       </section>
+
+      {/* Bar de Filtros Escalável de Período */}
+      <AdminPeriodFilterBar
+        currentMonthKey={data.period.monthKey}
+        monthOptions={monthOptions}
+        baseUrl="/admin"
+      />
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {data.metricCards.map((card) => (

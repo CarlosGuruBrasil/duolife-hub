@@ -103,9 +103,17 @@ export default function AdminShell({ children, user }: AdminShellProps) {
         .toUpperCase()
     : 'DL';
 
-  const currentPathLabel = pathname === '/admin' 
-    ? 'Visão geral' 
-    : pathname.replace('/admin/', '').replace('-', ' ');
+  let currentPathLabel = 'Visão geral';
+  if (pathname === '/admin') {
+    currentPathLabel = 'Visão geral';
+  } else if (pathname.startsWith('/admin/produtos/novo')) {
+    currentPathLabel = 'Produtos / Novo Produto';
+  } else if (pathname.startsWith('/admin/produtos/')) {
+    currentPathLabel = 'Produtos / Detalhes do Produto';
+  } else {
+    const raw = pathname.replace('/admin/', '');
+    currentPathLabel = raw.charAt(0).toUpperCase() + raw.slice(1).replace(/-/g, ' ');
+  }
 
   return (
     <div className="min-h-screen bg-[#f7faf9]">
@@ -209,7 +217,7 @@ export default function AdminShell({ children, user }: AdminShellProps) {
                 <form action="/api/auth/logout" method="POST">
                   <button
                     type="submit"
-                    className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-red-600 transition-colors hover:bg-red-50"
+                    className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-base font-semibold text-red-600 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
                   >
                     <LogOut className="h-4 w-4 text-red-500" />
                     <span>Sair da operação</span>
@@ -233,7 +241,7 @@ export default function AdminShell({ children, user }: AdminShellProps) {
 
       {/* 2. Sidebar de Navegação (Escala de Fontes Recalibrada para 13.5px / Apple HIG) */}
       <aside
-        className={`fixed left-0 top-16 bottom-0 z-40 flex flex-col shadow-xl transition-all duration-300 bg-[#072a33] ${
+        className={`fixed left-0 top-16 bottom-0 z-40 flex flex-col shadow-xl transition-all duration-300 bg-[#072a33] text-white ${
           open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         } ${collapsed ? 'w-20' : 'w-64'}`}
       >
@@ -241,7 +249,7 @@ export default function AdminShell({ children, user }: AdminShellProps) {
           {navSections.map((section) => (
             <div key={section.title} className="space-y-1.5">
               {!collapsed && (
-                <div className="px-3 pt-2 text-[11px] font-black uppercase tracking-wider text-[#00d4e0]">
+                <div className="px-3 pt-2 text-xs font-black uppercase tracking-wider text-[#00d4e0]">
                   {section.title}
                 </div>
               )}
@@ -253,18 +261,18 @@ export default function AdminShell({ children, user }: AdminShellProps) {
                     key={item.href}
                     href={item.href}
                     onClick={() => setOpen(false)}
-                    className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[13.5px] transition-all ${
+                    className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-base transition-all ${
                       active
-                        ? 'bg-white/20 text-white font-extrabold border border-white/25 shadow-xs'
-                        : 'text-[#e2f1f4] hover:bg-white/12 hover:text-white font-bold'
+                        ? 'bg-[#0e4a5a] text-white font-extrabold border border-[#00d4e0]/60 shadow-md'
+                        : 'text-white hover:bg-white/15 font-semibold'
                     }`}
                     title={item.label}
                   >
-                    <Icon className={`h-4.5 w-4.5 shrink-0 ${active ? 'text-[#00d4e0]' : 'text-[#8acbd6]'}`} />
+                    <Icon className={`h-5 w-5 shrink-0 ${active ? 'text-[#00d4e0]' : 'text-[#00d4e0]'}`} />
                     {!collapsed && (
-                      <div className="min-w-0">
-                        <div className="leading-tight truncate">{item.label}</div>
-                      </div>
+                      <span className="min-w-0 leading-tight truncate text-white font-bold text-base">
+                        {item.label}
+                      </span>
                     )}
                   </Link>
                 );
@@ -278,7 +286,7 @@ export default function AdminShell({ children, user }: AdminShellProps) {
           <form action="/api/auth/logout" method="POST">
             <button
               type="submit"
-              className="flex w-full items-center gap-3 px-3.5 py-2.5 rounded-xl text-left text-[13.5px] font-bold transition-all text-red-200 hover:bg-red-500/20 hover:text-white"
+              className="flex w-full items-center gap-3 px-3.5 py-2.5 rounded-xl text-left text-base font-bold transition-all bg-red-500/15 border border-red-500/30 text-red-300 hover:bg-red-600 hover:text-white hover:border-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
             >
               <LogOut className="h-4.5 w-4.5 shrink-0 text-red-300" />
               {!collapsed && <span>Sair da operação</span>}

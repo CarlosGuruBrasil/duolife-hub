@@ -33,25 +33,25 @@ const pillars = [
   {
     id: 'comercial',
     title: 'Suporte Comercial',
-    desc: 'Alavancamos suas abordagens e negociações com estratégias de venda sob medida, abrindo portas e expandindo sua carteira de clientes de forma acelerada.',
+    desc: 'Alavancamos suas abordagens com treinamentos de produtos, esclarecimento de dúvidas e estratégias sob medida para potencializar a expansão da sua carteira de clientes.',
     icon: BarChart3
   },
   {
     id: 'tecnico',
-    title: 'Inteligência Técnico-Operacional',
-    desc: 'Oferecemos capacitação contínua, análise detalhada e confecção técnica de propostas complexas para dar a segurança necessária no fechamento.',
+    title: 'Retaguarda Técnica de Operadoras',
+    desc: 'Atuamos como uma extensão da operadora e seguradora. Oferecemos suporte sobre regras comerciais, rede credenciada e orientações regulatórias de saúde e RC.',
     icon: ClipboardList
   },
   {
     id: 'operacional',
-    title: 'Back-office Administrativo',
-    desc: 'Terceirizamos a burocracia. Assumimos o cadastro de propostas, acompanhamento de emissões e cobrança administrativa para que você tenha mais tempo livre.',
+    title: 'Suporte Operacional ao Corretor',
+    desc: 'Auxiliamos o corretor com orientação em dúvidas operacionais e suporte no fluxo comercial, garantindo que seu foco permaneça 100% no fechamento.',
     icon: ShieldCheck
   },
   {
     id: 'posvenda',
-    title: 'Pós-Venda & Relacionamento',
-    desc: 'Garantimos a intermediação ágil de sinistros, renovações e manutenções com operadoras de saúde e seguradoras, garantindo a retenção da sua base.',
+    title: 'Apoio no Relacionamento',
+    desc: 'Prestamos suporte ao corretor no esclarecimento de dúvidas de sinistros e manutenções com operadoras de saúde e seguradoras, auxiliando na retenção da sua base.',
     icon: Headphones
   }
 ];
@@ -59,34 +59,34 @@ const pillars = [
 const steps = [
   {
     num: '01',
-    title: 'Acolhimento de Demandas',
-    desc: 'Você nos envia a sua demanda comercial ou operacional. Nossa equipe assume a retaguarda imediatamente, analisando o melhor caminho e operadoras disponíveis.'
+    title: 'Acolhimento & Suporte Tira-Dúvidas',
+    desc: 'Você nos traz suas dúvidas comerciais ou operacionais. Nossa equipe de especialistas orienta sobre regras de produtos, redes credenciadas e diretrizes das operadoras.'
   },
   {
     num: '02',
-    title: 'Confecção Técnica e Negociação',
-    desc: 'Elaboramos estudos de mercado, cotações comparativas e relatórios técnicos aprofundados. Oferecemos o suporte necessário para que você apresente a melhor solução.'
+    title: 'Apoio Técnico e Capacitação',
+    desc: 'Oferecemos treinamentos de produtos, comparativos técnicos e materiais de suporte para que você, corretor, apresente a melhor solução com total propriedade.'
   },
   {
     num: '03',
-    title: 'Implantação e Pós-Venda Ativo',
-    desc: 'Cuidamos do fechamento do contrato, conferência de documentação e acompanhamento contínuo. Se o seu cliente precisar de atendimento, a DuoLife resolve.'
+    title: 'Acompanhamento Comercial',
+    desc: 'Acompanhamos e auxiliamos o corretor na esteira comercial e no esclarecimento de pendências junto às operadoras, sem assumir a venda e respeitando sua autonomia.'
   }
 ];
 
 const testimonials = [
   {
-    text: 'A DuoLife se tornou uma extensão da nossa corretora, atuando de forma estratégica no processo de venda e em situações de pós-venda. É uma parceria sólida baseada em confiança.',
+    text: 'A DuoLife atua como uma verdadeira filial da operadora, nos fornecendo todo o suporte comercial, treinamentos de produtos e tira-dúvidas essenciais no dia a dia.',
     author: 'Consultare',
     role: 'Corretora Parceira'
   },
   {
-    text: 'Melhor decisão que tomamos foi poder contar com a assessoria da DuoLife. Eles são extremamente eficientes no back-office, liberando nosso time para focar puramente em vendas.',
+    text: 'A assessoria da DuoLife traz agilidade no suporte comercial e técnico, permitindo que nosso time consulte regras e tire dúvidas rapidamente para fechar negócios com segurança.',
     author: 'Investseguros',
     role: 'Assessoria de Benefícios'
   },
   {
-    text: 'Sempre demonstram proatividade, empatia e comprometimento em buscar soluções junto às operadoras de saúde. A parceria com a DuoLife é extremamente valiosa para nós.',
+    text: 'Sempre demonstram proatividade e conhecimento técnico das regras operacionais das seguradoras. A parceria com a DuoLife fortalece nossa atuação.',
     author: 'Silxan Corretora',
     role: 'Corretora de Seguros'
   }
@@ -95,8 +95,8 @@ const testimonials = [
 const metrics = [
   { value: '+180', label: 'corretores e consultores parceiros' },
   { value: 'Brasil', label: 'atuação comercial nacional' },
-  { value: 'Direto', label: 'relacionamento com seguradoras' },
-  { value: '3', label: 'unidades físicas de atendimento' }
+  { value: 'Direto', label: 'suporte oficial de operadoras' },
+  { value: '2', label: 'sedes físicas (ACIJ e Corporate Park)' }
 ];
 
 const units = [
@@ -108,11 +108,6 @@ const units = [
   {
     title: 'ACIJ — Associação Empresarial de Joinville',
     address: 'Av. Aluísio Pires Condeixa, 2550 — Sala 29, Saguaçu, Joinville/SC',
-    city: 'Joinville'
-  },
-  {
-    title: 'CDTEC — Condomínio de Des. Tecnológico',
-    address: 'Rua São Paulo, 31 — Sala 06, Centro, Joinville/SC',
     city: 'Joinville'
   }
 ];
@@ -390,10 +385,10 @@ export default function Home() {
             <div className="text-center max-w-2xl mx-auto mb-20">
               <span className="text-xs font-black tracking-widest text-primary uppercase mb-6 block">Nossas Frentes de Apoio</span>
               <h2 className="text-4xl md:text-[3.5rem] font-black tracking-tight text-primary uppercase">
-                Destravando resultados de ponta a ponta.
+                Suporte estratégico para corretores.
               </h2>
               <p className="mt-4 text-sm text-[#4d686f] font-light leading-relaxed">
-                Nós assumimos a burocracia técnica e operacional de cotações de saúde e seguros para que você tenha total foco em fechar novos negócios.
+                Atuamos como uma extensão da operadora para apoiar o corretor com treinamentos, suporte a dúvidas de regras comerciais e rede credenciada, potencializando seus fechamentos com total autonomia.
               </p>
             </div>
 
@@ -532,7 +527,7 @@ export default function Home() {
 
           <Image
             src="/duolife-consultant.jpg"
-            alt=""
+            alt="Consultor DuoLife em atendimento técnico especializado"
             fill
             className="object-cover object-top opacity-[0.18] pointer-events-none z-0"
           />
