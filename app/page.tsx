@@ -249,15 +249,15 @@ export default function Home() {
             <div className="max-w-[760px] text-left">
               <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-md text-accent px-4 py-1.5 rounded-full text-xs font-black tracking-widest uppercase mb-8 border border-white/5 self-start shadow-[0_10px_30px_rgba(7,42,51,0.18)]">
                 <Sparkles size={13} />
-                Assessoria Técnico-Comercial B2B
+                Suporte & Capacitação Comercial B2B
               </div>
 
               <h1 className="hero-title-wrap text-4xl md:text-6xl lg:text-[76px] xl:text-[84px] font-black tracking-[-0.03em] leading-[1.02] uppercase mb-6 text-white drop-shadow-[0_8px_24px_rgba(0,0,0,0.32)]">
-                Mais foco nas Vendas. <span className="text-gradient-shimmer font-black">Menos burocracia</span>.
+                Mais foco nas Vendas. <span className="text-gradient-shimmer font-black">Mais Resultados</span>.
               </h1>
 
               <p className="text-base md:text-lg text-white/84 leading-relaxed font-light mb-10 max-w-xl text-left drop-shadow-[0_2px_10px_rgba(0,0,0,0.22)]">
-                Na DuoLife, somos Especialistas em Destravar Resultados. Oferecemos suporte completo — Comercial, Técnico, Operacional e de Pós-venda — para que corretores e consultores foquem no que fazem de melhor.
+                Atuamos como uma extensão da operadora para fornecer todo o suporte comercial, treinamentos de produtos e tira-dúvidas de regras comerciais que corretores e consultores precisam para fechar negócios com autonomia.
               </p>
 
               <div className="flex flex-col sm:flex-row gap-4">
