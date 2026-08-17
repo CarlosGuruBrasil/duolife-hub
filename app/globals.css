@@ -558,28 +558,17 @@ textarea.form-input {
   filter: brightness(0) invert(1);
 }
 
-.site-header.header-transparent:not(.is-scrolled) .btn-primary {
-  background: rgba(255, 255, 255, 0.98);
-  color: var(--primary);
-  box-shadow: 0 12px 26px rgba(7, 42, 51, 0.24);
-}
-
-.site-header.header-transparent:not(.is-scrolled) .btn-primary:hover {
-  background: var(--accent);
-  color: var(--primary-dark);
-}
-
 .site-header.header-transparent:not(.is-scrolled) .mobile-menu-button {
   background: rgba(255, 255, 255, 0.24);
   color: #ffffff;
 }
 
 .site-header.is-scrolled {
-  background: #ffffff !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
+  background: rgba(255, 255, 255, 0.95) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
   border-bottom: 1px solid rgba(14, 74, 90, 0.12) !important;
-  box-shadow: 0 10px 30px rgba(14, 74, 90, 0.08) !important;
+  box-shadow: 0 4px 20px rgba(14, 74, 90, 0.05) !important;
 }
 
 .site-header.is-scrolled .site-nav a,
@@ -594,11 +583,6 @@ textarea.form-input {
 
 .site-header.is-scrolled img {
   filter: none !important;
-}
-
-.site-header.is-scrolled .btn-primary {
-  background: var(--primary) !important;
-  color: #ffffff !important;
 }
 
 .site-header-inner {
