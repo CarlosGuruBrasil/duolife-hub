@@ -54,7 +54,7 @@ export default function WixPullClient({ collectionsCount, itemsCount, lastSynced
           <div className="mt-2 text-2xl font-black" style={{ color: 'var(--primary)' }}>{itemsCount}</div>
         </div>
         <div>
-          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Último sync</div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Última sincronização</div>
           <div className="mt-2 text-sm font-bold" style={{ color: 'var(--primary)' }}>
             {lastSyncedAt ? new Date(lastSyncedAt).toLocaleString('pt-BR') : 'Ainda não executado'}
           </div>
@@ -68,9 +68,9 @@ export default function WixPullClient({ collectionsCount, itemsCount, lastSynced
           onClick={runPull}
           disabled={running}
         >
-          {running ? 'Sincronizando...' : 'Puxar do Wix agora'}
+          {running ? 'Sincronizando...' : 'Sincronizar Wix'}
         </button>
-        <span className="text-sm text-gray-500">{message || 'Pull somente leitura do Wix para o banco local.'}</span>
+        <span className="text-sm text-gray-500">{message || 'Importação somente leitura do Wix para o banco local.'}</span>
       </div>
 
       {result ? (
@@ -96,4 +96,3 @@ export default function WixPullClient({ collectionsCount, itemsCount, lastSynced
     </div>
   );
 }
-

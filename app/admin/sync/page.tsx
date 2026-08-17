@@ -54,8 +54,8 @@ export default async function AdminSyncPage() {
       <div className="mb-8 flex items-center gap-3">
         <RefreshCw size={24} style={{ color: 'var(--primary)' }} />
         <div>
-          <h1 className="text-2xl font-black" style={{ color: 'var(--primary)' }}>Sync</h1>
-          <p className="text-gray-500 text-sm mt-1">Pull do Wix, links públicos e integrações externas.</p>
+          <h1 className="text-2xl font-black" style={{ color: 'var(--primary)' }}>Integrações</h1>
+          <p className="text-gray-500 text-sm mt-1">Sincronização do Wix, links públicos e integrações externas.</p>
         </div>
       </div>
 
@@ -86,7 +86,7 @@ export default async function AdminSyncPage() {
 
       <div className="card overflow-hidden p-0">
         {logs.length === 0 ? (
-          <div className="p-8 text-center text-gray-400">Nenhum evento de sync registrado ainda.</div>
+          <div className="p-8 text-center text-gray-400">Nenhum evento de sincronização registrado ainda.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1050px] text-left text-sm">

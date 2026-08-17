@@ -23,6 +23,20 @@ function formatCurrency(value: string) {
   return Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+const statusLabel: Record<string, string> = {
+  pending: 'Pendente',
+  paid: 'Pago',
+  partially_paid: 'Parcialmente pago',
+  overdue: 'Vencido',
+  refunded: 'Estornado',
+};
+
+const billingTypeLabel: Record<string, string> = {
+  boleto: 'boleto',
+  pix: 'Pix',
+  credit_card: 'cartão de crédito',
+};
+
 export function PagamentosPanel({ cotacaoId }: { cotacaoId: string }) {
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [installments, setInstallments] = useState<Installment[] | null>(null);
@@ -53,7 +67,7 @@ export function PagamentosPanel({ cotacaoId }: { cotacaoId: string }) {
     <div className="space-y-4">
       {orders.map((order) => (
         <div key={order.id} className="text-sm text-gray-700">
-          Cobrança <strong>{order.billing_type}</strong> — {formatCurrency(order.amount_total)} em {order.installment_count}x — status <strong>{order.status}</strong>
+          Cobrança por <strong>{billingTypeLabel[order.billing_type] || order.billing_type}</strong> — {formatCurrency(order.amount_total)} em {order.installment_count}x — status <strong>{statusLabel[order.status] || order.status}</strong>
         </div>
       ))}
       {installments && installments.length > 0 && (
@@ -73,7 +87,7 @@ export function PagamentosPanel({ cotacaoId }: { cotacaoId: string }) {
                 <td className="py-2">{inst.installment_number}</td>
                 <td className="py-2">{formatCurrency(inst.amount)}</td>
                 <td className="py-2">{new Date(inst.due_date).toLocaleDateString('pt-BR')}</td>
-                <td className="py-2">{inst.status}</td>
+                <td className="py-2">{statusLabel[inst.status] || inst.status}</td>
                 <td className="py-2">
                   {inst.bank_slip_url ? (
                     <a href={inst.bank_slip_url} target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline">

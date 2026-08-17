@@ -19,7 +19,7 @@ interface AdminUserRow {
 }
 
 const INTERNAL_ROLE_LABEL: Record<string, string> = {
-  duolife_admin: 'Dev',
+  duolife_admin: 'Administrador',
   duolife_staff: 'Operação',
 };
 
@@ -168,13 +168,13 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
             <span className="field-label">Perfil</span>
             <select name="role" defaultValue={editing?.role || 'duolife_staff'} className="form-input">
               <option value="duolife_staff">Operação</option>
-              <option value="duolife_admin">Dev</option>
+              <option value="duolife_admin">Administrador</option>
             </select>
           </label>
           <div className="md:col-span-4 flex justify-end">
             {editing && (
               <Link href="/admin/usuarios" className="btn-outline px-6 py-3 mr-3">
-                Novo cadastro
+                Cancelar edição
               </Link>
             )}
             <button type="submit" className="btn-primary px-6 py-3">

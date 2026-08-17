@@ -40,10 +40,10 @@ export default async function AdminRelatoriosPage({
     <div className="space-y-6">
       <section className="admin-hero-card">
         <div>
-          <span className="admin-eyebrow">Relatorios</span>
-          <h1 className="admin-page-title">Geral detalhado da operacao RC</h1>
+          <span className="admin-eyebrow">Relatórios</span>
+          <h1 className="admin-page-title">Indicadores detalhados de RC</h1>
           <p className="admin-page-copy">
-            Consolidacao de producao, financeiro, cobranca e saude de sincronizacao para {data.period.label}.
+            Consolidação de produção, financeiro, cobrança e integrações para {data.period.label}.
           </p>
         </div>
         <div className="admin-pill-row">
@@ -63,8 +63,8 @@ export default async function AdminRelatoriosPage({
         <div className="card no-hover">
           <div className="admin-section-header">
             <div>
-              <h2 className="admin-section-title">Cotacoes por status</h2>
-              <p className="admin-section-copy">Entenda onde a producao esta concentrada e o volume financeiro em cada etapa.</p>
+              <h2 className="admin-section-title">Cotações por status</h2>
+              <p className="admin-section-copy">Distribuição da produção e do volume financeiro por etapa.</p>
             </div>
           </div>
           <div className="overflow-x-auto">
@@ -73,7 +73,7 @@ export default async function AdminRelatoriosPage({
                 <tr>
                   <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3 font-semibold">Qtde.</th>
-                  <th className="px-4 py-3 font-semibold">Premio estimado</th>
+                  <th className="px-4 py-3 font-semibold">Prêmio estimado</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -92,8 +92,8 @@ export default async function AdminRelatoriosPage({
         <div className="card no-hover">
           <div className="admin-section-header">
             <div>
-              <h2 className="admin-section-title">Cobranca e recebimento</h2>
-              <p className="admin-section-copy">Mostra o comportamento das ordens financeiras abertas no periodo.</p>
+              <h2 className="admin-section-title">Cobrança e recebimento</h2>
+              <p className="admin-section-copy">Ordens financeiras abertas no período.</p>
             </div>
           </div>
           <div className="space-y-3">
@@ -117,7 +117,7 @@ export default async function AdminRelatoriosPage({
         <div className="admin-section-header">
           <div>
             <h2 className="admin-section-title">Parceiros e performance</h2>
-            <p className="admin-section-copy">Leitura operacional semelhante a Net4Life, mas focada em RC, premio, cobranca e comissao.</p>
+            <p className="admin-section-copy">Produção, recebimentos e comissões por parceiro.</p>
           </div>
         </div>
         <div className="overflow-x-auto">
@@ -125,11 +125,11 @@ export default async function AdminRelatoriosPage({
             <thead className="table-head">
               <tr>
                 <th className="px-4 py-3 font-semibold">Parceiro</th>
-                <th className="px-4 py-3 font-semibold">Cotacoes</th>
+                <th className="px-4 py-3 font-semibold">Cotações</th>
                 <th className="px-4 py-3 font-semibold">Vendas</th>
-                <th className="px-4 py-3 font-semibold">Premio</th>
+                <th className="px-4 py-3 font-semibold">Prêmio</th>
                 <th className="px-4 py-3 font-semibold">Recebido</th>
-                <th className="px-4 py-3 font-semibold">Comissao pendente</th>
+                <th className="px-4 py-3 font-semibold">Comissão pendente</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -152,14 +152,14 @@ export default async function AdminRelatoriosPage({
         <div className="card no-hover">
           <div className="admin-section-header">
             <div>
-              <h2 className="admin-section-title">Pendencias financeiras</h2>
-              <p className="admin-section-copy">Casos que exigem cobranca ativa ou revisao operacional.</p>
+              <h2 className="admin-section-title">Pendências financeiras</h2>
+              <p className="admin-section-copy">Casos que exigem cobrança ativa ou revisão operacional.</p>
             </div>
           </div>
           <div className="space-y-3">
             {data.overduePayments.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-[var(--border)] p-5 text-sm text-[var(--text-secondary)]">
-                Nenhuma pendencia critica encontrada neste momento.
+                Nenhuma pendência crítica encontrada neste momento.
               </div>
             ) : (
               data.overduePayments.map((row) => (
@@ -181,14 +181,14 @@ export default async function AdminRelatoriosPage({
         <div className="card no-hover">
           <div className="admin-section-header">
             <div>
-              <h2 className="admin-section-title">Falhas de sincronizacao</h2>
-              <p className="admin-section-copy">Monitoramento das integracoes externas para manter rastreabilidade operacional.</p>
+              <h2 className="admin-section-title">Falhas de sincronização</h2>
+              <p className="admin-section-copy">Falhas das integrações externas que exigem acompanhamento.</p>
             </div>
           </div>
           <div className="space-y-3">
             {data.syncErrors.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-[var(--border)] p-5 text-sm text-[var(--text-secondary)]">
-                Nenhuma falha registrada nas integracoes deste periodo.
+                Nenhuma falha registrada nas integrações deste período.
               </div>
             ) : (
               data.syncErrors.map((row) => (

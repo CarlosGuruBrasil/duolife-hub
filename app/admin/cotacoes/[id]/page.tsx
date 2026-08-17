@@ -5,6 +5,18 @@ import { verifyAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { PagamentosPanel } from './_pagamentos-client';
 
+const statusLabel: Record<string, string> = {
+  rascunho: 'Rascunho',
+  enviada: 'Enviada',
+  contrato_gerado: 'Aguardando assinatura',
+  assinado: 'Assinado',
+  pagamento_gerado: 'Cobrança gerada',
+  aprovada: 'Aprovada',
+  recusada: 'Recusada',
+  expirada: 'Expirada',
+  emitida: 'Emitida',
+};
+
 export default async function AdminCotacaoDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await verifyAuth();
   if (!user || (user.role !== 'duolife_admin' && user.role !== 'duolife_staff')) {
@@ -38,7 +50,7 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
           <h1 className="text-2xl font-bold text-gray-900">{cotacao.client_name}</h1>
           <p className="text-sm text-gray-500 mt-1">{cotacao.client_cpf_cnpj} · {cotacao.client_email || 'sem e-mail'} · {cotacao.client_phone || 'sem telefone'}</p>
           <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-            <div><div className="text-gray-500 text-xs uppercase">Status</div><div className="font-semibold">{cotacao.status}</div></div>
+            <div><div className="text-gray-500 text-xs uppercase">Status</div><div className="font-semibold">{statusLabel[cotacao.status] || cotacao.status}</div></div>
             <div><div className="text-gray-500 text-xs uppercase">Produto</div><div className="font-semibold">{cotacao.product_name}</div></div>
             <div><div className="text-gray-500 text-xs uppercase">Parceiro</div><div className="font-semibold">{cotacao.partner_name}</div></div>
             <div><div className="text-gray-500 text-xs uppercase">Criada em</div><div className="font-semibold">{new Date(cotacao.created_at).toLocaleDateString('pt-BR')}</div></div>

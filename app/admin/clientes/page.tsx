@@ -78,14 +78,22 @@ export default async function AdminClientesPage() {
         ORDER BY po.created_at DESC
         LIMIT 1
       ) AS last_payment_status,
-      COALESCE(SUM(po.paid_installments), 0)::int AS paid_installments,
-      COALESCE(SUM(po.installment_count), 0)::int AS total_installments,
+      COALESCE(po.paid_installments, 0)::int AS paid_installments,
+      COALESCE(po.installment_count, 0)::int AS total_installments,
       MAX(COALESCE(po.updated_at, c.updated_at, ic.updated_at))::text AS updated_at
     FROM insurance_clients ic
     JOIN cotacoes c ON c.client_id = ic.id
     JOIN partners p ON p.id = c.partner_id
-    LEFT JOIN payment_orders po ON po.client_id = ic.id
-    GROUP BY ic.id, ic.full_name, ic.document_number, ic.email, ic.phone
+    LEFT JOIN (
+      SELECT
+        client_id,
+        SUM(paid_installments)::int AS paid_installments,
+        SUM(installment_count)::int AS installment_count,
+        MAX(updated_at) AS updated_at
+      FROM payment_orders
+      GROUP BY client_id
+    ) po ON po.client_id = ic.id
+    GROUP BY ic.id, ic.full_name, ic.document_number, ic.email, ic.phone, po.paid_installments, po.installment_count, po.updated_at
     ORDER BY MAX(COALESCE(po.updated_at, c.updated_at, ic.updated_at)) DESC
     LIMIT 300
   `;

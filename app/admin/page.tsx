@@ -51,9 +51,9 @@ export default async function AdminDashboard({
       <section className="admin-hero-card">
         <div>
           <span className="admin-eyebrow">Dashboard</span>
-          <h1 className="admin-page-title">Painel operacional RC de {user.name.split(' ')[0]}</h1>
+          <h1 className="admin-page-title">Visão geral de RC</h1>
           <p className="admin-page-copy">
-            Mesmo teor de gestao da Net4Life, mas focado em cotacoes, emissao, cobranca, comissao e sincronizacao da DuoLife.
+            Acompanhe cotações, emissões, cobranças, comissões e a operação da DuoLife.
           </p>
         </div>
         <div className="admin-pill-row">
@@ -79,60 +79,28 @@ export default async function AdminDashboard({
         ))}
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <div className="card no-hover">
-          <div className="admin-section-header">
-            <div>
-              <h2 className="admin-section-title">Funil comercial do periodo</h2>
-              <p className="admin-section-copy">Ajuda a enxergar travas de assinatura, cobranca e conversao para emissao.</p>
-            </div>
-            <Link href="/admin/relatorios" className="btn-outline px-4 py-2">
-              Abrir relatorio completo
-            </Link>
-          </div>
-          <div className="space-y-4">
-            {data.funnel.map((stage) => (
-              <div key={stage.status}>
-                <div className="mb-2 flex items-center justify-between gap-4 text-sm">
-                  <span className="font-semibold text-[var(--primary)]">{stage.label}</span>
-                  <span className="text-[var(--text-secondary)]">{stage.count}</span>
-                </div>
-                <div className="admin-progress-track">
-                  <div
-                    className="admin-progress-bar"
-                    style={{ width: `${Math.max((stage.count / funnelMax) * 100, stage.count > 0 ? 12 : 0)}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+      <section className="card no-hover">
+        <div className="admin-section-header">
+          <div>
+            <h2 className="admin-section-title">Funil comercial do período</h2>
+            <p className="admin-section-copy">Acompanhe travas de assinatura, cobrança e conversão em emissão.</p>
           </div>
         </div>
-
-        <div className="card no-hover">
-          <div className="admin-section-header">
-            <div>
-              <h2 className="admin-section-title">Acoes rapidas</h2>
-              <p className="admin-section-copy">Entradas de operacao que o time usa todos os dias.</p>
+        <div className="space-y-4">
+          {data.funnel.map((stage) => (
+            <div key={stage.status}>
+              <div className="mb-2 flex items-center justify-between gap-4 text-sm">
+                <span className="font-semibold text-[var(--primary)]">{stage.label}</span>
+                <span className="text-[var(--text-secondary)]">{stage.count}</span>
+              </div>
+              <div className="admin-progress-track">
+                <div
+                  className="admin-progress-bar"
+                  style={{ width: `${Math.max((stage.count / funnelMax) * 100, stage.count > 0 ? 12 : 0)}%` }}
+                />
+              </div>
             </div>
-          </div>
-          <div className="grid gap-3">
-            <Link href="/admin/cotacoes" className="admin-action-link">
-              <span>Producao comercial</span>
-              <small>Ver cotacoes, assinatura e cobranca</small>
-            </Link>
-            <Link href="/admin/vendas" className="admin-action-link">
-              <span>Apolices emitidas</span>
-              <small>Acompanhar premio, vigencia e volume</small>
-            </Link>
-            <Link href="/admin/comissoes" className="admin-action-link">
-              <span>Comissoes</span>
-              <small>Validar pendencias e pagamentos</small>
-            </Link>
-            <Link href="/admin/sync" className="admin-action-link">
-              <span>Sincronizacao Wix</span>
-              <small>Monitorar espelhamento e historico</small>
-            </Link>
-          </div>
+          ))}
         </div>
       </section>
 
@@ -141,7 +109,7 @@ export default async function AdminDashboard({
           <div className="admin-section-header">
             <div>
               <h2 className="admin-section-title">Performance por produto</h2>
-              <p className="admin-section-copy">Pronto para crescer alem do RC sem perder a leitura consolidada.</p>
+              <p className="admin-section-copy">Leitura consolidada por produto.</p>
             </div>
           </div>
           <div className="overflow-x-auto">
@@ -149,9 +117,9 @@ export default async function AdminDashboard({
               <thead className="table-head">
                 <tr>
                   <th className="px-4 py-3 font-semibold">Produto</th>
-                  <th className="px-4 py-3 font-semibold">Cotacoes</th>
+                  <th className="px-4 py-3 font-semibold">Cotações</th>
                   <th className="px-4 py-3 font-semibold">Vendas</th>
-                  <th className="px-4 py-3 font-semibold">Premio</th>
+                  <th className="px-4 py-3 font-semibold">Prêmio</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -172,13 +140,13 @@ export default async function AdminDashboard({
           <div className="admin-section-header">
             <div>
               <h2 className="admin-section-title">Parceiros em destaque</h2>
-              <p className="admin-section-copy">Quem esta puxando a producao e onde ha comissao represada.</p>
+              <p className="admin-section-copy">Produção e comissões pendentes por parceiro.</p>
             </div>
           </div>
           <div className="space-y-3">
             {data.partnerPerformance.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-[var(--border)] p-5 text-sm text-[var(--text-secondary)]">
-                Ainda nao ha movimento de parceiros neste periodo.
+                Ainda não há movimento de parceiros neste período.
               </div>
             ) : (
               data.partnerPerformance.map((row) => (
@@ -186,12 +154,12 @@ export default async function AdminDashboard({
                   <div>
                     <div className="admin-inline-stat-label">{row.partnerName}</div>
                     <div className="admin-inline-stat-copy">
-                      {row.quotesCount} cotacoes • {row.salesCount} vendas
+                      {row.quotesCount} cotações • {row.salesCount} vendas
                     </div>
                   </div>
                   <div className="text-right">
                     <div className="admin-inline-stat-value">{formatCurrency(row.premiumTotal)}</div>
-                    <div className="admin-inline-stat-copy">{formatCurrency(row.commissionPending)} em comissao pendente</div>
+                    <div className="admin-inline-stat-copy">{formatCurrency(row.commissionPending)} em comissão pendente</div>
                   </div>
                 </div>
               ))
@@ -204,8 +172,8 @@ export default async function AdminDashboard({
         <div className="card no-hover">
           <div className="admin-section-header">
             <div>
-              <h2 className="admin-section-title">Ultimos eventos operacionais</h2>
-              <p className="admin-section-copy">Linha de atividade semelhante ao ritmo do dashboard da Net4Life.</p>
+              <h2 className="admin-section-title">Últimos eventos operacionais</h2>
+              <p className="admin-section-copy">Atividades recentes da operação.</p>
             </div>
           </div>
           <div className="space-y-3">
@@ -230,14 +198,14 @@ export default async function AdminDashboard({
         <div className="card no-hover">
           <div className="admin-section-header">
             <div>
-              <h2 className="admin-section-title">Saude das integracoes</h2>
-              <p className="admin-section-copy">Wix, CRM e demais trilhas externas monitoradas no mesmo painel.</p>
+              <h2 className="admin-section-title">Saúde das integrações</h2>
+              <p className="admin-section-copy">Eventos recentes das integrações externas.</p>
             </div>
           </div>
           <div className="space-y-3">
             {data.syncHealth.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-[var(--border)] p-5 text-sm text-[var(--text-secondary)]">
-                Nenhum evento de sync registrado no periodo selecionado.
+                Nenhum evento de sincronização registrado no período selecionado.
               </div>
             ) : (
               data.syncHealth.map((row) => (
@@ -251,7 +219,7 @@ export default async function AdminDashboard({
                   <div className="text-right">
                     <div className="admin-inline-stat-value">{row.total}</div>
                     <div className="admin-inline-stat-copy">
-                      {row.lastEventAt ? formatDateTime(row.lastEventAt) : 'Sem execucao'}
+                      {row.lastEventAt ? formatDateTime(row.lastEventAt) : 'Sem execução'}
                     </div>
                   </div>
                 </div>

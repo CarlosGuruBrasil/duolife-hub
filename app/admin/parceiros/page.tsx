@@ -44,14 +44,24 @@ function AdminParceirosInner() {
   useEffect(() => { load(); }, [statusFilter]);
 
   async function updateStatus(id: string, status: string) {
+    const action = status === 'suspended' ? 'suspender' : 'ativar';
+    if (!window.confirm(`Deseja ${action} este parceiro?`)) return;
+
     setUpdating(id);
-    await fetch('/api/admin/parceiros', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ parceiro_id: id, status }),
-    });
-    await load();
-    setUpdating(null);
+    try {
+      const response = await fetch('/api/admin/parceiros', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ parceiro_id: id, status }),
+      });
+      if (!response.ok) {
+        window.alert('Não foi possível atualizar o parceiro. Tente novamente.');
+        return;
+      }
+      await load();
+    } finally {
+      setUpdating(null);
+    }
   }
 
   return (
@@ -72,7 +82,8 @@ function AdminParceirosInner() {
         ) : parceiros.length === 0 ? (
           <div className="p-8 text-center text-gray-400">Nenhum parceiro encontrado.</div>
         ) : (
-          <table className="w-full text-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[860px] text-sm">
             <thead>
               <tr className="border-b" style={{ borderColor: 'var(--border)', background: 'var(--bg-gray)' }}>
                 <th className="text-left px-6 py-3 font-semibold text-gray-600">Empresa</th>
@@ -112,7 +123,7 @@ function AdminParceirosInner() {
                           href={`/admin/parceiros/${p.id}`}
                           className="btn-outline text-xs px-3 py-1.5 min-h-0"
                         >
-                          Configurar
+                          Gerenciar
                         </Link>
                         {p.status !== 'active' && (
                           <button
@@ -120,7 +131,7 @@ function AdminParceirosInner() {
                             disabled={updating === p.id}
                             className="btn-primary text-xs px-3 py-1.5 min-h-0"
                           >
-                            Aprovar
+                            Ativar
                           </button>
                         )}
                         {p.status !== 'suspended' && (
@@ -139,7 +150,8 @@ function AdminParceirosInner() {
                 );
               })}
             </tbody>
-          </table>
+            </table>
+          </div>
         )}
       </div>
     </div>

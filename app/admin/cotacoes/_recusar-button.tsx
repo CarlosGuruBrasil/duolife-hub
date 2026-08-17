@@ -9,6 +9,7 @@ export function RecusarCotacaoButton({ id, clientName }: { id: string; clientNam
   async function handleRecusar() {
     const motivo = prompt(`Recusar a cotação de "${clientName}". Motivo (opcional):`);
     if (motivo === null) return;
+    if (!confirm(`Confirmar a recusa da cotação de "${clientName}"?`)) return;
 
     setLoading(true);
     try {
@@ -32,10 +33,11 @@ export function RecusarCotacaoButton({ id, clientName }: { id: string; clientNam
     <button
       onClick={handleRecusar}
       disabled={loading}
-      title="Recusar cotação"
-      className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-50"
+      aria-label={`Recusar cotação de ${clientName}`}
+      className="inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-rose-700 hover:bg-rose-50 transition-colors disabled:opacity-50"
     >
       <XCircle size={16} strokeWidth={2} />
+      {loading ? 'Recusando...' : 'Recusar'}
     </button>
   );
 }

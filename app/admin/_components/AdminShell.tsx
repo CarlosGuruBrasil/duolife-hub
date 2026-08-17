@@ -8,10 +8,8 @@ import {
   BarChart3,
   Briefcase,
   Building2,
-  FileSpreadsheet,
   LogOut,
   Menu,
-  RefreshCw,
   Shield,
   Users,
   WalletCards,
@@ -31,13 +29,13 @@ interface NavItem {
 
 const navSections: Array<{ title: string; items: NavItem[] }> = [
   {
-    title: 'Operacao',
+    title: 'Operação',
     items: [
-      { href: '/admin', label: 'Dashboard', icon: BarChart3, description: 'Visao geral do mes, funil e carteira.' },
-      { href: '/admin/relatorios', label: 'Relatorios', icon: FileSpreadsheet, description: 'Geral detalhado, financeiro e sincronizacoes.' },
-      { href: '/admin/cotacoes', label: 'Cotacoes', icon: Briefcase, description: 'Producao comercial, assinatura e cobranca.' },
-      { href: '/admin/vendas', label: 'Vendas', icon: Shield, description: 'Apolices emitidas e premio total.' },
-      { href: '/admin/comissoes', label: 'Comissoes', icon: WalletCards, description: 'Pendencias, pagamentos e extrato.' },
+      { href: '/admin', label: 'Visão geral', icon: BarChart3, description: 'Mês, funil e carteira.' },
+      { href: '/admin/relatorios', label: 'Relatórios', icon: BarChart3, description: 'Financeiro e indicadores detalhados.' },
+      { href: '/admin/cotacoes', label: 'Cotações', icon: Briefcase, description: 'Propostas, assinatura e cobrança.' },
+      { href: '/admin/vendas', label: 'Vendas', icon: Shield, description: 'Apólices emitidas e prêmio total.' },
+      { href: '/admin/comissoes', label: 'Comissões', icon: WalletCards, description: 'Pendências, pagamentos e extrato.' },
     ],
   },
   {
@@ -45,8 +43,7 @@ const navSections: Array<{ title: string; items: NavItem[] }> = [
     items: [
       { href: '/admin/parceiros', label: 'Parceiros', icon: Building2, description: 'Corretoras, status e estrutura comercial.' },
       { href: '/admin/clientes', label: 'Clientes', icon: Users, description: 'Carteira consolidada de segurados.' },
-      { href: '/admin/usuarios', label: 'Usuarios', icon: Shield, description: 'Acessos internos da operacao.' },
-      { href: '/admin/sync', label: 'Sync Wix', icon: RefreshCw, description: 'Espelhamento e saude de integracao.' },
+      { href: '/admin/usuarios', label: 'Usuários', icon: Shield, description: 'Acessos internos da operação.' },
     ],
   },
 ];
@@ -75,7 +72,7 @@ export default function AdminShell({ children }: AdminShellProps) {
         <div className="admin-brand-row">
           <div>
             <div className="admin-brand-mark">DuoLife RC</div>
-            <p className="admin-brand-copy">Operacao, producao, cobranca e rede comercial em um so painel.</p>
+            <p className="admin-brand-copy">Operação, produção, cobrança e rede comercial em um só painel.</p>
           </div>
           <button
             aria-label="Fechar menu"
@@ -121,7 +118,7 @@ export default function AdminShell({ children }: AdminShellProps) {
           <form action="/api/auth/logout" method="POST">
             <button type="submit" className="admin-logout-button">
               <LogOut className="h-4 w-4" />
-              Sair da operacao
+              Sair da operação
             </button>
           </form>
         </div>
@@ -139,7 +136,7 @@ export default function AdminShell({ children }: AdminShellProps) {
           </button>
           <div>
             <div className="admin-topbar-title">Central administrativa DuoLife</div>
-            <div className="admin-topbar-copy">Mesmo teor operacional da Net4Life, adaptado para RC e rede DuoLife.</div>
+            <div className="admin-topbar-copy">Gestão operacional de RC e da rede DuoLife.</div>
           </div>
         </header>
 
