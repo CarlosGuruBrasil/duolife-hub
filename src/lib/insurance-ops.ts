@@ -77,7 +77,7 @@ export async function ensureSaleForPaidQuote(input: {
     return { saleId: existing[0].id, created: false };
   }
 
-  const [rateRow] = await sql<{ rate: number }[]>`
+  const [rateRow] = await sql<{ rate: number; policy_prefix: string | null }[]>`
     SELECT
       COALESCE(
         (
@@ -92,14 +92,15 @@ export async function ensureSaleForPaidQuote(input: {
         ),
         p.base_commission_rate,
         0
-      ) AS rate
+      ) AS rate,
+      p.policy_prefix
     FROM products p
     WHERE id = ${input.productId}
   `;
 
   const commissionRate = rateRow ? Number(rateRow.rate) : 0;
   const commissionAmount = input.premioFinal * (commissionRate / 100);
-  const policyNumber = `DL-RC-${input.cotacaoId.slice(0, 8).toUpperCase()}`;
+  const policyNumber = `${rateRow?.policy_prefix || 'DL'}-${input.cotacaoId.slice(0, 8).toUpperCase()}`;
 
   const [sale] = await sql<{ id: string }[]>`
     INSERT INTO sales (

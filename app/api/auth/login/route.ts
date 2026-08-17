@@ -16,6 +16,14 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+function isDatabaseUnavailableError(error: unknown) {
+  if (!error || typeof error !== 'object') return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  return candidate.code === 'ECONNREFUSED'
+    || candidate.code === 'ETIMEDOUT'
+    || (typeof candidate.message === 'string' && /connect_timeout|DATABASE_URL/i.test(candidate.message));
+}
+
 export async function POST(req: NextRequest) {
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? 'unknown';
   const { ok, retryAfter } = rateLimit(`login:${ip}`, 10, 60_000); // 10 tentativas/min por IP
@@ -104,6 +112,10 @@ export async function POST(req: NextRequest) {
 
   } catch (err) {
     logger.error({ err }, 'auth.login.failed');
-    return Response.json({ error: 'Erro interno' }, { status: 500 });
+    const isDatabaseUnavailable = isDatabaseUnavailableError(err);
+    return Response.json(
+      { error: isDatabaseUnavailable ? 'Banco de dados local indisponível. Conecte o ambiente ao banco antes de entrar.' : 'Erro interno' },
+      { status: isDatabaseUnavailable ? 503 : 500 },
+    );
   }
 }

@@ -31,6 +31,7 @@ function AdminParceirosInner() {
   const [parceiros, setParceiros] = useState<Parceiro[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
+  const [canManageStatus, setCanManageStatus] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -38,6 +39,7 @@ function AdminParceirosInner() {
     const res = await fetch(`/api/admin/parceiros${qs}`);
     const data = await res.json();
     setParceiros(data.parceiros ?? []);
+    setCanManageStatus(Boolean(data.canManageStatus));
     setLoading(false);
   }
 
@@ -125,7 +127,7 @@ function AdminParceirosInner() {
                         >
                           Gerenciar
                         </Link>
-                        {p.status !== 'active' && (
+                        {canManageStatus && p.status !== 'active' && (
                           <button
                             onClick={() => updateStatus(p.id, 'active')}
                             disabled={updating === p.id}
@@ -134,7 +136,7 @@ function AdminParceirosInner() {
                             Ativar
                           </button>
                         )}
-                        {p.status !== 'suspended' && (
+                        {canManageStatus && p.status !== 'suspended' && (
                           <button
                             onClick={() => updateStatus(p.id, 'suspended')}
                             disabled={updating === p.id}

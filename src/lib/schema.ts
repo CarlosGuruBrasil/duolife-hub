@@ -158,9 +158,62 @@ async function runRuntimeSchemaSetup(): Promise<void> {
       base_commission_rate NUMERIC(5,2),
       min_premium          NUMERIC(12,2),
       is_active            BOOLEAN NOT NULL DEFAULT true,
+      product_type         TEXT NOT NULL DEFAULT 'insurance',
+      flow_key             TEXT NOT NULL DEFAULT 'rc_professional_v1',
+      pricing_strategy     TEXT NOT NULL DEFAULT 'rc_wix_planos_v1',
+      policy_prefix        TEXT,
+      is_quoteable         BOOLEAN NOT NULL DEFAULT true,
+      is_contractable      BOOLEAN NOT NULL DEFAULT true,
+      is_payable           BOOLEAN NOT NULL DEFAULT true,
+      public_title         TEXT,
+      target_audience      TEXT,
+      validity_days        INTEGER,
+      sale_recognition     TEXT NOT NULL DEFAULT 'on_payment',
+      renewal_enabled      BOOLEAN NOT NULL DEFAULT true,
+      requires_underwriting BOOLEAN NOT NULL DEFAULT false,
+      required_documents   JSONB NOT NULL DEFAULT '[]',
       metadata             JSONB NOT NULL DEFAULT '{}',
       created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `;
+  await sql`ALTER TABLE products ALTER COLUMN insurer_name DROP NOT NULL`;
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS product_type TEXT NOT NULL DEFAULT 'insurance'`;
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS flow_key TEXT NOT NULL DEFAULT 'rc_professional_v1'`;
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS pricing_strategy TEXT NOT NULL DEFAULT 'rc_wix_planos_v1'`;
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS policy_prefix TEXT`;
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS is_quoteable BOOLEAN NOT NULL DEFAULT true`;
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS is_contractable BOOLEAN NOT NULL DEFAULT true`;
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS is_payable BOOLEAN NOT NULL DEFAULT true`;
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS public_title TEXT`;
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS target_audience TEXT`;
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS validity_days INTEGER`;
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS sale_recognition TEXT NOT NULL DEFAULT 'on_payment'`;
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS renewal_enabled BOOLEAN NOT NULL DEFAULT true`;
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS requires_underwriting BOOLEAN NOT NULL DEFAULT false`;
+  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS required_documents JSONB NOT NULL DEFAULT '[]'`;
+  await sql`UPDATE products SET product_type = 'insurance', flow_key = 'rc_professional_v1', pricing_strategy = 'rc_wix_planos_v1', policy_prefix = 'DL-RC' WHERE code = 'RC-001'`;
+
+  // Habilitação comercial é diferente de comissão: um parceiro só deve operar uma oferta
+  // que a DuoLife disponibilizou explicitamente para ele.
+  await sql`
+    CREATE TABLE IF NOT EXISTS partner_product_availability (
+      partner_id TEXT NOT NULL REFERENCES partners(id),
+      product_id TEXT NOT NULL REFERENCES products(id),
+      is_active  BOOLEAN NOT NULL DEFAULT true,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (partner_id, product_id)
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS partner_product_availability_product_id ON partner_product_availability (product_id)`;
+  // Migração compatível: produtos ativos existentes seguem disponíveis aos parceiros ativos.
+  await sql`
+    INSERT INTO partner_product_availability (partner_id, product_id, is_active)
+    SELECT pa.id, pr.id, true
+    FROM partners pa
+    CROSS JOIN products pr
+    WHERE pa.status = 'active' AND pr.is_active = true
+    ON CONFLICT (partner_id, product_id) DO NOTHING
   `;
 
   // Réplica local dos dados do Wix para administração no DuoLife
@@ -556,7 +609,7 @@ async function runRuntimeSchemaSetup(): Promise<void> {
 export async function seedInitialData(): Promise<void> {
   // Produto: Seguro Responsabilidade Civil
   await sql`
-    INSERT INTO products (id, name, code, category, insurer_name, description, base_commission_rate, is_active)
+    INSERT INTO products (id, name, code, category, insurer_name, description, base_commission_rate, is_active, product_type, flow_key, pricing_strategy, policy_prefix)
     VALUES (
       'prod-rc-001',
       'Seguro Responsabilidade Civil Profissional',
@@ -565,7 +618,11 @@ export async function seedInitialData(): Promise<void> {
       'A definir',
       'Proteção profissional contra reclamações de terceiros por erros, omissões ou negligências no exercício da profissão.',
       15.00,
-      true
+      true,
+      'insurance',
+      'rc_professional_v1',
+      'rc_wix_planos_v1',
+      'DL-RC'
     )
     ON CONFLICT (code) DO NOTHING
   `;

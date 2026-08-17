@@ -51,7 +51,7 @@ export default async function AdminDashboard({
       <section className="admin-hero-card">
         <div>
           <span className="admin-eyebrow">Dashboard</span>
-          <h1 className="admin-page-title">Visão geral de RC</h1>
+          <h1 className="admin-page-title">Visão geral</h1>
           <p className="admin-page-copy">
             Acompanhe cotações, emissões, cobranças, comissões e a operação da DuoLife.
           </p>

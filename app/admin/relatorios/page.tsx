@@ -41,7 +41,7 @@ export default async function AdminRelatoriosPage({
       <section className="admin-hero-card">
         <div>
           <span className="admin-eyebrow">Relatórios</span>
-          <h1 className="admin-page-title">Indicadores detalhados de RC</h1>
+          <h1 className="admin-page-title">Indicadores detalhados</h1>
           <p className="admin-page-copy">
             Consolidação de produção, financeiro, cobrança e integrações para {data.period.label}.
           </p>

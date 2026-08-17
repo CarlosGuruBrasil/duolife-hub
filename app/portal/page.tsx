@@ -90,7 +90,7 @@ export default async function PortalDashboard() {
             <Link href="/portal/cotacoes/nova"
               className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
               style={{ color: 'var(--primary)' }}>
-              <ClipboardList size={17} /> Nova cotação — Seguro RC
+              <ClipboardList size={17} /> Nova operação
             </Link>
             <Link href="/portal/vendas"
               className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"

@@ -146,9 +146,10 @@ const AREAS_ATUACAO = [
 interface CotacaoFormRCProps {
   adminSelectedPartnerId?: string;
   publicToken?: string;
+  productId?: string;
 }
 
-export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: CotacaoFormRCProps) {
+export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, productId }: CotacaoFormRCProps) {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<FormState>(initialForm);
@@ -452,6 +453,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken }: C
         clientCpfCnpj: form.cpfCnpj.replace(/\D/g, ''),
         clientEmail: form.email,
         clientPhone: form.celular,
+        productId,
         importanciaSegurada: parseMoneyToNumber(planoSel.cobertura),
         clientData: payloadClientData,
         adminSelectedPartnerId

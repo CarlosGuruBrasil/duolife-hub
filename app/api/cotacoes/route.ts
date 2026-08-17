@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { getPartnerAccessContext, isInternalUser, verifyAuth, unauthorized } from '@/lib/auth';
+import { getPartnerAccessContext, isDevUser, isInternalUser, verifyAuth, unauthorized } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { ensureSchema, seedInitialData } from '@/lib/schema';
@@ -14,6 +14,7 @@ const cotacaoSchema = z.object({
   clientPhone: z.string().trim().optional(),
   importanciaSegurada: z.coerce.number().positive().optional(),
   notes: z.string().trim().optional(),
+  productId: z.string().trim().min(1).optional(),
   clientData: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -125,10 +126,13 @@ export async function POST(req: NextRequest) {
     let userId: string | null = null;
     let sourceToken: string | null = null;
     let flowType = 'internal';
+    let publicLinkProductId: string | null = null;
+    let isInternal = false;
+    let canBypassProductAvailability = false;
 
     if (publicToken) {
       const [link] = await sql`
-        SELECT partner_id, id, flow_type
+        SELECT partner_id, id, flow_type, product_id
         FROM public_sale_links
         WHERE token = ${publicToken}
           AND status = 'active'
@@ -138,6 +142,7 @@ export async function POST(req: NextRequest) {
       if (!link) return Response.json({ error: 'Token público inválido ou expirado' }, { status: 401 });
       
       targetPartnerId = link.partner_id;
+      publicLinkProductId = link.product_id;
       sourceToken = publicToken;
       flowType = link.flow_type || 'external';
     }
@@ -155,8 +160,10 @@ export async function POST(req: NextRequest) {
 
       userId = user.userId;
       targetPartnerId = user.partnerId;
+      isInternal = isInternalUser(user);
+      canBypassProductAvailability = isDevUser(user);
 
-      if (isInternalUser(user)) {
+      if (isInternal) {
         if (!data.adminSelectedPartnerId) {
           return Response.json({ error: 'Administradores precisam informar o Parceiro dono da cotação' }, { status: 400 });
         }
@@ -167,12 +174,41 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const [product] = await sql`
-      SELECT id FROM products WHERE code = 'RC-001' AND is_active = true
-    `;
+    // O produto do link público é imutável. No portal, o produto será escolhido no catálogo;
+    // enquanto a tela legada não envia productId, preservamos RC-001 como compatibilidade.
+    const requestedProductId = publicToken ? publicLinkProductId : (data.productId || 'prod-rc-001');
+    if (!requestedProductId) {
+      return Response.json({ error: 'Este link não está vinculado a um produto disponível' }, { status: 422 });
+    }
+
+    const [product] = publicToken
+      ? await sql`
+          SELECT id, flow_key, pricing_strategy
+          FROM products
+          WHERE id = ${requestedProductId} AND is_active = true AND is_quoteable = true
+        `
+      : await sql`
+          SELECT p.id, p.flow_key, p.pricing_strategy
+          FROM products p
+          WHERE p.id = ${requestedProductId}
+            AND p.is_active = true
+            AND p.is_quoteable = true
+            AND (
+              ${canBypassProductAvailability}
+              OR EXISTS (
+                SELECT 1 FROM partner_product_availability ppa
+                WHERE ppa.partner_id = ${targetPartnerId}
+                  AND ppa.product_id = p.id
+                  AND ppa.is_active = true
+              )
+            )
+        `;
 
     if (!product) {
-      return Response.json({ error: 'Produto RC não configurado' }, { status: 422 });
+      return Response.json({ error: 'Produto indisponível para esta operação' }, { status: 403 });
+    }
+    if (product.flow_key !== 'rc_professional_v1' || product.pricing_strategy !== 'rc_wix_planos_v1') {
+      return Response.json({ error: 'O fluxo deste produto ainda não está disponível' }, { status: 422 });
     }
 
     const client = await upsertInsuranceClient({

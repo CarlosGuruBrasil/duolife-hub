@@ -83,7 +83,7 @@ export default async function CotacoesPage() {
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="page-title">Cotações</h1>
-          <p className="muted mt-1 text-sm">Acompanhe os rascunhos e propostas do Seguro RC.</p>
+          <p className="muted mt-1 text-sm">Acompanhe os rascunhos e propostas dos seus produtos e serviços.</p>
         </div>
         <Link href="/portal/cotacoes/nova" className="btn-primary">
           <Plus size={16} /> Nova Cotação

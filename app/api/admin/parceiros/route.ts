@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { verifyAdminAuth, unauthorized } from '@/lib/auth';
+import { isDevUser, verifyAdminAuth, unauthorized } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { logger } from '@/lib/logger';
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
           LIMIT 200
         `;
 
-    return Response.json({ parceiros });
+    return Response.json({ parceiros, canManageStatus: isDevUser(admin) });
   } catch (err) {
     logger.error({ err }, 'admin.parceiros.list.failed');
     return Response.json({ error: 'Erro interno' }, { status: 500 });
@@ -45,6 +45,9 @@ const updateStatusSchema = z.object({
 export async function PATCH(req: NextRequest) {
   const admin = await verifyAdminAuth();
   if (!admin) return unauthorized();
+  if (!isDevUser(admin)) {
+    return Response.json({ error: 'Apenas administradores podem alterar o status de parceiros' }, { status: 403 });
+  }
 
   const parsed = updateStatusSchema.safeParse(await req.json());
   if (!parsed.success) {

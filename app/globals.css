@@ -272,7 +272,7 @@ textarea:focus-visible {
 .premium-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 1rem;
   box-shadow: var(--shadow-sm);
   padding: 1.5rem;
   transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
@@ -296,7 +296,7 @@ textarea:focus-visible {
 .feature-card {
   background: #ffffff;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 1rem;
   box-shadow: var(--shadow-sm);
   display: grid;
   gap: 14px;
@@ -394,7 +394,7 @@ textarea:focus-visible {
 .btn-ghost,
 .btn-white {
   align-items: center;
-  border-radius: 8px;
+  border-radius: 0.75rem;
   cursor: pointer;
   display: inline-flex;
   font-size: 0.93rem;
@@ -499,7 +499,7 @@ textarea:focus-visible {
 .form-input {
   background: #ffffff;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 0.75rem;
   color: var(--text);
   font-size: 0.94rem;
   outline: none;
@@ -523,10 +523,10 @@ textarea.form-input {
 
 /* Header and footer */
 .site-header {
-  background: #ffffff;
-  border-bottom: 1px solid rgba(14, 74, 90, 0.07);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  background: rgba(255, 255, 255, 0.85);
+  border-bottom: 1px solid rgba(14, 74, 90, 0.08);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   left: 0;
   position: fixed;
   right: 0;
@@ -770,7 +770,9 @@ textarea.form-input {
   flex-direction: column;
   left: 0;
   max-width: 360px;
+  -ms-overflow-style: none;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 20px;
   position: fixed;
   top: 0;
@@ -778,6 +780,14 @@ textarea.form-input {
   transition: transform 0.25s ease;
   width: min(88vw, 320px);
   z-index: 60;
+}
+
+.admin-sidebar::-webkit-scrollbar {
+  display: none;
+}
+
+.admin-sidebar {
+  scrollbar-width: none;
 }
 
 .admin-sidebar.is-open {
@@ -790,6 +800,23 @@ textarea.form-input {
   gap: 14px;
   justify-content: space-between;
   margin-bottom: 26px;
+}
+
+.admin-sidebar-toggle {
+  display: none;
+}
+
+.admin-mobile-close {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  height: 36px;
+  justify-content: center;
+  width: 36px;
 }
 
 .admin-brand-mark {
@@ -849,6 +876,11 @@ textarea.form-input {
   transform: translateY(-1px);
 }
 
+.admin-nav-item:focus-visible {
+  box-shadow: 0 0 0 2px rgba(139, 244, 255, 0.7);
+  outline: none;
+}
+
 .admin-nav-icon {
   align-items: center;
   background: rgba(0, 212, 224, 0.12);
@@ -902,33 +934,27 @@ textarea.form-input {
   width: 100%;
 }
 
-.admin-topbar {
+.admin-mobile-menu-button {
   align-items: center;
-  backdrop-filter: blur(12px);
-  background: rgba(246, 251, 252, 0.9);
-  border-bottom: 1px solid rgba(11, 43, 52, 0.06);
-  display: flex;
-  gap: 14px;
-  padding: 18px 20px;
-  position: sticky;
-  top: 0;
-  z-index: 30;
-}
-
-.admin-topbar-title {
-  color: var(--primary);
-  font-size: 1rem;
+  background: var(--primary);
+  border: 0;
+  border-radius: 999px;
+  box-shadow: var(--shadow-md);
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.82rem;
   font-weight: 800;
-}
-
-.admin-topbar-copy {
-  color: var(--text-secondary);
-  font-size: 0.84rem;
-  margin-top: 4px;
+  gap: 8px;
+  left: 16px;
+  padding: 10px 14px;
+  position: fixed;
+  top: 16px;
+  z-index: 40;
 }
 
 .admin-content {
-  padding: 22px;
+  padding: 76px 22px 22px;
 }
 
 .admin-icon-button {
@@ -1539,7 +1565,7 @@ textarea.form-input {
 
 @media (max-width: 960px) {
   .admin-content {
-    padding: 16px;
+    padding: 76px 16px 16px;
   }
 
   .admin-hero-card {
@@ -1566,6 +1592,88 @@ textarea.form-input {
 
   .admin-main {
     margin-left: 320px;
+  }
+
+  .admin-main.is-sidebar-collapsed {
+    margin-left: 76px;
+  }
+
+  .admin-sidebar.is-collapsed {
+    padding: 20px 12px;
+    width: 76px;
+  }
+
+  .admin-sidebar.is-collapsed .admin-brand-copy,
+  .admin-sidebar.is-collapsed .admin-nav-title,
+  .admin-sidebar.is-collapsed .admin-nav-label,
+  .admin-sidebar.is-collapsed .admin-nav-description,
+  .admin-sidebar.is-collapsed .admin-logout-button span {
+    display: none;
+  }
+
+  .admin-sidebar.is-collapsed .admin-brand-mark {
+    font-size: 0;
+  }
+
+  .admin-sidebar.is-collapsed .admin-brand-mark::after {
+    color: #ffffff;
+    content: "DL";
+    font-size: 1rem;
+    font-weight: 800;
+  }
+
+  .admin-sidebar.is-collapsed .admin-brand-row {
+    align-items: center;
+    margin-bottom: 20px;
+  }
+
+  .admin-sidebar.is-collapsed .admin-nav {
+    gap: 12px;
+  }
+
+  .admin-sidebar.is-collapsed .admin-nav-section {
+    gap: 0;
+  }
+
+  .admin-sidebar.is-collapsed .admin-nav-item {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    padding: 10px;
+  }
+
+  .admin-sidebar.is-collapsed .admin-sidebar-footer {
+    padding-top: 12px;
+  }
+
+  .admin-sidebar.is-collapsed .admin-logout-button {
+    padding: 12px;
+  }
+
+  .admin-sidebar-toggle {
+    align-items: center;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 8px;
+    color: #d9edf1;
+    cursor: pointer;
+    display: inline-flex;
+    height: 32px;
+    justify-content: center;
+    transition: background 0.18s ease, border-color 0.18s ease;
+    width: 32px;
+  }
+
+  .admin-sidebar-toggle:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(139, 244, 255, 0.45);
+  }
+
+  .admin-mobile-menu-button {
+    display: none;
+  }
+
+  .admin-mobile-close {
+    display: none;
   }
 
   .admin-content {

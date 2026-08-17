@@ -24,11 +24,11 @@ export async function DELETE(
 
       await tx`DELETE FROM payment_installments WHERE cotacao_id = ${id}`;
       await tx`DELETE FROM payment_orders WHERE cotacao_id = ${id}`;
-      await tx`DELETE FROM signature_documents WHERE cotacao_id = ${id}`;
-      await tx`DELETE FROM cupom_uso_eventos WHERE cotacao_id = ${id}`;
       await tx`DELETE FROM webhook_events WHERE external_id IN (
         SELECT external_document_id FROM signature_documents WHERE cotacao_id = ${id}
       )`;
+      await tx`DELETE FROM signature_documents WHERE cotacao_id = ${id}`;
+      await tx`DELETE FROM cupom_uso_eventos WHERE cotacao_id = ${id}`;
       await tx`UPDATE cotacoes SET renewed_from_cotacao_id = NULL WHERE renewed_from_cotacao_id = ${id}`;
       await tx`DELETE FROM cotacoes WHERE id = ${id}`;
 

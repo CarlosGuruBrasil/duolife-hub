@@ -92,7 +92,7 @@ export default function ContractPageClient({ token }: Props) {
           )}
           
           <h1 className="text-3xl md:text-5xl font-black mb-4 tracking-tight text-white drop-shadow-md">
-            {wl.publicTitle || `Contrate seu Seguro RC com a ${wl.companyName || link.partner.razaoSocial}`}
+            {wl.publicTitle || `Contrate ${link.product?.name || 'sua solução'} com a ${wl.companyName || link.partner.razaoSocial}`}
           </h1>
           <p className="text-lg md:text-xl text-white/90 max-w-2xl font-light">
             {wl.publicDescription || wl.companySlogan || 'Proteção completa e especializada para a sua carreira. Cotação e contratação 100% digital, rápida e segura.'}
@@ -120,7 +120,7 @@ export default function ContractPageClient({ token }: Props) {
             </div>
             
             <div className="p-2 sm:p-6">
-              <CotacaoFormRC publicToken={token} />
+              <CotacaoFormRC publicToken={token} productId={link.product?.id} />
             </div>
           </div>
         </div>

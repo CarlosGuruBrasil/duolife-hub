@@ -79,7 +79,7 @@ export default function LoginClient() {
           </div>
 
           <div className="flex items-center justify-center lg:justify-end">
-            <div className="w-full max-w-md rounded-[36px] border border-white/10 bg-white/96 p-8 text-primary shadow-[0_28px_90px_rgba(7,42,51,0.28)] backdrop-blur-xl md:p-10">
+            <div className="w-full max-w-md rounded-3xl border border-white/20 bg-white/95 p-8 text-primary shadow-2xl backdrop-blur-2xl md:p-10">
               <div className="mb-8 text-center lg:text-left">
                 <Link href="/" className="inline-flex flex-col items-center gap-3 lg:hidden">
                   <Image
@@ -106,7 +106,7 @@ export default function LoginClient() {
                     type="email"
                     value={form.email}
                     onChange={e => setForm({ ...form, email: e.target.value })}
-                    className="w-full rounded-2xl border border-border bg-surface px-4 py-3.5 text-sm text-primary placeholder-secondary/70 transition-colors focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                    className="w-full rounded-xl border border-border bg-surface px-4 py-3 text-sm text-primary placeholder-secondary/70 transition-all focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
                     placeholder="seu@email.com"
                     autoComplete="email"
                   />
@@ -125,7 +125,7 @@ export default function LoginClient() {
                       type={showPassword ? 'text' : 'password'}
                       value={form.password}
                       onChange={e => setForm({ ...form, password: e.target.value })}
-                      className="w-full rounded-2xl border border-border bg-surface px-4 py-3.5 pr-11 text-sm text-primary placeholder-secondary/70 transition-colors focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent"
+                      className="w-full rounded-xl border border-border bg-surface px-4 py-3 pr-11 text-sm text-primary placeholder-secondary/70 transition-all focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30"
                       placeholder="••••••••"
                       autoComplete="current-password"
                     />
@@ -145,9 +145,9 @@ export default function LoginClient() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="flex w-full items-center justify-center rounded-full bg-accent py-4 text-base font-black text-primary-dark shadow-lg shadow-accent/10 transition-colors hover:bg-[#00b2be] disabled:bg-secondary"
+                  className="flex w-full items-center justify-center rounded-xl bg-accent py-3.5 text-sm font-bold text-primary-dark shadow-md shadow-accent/20 transition-all hover:bg-[#00b2be] disabled:bg-secondary active:scale-[0.99]"
                 >
-                  {loading ? 'Entrando...' : 'Entrar'}
+                  {loading ? 'Entrando...' : 'Entrar na Operação'}
                 </button>
               </form>
 
