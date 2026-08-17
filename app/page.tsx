@@ -232,9 +232,6 @@ export default function Home() {
 
   return (
     <>
-      {/* Header transparente */}
-      <Header transparent />
-
       <main className="site-shell bg-white relative">
         
         {/* ================= HERO SECTION (Foto full-bleed à direita) ================= */}
