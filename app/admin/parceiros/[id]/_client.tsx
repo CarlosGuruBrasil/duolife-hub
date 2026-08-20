@@ -8,7 +8,9 @@ type ProductRow = {
   id: string;
   name: string;
   code: string;
+  category: string | null;
   is_active: boolean;
+  enabled: boolean;
 };
 
 type LinkRow = {
@@ -99,7 +101,37 @@ export default function PartnerWhiteLabelClient({ partner, products, links, part
     managerUserId: '',
   });
 
+  const [productIds, setProductIds] = useState<string[]>(() => products.filter((p) => p.enabled).map((p) => p.id));
+  const [savingProducts, setSavingProducts] = useState(false);
+  const [productMessage, setProductMessage] = useState('');
+
   const availableManagers = partnerUsers.filter((user) => user.is_active && (user.role === 'director' || user.role === 'manager'));
+  const sellableProducts = products.filter((product) => product.is_active);
+
+  function toggleProduct(productId: string) {
+    setProductMessage('');
+    setProductIds((atual) => (atual.includes(productId) ? atual.filter((id) => id !== productId) : [...atual, productId]));
+  }
+
+  async function saveProducts() {
+    setSavingProducts(true);
+    setProductMessage('');
+    try {
+      const res = await fetch(`/api/admin/parceiros/${partner.id}/produtos`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productIds }),
+      });
+      const data = await res.json().catch(() => ({}));
+      setProductMessage(
+        res.ok
+          ? `Salvo: ${data.habilitados} produto(s) habilitado(s), ${data.desabilitados} desabilitado(s).`
+          : data.error || 'Não foi possível salvar os produtos.'
+      );
+    } finally {
+      setSavingProducts(false);
+    }
+  }
 
   function resetUserForm() {
     setUserForm({
@@ -356,8 +388,83 @@ export default function PartnerWhiteLabelClient({ partner, products, links, part
         <div className="card mb-6">
           <h2 className="text-lg font-black" style={{ color: 'var(--primary)' }}>Configurações de plataforma</h2>
           <p className="mt-2 text-sm text-gray-500">
-            White-label, links públicos e ajustes estruturais desta operação ficam restritos ao perfil dev interno da DuoLife.
+            White-label, produtos habilitados e links públicos ficam restritos a administradores da DuoLife.
           </p>
+        </div>
+      )}
+
+      {canManageConfig && (
+        <div className="card mb-6 space-y-5">
+          <div>
+            <h2 className="text-lg font-black" style={{ color: 'var(--primary)' }}>Produtos habilitados</h2>
+            <p className="mt-1 text-sm text-gray-500">
+              Marque o que esta operação pode vender. Produto desmarcado some da tela de nova cotação
+              do parceiro — as cotações já feitas continuam intactas.
+            </p>
+          </div>
+
+          {sellableProducts.length === 0 ? (
+            <p className="text-sm text-gray-500">Nenhum produto ativo no catálogo para habilitar.</p>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-3 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => { setProductMessage(''); setProductIds(sellableProducts.map((p) => p.id)); }}
+                  className="rounded-xl border px-3 py-1.5 text-gray-700 hover:bg-gray-50 transition-colors"
+                  style={{ borderColor: 'var(--border)' }}
+                >
+                  Marcar todos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setProductMessage(''); setProductIds([]); }}
+                  className="rounded-xl border px-3 py-1.5 text-gray-700 hover:bg-gray-50 transition-colors"
+                  style={{ borderColor: 'var(--border)' }}
+                >
+                  Desmarcar todos
+                </button>
+                <span className="text-gray-400 font-normal">
+                  {productIds.length} de {sellableProducts.length} habilitado(s)
+                </span>
+              </div>
+
+              <div className="grid gap-2 md:grid-cols-2">
+                {sellableProducts.map((product) => {
+                  const marcado = productIds.includes(product.id);
+                  return (
+                    <label
+                      key={product.id}
+                      className="flex items-start gap-3 rounded-xl border p-3 cursor-pointer transition-colors"
+                      style={marcado
+                        ? { borderColor: '#00d4e0', background: '#f0fdff' }
+                        : { borderColor: 'var(--border)', background: 'var(--bg-gray)' }}
+                    >
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={marcado}
+                        onChange={() => toggleProduct(product.id)}
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-semibold text-gray-900">{product.name}</span>
+                        <span className="block text-xs text-gray-500">
+                          {product.code}{product.category ? ` · ${product.category}` : ''}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div className="flex flex-wrap items-center gap-3 border-t pt-4" style={{ borderColor: 'var(--border)' }}>
+                <button type="button" onClick={saveProducts} disabled={savingProducts} className="btn-primary disabled:opacity-50">
+                  {savingProducts ? 'Salvando...' : 'Salvar produtos habilitados'}
+                </button>
+                {productMessage && <span className="text-sm font-semibold text-gray-600">{productMessage}</span>}
+              </div>
+            </>
+          )}
         </div>
       )}
 

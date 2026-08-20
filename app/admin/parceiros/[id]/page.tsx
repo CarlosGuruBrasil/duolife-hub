@@ -9,7 +9,9 @@ interface ProductRow {
   id: string;
   name: string;
   code: string;
+  category: string | null;
   is_active: boolean;
+  enabled: boolean;
 }
 
 interface LinkRow {
@@ -53,9 +55,17 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
   if (!partner) redirect('/admin/parceiros');
 
   const products = await sql<ProductRow[]>`
-    SELECT id, name, code, is_active
-    FROM products
-    ORDER BY is_active DESC, name ASC
+    SELECT
+      p.id,
+      p.name,
+      p.code,
+      p.category,
+      p.is_active,
+      COALESCE(ppa.is_active, false) AS enabled
+    FROM products p
+    LEFT JOIN partner_product_availability ppa
+      ON ppa.product_id = p.id AND ppa.partner_id = ${id}
+    ORDER BY p.is_active DESC, p.name ASC
   `;
 
   const links = await sql<LinkRow[]>`
