@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { isDevUser, verifyAdminAuth, unauthorized } from '@/lib/auth';
+import { isPlatformAdmin, verifyAdminAuth, unauthorized } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 
@@ -97,7 +97,7 @@ const updatePlanSchema = z.object({
 export async function PUT(req: NextRequest) {
   const admin = await verifyAdminAuth();
   if (!admin) return unauthorized();
-  if (!isDevUser(admin)) return Response.json({ error: 'Sem permissão para alterar planos' }, { status: 403 });
+  if (!isPlatformAdmin(admin)) return Response.json({ error: 'Sem permissão para alterar planos' }, { status: 403 });
 
   const parsed = updatePlanSchema.safeParse(await req.json());
   if (!parsed.success) {

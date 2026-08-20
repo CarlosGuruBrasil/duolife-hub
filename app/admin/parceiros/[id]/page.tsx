@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { isDevUser, verifyAdminAuth } from '@/lib/auth';
+import { isPlatformAdmin, verifyAdminAuth } from '@/lib/auth';
 import { ensureSchema } from '@/lib/schema';
 import { sql } from '@/lib/pg';
 import { getWhiteLabelConfig } from '@/lib/white-label';
@@ -113,7 +113,7 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
       products={products}
       links={links}
       partnerUsers={partnerUsers}
-      canManageConfig={isDevUser(user)}
+      canManageConfig={isPlatformAdmin(user)}
     />
   );
 }

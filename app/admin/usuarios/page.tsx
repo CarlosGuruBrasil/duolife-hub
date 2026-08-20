@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { Shield, UserPlus } from 'lucide-react';
-import { verifyAdminAuth, canManagePartners, INTERNAL_ROLE_LABEL, INTERNAL_ROLES } from '@/lib/auth';
+import { verifyAdminAuth, isPlatformAdmin, INTERNAL_ROLE_LABEL, INTERNAL_ROLES } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { formatDate } from '@/lib/format';
@@ -27,7 +27,7 @@ async function createOrUpdateAdmin(formData: FormData) {
   const user = await verifyAdminAuth();
   if (!user) redirect('/login');
   // Operação não gerencia usuários internos — poder criar um administrador é escalonamento de privilégio.
-  if (!canManagePartners(user)) redirect('/admin');
+  if (!isPlatformAdmin(user)) redirect('/admin');
 
   await ensureSchema();
 
@@ -93,7 +93,7 @@ async function toggleAdminStatus(formData: FormData) {
   const user = await verifyAdminAuth();
   if (!user) redirect('/login');
   // Operação não gerencia usuários internos — poder criar um administrador é escalonamento de privilégio.
-  if (!canManagePartners(user)) redirect('/admin');
+  if (!isPlatformAdmin(user)) redirect('/admin');
 
   await ensureSchema();
 
@@ -117,7 +117,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
   const user = await verifyAdminAuth();
   if (!user) redirect('/login');
   // Operação não gerencia usuários internos — poder criar um administrador é escalonamento de privilégio.
-  if (!canManagePartners(user)) redirect('/admin');
+  if (!isPlatformAdmin(user)) redirect('/admin');
 
   await ensureSchema();
 

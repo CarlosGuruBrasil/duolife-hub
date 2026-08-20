@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { isDevUser, verifyAdminAuth, unauthorized } from '@/lib/auth';
+import { isPlatformAdmin, verifyAdminAuth, unauthorized } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 
@@ -32,7 +32,7 @@ const schema = z.object({
 export async function GET() {
   const admin = await verifyAdminAuth();
   if (!admin) return unauthorized();
-  if (!isDevUser(admin)) return Response.json({ error: 'Sem permissão para gerenciar produtos' }, { status: 403 });
+  if (!isPlatformAdmin(admin)) return Response.json({ error: 'Sem permissão para gerenciar produtos' }, { status: 403 });
   try {
     const [products, partners] = await Promise.all([
       sql`SELECT id, name, code, category, product_type, integration_type, external_link_url, insurer_name, description, base_commission_rate, min_premium, flow_key, is_active, is_quoteable, public_title, target_audience, insurer_cnpj, validity_days, sale_recognition, renewal_enabled, requires_underwriting, required_documents, (SELECT count(*)::int FROM partner_product_availability ppa WHERE ppa.product_id = products.id AND ppa.is_active) AS partners_count FROM products ORDER BY created_at DESC`,
@@ -48,7 +48,7 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   const admin = await verifyAdminAuth();
   if (!admin) return unauthorized();
-  if (!isDevUser(admin)) return Response.json({ error: 'Sem permissão para cadastrar produtos' }, { status: 403 });
+  if (!isPlatformAdmin(admin)) return Response.json({ error: 'Sem permissão para cadastrar produtos' }, { status: 403 });
   const parsed = schema.safeParse(await req.json());
   if (!parsed.success) return Response.json({ error: 'Dados do produto inválidos' }, { status: 400 });
   const input = parsed.data;

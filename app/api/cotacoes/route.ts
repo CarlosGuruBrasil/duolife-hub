@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { getPartnerAccessContext, isDevUser, isInternalUser, verifyAuth, unauthorized } from '@/lib/auth';
+import { getPartnerAccessContext, isPlatformAdmin, isInternalUser, verifyAuth, unauthorized } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { ensureSchema, seedInitialData } from '@/lib/schema';
@@ -161,7 +161,7 @@ export async function POST(req: NextRequest) {
       userId = user.userId;
       targetPartnerId = user.partnerId;
       isInternal = isInternalUser(user);
-      canBypassProductAvailability = isDevUser(user);
+      canBypassProductAvailability = isPlatformAdmin(user);
 
       if (isInternal) {
         if (!data.adminSelectedPartnerId) {

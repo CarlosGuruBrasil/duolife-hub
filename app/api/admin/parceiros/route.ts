@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { canManagePartners, verifyAdminAuth, unauthorized } from '@/lib/auth';
+import { isPlatformAdmin, verifyAdminAuth, unauthorized } from '@/lib/auth';
 import { validarCnpj, validarCpf, somenteDigitos } from '@/lib/documento';
 import { issuePasswordResetEmail } from '@/lib/password-reset';
 import { sql } from '@/lib/pg';
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
           LIMIT 200
         `;
 
-    return Response.json({ parceiros, canManageStatus: canManagePartners(admin) });
+    return Response.json({ parceiros, canManageStatus: isPlatformAdmin(admin) });
   } catch (err) {
     logger.error({ err }, 'admin.parceiros.list.failed');
     return Response.json({ error: 'Erro interno' }, { status: 500 });
@@ -49,7 +49,7 @@ const updateStatusSchema = z.object({
 export async function PATCH(req: NextRequest) {
   const admin = await verifyAdminAuth();
   if (!admin) return unauthorized();
-  if (!canManagePartners(admin)) {
+  if (!isPlatformAdmin(admin)) {
     return Response.json({ error: 'Apenas administradores podem alterar o status de parceiros' }, { status: 403 });
   }
 
@@ -105,7 +105,7 @@ const createPartnerSchema = z.object({
 export async function POST(req: NextRequest) {
   const admin = await verifyAdminAuth();
   if (!admin) return unauthorized();
-  if (!canManagePartners(admin)) {
+  if (!isPlatformAdmin(admin)) {
     return Response.json({ error: 'Seu perfil não pode cadastrar corretoras' }, { status: 403 });
   }
 
