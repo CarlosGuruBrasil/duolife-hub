@@ -4,16 +4,8 @@ import { ArrowLeft } from 'lucide-react';
 import { getPartnerAccessContext, verifyPartnerAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
-
-function formatCurrency(value: string | number | null) {
-  if (value === null || value === undefined) return '-';
-  return Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
-function formatDate(value: string | null) {
-  if (!value) return '-';
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value));
-}
+import { formatCurrency, formatDateTime as formatDate } from '@/lib/format';
+import { safeExternalUrl } from '@/lib/safe-url';
 
 function formatDocument(value: string) {
   const digits = value.replace(/\D/g, '');
@@ -197,8 +189,8 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
                   <td className="px-5 py-4">{statusLabel[quote.status] || quote.status}</td>
                   <td className="px-5 py-4">
                     <div>{statusLabel[quote.signature_status || ''] || quote.signature_status || '-'}</div>
-                    {quote.signed_file_url ? (
-                      <a href={quote.signed_file_url} target="_blank" className="text-xs font-medium text-sky-700 underline" rel="noreferrer">
+                    {safeExternalUrl(quote.signed_file_url) ? (
+                      <a href={safeExternalUrl(quote.signed_file_url)} target="_blank" className="text-xs font-medium text-sky-700 underline" rel="noreferrer">
                         Abrir contrato
                       </a>
                     ) : null}
@@ -250,9 +242,9 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
                   <td className="px-5 py-4">{formatDate(item.due_date)}</td>
                   <td className="px-5 py-4">{formatDate(item.paid_at)}</td>
                   <td className="px-5 py-4">
-                    {item.bank_slip_url || item.invoice_url ? (
+                    {safeExternalUrl(item.bank_slip_url || item.invoice_url) ? (
                       <a
-                        href={item.bank_slip_url || item.invoice_url}
+                        href={safeExternalUrl(item.bank_slip_url || item.invoice_url)}
                         target="_blank"
                         rel="noreferrer"
                         className="text-sm font-semibold text-sky-700 underline"

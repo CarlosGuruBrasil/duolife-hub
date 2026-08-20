@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { formatDateTime } from '@/lib/format';
 
 interface Props {
   collectionsCount: number;
@@ -56,7 +57,7 @@ export default function WixPullClient({ collectionsCount, itemsCount, lastSynced
         <div>
           <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Última sincronização</div>
           <div className="mt-2 text-sm font-bold" style={{ color: 'var(--primary)' }}>
-            {lastSyncedAt ? new Date(lastSyncedAt).toLocaleString('pt-BR') : 'Ainda não executado'}
+            {lastSyncedAt ? formatDateTime(lastSyncedAt) : 'Ainda não executado'}
           </div>
         </div>
       </div>

@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { formatCurrency, formatDate } from '@/lib/format';
+import { safeExternalUrl } from '@/lib/safe-url';
 
 interface Installment {
   id: string;
@@ -17,10 +19,6 @@ interface Order {
   amount_total: string;
   installment_count: number;
   billing_type: string;
-}
-
-function formatCurrency(value: string) {
-  return Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
 const statusLabel: Record<string, string> = {
@@ -86,11 +84,11 @@ export function PagamentosPanel({ cotacaoId }: { cotacaoId: string }) {
               <tr key={inst.id}>
                 <td className="py-2">{inst.installment_number}</td>
                 <td className="py-2">{formatCurrency(inst.amount)}</td>
-                <td className="py-2">{new Date(inst.due_date).toLocaleDateString('pt-BR')}</td>
+                <td className="py-2">{formatDate(inst.due_date)}</td>
                 <td className="py-2">{statusLabel[inst.status] || inst.status}</td>
                 <td className="py-2">
-                  {inst.bank_slip_url ? (
-                    <a href={inst.bank_slip_url} target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline">
+                  {safeExternalUrl(inst.bank_slip_url) ? (
+                    <a href={safeExternalUrl(inst.bank_slip_url)} target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline">
                       Ver boleto
                     </a>
                   ) : '-'}

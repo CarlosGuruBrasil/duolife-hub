@@ -4,6 +4,7 @@ import { verifyAdminAuth } from '@/lib/auth';
 import { ensureSchema } from '@/lib/schema';
 import { sql } from '@/lib/pg';
 import WixPullClient from './_client';
+import { formatDateTime } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
@@ -103,7 +104,7 @@ export default async function AdminSyncPage() {
               <tbody className="divide-y divide-gray-100">
                 {logs.map((log) => (
                   <tr key={log.id} className="table-row">
-                    <td className="px-5 py-4 text-gray-500">{new Date(log.created_at).toLocaleString('pt-BR')}</td>
+                    <td className="px-5 py-4 text-gray-500">{formatDateTime(log.created_at)}</td>
                     <td className="px-5 py-4 text-gray-600">{log.source_system}</td>
                     <td className="px-5 py-4 text-gray-600">{log.event_type}</td>
                     <td className="px-5 py-4 text-gray-600">

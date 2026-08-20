@@ -6,6 +6,7 @@ import { Shield, UserPlus } from 'lucide-react';
 import { verifyAdminAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
+import { formatDate } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
@@ -220,7 +221,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
                     <td className="px-5 py-4">
                       <span className="status-pill">{admin.is_active ? 'Ativo' : 'Inativo'}</span>
                     </td>
-                    <td className="px-5 py-4 text-gray-500">{new Date(admin.created_at).toLocaleDateString('pt-BR')}</td>
+                    <td className="px-5 py-4 text-gray-500">{formatDate(admin.created_at)}</td>
                     <td className="px-5 py-4 text-right">
                       <div className="flex justify-end gap-2">
                         <Link href={`/admin/usuarios?edit=${admin.id}`} className="btn-outline text-xs px-3 py-1.5 min-h-0">

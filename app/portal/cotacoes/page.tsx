@@ -4,6 +4,7 @@ import { Plus } from 'lucide-react';
 import { getPartnerAccessContext, verifyPartnerAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema, seedInitialData } from '@/lib/schema';
+import { formatCurrency, formatDate } from '@/lib/format';
 
 interface CotacaoRow {
   id: string;
@@ -24,15 +25,6 @@ const statusLabel: Record<string, string> = {
   expirada: 'Expirada',
   emitida: 'Emitida',
 };
-
-function formatCurrency(value: string | null) {
-  if (!value) return '-';
-  return Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(new Date(value));
-}
 
 export default async function CotacoesPage() {
   const user = await verifyPartnerAuth();

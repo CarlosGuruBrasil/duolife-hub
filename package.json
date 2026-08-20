@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "bash scripts/dev-clean.sh",
     "build": "next build",
-    "start": "node scripts/migrate.mjs && next start"
+    "start": "node scripts/migrate.mjs && next start",
+    "test": "node --test scripts/*.test.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

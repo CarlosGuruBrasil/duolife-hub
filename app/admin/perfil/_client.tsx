@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCircle2, AlertCircle, User, KeyRound, ShieldCheck, Loader2 } from 'lucide-react';
+import { formatDate } from '@/lib/format';
 
 interface PerfilClientProps {
   initialUser: {
@@ -219,7 +220,7 @@ export default function PerfilClient({ initialUser }: PerfilClientProps) {
               <span className="block text-xs font-semibold text-gray-500">Membro Desde</span>
               <span className="mt-1 inline-block font-medium text-gray-700">
                 {initialUser.createdAt
-                  ? new Date(initialUser.createdAt).toLocaleDateString('pt-BR')
+                  ? formatDate(initialUser.createdAt)
                   : 'Registrado'}
               </span>
             </div>

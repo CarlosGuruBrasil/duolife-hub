@@ -3,6 +3,7 @@ import { WalletCards } from 'lucide-react';
 import { verifyAdminAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
+import { formatCurrency, formatDate } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,16 +27,6 @@ const statusLabel: Record<string, string> = {
   paga: 'Paga',
   estornada: 'Estornada',
 };
-
-function formatCurrency(value: string | number | null) {
-  if (value === null) return '-';
-  return Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
-
-function formatDate(value: string | null) {
-  if (!value) return '-';
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(new Date(value));
-}
 
 export default async function AdminComissoesPage() {
   const user = await verifyAdminAuth();

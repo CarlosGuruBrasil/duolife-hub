@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { formatDateTime } from '@/lib/format';
 
 type TeamUser = {
   id: string;
@@ -200,7 +201,7 @@ export default function PartnerTeamManager({ users }: Props) {
                   <td className="px-5 py-4">
                     <span className="status-pill">{user.is_active ? 'Ativo' : 'Inativo'}</span>
                   </td>
-                  <td className="px-5 py-4 text-gray-500">{user.last_login_at ? new Date(user.last_login_at).toLocaleString('pt-BR') : 'Nunca acessou'}</td>
+                  <td className="px-5 py-4 text-gray-500">{user.last_login_at ? formatDateTime(user.last_login_at) : 'Nunca acessou'}</td>
                   <td className="px-5 py-4">
                     <div className="flex justify-end gap-2">
                       {user.role !== 'director' ? (

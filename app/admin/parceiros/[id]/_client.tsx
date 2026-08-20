@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import type { WhiteLabelConfig } from '@/lib/white-label';
+import { formatDateTime } from '@/lib/format';
 
 type ProductRow = {
   id: string;
@@ -448,7 +449,7 @@ export default function PartnerWhiteLabelClient({ partner, products, links, part
                       <span className="status-pill">{teamUser.is_active ? 'Ativo' : 'Inativo'}</span>
                     </td>
                     <td className="px-5 py-4 text-gray-500">
-                      {teamUser.last_login_at ? new Date(teamUser.last_login_at).toLocaleString('pt-BR') : 'Nunca acessou'}
+                      {teamUser.last_login_at ? formatDateTime(teamUser.last_login_at) : 'Nunca acessou'}
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex justify-end gap-2">

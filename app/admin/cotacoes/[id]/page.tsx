@@ -4,6 +4,8 @@ import { ArrowLeft, ExternalLink, FileText, UserCheck, CreditCard, ShieldCheck, 
 import { verifyAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { PagamentosPanel } from './_pagamentos-client';
+import { formatCurrency, formatDate, formatDateTime } from '@/lib/format';
+import { safeExternalUrl } from '@/lib/safe-url';
 
 const statusLabel: Record<string, string> = {
   rascunho: 'Rascunho',
@@ -28,13 +30,6 @@ const statusColor: Record<string, string> = {
   pagamento_gerado: 'bg-amber-50 text-amber-800 border-amber-200',
   contrato_gerado: 'bg-amber-50 text-amber-800 border-amber-200'
 };
-
-function formatCurrency(value: string | number | null | undefined) {
-  if (!value) return '-';
-  const num = Number(value);
-  if (isNaN(num)) return '-';
-  return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-}
 
 function parseClientData(data: unknown) {
   if (!data) return {};
@@ -62,7 +57,7 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
   const [cotacao] = await sql`
     SELECT
       c.id, c.client_name, c.client_cpf_cnpj, c.client_email, c.client_phone,
-      c.status, c.importancia_segurada, c.premio_final, c.premio_total, c.client_data, c.created_at,
+      c.status, c.importancia_segurada, c.premio_final, c.premio_calculado, c.client_data, c.created_at,
       p.name AS product_name,
       part.nome_fantasia AS partner_name
     FROM cotacoes c
@@ -86,12 +81,14 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
   const planoNome = String(clientData.nomePlano || clientData.tipoDePlano || 'RC Advogados');
   const cobertura = String(clientData.valorCobertura || (cotacao.importancia_segurada ? formatCurrency(cotacao.importancia_segurada) : ''));
   const franquia = String(clientData.planoFranquia || 'R$ 1.000,00');
-  const valorTotalCalculado = clientData.valor ? formatCurrency(clientData.valor as number) : (cotacao.premio_final ? formatCurrency(cotacao.premio_final) : formatCurrency(cotacao.premio_total));
+  const valorTotalCalculado = clientData.valor !== undefined && clientData.valor !== null
+    ? formatCurrency(clientData.valor as number)
+    : formatCurrency(cotacao.premio_final ?? cotacao.premio_calculado);
   const parcelaInfo = clientData.parcela ? `${clientData.parcela}x parcela(s)` : '1x À Vista';
   
-  const linkBoleto = String(clientData.linkBoleto || '');
+  const linkBoleto = safeExternalUrl(clientData.linkBoleto);
   const checkoutId = String(clientData.checkoutId || '');
-  const signUrl = String(clientData.signUrl || '');
+  const signUrl = safeExternalUrl(clientData.signUrl);
   const contratoGeradoEm = String(clientData.contratoGeradoEm || '');
 
   return (
@@ -203,7 +200,7 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
 
                 {clientData.dataVencimento && (
                   <p className="text-xs text-slate-500 font-medium">
-                    Data de Vencimento: <strong className="text-slate-900">{new Date(String(clientData.dataVencimento)).toLocaleDateString('pt-BR')}</strong>
+                    Data de Vencimento: <strong className="text-slate-900">{formatDate(String(clientData.dataVencimento))}</strong>
                   </p>
                 )}
               </div>
@@ -225,7 +222,7 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
                     <span className="font-bold text-purple-900 block">Documento de Contrato Gerado</span>
                     {contratoGeradoEm && (
                       <span className="text-purple-700 text-[11px] block">
-                        Gerado em: {new Date(contratoGeradoEm).toLocaleDateString('pt-BR')} {new Date(contratoGeradoEm).toLocaleTimeString('pt-BR')}
+                        Gerado em: {formatDateTime(contratoGeradoEm)}
                       </span>
                     )}
                   </div>
@@ -253,8 +250,8 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
               <div className="grid grid-cols-2 gap-3 text-xs text-emerald-950 font-medium">
                 <div><span>Número da Apólice:</span> <strong className="block text-sm font-bold">{sale.policy_number}</strong></div>
                 <div><span>Status da Venda:</span> <strong className="block text-sm font-bold uppercase">{sale.status}</strong></div>
-                <div><span>Vigência Início:</span> <strong>{new Date(sale.issue_date).toLocaleDateString('pt-BR')}</strong></div>
-                <div><span>Vigência Fim:</span> <strong>{new Date(sale.expiry_date).toLocaleDateString('pt-BR')}</strong></div>
+                <div><span>Vigência Início:</span> <strong>{formatDate(sale.issue_date)}</strong></div>
+                <div><span>Vigência Fim:</span> <strong>{formatDate(sale.expiry_date)}</strong></div>
               </div>
             </div>
           )}

@@ -6,6 +6,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Building2, CheckCircle, Clock, XCircle } from 'lucide-react';
+import { formatDate } from '@/lib/format';
 
 interface Parceiro {
   id: string;
@@ -118,7 +119,7 @@ function AdminParceirosInner() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-gray-400 text-xs">
-                      {new Date(p.created_at).toLocaleDateString('pt-BR')}
+                      {formatDate(p.created_at)}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex gap-2 justify-end">
