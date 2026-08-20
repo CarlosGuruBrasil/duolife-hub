@@ -89,6 +89,8 @@ export default function PerfilClient({ initialUser }: PerfilClientProps) {
 
   const getRoleBadgeLabel = (role: string) => {
     switch (role) {
+      case 'duolife_dev':
+        return 'Desenvolvedor';
       case 'duolife_admin':
         return 'Administrador DuoLife';
       case 'duolife_staff':

@@ -78,6 +78,10 @@ async function runRuntimeSchemaSetup(): Promise<void> {
   try {
     await sql`ALTER TABLE partners ADD CONSTRAINT partners_email_key UNIQUE (email)`;
   } catch {}
+  // Corretor independente é um parceiro pessoa física — mesma tabela, mesmo motor de escopo.
+  await sql`ALTER TABLE partners ADD COLUMN IF NOT EXISTS person_type TEXT NOT NULL DEFAULT 'pj'`;
+  await sql`ALTER TABLE partners ADD COLUMN IF NOT EXISTS cpf TEXT`;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS partners_cpf_key ON partners (cpf) WHERE cpf IS NOT NULL`;
 
   // Usuários dos parceiros
   await sql`

@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { Shield, UserPlus } from 'lucide-react';
-import { verifyAdminAuth } from '@/lib/auth';
+import { verifyAdminAuth, canManagePartners, INTERNAL_ROLE_LABEL, INTERNAL_ROLES } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { formatDate } from '@/lib/format';
@@ -19,16 +19,15 @@ interface AdminUserRow {
   created_at: string;
 }
 
-const INTERNAL_ROLE_LABEL: Record<string, string> = {
-  duolife_admin: 'Administrador',
-  duolife_staff: 'Operação',
-};
+
 
 async function createOrUpdateAdmin(formData: FormData) {
   'use server';
 
   const user = await verifyAdminAuth();
   if (!user) redirect('/login');
+  // Operação não gerencia usuários internos — poder criar um administrador é escalonamento de privilégio.
+  if (!canManagePartners(user)) redirect('/admin');
 
   await ensureSchema();
 
@@ -36,7 +35,8 @@ async function createOrUpdateAdmin(formData: FormData) {
   const email = String(formData.get('email') || '').trim().toLowerCase();
   const password = String(formData.get('password') || '');
   const id = String(formData.get('id') || '').trim();
-  const role = String(formData.get('role') || 'duolife_staff');
+  const roleEnviado = String(formData.get('role') || 'duolife_staff');
+  const role = INTERNAL_ROLES.includes(roleEnviado) ? roleEnviado : 'duolife_staff';
 
   if (!name || !email) {
     redirect('/admin/usuarios?error=invalid');
@@ -92,6 +92,8 @@ async function toggleAdminStatus(formData: FormData) {
 
   const user = await verifyAdminAuth();
   if (!user) redirect('/login');
+  // Operação não gerencia usuários internos — poder criar um administrador é escalonamento de privilégio.
+  if (!canManagePartners(user)) redirect('/admin');
 
   await ensureSchema();
 
@@ -114,6 +116,8 @@ async function toggleAdminStatus(formData: FormData) {
 export default async function AdminUsuariosPage({ searchParams }: { searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
   const user = await verifyAdminAuth();
   if (!user) redirect('/login');
+  // Operação não gerencia usuários internos — poder criar um administrador é escalonamento de privilégio.
+  if (!canManagePartners(user)) redirect('/admin');
 
   await ensureSchema();
 
@@ -169,6 +173,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
             <select name="role" defaultValue={editing?.role || 'duolife_staff'} className="form-input">
               <option value="duolife_staff">Operação</option>
               <option value="duolife_admin">Administrador</option>
+              <option value="duolife_dev">Desenvolvedor</option>
             </select>
           </label>
           <div className="md:col-span-4 flex justify-end">

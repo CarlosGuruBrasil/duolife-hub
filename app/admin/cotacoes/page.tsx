@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Plus, ExternalLink, FileText, Search } from 'lucide-react';
-import { verifyAuth } from '@/lib/auth';
+import { verifyAuth, isInternalUser } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { RecusarCotacaoButton } from './_recusar-button';
 import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
@@ -91,7 +91,7 @@ export default async function AdminCotacoesPage({
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const user = await verifyAuth();
-  if (!user || (user.role !== 'duolife_admin' && user.role !== 'duolife_staff')) {
+  if (!user || !isInternalUser(user)) {
     redirect('/login');
   }
 

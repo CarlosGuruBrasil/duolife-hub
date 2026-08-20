@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ArrowRight, Users } from 'lucide-react';
-import { verifyAuth } from '@/lib/auth';
+import { verifyAuth, isInternalUser } from '@/lib/auth';
 import { ensureSchema } from '@/lib/schema';
 import { sql } from '@/lib/pg';
 
@@ -48,7 +48,7 @@ function formatDate(value: string) {
 
 export default async function AdminClientesPage() {
   const user = await verifyAuth();
-  if (!user || (user.role !== 'duolife_admin' && user.role !== 'duolife_staff')) {
+  if (!user || !isInternalUser(user)) {
     redirect('/login');
   }
 

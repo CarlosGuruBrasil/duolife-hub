@@ -4,6 +4,7 @@ import { sql } from './pg';
 import { getJwtSecret } from './secrets';
 
 export type UserRole =
+  | 'duolife_dev'
   | 'duolife_admin'
   | 'duolife_staff'
   | 'partner_director'
@@ -12,6 +13,14 @@ export type UserRole =
   | 'partner_partner';
 
 export type PartnerRole = 'director' | 'manager' | 'broker' | 'partner';
+
+export const INTERNAL_ROLES: string[] = ['duolife_dev', 'duolife_admin', 'duolife_staff'];
+
+export const INTERNAL_ROLE_LABEL: Record<string, string> = {
+  duolife_dev: 'Desenvolvedor',
+  duolife_admin: 'Administrador',
+  duolife_staff: 'Operação',
+};
 
 export interface AuthUser {
   userId:      string;
@@ -87,7 +96,7 @@ export async function verifyAuth(): Promise<AuthUser | null> {
     const decoded = jwt.verify(token, getJwtSecret());
     if (!isAuthUser(decoded)) return null;
 
-    if (decoded.role === 'duolife_admin' || decoded.role === 'duolife_staff') {
+    if (INTERNAL_ROLES.includes(decoded.role)) {
       const [admin] = await sql`
         SELECT id, name, email, role
         FROM admin_users
@@ -137,8 +146,7 @@ export async function verifyAuth(): Promise<AuthUser | null> {
 export async function verifyAdminAuth(): Promise<AuthUser | null> {
   const user = await verifyAuth();
   if (!user) return null;
-  if (user.role === 'duolife_admin' || user.role === 'duolife_staff') return user;
-  return null;
+  return isInternalUser(user) ? user : null;
 }
 
 export async function verifyPartnerAuth(): Promise<AuthUser | null> {
@@ -149,11 +157,19 @@ export async function verifyPartnerAuth(): Promise<AuthUser | null> {
 }
 
 export function isInternalUser(user: AuthUser): boolean {
-  return user.role === 'duolife_admin' || user.role === 'duolife_staff';
+  return INTERNAL_ROLES.includes(user.role);
 }
 
+// Desenvolvedor: ações irreversíveis (exclusão em cascata, ferramentas de diagnóstico).
+// Separado de administrador de propósito — quem toca o negócio no dia a dia não precisa
+// do poder de apagar registro real.
 export function isDevUser(user: AuthUser): boolean {
-  return user.role === 'duolife_admin';
+  return user.role === 'duolife_dev';
+}
+
+// Administra a rede: cadastra corretora, ativa/suspende, gerencia usuários internos.
+export function canManagePartners(user: AuthUser): boolean {
+  return user.role === 'duolife_dev' || user.role === 'duolife_admin';
 }
 
 export function canManageOwnCompany(user: AuthUser): boolean {

@@ -65,6 +65,8 @@ function isActive(pathname: string, href: string) {
 
 function getRoleLabel(role?: string) {
   switch (role) {
+    case 'duolife_dev':
+      return 'Desenvolvedor';
     case 'duolife_admin':
       return 'Administrador';
     case 'duolife_staff':

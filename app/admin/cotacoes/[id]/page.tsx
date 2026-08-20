@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { ArrowLeft, ExternalLink, FileText, UserCheck, CreditCard, ShieldCheck, FileCheck } from 'lucide-react';
-import { verifyAuth } from '@/lib/auth';
+import { verifyAuth, isInternalUser } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { PagamentosPanel } from './_pagamentos-client';
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/format';
@@ -48,7 +48,7 @@ function parseClientData(data: unknown) {
 
 export default async function AdminCotacaoDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await verifyAuth();
-  if (!user || (user.role !== 'duolife_admin' && user.role !== 'duolife_staff')) {
+  if (!user || !isInternalUser(user)) {
     redirect('/login');
   }
 

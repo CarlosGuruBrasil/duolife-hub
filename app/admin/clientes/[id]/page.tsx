@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
-import { verifyAuth } from '@/lib/auth';
+import { verifyAuth, isInternalUser } from '@/lib/auth';
 import { ensureSchema } from '@/lib/schema';
 import { sql } from '@/lib/pg';
 import { formatCurrency, formatDateTime as formatDate } from '@/lib/format';
@@ -32,7 +32,7 @@ const statusLabel: Record<string, string> = {
 
 export default async function AdminClienteDetalhePage({ params }: { params: Promise<{ id: string }> }) {
   const user = await verifyAuth();
-  if (!user || (user.role !== 'duolife_admin' && user.role !== 'duolife_staff')) {
+  if (!user || !isInternalUser(user)) {
     redirect('/login');
   }
 

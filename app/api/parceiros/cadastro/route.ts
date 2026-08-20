@@ -4,18 +4,7 @@ import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { logger } from '@/lib/logger';
 import { rateLimit, rateLimitResponse } from '@/lib/rate-limit';
-
-function validarCnpj(cnpj: string): boolean {
-  const n = cnpj.replace(/\D/g, '');
-  if (n.length !== 14 || /^(\d)\1+$/.test(n)) return false;
-  const calc = (len: number) => {
-    let s = 0, pos = len - 7;
-    for (let i = len; i >= 1; i--) { s += Number(n[len - i]) * pos--; if (pos < 2) pos = 9; }
-    const r = s % 11;
-    return r < 2 ? 0 : 11 - r;
-  };
-  return calc(12) === Number(n[12]) && calc(13) === Number(n[13]);
-}
+import { validarCnpj } from '@/lib/documento';
 
 const partnerSignupSchema = z.object({
   name: z.string().trim().min(2),
