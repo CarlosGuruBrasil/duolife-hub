@@ -3,6 +3,7 @@ import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
+import { redirectToPath } from '@/lib/redirect';
 
 export async function POST(req: Request) {
   try {
@@ -15,7 +16,7 @@ export async function POST(req: Request) {
         .catch((err: Error) => logger.error({ err }, 'auth.logout.revoke.failed'));
     }
 
-    const response = NextResponse.redirect(new URL('/login', req.url), 303);
+    const response = redirectToPath(req.url, '/login', 303);
     response.cookies.set('duolife_token', '', { maxAge: 0, path: '/' });
     response.cookies.set('duolife_refresh', '', { maxAge: 0, path: '/api/auth' });
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -26,4 +27,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
 }
-
