@@ -22,12 +22,14 @@ function stableHash(value: unknown): string {
 
 function toIsoDate(value: unknown): string | null {
   if (!value) return null;
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number') return new Date(value).toISOString();
+  if (typeof value === 'string' || typeof value === 'number') {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  }
   if (typeof value === 'object' && value !== null) {
     const candidate = value as { $date?: string; date?: string };
-    if (typeof candidate.$date === 'string') return candidate.$date;
-    if (typeof candidate.date === 'string') return candidate.date;
+    if (typeof candidate.$date === 'string') return toIsoDate(candidate.$date);
+    if (typeof candidate.date === 'string') return toIsoDate(candidate.date);
   }
   return null;
 }
@@ -480,29 +482,37 @@ export async function pullWixIntoLocalMirror(): Promise<WixPullResult> {
       if (!items.length) break;
 
       for (const item of items) {
-        const mirror = await upsertItem({
-          wixCollectionId: collectionRow.id,
-          item,
-          collectionId: collection.id,
-        });
-        itemsSynced += 1;
-        syncedItemsForCollection += 1;
+        try {
+          const mirror = await upsertItem({
+            wixCollectionId: collectionRow.id,
+            item,
+            collectionId: collection.id,
+          });
+          itemsSynced += 1;
+          syncedItemsForCollection += 1;
 
-        const clientId = await upsertInsuranceClientFromWix({ collectionId: collection.id, mirror });
-        if (clientId) clientsUpserted += 1;
+          const clientId = await upsertInsuranceClientFromWix({ collectionId: collection.id, mirror });
+          if (clientId) clientsUpserted += 1;
 
-        if (collection.id === 'Import1') {
-          const leadId = await upsertLeadFromWix({ collectionId: collection.id, mirror });
-          if (leadId) leadsUpserted += 1;
-        }
+          if (collection.id === 'Import1') {
+            const leadId = await upsertLeadFromWix({ collectionId: collection.id, mirror });
+            if (leadId) leadsUpserted += 1;
+          }
 
-        if (collection.id === 'Usuarios') {
-          const partnerId = await upsertPartnerFromWix({ collectionId: collection.id, mirror });
-          if (partnerId) partnersUpserted += 1;
-        }
+          if (collection.id === 'Usuarios') {
+            const partnerId = await upsertPartnerFromWix({ collectionId: collection.id, mirror });
+            if (partnerId) partnersUpserted += 1;
+          }
 
-        if (collection.id === 'Planos') {
-          await upsertProductFromWixPlano(mirror);
+          if (collection.id === 'Planos') {
+            await upsertProductFromWixPlano(mirror);
+          }
+        } catch (err) {
+          logger.warn({
+            err,
+            collectionId: collection.id,
+            itemId: item.id,
+          }, 'wix.pull.item.skipped');
         }
       }
 
