@@ -1,4 +1,4 @@
-import { sql } from '@/lib/pg';
+import { sql } from './pg';
 
 function normalizeDocument(value: string) {
   return value.replace(/\D/g, '');
