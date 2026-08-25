@@ -4,6 +4,7 @@ import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { findPartnerByWixCode, logSyncEvent, normalizeWixRecord } from '@/lib/wix-sync';
 import { verifyWebhookToken } from '@/lib/webhook-auth';
+import { isWixIntegrationEnabled } from '@/lib/system-settings';
 
 function isAuthorized(req: NextRequest) {
   const secret = process.env.WEBHOOK_SECRET;
@@ -48,6 +49,10 @@ async function resolveLead(partnerId: string | null, externalId: string | null, 
 export async function POST(req: NextRequest) {
   if (!isAuthorized(req)) {
     return Response.json({ error: 'Não autorizado' }, { status: 401 });
+  }
+
+  if (!(await isWixIntegrationEnabled())) {
+    return Response.json({ ok: true, ignored: true, reason: 'wix_integration_disabled' });
   }
 
   await ensureSchema();

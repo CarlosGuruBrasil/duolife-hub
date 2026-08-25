@@ -59,6 +59,17 @@ async function verifyRequiredSchema(): Promise<void> {
 async function runRuntimeSchemaSetup(): Promise<void> {
   const bootstrapAdminConfig = getBootstrapAdminConfig();
 
+  // Configurações do Sistema e Chaves de API
+  await sql`
+    CREATE TABLE IF NOT EXISTS system_settings (
+      key         TEXT PRIMARY KEY,
+      value       TEXT NOT NULL,
+      description TEXT,
+      updated_by  TEXT,
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+
   // Parceiros (corretoras)
   await sql`
     CREATE TABLE IF NOT EXISTS partners (

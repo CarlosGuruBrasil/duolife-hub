@@ -1,3 +1,5 @@
+import { getWixConfigSettings } from './system-settings';
+
 const WIX_DATA_BASE = 'https://www.wixapis.com/wix-data/v2';
 
 export interface WixConfig {
@@ -35,10 +37,9 @@ export interface WixQueryResponse {
   [key: string]: unknown;
 }
 
-export function getWixConfig(): WixConfig | null {
-  const apiKey = process.env.WIX_API_KEY || process.env.WIX_AUTH_TOKEN || '';
-  const siteId = process.env.WIX_SITE_ID || process.env.WIX_SITEID || '';
-  if (!apiKey || !siteId) return null;
+export async function getWixConfig(): Promise<WixConfig | null> {
+  const { apiKey, siteId, integrationEnabled } = await getWixConfigSettings();
+  if (!integrationEnabled || !apiKey || !siteId) return null;
   return { apiKey, siteId };
 }
 
@@ -51,7 +52,7 @@ function wixHeaders(config: WixConfig) {
 }
 
 async function wixRequest<T>(path: string, init: RequestInit = {}): Promise<{ ok: boolean; status: number; data: T | null; text: string }> {
-  const config = getWixConfig();
+  const config = await getWixConfig();
   if (!config) {
     return { ok: false, status: 503, data: null, text: 'WIX_API_KEY/WIX_SITE_ID não configurados' };
   }
@@ -110,7 +111,6 @@ export async function wixQueryItems(collectionId: string, limit = 100, offset = 
   return result.data;
 }
 
-export function hasWixReadAccess(): boolean {
-  return !!getWixConfig();
+export async function hasWixReadAccess(): Promise<boolean> {
+  return !!(await getWixConfig());
 }
-

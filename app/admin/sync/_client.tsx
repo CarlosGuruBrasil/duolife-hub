@@ -7,19 +7,22 @@ interface Props {
   collectionsCount: number;
   itemsCount: number;
   lastSyncedAt: string | null;
+  wixEnabled: boolean;
 }
 
-export default function WixPullClient({ collectionsCount, itemsCount, lastSyncedAt }: Props) {
+export default function WixPullClient({ collectionsCount, itemsCount, lastSyncedAt, wixEnabled }: Props) {
   const [running, setRunning] = useState(false);
   const [message, setMessage] = useState('');
   const [result, setResult] = useState<{
     collectionsSynced?: number;
     itemsSynced?: number;
     leadsUpserted?: number;
+    clientsUpserted?: number;
     partnersUpserted?: number;
   } | null>(null);
 
   async function runPull() {
+    if (!wixEnabled) return;
     setRunning(true);
     setMessage('Executando pull do Wix...');
     setResult(null);
@@ -67,15 +70,17 @@ export default function WixPullClient({ collectionsCount, itemsCount, lastSynced
           type="button"
           className="btn-primary"
           onClick={runPull}
-          disabled={running}
+          disabled={running || !wixEnabled}
         >
-          {running ? 'Sincronizando...' : 'Sincronizar Wix'}
+          {running ? 'Sincronizando...' : wixEnabled ? 'Sincronizar Wix' : 'Wix desligado'}
         </button>
-        <span className="text-sm text-gray-500">{message || 'Importação somente leitura do Wix para o banco local.'}</span>
+        <span className="text-sm text-gray-500">
+          {message || (wixEnabled ? 'Importação somente leitura do Wix para o banco local.' : 'Ligue a integração em Configurações para importar clientes.')}
+        </span>
       </div>
 
       {result ? (
-        <div className="grid gap-3 md:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-5">
           <div className="rounded-2xl border border-gray-100 bg-white p-4">
             <div className="text-xs uppercase tracking-wide text-gray-500">Coleções</div>
             <div className="mt-2 text-xl font-black">{result.collectionsSynced ?? 0}</div>
@@ -87,6 +92,10 @@ export default function WixPullClient({ collectionsCount, itemsCount, lastSynced
           <div className="rounded-2xl border border-gray-100 bg-white p-4">
             <div className="text-xs uppercase tracking-wide text-gray-500">Leads</div>
             <div className="mt-2 text-xl font-black">{result.leadsUpserted ?? 0}</div>
+          </div>
+          <div className="rounded-2xl border border-gray-100 bg-white p-4">
+            <div className="text-xs uppercase tracking-wide text-gray-500">Clientes</div>
+            <div className="mt-2 text-xl font-black">{result.clientsUpserted ?? 0}</div>
           </div>
           <div className="rounded-2xl border border-gray-100 bg-white p-4">
             <div className="text-xs uppercase tracking-wide text-gray-500">Parceiros</div>

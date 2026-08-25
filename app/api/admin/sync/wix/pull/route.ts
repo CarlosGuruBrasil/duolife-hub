@@ -11,11 +11,11 @@ export async function POST(_req: NextRequest) {
     const result = await pullWixIntoLocalMirror();
     return Response.json({ ok: true, ...result });
   } catch (err) {
+    const message = err instanceof Error ? err.message : '';
     logger.error({ err, adminId: admin.userId }, 'admin.wix.pull.failed');
     return Response.json({
       ok: false,
-      error: 'Erro ao sincronizar Wix. Verifique os logs do servidor para detalhes.',
-    }, { status: 503 });
+      error: message || 'Erro ao sincronizar Wix. Verifique os logs do servidor para detalhes.',
+    }, { status: message.includes('desligada') ? 409 : 503 });
   }
 }
-

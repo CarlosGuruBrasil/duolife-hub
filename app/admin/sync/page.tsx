@@ -5,6 +5,7 @@ import { ensureSchema } from '@/lib/schema';
 import { sql } from '@/lib/pg';
 import WixPullClient from './_client';
 import { formatDateTime } from '@/lib/format';
+import { isWixIntegrationEnabled } from '@/lib/system-settings';
 
 export const dynamic = 'force-dynamic';
 
@@ -25,6 +26,7 @@ export default async function AdminSyncPage() {
   if (!user) redirect('/login');
 
   await ensureSchema();
+  const wixEnabled = await isWixIntegrationEnabled();
 
   const [summary] = await sql`
     SELECT
@@ -64,6 +66,7 @@ export default async function AdminSyncPage() {
         collectionsCount={Number(mirrorSummary?.collections_count || 0)}
         itemsCount={Number(mirrorSummary?.items_count || 0)}
         lastSyncedAt={mirrorSummary?.last_synced_at || null}
+        wixEnabled={wixEnabled}
       />
 
       <div className="mb-6 grid gap-4 md:grid-cols-4">

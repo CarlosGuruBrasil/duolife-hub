@@ -30,6 +30,7 @@ async function main() {
   console.log(`- Coleções sincronizadas: ${result.collectionsSynced}`);
   console.log(`- Itens de espelho importados: ${result.itemsSynced}`);
   console.log(`- Leads cadastrados/atualizados: ${result.leadsUpserted}`);
+  console.log(`- Clientes cadastrados/atualizados: ${result.clientsUpserted}`);
   console.log(`- Parceiros cadastrados/atualizados: ${result.partnersUpserted}`);
   console.log(`- Tempo decorrido: ${(result.durationMs / 1000).toFixed(2)}s`);
 }

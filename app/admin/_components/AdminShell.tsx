@@ -21,8 +21,10 @@ import {
   WalletCards,
   Settings,
   Sparkles,
+  Key,
 } from 'lucide-react';
 import type { AuthUser } from '@/lib/auth';
+import { roleIsDev } from '@/lib/roles';
 
 interface AdminShellProps {
   children: React.ReactNode;
@@ -84,6 +86,27 @@ export default function AdminShell({ children, user }: AdminShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const isDev = user ? roleIsDev(user.role) : false;
+
+  const dynamicNavSections = [
+    ...navSections,
+    ...(isDev
+      ? [
+          {
+            title: 'Desenvolvimento',
+            items: [
+              {
+                href: '/admin/chaves-api',
+                label: 'Configurações',
+                icon: Key,
+                description: 'Integrações, chaves e sandbox.',
+              },
+            ],
+          },
+        ]
+      : []),
+  ];
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -248,7 +271,7 @@ export default function AdminShell({ children, user }: AdminShellProps) {
         } ${collapsed ? 'w-20' : 'w-64'}`}
       >
         <nav className="flex-1 p-3.5 space-y-6 overflow-y-auto">
-          {navSections.map((section) => (
+          {dynamicNavSections.map((section) => (
             <div key={section.title} className="space-y-1.5">
               {!collapsed && (
                 <div className="px-3 pt-2 text-xs font-black uppercase tracking-wider text-[#00d4e0]">
@@ -272,7 +295,7 @@ export default function AdminShell({ children, user }: AdminShellProps) {
                   >
                     <Icon className={`h-5 w-5 shrink-0 ${active ? 'text-[#00d4e0]' : 'text-[#00d4e0]'}`} />
                     {!collapsed && (
-                      <span className="min-w-0 leading-tight truncate text-white font-bold text-base">
+                      <span className="min-w-0 leading-tight truncate text-white font-bold text-sm">
                         {item.label}
                       </span>
                     )}

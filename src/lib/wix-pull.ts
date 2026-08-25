@@ -10,6 +10,8 @@ import {
   type WixCollectionSchema,
   type WixQueryItem,
 } from './wix-client';
+import { upsertInsuranceClient } from './insurance-ops';
+import { isWixIntegrationEnabled } from './system-settings';
 import { findPartnerByWixCode, logSyncEvent, normalizeDigits, normalizeMaybeString } from './wix-sync';
 
 const PAGE_SIZE = 100;
@@ -238,6 +240,45 @@ async function upsertLeadFromWix(params: {
   return (lead as { id: string }).id;
 }
 
+function shouldImportAsClient(collectionId: string) {
+  return !['Usuarios', 'Planos', 'Seguros', 'CUPOMPROMOCIONAL', 'PPECARGOS'].includes(collectionId);
+}
+
+async function upsertInsuranceClientFromWix(params: {
+  collectionId: string;
+  mirror: Awaited<ReturnType<typeof upsertItem>>;
+}) {
+  if (!shouldImportAsClient(params.collectionId)) return null;
+
+  const { externalId, documentNumber, name, email, phone, status, statusCliente, data } = params.mirror;
+  if (!documentNumber || !name) return null;
+
+  const birthDate =
+    normalizeMaybeString(data.dataNascimento) ||
+    normalizeMaybeString(data.dataNascto) ||
+    normalizeMaybeString(data.nascimento) ||
+    normalizeMaybeString(data.birthDate) ||
+    null;
+
+  const client = await upsertInsuranceClient({
+    documentNumber,
+    fullName: name,
+    email,
+    phone,
+    birthDate,
+    metadata: {
+      source: 'wix',
+      collectionId: params.collectionId,
+      externalId,
+      status,
+      statusCliente,
+      raw: data,
+    },
+  });
+
+  return (client as { id?: string } | null)?.id || null;
+}
+
 async function upsertPartnerFromWix(params: {
   collectionId: string;
   mirror: Awaited<ReturnType<typeof upsertItem>>;
@@ -392,6 +433,7 @@ export interface WixPullResult {
   collectionsSynced: number;
   itemsSynced: number;
   leadsUpserted: number;
+  clientsUpserted: number;
   partnersUpserted: number;
   durationMs: number;
 }
@@ -399,7 +441,11 @@ export interface WixPullResult {
 export async function pullWixIntoLocalMirror(): Promise<WixPullResult> {
   await ensureSchema();
 
-  if (!hasWixReadAccess()) {
+  if (!(await isWixIntegrationEnabled())) {
+    throw new Error('Integração Wix desligada nas configurações');
+  }
+
+  if (!(await hasWixReadAccess())) {
     throw new Error('WIX_API_KEY/WIX_SITE_ID não configurados');
   }
 
@@ -408,6 +454,7 @@ export async function pullWixIntoLocalMirror(): Promise<WixPullResult> {
   let collectionsSynced = 0;
   let itemsSynced = 0;
   let leadsUpserted = 0;
+  let clientsUpserted = 0;
   let partnersUpserted = 0;
 
   // Sincroniza TODAS as coleções do Wix (inclusive customizadas como Planos, Seguros, BDRC, etc.)
@@ -440,6 +487,9 @@ export async function pullWixIntoLocalMirror(): Promise<WixPullResult> {
         });
         itemsSynced += 1;
         syncedItemsForCollection += 1;
+
+        const clientId = await upsertInsuranceClientFromWix({ collectionId: collection.id, mirror });
+        if (clientId) clientsUpserted += 1;
 
         if (collection.id === 'Import1') {
           const leadId = await upsertLeadFromWix({ collectionId: collection.id, mirror });
@@ -491,6 +541,7 @@ export async function pullWixIntoLocalMirror(): Promise<WixPullResult> {
     collectionsSynced,
     itemsSynced,
     leadsUpserted,
+    clientsUpserted,
     partnersUpserted,
     durationMs,
   }, 'wix.pull.completed');
@@ -499,6 +550,7 @@ export async function pullWixIntoLocalMirror(): Promise<WixPullResult> {
     collectionsSynced,
     itemsSynced,
     leadsUpserted,
+    clientsUpserted,
     partnersUpserted,
     durationMs,
   };
