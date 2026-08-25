@@ -82,8 +82,8 @@ export default async function AdminClientesPage() {
       COALESCE(po.installment_count, 0)::int AS total_installments,
       MAX(COALESCE(po.updated_at, c.updated_at, ic.updated_at))::text AS updated_at
     FROM insurance_clients ic
-    JOIN cotacoes c ON c.client_id = ic.id
-    JOIN partners p ON p.id = c.partner_id
+    LEFT JOIN cotacoes c ON c.client_id = ic.id
+    LEFT JOIN partners p ON p.id = c.partner_id
     LEFT JOIN (
       SELECT
         client_id,
