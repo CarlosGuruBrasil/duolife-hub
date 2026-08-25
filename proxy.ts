@@ -10,25 +10,25 @@ export async function proxy(req: NextRequest) {
   const token = req.cookies.get('duolife_token')?.value;
 
   if (pathname.startsWith('/portal')) {
-    if (!token) return redirectToPath(req.url, '/login');
+    if (!token) return redirectToPath(req, '/login');
     try {
       const { payload } = await jwtVerify(token, JWT_SECRET);
-      if (!payload.partnerId) return redirectToPath(req.url, '/login');
+      if (!payload.partnerId) return redirectToPath(req, '/login');
     } catch {
-      return redirectToPath(req.url, '/login');
+      return redirectToPath(req, '/login');
     }
   }
 
   if (pathname.startsWith('/admin')) {
-    if (!token) return redirectToPath(req.url, '/login');
+    if (!token) return redirectToPath(req, '/login');
     try {
       const { payload } = await jwtVerify(token, JWT_SECRET);
       const role = payload.role as string;
       if (!role?.startsWith('duolife_')) {
-        return redirectToPath(req.url, '/');
+        return redirectToPath(req, '/');
       }
     } catch {
-      return redirectToPath(req.url, '/login');
+      return redirectToPath(req, '/login');
     }
   }
 

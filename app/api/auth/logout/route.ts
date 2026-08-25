@@ -16,7 +16,7 @@ export async function POST(req: Request) {
         .catch((err: Error) => logger.error({ err }, 'auth.logout.revoke.failed'));
     }
 
-    const response = redirectToPath(req.url, '/login', 303);
+    const response = redirectToPath(req, '/login', 303);
     response.cookies.set('duolife_token', '', { maxAge: 0, path: '/' });
     response.cookies.set('duolife_refresh', '', { maxAge: 0, path: '/api/auth' });
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate');
