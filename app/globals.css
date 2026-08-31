@@ -1320,12 +1320,104 @@ textarea.form-input {
 .step-card {
   padding-left: 28px;
   position: relative;
-  border-left: 2px solid rgba(255, 255, 255, 0.1);
-  transition: border-color 0.4s ease;
+  border-left: 2px solid rgba(255, 255, 255, 0.12);
+  transition: all 0.4s ease;
+  will-change: border-color, opacity, filter;
 }
 
 .step-card.active {
   border-left-color: var(--accent);
+}
+
+.step-card-animated-1 {
+  animation: step-anim-1 9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.step-card-animated-2 {
+  animation: step-anim-2 9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.step-card-animated-3 {
+  animation: step-anim-3 9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes step-anim-1 {
+  0%, 22% {
+    border-left-color: var(--accent);
+    opacity: 1;
+    filter: drop-shadow(-2px 0 10px rgba(0, 212, 224, 0.35));
+  }
+  25%, 78% {
+    border-left-color: rgba(255, 255, 255, 0.12);
+    opacity: 0.45;
+    filter: drop-shadow(0 0 0px transparent);
+  }
+  82%, 95% {
+    border-left-color: var(--accent);
+    opacity: 1;
+    filter: drop-shadow(-2px 0 10px rgba(0, 212, 224, 0.35));
+  }
+  98%, 100% {
+    border-left-color: var(--accent);
+    opacity: 1;
+    filter: drop-shadow(-2px 0 10px rgba(0, 212, 224, 0.35));
+  }
+}
+
+@keyframes step-anim-2 {
+  0%, 23% {
+    border-left-color: rgba(255, 255, 255, 0.12);
+    opacity: 0.45;
+    filter: drop-shadow(0 0 0px transparent);
+  }
+  26%, 48% {
+    border-left-color: var(--accent);
+    opacity: 1;
+    filter: drop-shadow(-2px 0 10px rgba(0, 212, 224, 0.35));
+  }
+  51%, 78% {
+    border-left-color: rgba(255, 255, 255, 0.12);
+    opacity: 0.45;
+    filter: drop-shadow(0 0 0px transparent);
+  }
+  82%, 95% {
+    border-left-color: var(--accent);
+    opacity: 1;
+    filter: drop-shadow(-2px 0 10px rgba(0, 212, 224, 0.35));
+  }
+  98%, 100% {
+    border-left-color: rgba(255, 255, 255, 0.12);
+    opacity: 0.45;
+    filter: drop-shadow(0 0 0px transparent);
+  }
+}
+
+@keyframes step-anim-3 {
+  0%, 49% {
+    border-left-color: rgba(255, 255, 255, 0.12);
+    opacity: 0.45;
+    filter: drop-shadow(0 0 0px transparent);
+  }
+  52%, 74% {
+    border-left-color: var(--accent);
+    opacity: 1;
+    filter: drop-shadow(-2px 0 10px rgba(0, 212, 224, 0.35));
+  }
+  77%, 80% {
+    border-left-color: rgba(255, 255, 255, 0.12);
+    opacity: 0.45;
+    filter: drop-shadow(0 0 0px transparent);
+  }
+  83%, 95% {
+    border-left-color: var(--accent);
+    opacity: 1;
+    filter: drop-shadow(-2px 0 10px rgba(0, 212, 224, 0.35));
+  }
+  98%, 100% {
+    border-left-color: rgba(255, 255, 255, 0.12);
+    opacity: 0.45;
+    filter: drop-shadow(0 0 0px transparent);
+  }
 }
 
 /* ================= ELEMENTOS E ANIMAÇÕES PREMIUM DA HERO ================= */

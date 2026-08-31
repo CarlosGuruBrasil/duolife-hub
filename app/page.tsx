@@ -161,7 +161,6 @@ function Card3D({ children, className = '', style = {} }: Card3DProps) {
 }
 
 export default function Home() {
-  const [activeStep, setActiveStep] = useState(0);
   const [activeAnchor, setActiveAnchor] = useState('inicio');
   const [showDock, setShowDock] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', phone: '', company: '', message: '' });
@@ -571,8 +570,7 @@ export default function Home() {
                 {steps.map((step, idx) => (
                   <div 
                     key={step.num}
-                    className={`step-card cursor-pointer ${activeStep === idx ? 'active' : ''}`}
-                    onClick={() => setActiveStep(idx)}
+                    className={`step-card step-card-animated-${idx + 1}`}
                   >
                     <div className="flex gap-4 items-baseline">
                       <span className="step-number">{step.num}</span>
