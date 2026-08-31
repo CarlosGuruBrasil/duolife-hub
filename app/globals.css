@@ -1315,7 +1315,8 @@ textarea.form-input {
   opacity: 0.4;
   font-family: var(--font-jakarta), sans-serif;
   letter-spacing: -0.04em;
-  transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+  text-shadow: none !important;
 }
 
 .step-card {
@@ -1324,18 +1325,17 @@ textarea.form-input {
   border-left: 3px solid rgba(255, 255, 255, 0.15);
   opacity: 0.45;
   transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-  will-change: border-color, opacity, filter;
+  will-change: border-color, opacity;
 }
 
 .step-card.active {
   border-left: 3px solid var(--accent) !important;
   opacity: 1 !important;
-  filter: drop-shadow(-3px 0 14px rgba(0, 212, 224, 0.5));
 }
 
 .step-card.active .step-number {
   opacity: 1 !important;
-  text-shadow: 0 0 24px rgba(0, 212, 224, 0.7);
+  text-shadow: none !important;
 }
 
 /* ================= ELEMENTOS E ANIMAÇÕES PREMIUM DA HERO ================= */
