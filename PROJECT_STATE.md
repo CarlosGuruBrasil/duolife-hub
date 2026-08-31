@@ -1,14 +1,16 @@
 # PROJECT_STATE.md — DuoLife Hub
 
-Atualizado em: 2026-07-16 15:38 BRT
+Atualizado em: 2026-08-31 14:24 BRT
 
 ## Objetivo operacional
 Transformar a DuoLife em um portal/admin operacional estável, com banco isolado, integrações preservadas, documentação de retomada e execução por squad virtual.
 
 ## Estado atual confirmado
 - Produção pública respondendo em `https://duolife.com.br` e `https://www.duolife.com.br`
-- `GET /api/health` respondendo `200`
-- Login administrativo validado em produção com `carlos@guru.dev.br`
+- `GET /api/health` respondendo `200` (`ok: true`)
+- Banco PostgreSQL de produção 100% sincronizado com a base local (1.044 clientes, 1.373 leads com `external_id` e 4 cotações)
+- Nova rota administrativa `/admin/comparativo-wix` com auditoria completa de envios múltiplos e histórico
+- Login administrativo validado em produção com `carlos@guru.dev.br` e `carlosad1981@gmail.com`
 - Banco dedicado criado no Coolify:
   - recurso: `duolife-postgres`
   - uuid: `r2ux7wb4r1nhug69ym1unjr2`
