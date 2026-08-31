@@ -286,13 +286,6 @@ export default function Home() {
                 </a>
               </div>
             </div>
-
-            <div className="mt-14 inline-flex bg-primary-dark/60 backdrop-blur-xl border border-white/10 px-5 py-4 rounded-[24px] shadow-2xl max-w-[220px]">
-              <div>
-                <div className="text-accent font-black text-[2rem] tracking-tight leading-none">+180</div>
-                <div className="text-[10px] text-white/80 uppercase font-black tracking-wider mt-1.5 font-sans">Corretores Parceiros ativos</div>
-              </div>
-            </div>
           </div>
 
         </section>
