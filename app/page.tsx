@@ -165,6 +165,35 @@ export default function Home() {
   const [showDock, setShowDock] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', phone: '', company: '', message: '' });
   const [formStatus, setFormStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+  const [activeStepIndices, setActiveStepIndices] = useState<number[]>([0]);
+
+  // Sequência de animação contínua para "Como Atuamos":
+  // 01 ativo -> 02 ativo -> 03 ativo -> Todos desativados -> Todos ativos juntos -> repete
+  useEffect(() => {
+    const sequence = [
+      { active: [0], duration: 2000 },
+      { active: [1], duration: 2000 },
+      { active: [2], duration: 2000 },
+      { active: [], duration: 600 },
+      { active: [0, 1, 2], duration: 1800 },
+    ];
+
+    let stepIndex = 0;
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    const runSequence = () => {
+      const current = sequence[stepIndex];
+      setActiveStepIndices(current.active);
+      timeoutId = setTimeout(() => {
+        stepIndex = (stepIndex + 1) % sequence.length;
+        runSequence();
+      }, current.duration);
+    };
+
+    runSequence();
+
+    return () => clearTimeout(timeoutId);
+  }, []);
 
   // Envio do formulário de captura rápida
   async function handleLeadSubmit(e: React.FormEvent) {
@@ -570,7 +599,7 @@ export default function Home() {
                 {steps.map((step, idx) => (
                   <div 
                     key={step.num}
-                    className={`step-card step-card-animated-${idx + 1}`}
+                    className={`step-card ${activeStepIndices.includes(idx) ? 'active' : ''}`}
                   >
                     <div className="flex gap-4 items-baseline">
                       <span className="step-number">{step.num}</span>
