@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
+import TeamMemberCard, { TeamMember } from '@/components/site/TeamMemberCard';
 import Image from 'next/image';
 import Link from 'next/link';
 import {
@@ -112,7 +113,7 @@ const units = [
   }
 ];
 
-const leadership = [
+const leadership: TeamMember[] = [
   {
     name: 'Ricardo Abramo Padua Mello',
     role: 'CEO / Sócio-Fundador',
@@ -130,6 +131,12 @@ const leadership = [
     role: 'Gerente Comercial e Pós-Vendas',
     bio: 'Assume a gestão em 2026 com foco na expansão de carteiras, aproximação comercial com consultores do Sul e suporte direto de pós-vendas no dia a dia.',
     image: '/team/pedro-henrique-tavares-padua-mello.png'
+  },
+  {
+    name: 'Anielli de Lima Calcanho',
+    role: 'Executiva Operacional',
+    bio: 'Responsável pela retaguarda e condução dos processos operacionais, garantindo fluidez na esteira de cotações, conferência de propostas e atendimento ágil aos corretores parceiros.',
+    image: '/team/anielli-de-lima-calcanho.png'
   }
 ];
 
@@ -484,38 +491,9 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-8">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 xl:gap-8">
               {leadership.map((member) => (
-                <Card3D 
-                  key={member.name} 
-                  className="group relative overflow-hidden rounded-[32px] border border-border bg-[linear-gradient(180deg,#ffffff_0%,#fbfefe_62%,#f5fbfb_100%)] p-8 md:p-10 shadow-[0_28px_80px_rgba(14,74,90,0.12)] flex h-full flex-col text-left transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_34px_90px_rgba(14,74,90,0.18)]"
-                >
-                  <div className="absolute inset-y-0 right-0 w-1/3 bg-gradient-to-l from-accent/5 to-transparent pointer-events-none" />
-                  <div className="flex h-full flex-col gap-7">
-                    <div className="flex justify-center">
-                      <div className="rounded-full bg-gradient-to-br from-primary/12 via-white to-accent/18 p-1.5 shadow-[0_18px_34px_rgba(14,74,90,0.12)]">
-                        <div className="relative w-36 h-36 md:w-44 md:h-44 rounded-full overflow-hidden border border-white/90 bg-white">
-                          <Image
-                            src={member.image}
-                            alt={member.name}
-                            fill
-                            sizes="(min-width: 768px) 11rem, 9rem"
-                            className="object-cover object-center"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex justify-center">
-                        <span className="inline-flex max-w-full items-center justify-center rounded-full border border-border bg-white/80 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-secondary leading-[1.2] whitespace-normal break-words text-center shadow-[0_8px_24px_rgba(14,74,90,0.06)]">
-                          {member.role}
-                        </span>
-                      </div>
-                      <h3 className="mt-4 text-[1.05rem] md:text-[1.15rem] font-black text-primary uppercase tracking-tight leading-[1.08]">{member.name}</h3>
-                      <p className="mt-4 text-[0.98rem] text-[#435a61] font-normal leading-relaxed">{member.bio}</p>
-                    </div>
-                  </div>
-                </Card3D>
+                <TeamMemberCard key={member.name} member={member} />
               ))}
             </div>
           </div>

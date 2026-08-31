@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: duolife-local-postgres
+    restart: always
+    environment:
+      POSTGRES_USER: duolife
+      POSTGRES_PASSWORD: local_dev_password
+      POSTGRES_DB: duolife_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - duolife_pgdata:/var/lib/postgresql/data
+
+volumes:
+  duolife_pgdata:

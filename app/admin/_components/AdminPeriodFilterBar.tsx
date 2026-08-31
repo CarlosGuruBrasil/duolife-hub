@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useEffect, useTransition } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { Calendar, Filter, ChevronDown, Check, RefreshCw } from 'lucide-react';
 
@@ -29,13 +29,25 @@ export default function AdminPeriodFilterBar({
   const currentStartParam = searchParams.get('start') || '';
   const currentEndParam = searchParams.get('end') || '';
 
+  const isCustomActive = Boolean(currentStartParam && currentEndParam);
+
   const [customStart, setCustomStart] = useState(currentStartParam);
   const [customEnd, setCustomEnd] = useState(currentEndParam);
-  const [showCustomRange, setShowCustomRange] = useState(Boolean(currentStartParam && currentEndParam));
+  const [showCustomRange, setShowCustomRange] = useState(isCustomActive);
+
+  // Sincroniza os campos e fecha o painel caso os parâmetros sejam limpos externamente
+  useEffect(() => {
+    if (currentStartParam) setCustomStart(currentStartParam);
+    if (currentEndParam) setCustomEnd(currentEndParam);
+    if (!currentStartParam && !currentEndParam) {
+      setShowCustomRange(false);
+    }
+  }, [currentStartParam, currentEndParam]);
 
   const currentYear = new Date().getFullYear();
 
   function handleSelectPeriod(monthVal: string) {
+    setShowCustomRange(false);
     startTransition(() => {
       const params = new URLSearchParams(searchParams.toString());
       params.delete('start');
@@ -61,6 +73,8 @@ export default function AdminPeriodFilterBar({
     });
   }
 
+  const isPredefinedActive = !isCustomActive && !showCustomRange;
+
   return (
     <div className="bg-white/90 backdrop-blur-md rounded-2xl border border-gray-200/80 p-4 shadow-xs space-y-3 font-sans">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
@@ -74,7 +88,7 @@ export default function AdminPeriodFilterBar({
             type="button"
             onClick={() => handleSelectPeriod(monthOptions[0]?.value || '')}
             className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
-              currentMonthParam === monthOptions[0]?.value && !currentStartParam
+              isPredefinedActive && currentMonthParam === monthOptions[0]?.value
                 ? 'bg-[#072a33] text-[#00d4e0] shadow-xs'
                 : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200/60'
             }`}
@@ -86,7 +100,7 @@ export default function AdminPeriodFilterBar({
             type="button"
             onClick={() => handleSelectPeriod(monthOptions[1]?.value || '')}
             className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
-              currentMonthParam === monthOptions[1]?.value
+              isPredefinedActive && currentMonthParam === monthOptions[1]?.value
                 ? 'bg-[#072a33] text-[#00d4e0] shadow-xs'
                 : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200/60'
             }`}
@@ -98,7 +112,7 @@ export default function AdminPeriodFilterBar({
             type="button"
             onClick={() => handleSelectPeriod('last-3-months')}
             className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
-              currentMonthParam === 'last-3-months'
+              isPredefinedActive && currentMonthParam === 'last-3-months'
                 ? 'bg-[#072a33] text-[#00d4e0] shadow-xs'
                 : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200/60'
             }`}
@@ -110,7 +124,7 @@ export default function AdminPeriodFilterBar({
             type="button"
             onClick={() => handleSelectPeriod(`year-${currentYear}`)}
             className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
-              currentMonthParam === `year-${currentYear}`
+              isPredefinedActive && currentMonthParam === `year-${currentYear}`
                 ? 'bg-[#072a33] text-[#00d4e0] shadow-xs'
                 : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200/60'
             }`}
@@ -122,7 +136,7 @@ export default function AdminPeriodFilterBar({
             type="button"
             onClick={() => setShowCustomRange((v) => !v)}
             className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1 ${
-              currentStartParam || showCustomRange
+              showCustomRange || isCustomActive
                 ? 'bg-cyan-50 border border-cyan-200 text-[#0e4a5a]'
                 : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200/60'
             }`}
@@ -136,10 +150,15 @@ export default function AdminPeriodFilterBar({
         <div className="flex items-center gap-2 shrink-0">
           <div className="relative">
             <select
-              value={currentMonthParam}
+              value={showCustomRange || isCustomActive ? '' : currentMonthParam}
               onChange={(e) => handleSelectPeriod(e.target.value)}
               className="appearance-none bg-gray-50 border border-gray-200 rounded-xl pl-3.5 pr-8 py-1.5 text-xs font-extrabold text-gray-800 focus:bg-white focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none cursor-pointer transition-all"
             >
+              {(showCustomRange || isCustomActive) && (
+                <option value="" disabled hidden>
+                  Intervalo Customizado
+                </option>
+              )}
               <optgroup label="Seleção Rápida">
                 <option value="last-3-months">Últimos 3 Meses</option>
                 <option value={`year-${currentYear}`}>Ano Completo ({currentYear})</option>
