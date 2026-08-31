@@ -167,15 +167,15 @@ export default function Home() {
   const [formStatus, setFormStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
   const [activeStepIndices, setActiveStepIndices] = useState<number[]>([0]);
 
-  // Sequência de animação contínua para "Como Atuamos":
-  // 01 ativo -> 02 ativo -> 03 ativo -> Todos desativados -> Todos ativos juntos -> repete
+  // Sequência de animação progressiva para "Como Atuamos":
+  // 01 ativo -> 02 ativo -> 03 ativo -> Breve pausa -> Todos ativos juntos (permanece ativo, sem loop)
   useEffect(() => {
     const sequence = [
-      { active: [0], duration: 2000 },
-      { active: [1], duration: 2000 },
-      { active: [2], duration: 2000 },
-      { active: [], duration: 600 },
-      { active: [0, 1, 2], duration: 1800 },
+      { active: [0], duration: 2800 },
+      { active: [1], duration: 2800 },
+      { active: [2], duration: 2800 },
+      { active: [], duration: 900 },
+      { active: [0, 1, 2], duration: 0 },
     ];
 
     let stepIndex = 0;
@@ -184,10 +184,12 @@ export default function Home() {
     const runSequence = () => {
       const current = sequence[stepIndex];
       setActiveStepIndices(current.active);
-      timeoutId = setTimeout(() => {
-        stepIndex = (stepIndex + 1) % sequence.length;
-        runSequence();
-      }, current.duration);
+      if (stepIndex < sequence.length - 1) {
+        timeoutId = setTimeout(() => {
+          stepIndex++;
+          runSequence();
+        }, current.duration);
+      }
     };
 
     runSequence();

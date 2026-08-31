@@ -1312,30 +1312,30 @@ textarea.form-input {
   font-weight: 900;
   line-height: 1;
   color: var(--accent);
-  opacity: 0.5;
+  opacity: 0.4;
   font-family: var(--font-jakarta), sans-serif;
   letter-spacing: -0.04em;
-  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .step-card {
   padding-left: 28px;
   position: relative;
   border-left: 3px solid rgba(255, 255, 255, 0.15);
-  opacity: 0.5;
-  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  opacity: 0.45;
+  transition: all 0.8s cubic-bezier(0.4, 0, 0.2, 1);
   will-change: border-color, opacity, filter;
 }
 
 .step-card.active {
   border-left: 3px solid var(--accent) !important;
   opacity: 1 !important;
-  filter: drop-shadow(-3px 0 12px rgba(0, 212, 224, 0.45));
+  filter: drop-shadow(-3px 0 14px rgba(0, 212, 224, 0.5));
 }
 
 .step-card.active .step-number {
   opacity: 1 !important;
-  text-shadow: 0 0 20px rgba(0, 212, 224, 0.6);
+  text-shadow: 0 0 24px rgba(0, 212, 224, 0.7);
 }
 
 /* ================= ELEMENTOS E ANIMAÇÕES PREMIUM DA HERO ================= */
