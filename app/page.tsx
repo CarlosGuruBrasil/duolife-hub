@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import TeamMemberCard, { TeamMember } from '@/components/site/TeamMemberCard';
@@ -165,10 +165,11 @@ export default function Home() {
   const [showDock, setShowDock] = useState(false);
   const [form, setForm] = useState({ name: '', email: '', phone: '', company: '', message: '' });
   const [formStatus, setFormStatus] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
-  const [activeStepIndices, setActiveStepIndices] = useState<number[]>([0]);
+  const [activeStepIndices, setActiveStepIndices] = useState<number[]>([]);
+  const comoAtuamosRef = useRef<HTMLElement>(null);
 
   // Sequência de animação progressiva para "Como Atuamos":
-  // 01 ativo -> 02 ativo -> 03 ativo -> Breve pausa -> Todos ativos juntos (permanece ativo, sem loop)
+  // Inicia ao entrar no campo de visão e reseta/reinicia ao sair e voltar.
   useEffect(() => {
     const sequence = [
       { active: [0], duration: 2800 },
@@ -178,10 +179,12 @@ export default function Home() {
       { active: [0, 1, 2], duration: 0 },
     ];
 
-    let stepIndex = 0;
     let timeoutId: ReturnType<typeof setTimeout>;
+    let stepIndex = 0;
+    let isRunning = false;
 
     const runSequence = () => {
+      if (!isRunning) return;
       const current = sequence[stepIndex];
       setActiveStepIndices(current.active);
       if (stepIndex < sequence.length - 1) {
@@ -192,9 +195,34 @@ export default function Home() {
       }
     };
 
-    runSequence();
+    const target = comoAtuamosRef.current;
+    if (!target) return;
 
-    return () => clearTimeout(timeoutId);
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          clearTimeout(timeoutId);
+          stepIndex = 0;
+          isRunning = true;
+          runSequence();
+        } else {
+          isRunning = false;
+          clearTimeout(timeoutId);
+          setActiveStepIndices([]);
+        }
+      },
+      {
+        threshold: 0.2,
+      }
+    );
+
+    observer.observe(target);
+
+    return () => {
+      isRunning = false;
+      clearTimeout(timeoutId);
+      observer.disconnect();
+    };
   }, []);
 
   // Envio do formulário de captura rápida
@@ -524,7 +552,7 @@ export default function Home() {
 
 
         {/* ================= SEÇÃO 5: SUPORTE DO COMEÇO AO FIM ================= */}
-        <section id="como-atuamos" className="bg-primary text-white py-20 md:py-32 px-6 relative overflow-hidden">
+        <section ref={comoAtuamosRef} id="como-atuamos" className="bg-primary text-white py-20 md:py-32 px-6 relative overflow-hidden">
 
           <Image
             src="/duolife-consultant.jpg"
