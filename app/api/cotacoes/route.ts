@@ -16,6 +16,7 @@ const cotacaoSchema = z.object({
   notes: z.string().trim().optional(),
   productId: z.string().trim().min(1).optional(),
   clientData: z.record(z.string(), z.unknown()).optional(),
+  adminSelectedPartnerId: z.string().trim().optional().nullable(),
 });
 
 export async function GET(req: NextRequest) {

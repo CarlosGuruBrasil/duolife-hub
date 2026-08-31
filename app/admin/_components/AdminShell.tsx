@@ -22,6 +22,7 @@ import {
   Settings,
   Sparkles,
   Key,
+  ArrowRightLeft,
 } from 'lucide-react';
 import type { AuthUser } from '@/lib/auth';
 import { roleIsDev } from '@/lib/roles';
@@ -55,6 +56,7 @@ const navSections: Array<{ title: string; items: NavItem[] }> = [
     items: [
       { href: '/admin/parceiros', label: 'Parceiros', icon: Building2, description: 'Corretoras e estrutura.' },
       { href: '/admin/clientes', label: 'Clientes', icon: Users, description: 'Carteira de segurados.' },
+      { href: '/admin/comparativo-wix', label: 'Comparativo Wix', icon: ArrowRightLeft, description: 'Auditoria DB vs. Wix Import1.' },
       { href: '/admin/usuarios', label: 'Usuários', icon: Shield, description: 'Acessos internos.' },
     ],
   },
@@ -131,6 +133,8 @@ export default function AdminShell({ children, user }: AdminShellProps) {
   let currentPathLabel = 'Visão geral';
   if (pathname === '/admin') {
     currentPathLabel = 'Visão geral';
+  } else if (pathname === '/admin/comparativo-wix') {
+    currentPathLabel = 'Comparativo Wix (Teste)';
   } else if (pathname.startsWith('/admin/produtos/novo')) {
     currentPathLabel = 'Produtos / Novo Produto';
   } else if (pathname.startsWith('/admin/produtos/')) {
