@@ -7,6 +7,17 @@ import { parseJsonbField } from '@/lib/json-safe';
 import { calcularPrecoServidor } from '@/lib/pricing';
 import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
 
+function extractPixPayload(pixTransaction: unknown): string | null {
+  if (!pixTransaction) return null;
+  if (typeof pixTransaction === 'string') return pixTransaction;
+  if (typeof pixTransaction === 'object') {
+    const obj = pixTransaction as Record<string, unknown>;
+    if (typeof obj.payload === 'string') return obj.payload;
+    if (typeof obj.qrCode === 'string') return obj.qrCode;
+  }
+  return null;
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -312,7 +323,7 @@ export async function POST(
             ${installment.dueDate || dueDateStr},
             ${installment.invoiceUrl || null},
             ${installment.bankSlipUrl || null},
-            ${installment.pixTransaction || installment.pixQrCodeUrl || null},
+            ${extractPixPayload(installment.pixTransaction) || installment.pixQrCodeUrl || null},
             ${JSON.stringify(installment)}::jsonb,
             NOW()
           )

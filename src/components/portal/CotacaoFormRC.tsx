@@ -604,15 +604,15 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
       </div>
 
       {error && (
-        <div className="bg-red-950/50 border border-red-500/50 text-red-200 p-4 rounded-xl mb-6 flex items-center space-x-3">
-          <AlertCircle className="w-5 h-5 text-red-400 flex-shrink-0" />
+        <div className="bg-rose-50 border border-rose-200 text-rose-800 p-4 rounded-xl mb-6 flex items-center space-x-3">
+          <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0" />
           <span className="text-sm">{error}</span>
         </div>
       )}
 
       {success && (
-        <div className="bg-green-950/50 border border-green-500/50 text-green-200 p-4 rounded-xl mb-6 flex items-center space-x-3">
-          <CheckCircle className="w-5 h-5 text-green-400 flex-shrink-0" />
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl mb-6 flex items-center space-x-3">
+          <CheckCircle className="w-5 h-5 text-emerald-600 flex-shrink-0" />
           <span className="text-sm">{success}</span>
         </div>
       )}
@@ -1108,12 +1108,12 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
                       </div>
                       {val === 'Sim' && (
                         <label className="block">
-                          <span className="field-label text-red-300 font-semibold">Descreva os detalhes e fatos:</span>
+                          <span className="field-label text-rose-700 font-semibold">Descreva os detalhes e fatos:</span>
                           <textarea
                             required
                             value={form[item.det as keyof FormState] as string}
                             onChange={(e) => updateField(item.det as keyof FormState, e.target.value)}
-                            className="form-input min-h-20 border-red-900/50 focus:border-red-500"
+                            className="form-input min-h-20 border-rose-300 focus:border-rose-500"
                             placeholder="Informe datas, motivos e valores envolvidos..."
                           />
                         </label>
@@ -1156,8 +1156,8 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
 
           {/* Cupom Promocional */}
           <div className="bg-gray-50 border border-gray-200 p-5 rounded-xl space-y-4">
-            <h4 className="font-bold text-sm text-white flex items-center space-x-2">
-              <Percent className="w-4 h-4 text-accent" />
+            <h4 className="font-bold text-sm text-gray-900 flex items-center space-x-2">
+              <Percent className="w-4 h-4 text-primary" />
               <span>Cupom Promocional</span>
             </h4>
             <div className="flex gap-3">
@@ -1182,15 +1182,15 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
                     setCupomDesconto(0);
                     setCupomCode('');
                   }}
-                  className="btn btn-secondary bg-red-950/20 text-red-400 border-red-900 hover:bg-red-950/40 text-sm px-4 py-2"
+                  className="btn btn-secondary bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 text-sm px-4 py-2"
                 >
                   Remover
                 </button>
               )}
             </div>
-            {cupomError && <p className="text-xs text-red-400">{cupomError}</p>}
+            {cupomError && <p className="text-xs text-rose-600 font-medium">{cupomError}</p>}
             {cupomAplicado && (
-              <p className="text-xs text-emerald-400 font-semibold">
+              <p className="text-xs text-emerald-700 font-semibold">
                 Cupom de Desconto de {cupomDesconto}% aplicado com sucesso!
               </p>
             )}
@@ -1292,7 +1292,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
           ) : (
             <div className="space-y-6">
               <div className="bg-emerald-50 border border-emerald-200 p-5 rounded-xl flex items-start space-x-4">
-                <Check className="w-6 h-6 text-emerald-400 flex-shrink-0 mt-1" />
+                <Check className="w-6 h-6 text-emerald-600 flex-shrink-0 mt-1" />
                 <div>
                   <h4 className="font-bold text-gray-900 text-base">Assinatura Digital Concluída</h4>
                   <p className="text-sm text-gray-700 mt-1">
@@ -1307,16 +1307,16 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
                   
                   <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 space-y-3">
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Status</span>
-                      <span className="text-emerald-400 font-bold">Fatura Emitida</span>
+                      <span className="text-gray-600 font-medium">Status</span>
+                      <span className="text-emerald-700 font-bold">Fatura Emitida</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Data de Vencimento</span>
-                      <span className="text-white font-bold">{formatDateDisplay(paymentDueDate)}</span>
+                      <span className="text-gray-600 font-medium">Data de Vencimento</span>
+                      <span className="text-gray-900 font-bold">{formatDateDisplay(paymentDueDate)}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Checkout ID</span>
-                      <span className="text-white font-bold">{checkoutId}</span>
+                      <span className="text-gray-600 font-medium">Checkout ID</span>
+                      <span className="text-gray-900 font-bold">{checkoutId}</span>
                     </div>
                   </div>
 

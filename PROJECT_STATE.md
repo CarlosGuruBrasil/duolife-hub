@@ -1,6 +1,6 @@
 # PROJECT_STATE.md — DuoLife Hub
 
-Atualizado em: 2026-08-31 14:24 BRT
+Atualizado em: 2026-08-31 15:35 BRT
 
 ## Objetivo operacional
 Transformar a DuoLife em um portal/admin operacional estável, com banco isolado, integrações preservadas, documentação de retomada e execução por squad virtual.
@@ -147,5 +147,14 @@ Transformar a DuoLife em um portal/admin operacional estável, com banco isolado
 - Evidência técnica:
   - `npm run build` aprovado em `2026-07-16`
   - rotas validadas no build: `/admin`, `/admin/relatorios`, `/admin/cotacoes`, `/admin/vendas`, `/admin/comissoes`, `/admin/parceiros`, `/admin/clientes`, `/admin/usuarios`, `/admin/sync`
-- Próximo passo recomendado:
-  - validar a experiência navegando em produção e decidir a próxima camada: permissões finas por perfil operacional ou aprofundamento dos relatórios/ações
+## Auditoria e Blindagem de Integridade em 2026-08-31
+- Mudanças aplicadas:
+  - Transação atômica e lock de linha (`FOR UPDATE`) em `ensureSaleForPaidQuote` (`src/lib/insurance-ops.ts`) para blindar contra webhooks simultâneos do Asaas e duplicidade de vendas/comissões.
+  - Proteção de `ESTADOS_TERMINAIS` no webhook do ZapSign (`app/api/webhook/zapsign/route.ts`) para evitar regressão indevida de status em cotações já aprovadas/emitidas.
+  - Extração segura de payload Pix com `extractPixPayload` em `app/api/portal/cotacoes/[id]/gerar-pagamento/route.ts` prevenindo erro de casting de tipo no Postgres.
+  - Validação de resposta de API no `wix-pull.ts` e `wix-compare.ts` para evitar falsos sucessos de sincronização em caso de rate limit ou instabilidade de rede.
+  - Encapsulamento em `try/catch` em `app/api/portal/cotacoes/[id]/pagamentos/route.ts`.
+  - Conformidade visual com o Design System (tema claro) em `src/components/portal/CotacaoFormRC.tsx` e remoção de `force-dynamic` redundante em `app/admin/parceiros/page.tsx`.
+- Evidência técnica:
+  - `npx tsc --noEmit` aprovado em 2026-08-31
+  - `npm run build` (Next.js 16 / Turbopack) aprovado com 54 rotas válidas

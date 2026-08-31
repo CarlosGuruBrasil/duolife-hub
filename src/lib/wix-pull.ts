@@ -478,7 +478,10 @@ export async function pullWixIntoLocalMirror(): Promise<WixPullResult> {
 
     while (true) {
       const result = await wixQueryItems(collection.id, PAGE_SIZE, offset);
-      const items = result?.dataItems || [];
+      if (!result) {
+        throw new Error(`Falha ao consultar itens da coleção '${collection.id}' no offset ${offset} (API Wix indisponível ou erro de resposta)`);
+      }
+      const items = result.dataItems || [];
       if (!items.length) break;
 
       for (const item of items) {

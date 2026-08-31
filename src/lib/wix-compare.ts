@@ -229,7 +229,10 @@ export async function fetchAllWixImport1Items(): Promise<{
 
       while (hasMore) {
         const response = await wixQueryItems('Import1', limit, offset);
-        if (!response || !response.dataItems || response.dataItems.length === 0) {
+        if (!response) {
+          throw new Error(`Falha ao consultar API Wix no offset ${offset}`);
+        }
+        if (!response.dataItems || response.dataItems.length === 0) {
           break;
         }
 

@@ -4,6 +4,7 @@ import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
 import { verifyWebhookToken } from '@/lib/webhook-auth';
 import { parseJsonbField } from '@/lib/json-safe';
+import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
 
 function isAuthorized(req: NextRequest) {
   const secret = process.env.ZAPSIGN_WEBHOOK_SECRET;
@@ -146,25 +147,39 @@ export async function POST(req: NextRequest) {
     `;
 
     if (normalizedStatus === 'signed') {
-      const [cotacao] = await sql`
-        SELECT client_data
+      const [cotacao] = await sql<{ client_data: unknown; status: string }[]>`
+        SELECT client_data, status
         FROM cotacoes
         WHERE id = ${document.cotacao_id}
         LIMIT 1
       `;
 
-      const clientData = parseJsonbField<Record<string, any>>(cotacao?.client_data);
-      if (signedFileUrl) clientData.contratoPdf = signedFileUrl;
-      clientData.assinadoEm = clientData.assinadoEm || new Date().toISOString();
+      if (cotacao) {
+        const clientData = parseJsonbField<Record<string, any>>(cotacao.client_data);
+        if (signedFileUrl) clientData.contratoPdf = signedFileUrl;
+        clientData.assinadoEm = clientData.assinadoEm || new Date().toISOString();
 
-      await sql`
-        UPDATE cotacoes
-        SET
-          status = 'assinado',
-          client_data = ${JSON.stringify(clientData)}::jsonb,
-          updated_at = NOW()
-        WHERE id = ${document.cotacao_id}
-      `;
+        const isTerminal = ESTADOS_TERMINAIS.includes(cotacao.status);
+
+        if (!isTerminal) {
+          await sql`
+            UPDATE cotacoes
+            SET
+              status = 'assinado',
+              client_data = ${JSON.stringify(clientData)}::jsonb,
+              updated_at = NOW()
+            WHERE id = ${document.cotacao_id}
+          `;
+        } else {
+          await sql`
+            UPDATE cotacoes
+            SET
+              client_data = ${JSON.stringify(clientData)}::jsonb,
+              updated_at = NOW()
+            WHERE id = ${document.cotacao_id}
+          `;
+        }
+      }
     }
 
     await sql`
