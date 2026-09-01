@@ -719,3 +719,167 @@ export async function getAdminReportData(
     })),
   };
 }
+
+export interface AdminRankingRow {
+  posicao: number;
+  partnerId: string;
+  partnerName: string;
+  razaoSocial: string;
+  nomeFantasia: string | null;
+  cnpj: string | null;
+  cpf: string | null;
+  personType: 'pj' | 'pf';
+  partnerCode: string;
+  status: string;
+  quotesCount: number;
+  salesCount: number;
+  conversionRate: number;
+  premiumTotal: number;
+  paidAmount: number;
+  commissionTotal: number;
+  ticketMedio: number;
+}
+
+export interface AdminRankingData {
+  period: AdminPeriod;
+  podium: AdminRankingRow[];
+  ranking: AdminRankingRow[];
+  totals: {
+    totalPartnersActive: number;
+    totalPartnersProducing: number;
+    totalQuotes: number;
+    totalSales: number;
+    totalPremium: number;
+    totalPaidAmount: number;
+    totalCommission: number;
+    averageTicket: number;
+    overallConversionRate: number;
+  };
+}
+
+export async function getAdminRankingData(
+  monthParam?: string,
+  startDateParam?: string,
+  endDateParam?: string
+): Promise<AdminRankingData> {
+  const period = resolveAdminPeriod(monthParam, startDateParam, endDateParam);
+
+  const rows = await sql<
+    Array<{
+      partner_id: string;
+      razao_social: string;
+      nome_fantasia: string | null;
+      cnpj: string | null;
+      cpf: string | null;
+      person_type: 'pj' | 'pf';
+      status: string;
+      partner_code: string | null;
+      quotes_count: NumericLike;
+      sales_count: NumericLike;
+      premium_total: NumericLike;
+      paid_amount: NumericLike;
+      commission_total: NumericLike;
+    }>
+  >`
+    SELECT
+      p.id AS partner_id,
+      p.razao_social,
+      p.nome_fantasia,
+      p.cnpj,
+      p.cpf,
+      p.person_type,
+      p.status,
+      COALESCE(p.metadata->'whiteLabel'->>'wixCode', p.metadata->'whiteLabel'->>'slug', '') AS partner_code,
+      COUNT(DISTINCT c.id)::int AS quotes_count,
+      COUNT(DISTINCT s.id)::int AS sales_count,
+      COALESCE(SUM(s.premio_total), 0) AS premium_total,
+      COALESCE(SUM(po.paid_amount), 0) AS paid_amount,
+      COALESCE(SUM(cm.amount), 0) AS commission_total
+    FROM partners p
+    LEFT JOIN cotacoes c
+      ON c.partner_id = p.id
+     AND c.created_at >= ${period.start}::date
+     AND c.created_at < ${period.endExclusive}::date
+    LEFT JOIN sales s
+      ON s.partner_id = p.id
+     AND s.created_at >= ${period.start}::date
+     AND s.created_at < ${period.endExclusive}::date
+    LEFT JOIN payment_orders po
+      ON po.partner_id = p.id
+     AND po.created_at >= ${period.start}::date
+     AND po.created_at < ${period.endExclusive}::date
+    LEFT JOIN commissions cm
+      ON cm.partner_id = p.id
+     AND cm.created_at >= ${period.start}::date
+     AND cm.created_at < ${period.endExclusive}::date
+    WHERE p.status != 'suspended'
+    GROUP BY p.id, p.razao_social, p.nome_fantasia, p.cnpj, p.cpf, p.person_type, p.status, p.metadata
+    ORDER BY premium_total DESC, sales_count DESC, quotes_count DESC, p.razao_social ASC
+  `;
+
+  let totalQuotes = 0;
+  let totalSales = 0;
+  let totalPremium = 0;
+  let totalPaidAmount = 0;
+  let totalCommission = 0;
+  let producingPartners = 0;
+
+  const ranking: AdminRankingRow[] = rows.map((r, idx) => {
+    const quotes = toNumber(r.quotes_count);
+    const sales = toNumber(r.sales_count);
+    const premium = toNumber(r.premium_total);
+    const paid = toNumber(r.paid_amount);
+    const comm = toNumber(r.commission_total);
+    const convRate = quotes > 0 ? (sales / quotes) * 100 : 0;
+    const ticket = sales > 0 ? premium / sales : 0;
+
+    totalQuotes += quotes;
+    totalSales += sales;
+    totalPremium += premium;
+    totalPaidAmount += paid;
+    totalCommission += comm;
+    if (sales > 0 || premium > 0) producingPartners++;
+
+    return {
+      posicao: idx + 1,
+      partnerId: r.partner_id,
+      partnerName: r.nome_fantasia || r.razao_social,
+      razaoSocial: r.razao_social,
+      nomeFantasia: r.nome_fantasia,
+      cnpj: r.cnpj,
+      cpf: r.cpf,
+      personType: r.person_type || 'pj',
+      partnerCode: (r.partner_code || '').trim(),
+      status: r.status,
+      quotesCount: quotes,
+      salesCount: sales,
+      conversionRate: Math.round(convRate * 10) / 10,
+      premiumTotal: premium,
+      paidAmount: paid,
+      commissionTotal: comm,
+      ticketMedio: Math.round(ticket * 100) / 100,
+    };
+  });
+
+  const podium = ranking.slice(0, 3);
+  const averageTicket = totalSales > 0 ? totalPremium / totalSales : 0;
+  const overallConversionRate = totalQuotes > 0 ? (totalSales / totalQuotes) * 100 : 0;
+
+  return {
+    period,
+    podium,
+    ranking,
+    totals: {
+      totalPartnersActive: rows.length,
+      totalPartnersProducing: producingPartners,
+      totalQuotes,
+      totalSales,
+      totalPremium,
+      totalPaidAmount,
+      totalCommission,
+      averageTicket: Math.round(averageTicket * 100) / 100,
+      overallConversionRate: Math.round(overallConversionRate * 10) / 10,
+    },
+  };
+}
+

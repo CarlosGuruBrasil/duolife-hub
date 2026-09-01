@@ -3,7 +3,9 @@ import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { ClipboardList, DollarSign, FileText, Mail, MessageCircle, Plus, WalletCards } from 'lucide-react';
+import { ClipboardList, DollarSign, FileText, Mail, MessageCircle, Plus, Share2, WalletCards } from 'lucide-react';
+import { getOrCreatePartnerSaleLink } from '@/lib/referral';
+import PartnerSaleLinkCard from '@/components/portal/PartnerSaleLinkCard';
 
 export default async function PortalDashboard() {
   const user = await verifyPartnerAuth();
@@ -12,42 +14,54 @@ export default async function PortalDashboard() {
   if (!access) redirect('/login');
   await ensureSchema();
 
-  // KPIs do parceiro
-  const [cotacoesCount] = access.visibleUserIds === null
-    ? await sql`SELECT COUNT(*) as total FROM cotacoes WHERE partner_id = ${access.partnerId}`
-    : await sql`SELECT COUNT(*) as total FROM cotacoes WHERE partner_id = ${access.partnerId} AND partner_user_id IN ${sql(access.visibleUserIds)}`;
-  const [vendasCount] = access.visibleUserIds === null
-    ? await sql`
-        SELECT COUNT(*) as total, COALESCE(SUM(s.premio_total), 0) as volume
-        FROM sales s
-        WHERE s.partner_id = ${access.partnerId} AND s.status = 'ativa'
-      `
-    : await sql`
-        SELECT COUNT(*) as total, COALESCE(SUM(s.premio_total), 0) as volume
-        FROM sales s
-        JOIN cotacoes c ON c.id = s.cotacao_id
-        WHERE s.partner_id = ${access.partnerId}
-          AND s.status = 'ativa'
-          AND c.partner_user_id IN ${sql(access.visibleUserIds)}
-      `;
-  const [comissoesCount] = access.visibleUserIds === null
-    ? await sql`
-        SELECT COALESCE(SUM(amount), 0) as pendente
-        FROM commissions
-        WHERE partner_id = ${access.partnerId} AND status = 'pendente'
-      `
-    : await sql`
-        SELECT COALESCE(SUM(cm.amount), 0) as pendente
-        FROM commissions cm
-        JOIN sales s ON s.id = cm.sale_id
-        JOIN cotacoes c ON c.id = s.cotacao_id
-        WHERE cm.partner_id = ${access.partnerId}
-          AND cm.status = 'pendente'
-          AND c.partner_user_id IN ${sql(access.visibleUserIds)}
-      `;
-  const [leadsCount] = await sql`
-    SELECT COUNT(*) as total FROM leads WHERE partner_id = ${access.partnerId}
-  `;
+  // KPIs do parceiro e link ativo de vendas
+  const [
+    cotacoesCountResult,
+    vendasCountResult,
+    comissoesCountResult,
+    saleLink,
+  ] = await Promise.all([
+    access.visibleUserIds === null
+      ? sql`SELECT COUNT(*) as total FROM cotacoes WHERE partner_id = ${access.partnerId}`
+      : sql`SELECT COUNT(*) as total FROM cotacoes WHERE partner_id = ${access.partnerId} AND partner_user_id IN ${sql(access.visibleUserIds)}`,
+
+    access.visibleUserIds === null
+      ? sql`
+          SELECT COUNT(*) as total, COALESCE(SUM(s.premio_total), 0) as volume
+          FROM sales s
+          WHERE s.partner_id = ${access.partnerId} AND s.status = 'ativa'
+        `
+      : sql`
+          SELECT COUNT(*) as total, COALESCE(SUM(s.premio_total), 0) as volume
+          FROM sales s
+          JOIN cotacoes c ON c.id = s.cotacao_id
+          WHERE s.partner_id = ${access.partnerId}
+            AND s.status = 'ativa'
+            AND c.partner_user_id IN ${sql(access.visibleUserIds)}
+        `,
+
+    access.visibleUserIds === null
+      ? sql`
+          SELECT COALESCE(SUM(amount), 0) as pendente
+          FROM commissions
+          WHERE partner_id = ${access.partnerId} AND status = 'pendente'
+        `
+      : sql`
+          SELECT COALESCE(SUM(cm.amount), 0) as pendente
+          FROM commissions cm
+          JOIN sales s ON s.id = cm.sale_id
+          JOIN cotacoes c ON c.id = s.cotacao_id
+          WHERE cm.partner_id = ${access.partnerId}
+            AND cm.status = 'pendente'
+            AND c.partner_user_id IN ${sql(access.visibleUserIds)}
+        `,
+
+    getOrCreatePartnerSaleLink(access.partnerId),
+  ]);
+
+  const [cotacoesCount] = cotacoesCountResult;
+  const [vendasCount] = vendasCountResult;
+  const [comissoesCount] = comissoesCountResult;
 
   const kpis = [
     { label: 'Cotações realizadas', value: cotacoesCount.total, icon: ClipboardList, href: '/portal/cotacoes' },
@@ -67,6 +81,13 @@ export default async function PortalDashboard() {
           <Plus size={16} /> Nova Cotação
         </Link>
       </div>
+
+      {/* Card de Link de Vendas Online */}
+      <PartnerSaleLinkCard
+        directUrl={saleLink.directUrl}
+        refUrl={saleLink.refUrl}
+        partnerCode={saleLink.code}
+      />
 
       {/* KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -101,6 +122,11 @@ export default async function PortalDashboard() {
               className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
               style={{ color: 'var(--primary)' }}>
               <WalletCards size={17} /> Extrato de comissões
+            </Link>
+            <Link href="/portal/perfil"
+              className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+              style={{ color: 'var(--primary)' }}>
+              <Share2 size={17} /> Personalizar White-Label & Links
             </Link>
           </div>
         </div>

@@ -23,6 +23,7 @@ import {
   Sparkles,
   Key,
   ArrowRightLeft,
+  Trophy,
 } from 'lucide-react';
 import type { AuthUser } from '@/lib/auth';
 import { roleIsDev } from '@/lib/roles';
@@ -55,6 +56,7 @@ const navSections: Array<{ title: string; items: NavItem[] }> = [
     title: 'Rede',
     items: [
       { href: '/admin/parceiros', label: 'Parceiros', icon: Building2, description: 'Corretoras e estrutura.' },
+      { href: '/admin/ranking', label: 'Ranking', icon: Trophy, description: 'Líderes de produção e vendas.' },
       { href: '/admin/clientes', label: 'Clientes', icon: Users, description: 'Carteira de segurados.' },
       { href: '/admin/comparativo-wix', label: 'Comparativo Wix', icon: ArrowRightLeft, description: 'Auditoria DB vs. Wix Import1.' },
       { href: '/admin/usuarios', label: 'Usuários', icon: Shield, description: 'Acessos internos.' },

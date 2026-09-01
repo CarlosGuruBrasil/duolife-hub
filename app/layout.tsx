@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import { Plus_Jakarta_Sans } from 'next/font/google';
 import { MessageCircle } from 'lucide-react';
+import ReferralTracker from '@/components/public/ReferralTracker';
 import './globals.css';
 
 const jakarta = Plus_Jakarta_Sans({
@@ -80,6 +82,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="pt-BR" className={`${jakarta.variable} h-full`}>
       <body className="min-h-full flex flex-col" style={{ fontFamily: 'var(--font-jakarta), Inter, system-ui, sans-serif' }}>
+        <Suspense fallback={null}>
+          <ReferralTracker />
+        </Suspense>
         {children}
         <a
           href="https://wa.me/5547996486081?text=Olá! Gostaria de falar com o time comercial da DuoLife."
