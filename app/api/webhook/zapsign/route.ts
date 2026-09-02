@@ -5,6 +5,7 @@ import { logger } from '@/lib/logger';
 import { verifyWebhookToken } from '@/lib/webhook-auth';
 import { parseJsonbField } from '@/lib/json-safe';
 import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
+import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
 
 function isAuthorized(req: NextRequest) {
   const secret = process.env.ZAPSIGN_WEBHOOK_SECRET;
@@ -178,6 +179,43 @@ export async function POST(req: NextRequest) {
               updated_at = NOW()
             WHERE id = ${document.cotacao_id}
           `;
+        }
+
+        // Dispara gatilho de Contrato Assinado
+        try {
+          const [cotacaoCompleta] = await sql<{ client_id: string | null; partner_id: string; client_name: string; premio_final: number; importancia_segurada: number }[]>`
+            SELECT client_id, partner_id, client_name, premio_final, importancia_segurada
+            FROM cotacoes
+            WHERE id = ${document.cotacao_id}
+            LIMIT 1
+          `;
+
+          const [clientRow] = cotacaoCompleta?.client_id ? await sql<{ full_name: string; email: string; document_number: string; phone: string }[]>`
+            SELECT full_name, email, document_number, phone FROM insurance_clients WHERE id = ${cotacaoCompleta.client_id} LIMIT 1
+          ` : [];
+
+          await dispatchDomainEvent('CONTRATO_ASSINADO', {
+            eventType: 'CONTRATO_ASSINADO',
+            contextId: document.cotacao_id,
+            cliente: {
+              nome: clientRow?.full_name || cotacaoCompleta?.client_name,
+              email: clientRow?.email || clientData.email,
+              documento: clientRow?.document_number || clientData.cpf || clientData.cnpj,
+              telefone: clientRow?.phone || clientData.telefone,
+            },
+            cotacao: {
+              id: document.cotacao_id,
+              status: 'assinado',
+              premio_final: Number(cotacaoCompleta?.premio_final) || 0,
+              cobertura: Number(cotacaoCompleta?.importancia_segurada) || 0,
+            },
+            dados: {
+              contratoPdf: signedFileUrl,
+              assinadoEm: clientData.assinadoEm,
+            },
+          });
+        } catch (dispatchErr) {
+          logger.error({ dispatchErr, cotacaoId: document.cotacao_id }, 'Falha ao despachar evento CONTRATO_ASSINADO');
         }
       }
     }

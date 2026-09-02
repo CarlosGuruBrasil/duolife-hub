@@ -621,6 +621,74 @@ async function runRuntimeSchemaSetup(): Promise<void> {
     `;
   }
 
+  // Templates de E-mail
+  await sql`
+    CREATE TABLE IF NOT EXISTS email_templates (
+      id          TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      code        TEXT UNIQUE NOT NULL,
+      name        TEXT NOT NULL,
+      subject     TEXT NOT NULL,
+      body_html   TEXT NOT NULL,
+      body_text   TEXT,
+      variables   JSONB NOT NULL DEFAULT '[]'::jsonb,
+      is_active   BOOLEAN NOT NULL DEFAULT true,
+      created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_email_templates_code ON email_templates (code)`;
+
+  // Logs de Disparo de E-mail
+  await sql`
+    CREATE TABLE IF NOT EXISTS email_dispatch_logs (
+      id              TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      template_code   TEXT,
+      recipient_email TEXT NOT NULL,
+      recipient_name  TEXT,
+      subject         TEXT NOT NULL,
+      status          TEXT NOT NULL DEFAULT 'sent',
+      provider        TEXT NOT NULL DEFAULT 'nodemailer_smtp',
+      error_message   TEXT,
+      metadata        JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_email_dispatch_logs_template ON email_dispatch_logs (template_code)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_email_dispatch_logs_created ON email_dispatch_logs (created_at DESC)`;
+
+  // Gatilhos e Árvores de Decisão
+  await sql`
+    CREATE TABLE IF NOT EXISTS automation_triggers (
+      id              TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      code            TEXT UNIQUE NOT NULL,
+      name            TEXT NOT NULL,
+      description     TEXT,
+      event_type      TEXT NOT NULL,
+      is_active       BOOLEAN NOT NULL DEFAULT true,
+      tree_definition JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_automation_triggers_event ON automation_triggers (event_type)`;
+
+  // Logs de Execução de Automações
+  await sql`
+    CREATE TABLE IF NOT EXISTS automation_trigger_logs (
+      id               TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      trigger_id       TEXT REFERENCES automation_triggers(id) ON DELETE SET NULL,
+      event_type       TEXT NOT NULL,
+      context_id       TEXT,
+      context_data     JSONB NOT NULL DEFAULT '{}'::jsonb,
+      evaluated_nodes  JSONB NOT NULL DEFAULT '[]'::jsonb,
+      actions_executed JSONB NOT NULL DEFAULT '[]'::jsonb,
+      status           TEXT NOT NULL DEFAULT 'success',
+      error_message    TEXT,
+      created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_automation_trigger_logs_event ON automation_trigger_logs (event_type, created_at DESC)`;
+
 }
 
 export async function seedInitialData(): Promise<void> {

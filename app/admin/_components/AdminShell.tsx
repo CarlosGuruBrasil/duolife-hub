@@ -24,6 +24,8 @@ import {
   Key,
   ArrowRightLeft,
   Trophy,
+  Mail,
+  GitFork,
 } from 'lucide-react';
 import type { AuthUser } from '@/lib/auth';
 import { roleIsDev } from '@/lib/roles';
@@ -50,6 +52,8 @@ const navSections: Array<{ title: string; items: NavItem[] }> = [
       { href: '/admin/vendas', label: 'Vendas', icon: Shield, description: 'Apólices e prêmio total.' },
       { href: '/admin/comissoes', label: 'Comissões', icon: WalletCards, description: 'Pendências e extrato.' },
       { href: '/admin/produtos', label: 'Produtos', icon: Package, description: 'Catálogo e fluxos.' },
+      { href: '/admin/emails', label: 'E-mails', icon: Mail, description: 'Modelos e templates.' },
+      { href: '/admin/gatilhos', label: 'Gatilhos & Fluxos', icon: GitFork, description: 'Árvores de decisão e regras.' },
     ],
   },
   {
