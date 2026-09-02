@@ -208,6 +208,16 @@ export function resolveAdminPeriod(monthParam?: string, startDateParam?: string,
       previousStart: formatDateIso(prevStartObj),
       previousEndExclusive: startDateParam,
     };
+  }  // 1.5 Atalho: Todo o Histórico
+  if (monthParam === 'all') {
+    return {
+      monthKey: 'all',
+      label: 'Todo o Histórico',
+      start: '2020-01-01',
+      endExclusive: '2099-12-31',
+      previousStart: '2010-01-01',
+      previousEndExclusive: '2020-01-01',
+    };
   }
 
   // 2. Atalho: Últimos 3 Meses
@@ -248,6 +258,7 @@ export function resolveAdminPeriod(monthParam?: string, startDateParam?: string,
   const baseDate = isValidMonth
     ? new Date(`${monthParam}-01T00:00:00`)
     : now;
+
   const current = startOfMonth(baseDate);
   const next = addMonths(current, 1);
   const previous = addMonths(current, -1);
@@ -264,13 +275,14 @@ export function resolveAdminPeriod(monthParam?: string, startDateParam?: string,
 
 export function getRecentMonthOptions(count = 24): AdminMonthOption[] {
   const now = startOfMonth(new Date());
-  return Array.from({ length: count }, (_, index) => {
+  const months: AdminMonthOption[] = Array.from({ length: count }, (_, index) => {
     const month = addMonths(now, -index);
     return {
       value: formatDateKey(month),
       label: formatMonthLabel(month),
     };
   });
+  return [{ value: 'all', label: 'Todo o Histórico' }, ...months];
 }
 
 async function getSummary(start: string, endExclusive: string): Promise<DashboardSummary> {
@@ -720,9 +732,11 @@ export async function getAdminReportData(
   };
 }
 
+export type RankingSource = 'duolife' | 'wix' | 'consolidated';
+
 export interface AdminRankingRow {
   posicao: number;
-  partnerId: string;
+  partnerId: string | null;
   partnerName: string;
   razaoSocial: string;
   nomeFantasia: string | null;
@@ -733,15 +747,22 @@ export interface AdminRankingRow {
   status: string;
   quotesCount: number;
   salesCount: number;
+  pendingCount: number;
   conversionRate: number;
   premiumTotal: number;
   paidAmount: number;
   commissionTotal: number;
   ticketMedio: number;
+  isLinkedToDuoLife: boolean;
+  duolifeSalesCount?: number;
+  duolifePremiumTotal?: number;
+  wixSalesCount?: number;
+  wixPremiumTotal?: number;
 }
 
 export interface AdminRankingData {
   period: AdminPeriod;
+  source: RankingSource;
   podium: AdminRankingRow[];
   ranking: AdminRankingRow[];
   totals: {
@@ -749,6 +770,7 @@ export interface AdminRankingData {
     totalPartnersProducing: number;
     totalQuotes: number;
     totalSales: number;
+    totalPending: number;
     totalPremium: number;
     totalPaidAmount: number;
     totalCommission: number;
@@ -757,107 +779,485 @@ export interface AdminRankingData {
   };
 }
 
+function parseWixNumber(val: unknown): number {
+  if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
+  if (!val) return 0;
+  if (typeof val === 'string') {
+    const cleaned = val.replace(/[^\d.,-]/g, '').replace(',', '.');
+    const num = parseFloat(cleaned);
+    return Number.isFinite(num) ? num : 0;
+  }
+  return 0;
+}
+
+function extractWixRevenue(payload: Record<string, unknown> | null | undefined): number {
+  if (!payload) return 0;
+  const raw =
+    payload.item && typeof payload.item === 'object' && (payload.item as { data?: unknown }).data
+      ? (payload.item as { data: Record<string, unknown> }).data
+      : payload;
+
+  const val =
+    raw.premio ??
+    raw.receita ??
+    raw._receita ??
+    raw.valor ??
+    raw.premioTotal ??
+    raw.premio_total;
+
+  return parseWixNumber(val);
+}
+
+function classifyWixStatus(statusRaw: unknown): 'fechado' | 'pendente' | 'cancelado' | 'outro' {
+  if (!statusRaw) return 'outro';
+  const s = String(statusRaw).toLowerCase().trim();
+  if (
+    s === '3' ||
+    s.includes('paga de') ||
+    s.includes('todas as parcelas pagas') ||
+    s.includes('negócio fechado') ||
+    s.includes('negocio fechado') ||
+    s === 'ativa' ||
+    s === 'ativo' ||
+    s === 'pago' ||
+    s === 'fechado'
+  ) {
+    return 'fechado';
+  }
+  if (
+    s === '2' ||
+    s.includes('pagamento gerado') ||
+    s.includes('contrato assinado') ||
+    s.includes('pendente de pagamento') ||
+    s.includes('falta de pagamento') ||
+    s.includes('em negociacao') ||
+    s.includes('em negociação') ||
+    s === 'pendente' ||
+    s === 'aguardando'
+  ) {
+    return 'pendente';
+  }
+  if (s === '1' || s.includes('cancelado') || s === 'recusado') {
+    return 'cancelado';
+  }
+  return 'outro';
+}
+
 export async function getAdminRankingData(
   monthParam?: string,
   startDateParam?: string,
-  endDateParam?: string
+  endDateParam?: string,
+  sourceParam?: string
 ): Promise<AdminRankingData> {
   const period = resolveAdminPeriod(monthParam, startDateParam, endDateParam);
+  const source: RankingSource =
+    sourceParam === 'wix' || sourceParam === 'consolidated' ? sourceParam : 'duolife';
 
-  const rows = await sql<
+  // 1. Carrega todos os parceiros cadastrados no DuoLife
+  const partnerRows = await sql<
     Array<{
-      partner_id: string;
+      id: string;
       razao_social: string;
       nome_fantasia: string | null;
       cnpj: string | null;
       cpf: string | null;
       person_type: 'pj' | 'pf';
       status: string;
-      partner_code: string | null;
-      quotes_count: NumericLike;
-      sales_count: NumericLike;
-      premium_total: NumericLike;
-      paid_amount: NumericLike;
-      commission_total: NumericLike;
+      metadata: Record<string, unknown> | null;
     }>
   >`
-    SELECT
-      p.id AS partner_id,
-      p.razao_social,
-      p.nome_fantasia,
-      p.cnpj,
-      p.cpf,
-      p.person_type,
-      p.status,
-      COALESCE(p.metadata->'whiteLabel'->>'wixCode', p.metadata->'whiteLabel'->>'slug', '') AS partner_code,
-      COUNT(DISTINCT c.id)::int AS quotes_count,
-      COUNT(DISTINCT s.id)::int AS sales_count,
-      COALESCE(SUM(s.premio_total), 0) AS premium_total,
-      COALESCE(SUM(po.paid_amount), 0) AS paid_amount,
-      COALESCE(SUM(cm.amount), 0) AS commission_total
-    FROM partners p
-    LEFT JOIN cotacoes c
-      ON c.partner_id = p.id
-     AND c.created_at >= ${period.start}::date
-     AND c.created_at < ${period.endExclusive}::date
-    LEFT JOIN sales s
-      ON s.partner_id = p.id
-     AND s.created_at >= ${period.start}::date
-     AND s.created_at < ${period.endExclusive}::date
-    LEFT JOIN payment_orders po
-      ON po.partner_id = p.id
-     AND po.created_at >= ${period.start}::date
-     AND po.created_at < ${period.endExclusive}::date
-    LEFT JOIN commissions cm
-      ON cm.partner_id = p.id
-     AND cm.created_at >= ${period.start}::date
-     AND cm.created_at < ${period.endExclusive}::date
-    WHERE p.status != 'suspended'
-    GROUP BY p.id, p.razao_social, p.nome_fantasia, p.cnpj, p.cpf, p.person_type, p.status, p.metadata
-    ORDER BY premium_total DESC, sales_count DESC, quotes_count DESC, p.razao_social ASC
+    SELECT id, razao_social, nome_fantasia, cnpj, cpf, person_type, status, metadata
+    FROM partners
+    WHERE status != 'suspended'
+    ORDER BY razao_social ASC
   `;
+
+  interface PartnerLookup {
+    id: string;
+    razaoSocial: string;
+    nomeFantasia: string | null;
+    cnpj: string | null;
+    cpf: string | null;
+    personType: 'pj' | 'pf';
+    status: string;
+    partnerCode: string;
+  }
+
+  const partners: PartnerLookup[] = partnerRows.map((p) => {
+    const wl = (p.metadata?.whiteLabel as Record<string, unknown>) || {};
+    const code = String(wl.wixCode || wl.slug || '').trim();
+    return {
+      id: p.id,
+      razaoSocial: p.razao_social,
+      nomeFantasia: p.nome_fantasia,
+      cnpj: p.cnpj,
+      cpf: p.cpf,
+      personType: p.person_type || 'pj',
+      status: p.status,
+      partnerCode: code,
+    };
+  });
+
+  const partnerByCodeMap = new Map<string, PartnerLookup>();
+  for (const p of partners) {
+    if (p.partnerCode) partnerByCodeMap.set(p.partnerCode.toLowerCase(), p);
+    if (p.razaoSocial) partnerByCodeMap.set(p.razaoSocial.toLowerCase(), p);
+    if (p.nomeFantasia) partnerByCodeMap.set(p.nomeFantasia.toLowerCase(), p);
+    partnerByCodeMap.set(p.id.toLowerCase(), p);
+  }
+
+  // 2. Coleta métricas nativas do DuoLife (se source == 'duolife' ou 'consolidated')
+  const duoMetricsByPartnerId = new Map<
+    string,
+    { quotes: number; sales: number; pending: number; premium: number; paid: number; commission: number }
+  >();
+
+  if (source === 'duolife' || source === 'consolidated') {
+    const isAll = period.monthKey === 'all';
+    const duoRows = await sql<
+      Array<{
+        partner_id: string;
+        quotes_count: NumericLike;
+        sales_count: NumericLike;
+        pending_count: NumericLike;
+        premium_total: NumericLike;
+        paid_amount: NumericLike;
+        commission_total: NumericLike;
+      }>
+    >`
+      SELECT
+        p.id AS partner_id,
+        COUNT(DISTINCT c.id)::int AS quotes_count,
+        COUNT(DISTINCT s.id)::int AS sales_count,
+        COUNT(DISTINCT CASE WHEN c.status IN ('pendente', 'aguardando_pagamento', 'aguardando_assinatura') THEN c.id END)::int AS pending_count,
+        COALESCE(SUM(s.premio_total), 0) AS premium_total,
+        COALESCE(SUM(po.paid_amount), 0) AS paid_amount,
+        COALESCE(SUM(cm.amount), 0) AS commission_total
+      FROM partners p
+      LEFT JOIN cotacoes c
+        ON c.partner_id = p.id
+       AND (${isAll} OR (c.created_at >= ${period.start}::date AND c.created_at < ${period.endExclusive}::date))
+      LEFT JOIN sales s
+        ON s.partner_id = p.id
+       AND (${isAll} OR (s.created_at >= ${period.start}::date AND s.created_at < ${period.endExclusive}::date))
+      LEFT JOIN payment_orders po
+        ON po.partner_id = p.id
+       AND (${isAll} OR (po.created_at >= ${period.start}::date AND po.created_at < ${period.endExclusive}::date))
+      LEFT JOIN commissions cm
+        ON cm.partner_id = p.id
+       AND (${isAll} OR (cm.created_at >= ${period.start}::date AND cm.created_at < ${period.endExclusive}::date))
+      WHERE p.status != 'suspended'
+      GROUP BY p.id
+    `;
+
+    for (const r of duoRows) {
+      duoMetricsByPartnerId.set(r.partner_id, {
+        quotes: toNumber(r.quotes_count),
+        sales: toNumber(r.sales_count),
+        pending: toNumber(r.pending_count),
+        premium: toNumber(r.premium_total),
+        paid: toNumber(r.paid_amount),
+        commission: toNumber(r.commission_total),
+      });
+    }
+  }
+
+  // 3. Coleta métricas históricas do Wix Import1 por codigoVenda (se source == 'wix' ou 'consolidated')
+  interface WixGroupMetrics {
+    code: string;
+    quotes: number;
+    sales: number;
+    pending: number;
+    premium: number;
+  }
+  const wixMetricsByCode = new Map<string, WixGroupMetrics>();
+
+  if (source === 'wix' || source === 'consolidated') {
+    // Tenta wix_items primeiro (espelho oficial de coleções)
+    let wixRows = await sql<
+      Array<{
+        partner_code: string | null;
+        status: string | null;
+        payload: Record<string, unknown> | null;
+        created_at: string | null;
+      }>
+    >`
+      SELECT
+        wi.partner_code,
+        wi.status,
+        wi.payload,
+        COALESCE(wi.wix_created_at, wi.created_at)::text AS created_at
+      FROM wix_items wi
+      INNER JOIN wix_collections wc ON wc.id = wi.wix_collection_id
+      WHERE wc.collection_id = 'Import1'
+    `;
+
+    // Se wix_items ainda não estiver populado neste ambiente, busca na tabela leads (origem wix)
+    if (wixRows.length === 0) {
+      wixRows = await sql<
+        Array<{
+          partner_code: string | null;
+          status: string | null;
+          payload: Record<string, unknown> | null;
+          created_at: string | null;
+        }>
+      >`
+        SELECT
+          COALESCE(raw->'wix'->>'codigoVenda', raw->'wix'->>'codigoParceiro', partner_code) AS partner_code,
+          COALESCE(status_cliente, status) AS status,
+          raw->'wix' AS payload,
+          data_cadastro::text AS created_at
+        FROM leads
+        WHERE source_system = 'wix'
+      `;
+    }
+
+    const isAll = period.monthKey === 'all';
+    const startDate = !isAll ? new Date(period.start) : null;
+    const endDate = !isAll ? new Date(period.endExclusive) : null;
+
+    for (const r of wixRows) {
+      if (r.created_at && !isAll && startDate && endDate) {
+        const itemDate = new Date(r.created_at);
+        if (itemDate < startDate || itemDate >= endDate) {
+          continue;
+        }
+      }
+
+      const rawCode = (r.partner_code || '').trim();
+      const code = rawCode ? rawCode : 'VENDA SITE';
+      const key = code.toLowerCase();
+
+      const rev = extractWixRevenue(r.payload);
+      const classification = classifyWixStatus(r.status);
+
+      const existing = wixMetricsByCode.get(key) || {
+        code,
+        quotes: 0,
+        sales: 0,
+        pending: 0,
+        premium: 0,
+      };
+
+      existing.quotes += 1;
+      if (classification === 'fechado') {
+        existing.sales += 1;
+        existing.premium += rev;
+      } else if (classification === 'pendente') {
+        existing.pending += 1;
+      }
+
+      wixMetricsByCode.set(key, existing);
+    }
+  }
+
+  // 4. Monta a lista consolidada ou específica de acordo com a fonte
+  const combinedMap = new Map<string, AdminRankingRow>();
+
+  if (source === 'duolife') {
+    for (const p of partners) {
+      const dm = duoMetricsByPartnerId.get(p.id) || {
+        quotes: 0,
+        sales: 0,
+        pending: 0,
+        premium: 0,
+        paid: 0,
+        commission: 0,
+      };
+      const convRate = dm.quotes > 0 ? (dm.sales / dm.quotes) * 100 : 0;
+      const ticket = dm.sales > 0 ? dm.premium / dm.sales : 0;
+
+      combinedMap.set(p.id, {
+        posicao: 0,
+        partnerId: p.id,
+        partnerName: p.nomeFantasia || p.razaoSocial,
+        razaoSocial: p.razaoSocial,
+        nomeFantasia: p.nomeFantasia,
+        cnpj: p.cnpj,
+        cpf: p.cpf,
+        personType: p.personType,
+        partnerCode: p.partnerCode,
+        status: p.status,
+        quotesCount: dm.quotes,
+        salesCount: dm.sales,
+        pendingCount: dm.pending,
+        conversionRate: Math.round(convRate * 10) / 10,
+        premiumTotal: dm.premium,
+        paidAmount: dm.paid,
+        commissionTotal: dm.commission,
+        ticketMedio: Math.round(ticket * 100) / 100,
+        isLinkedToDuoLife: true,
+        duolifeSalesCount: dm.sales,
+        duolifePremiumTotal: dm.premium,
+      });
+    }
+  } else if (source === 'wix') {
+    // Modo Wix: cada codigoVenda da base Import1 é um concorrente no ranking
+    for (const [key, wm] of wixMetricsByCode.entries()) {
+      const linked = partnerByCodeMap.get(key);
+      const convRate = wm.quotes > 0 ? (wm.sales / wm.quotes) * 100 : 0;
+      const ticket = wm.sales > 0 ? wm.premium / wm.sales : 0;
+
+      const isSite = wm.code.toUpperCase() === 'VENDA SITE' || wm.code.toUpperCase() === 'SEM INFORMAÇÃO';
+
+      combinedMap.set(key, {
+        posicao: 0,
+        partnerId: linked ? linked.id : null,
+        partnerName: linked
+          ? linked.nomeFantasia || linked.razaoSocial
+          : isSite
+          ? 'Venda Direta / Site'
+          : `Corretor: ${wm.code}`,
+        razaoSocial: linked
+          ? linked.razaoSocial
+          : isSite
+          ? 'Operação Direta DuoLife (Sem Corretor Parceiro)'
+          : `Corretor Wix (${wm.code})`,
+        nomeFantasia: linked ? linked.nomeFantasia : null,
+        cnpj: linked ? linked.cnpj : null,
+        cpf: linked ? linked.cpf : null,
+        personType: linked ? linked.personType : 'pj',
+        partnerCode: linked?.partnerCode || wm.code,
+        status: linked ? linked.status : 'wix_only',
+        quotesCount: wm.quotes,
+        salesCount: wm.sales,
+        pendingCount: wm.pending,
+        conversionRate: Math.round(convRate * 10) / 10,
+        premiumTotal: Math.round(wm.premium * 100) / 100,
+        paidAmount: Math.round(wm.premium * 100) / 100,
+        commissionTotal: 0,
+        ticketMedio: Math.round(ticket * 100) / 100,
+        isLinkedToDuoLife: !!linked,
+        wixSalesCount: wm.sales,
+        wixPremiumTotal: wm.premium,
+      });
+    }
+  } else {
+    // Modo Consolidated: soma DuoLife + Wix para cada parceiro vinculado e lista avulsos do Wix
+    const processedWixKeys = new Set<string>();
+
+    for (const p of partners) {
+      const dm = duoMetricsByPartnerId.get(p.id) || {
+        quotes: 0,
+        sales: 0,
+        pending: 0,
+        premium: 0,
+        paid: 0,
+        commission: 0,
+      };
+
+      // Procura dados do Wix correspondentes ao slug/código ou nome
+      const codeKey = p.partnerCode ? p.partnerCode.toLowerCase() : null;
+      let wm: WixGroupMetrics | undefined;
+      if (codeKey && wixMetricsByCode.has(codeKey)) {
+        wm = wixMetricsByCode.get(codeKey);
+        processedWixKeys.add(codeKey);
+      } else if (wixMetricsByCode.has(p.razaoSocial.toLowerCase())) {
+        wm = wixMetricsByCode.get(p.razaoSocial.toLowerCase());
+        processedWixKeys.add(p.razaoSocial.toLowerCase());
+      } else if (p.nomeFantasia && wixMetricsByCode.has(p.nomeFantasia.toLowerCase())) {
+        wm = wixMetricsByCode.get(p.nomeFantasia.toLowerCase());
+        processedWixKeys.add(p.nomeFantasia.toLowerCase());
+      }
+
+      const totalQuotes = dm.quotes + (wm?.quotes || 0);
+      const totalSales = dm.sales + (wm?.sales || 0);
+      const totalPending = dm.pending + (wm?.pending || 0);
+      const totalPremium = dm.premium + (wm?.premium || 0);
+      const totalPaid = dm.paid + (wm?.premium || 0);
+      const convRate = totalQuotes > 0 ? (totalSales / totalQuotes) * 100 : 0;
+      const ticket = totalSales > 0 ? totalPremium / totalSales : 0;
+
+      combinedMap.set(p.id, {
+        posicao: 0,
+        partnerId: p.id,
+        partnerName: p.nomeFantasia || p.razaoSocial,
+        razaoSocial: p.razaoSocial,
+        nomeFantasia: p.nomeFantasia,
+        cnpj: p.cnpj,
+        cpf: p.cpf,
+        personType: p.personType,
+        partnerCode: p.partnerCode,
+        status: p.status,
+        quotesCount: totalQuotes,
+        salesCount: totalSales,
+        pendingCount: totalPending,
+        conversionRate: Math.round(convRate * 10) / 10,
+        premiumTotal: Math.round(totalPremium * 100) / 100,
+        paidAmount: Math.round(totalPaid * 100) / 100,
+        commissionTotal: dm.commission,
+        ticketMedio: Math.round(ticket * 100) / 100,
+        isLinkedToDuoLife: true,
+        duolifeSalesCount: dm.sales,
+        duolifePremiumTotal: dm.premium,
+        wixSalesCount: wm?.sales || 0,
+        wixPremiumTotal: wm?.premium || 0,
+      });
+    }
+
+    // Inclui registros Wix que não foram vinculados a parceiros DuoLife
+    for (const [key, wm] of wixMetricsByCode.entries()) {
+      if (processedWixKeys.has(key)) continue;
+
+      const isSite = wm.code.toUpperCase() === 'VENDA SITE' || wm.code.toUpperCase() === 'SEM INFORMAÇÃO';
+      const convRate = wm.quotes > 0 ? (wm.sales / wm.quotes) * 100 : 0;
+      const ticket = wm.sales > 0 ? wm.premium / wm.sales : 0;
+
+      combinedMap.set(key, {
+        posicao: 0,
+        partnerId: null,
+        partnerName: isSite ? 'Venda Direta / Site' : `Corretor: ${wm.code}`,
+        razaoSocial: isSite
+          ? 'Operação Direta DuoLife (Sem Corretor Parceiro)'
+          : `Corretor Wix (${wm.code})`,
+        nomeFantasia: null,
+        cnpj: null,
+        cpf: null,
+        personType: 'pj',
+        partnerCode: wm.code,
+        status: 'wix_only',
+        quotesCount: wm.quotes,
+        salesCount: wm.sales,
+        pendingCount: wm.pending,
+        conversionRate: Math.round(convRate * 10) / 10,
+        premiumTotal: Math.round(wm.premium * 100) / 100,
+        paidAmount: Math.round(wm.premium * 100) / 100,
+        commissionTotal: 0,
+        ticketMedio: Math.round(ticket * 100) / 100,
+        isLinkedToDuoLife: false,
+        wixSalesCount: wm.sales,
+        wixPremiumTotal: wm.premium,
+      });
+    }
+  }
+
+  // 5. Ordena por Volume em Prêmios DESC, Vendas DESC, Cotações DESC
+  const sorted = Array.from(combinedMap.values()).sort((a, b) => {
+    if (b.premiumTotal !== a.premiumTotal) return b.premiumTotal - a.premiumTotal;
+    if (b.salesCount !== a.salesCount) return b.salesCount - a.salesCount;
+    return b.quotesCount - a.quotesCount;
+  });
 
   let totalQuotes = 0;
   let totalSales = 0;
+  let totalPending = 0;
   let totalPremium = 0;
   let totalPaidAmount = 0;
   let totalCommission = 0;
   let producingPartners = 0;
 
-  const ranking: AdminRankingRow[] = rows.map((r, idx) => {
-    const quotes = toNumber(r.quotes_count);
-    const sales = toNumber(r.sales_count);
-    const premium = toNumber(r.premium_total);
-    const paid = toNumber(r.paid_amount);
-    const comm = toNumber(r.commission_total);
-    const convRate = quotes > 0 ? (sales / quotes) * 100 : 0;
-    const ticket = sales > 0 ? premium / sales : 0;
-
-    totalQuotes += quotes;
-    totalSales += sales;
-    totalPremium += premium;
-    totalPaidAmount += paid;
-    totalCommission += comm;
-    if (sales > 0 || premium > 0) producingPartners++;
+  const ranking: AdminRankingRow[] = sorted.map((row, idx) => {
+    totalQuotes += row.quotesCount;
+    totalSales += row.salesCount;
+    totalPending += row.pendingCount;
+    totalPremium += row.premiumTotal;
+    totalPaidAmount += row.paidAmount;
+    totalCommission += row.commissionTotal;
+    if (row.salesCount > 0 || row.premiumTotal > 0) producingPartners++;
 
     return {
+      ...row,
       posicao: idx + 1,
-      partnerId: r.partner_id,
-      partnerName: r.nome_fantasia || r.razao_social,
-      razaoSocial: r.razao_social,
-      nomeFantasia: r.nome_fantasia,
-      cnpj: r.cnpj,
-      cpf: r.cpf,
-      personType: r.person_type || 'pj',
-      partnerCode: (r.partner_code || '').trim(),
-      status: r.status,
-      quotesCount: quotes,
-      salesCount: sales,
-      conversionRate: Math.round(convRate * 10) / 10,
-      premiumTotal: premium,
-      paidAmount: paid,
-      commissionTotal: comm,
-      ticketMedio: Math.round(ticket * 100) / 100,
     };
   });
 
@@ -867,16 +1267,18 @@ export async function getAdminRankingData(
 
   return {
     period,
+    source,
     podium,
     ranking,
     totals: {
-      totalPartnersActive: rows.length,
+      totalPartnersActive: ranking.length,
       totalPartnersProducing: producingPartners,
       totalQuotes,
       totalSales,
-      totalPremium,
-      totalPaidAmount,
-      totalCommission,
+      totalPending,
+      totalPremium: Math.round(totalPremium * 100) / 100,
+      totalPaidAmount: Math.round(totalPaidAmount * 100) / 100,
+      totalCommission: Math.round(totalCommission * 100) / 100,
       averageTicket: Math.round(averageTicket * 100) / 100,
       overallConversionRate: Math.round(overallConversionRate * 10) / 10,
     },

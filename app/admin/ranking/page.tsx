@@ -1,9 +1,29 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Trophy, Medal, Award, TrendingUp, Users, Shield, DollarSign, ArrowUpRight } from 'lucide-react';
+import {
+  Trophy,
+  Medal,
+  Award,
+  TrendingUp,
+  Users,
+  Shield,
+  DollarSign,
+  ArrowUpRight,
+  ExternalLink,
+  PlusCircle,
+  Database,
+  Layers,
+  Sparkles,
+  Clock,
+} from 'lucide-react';
 import { verifyAdminAuth } from '@/lib/auth';
 import { ensureSchema } from '@/lib/schema';
-import { getAdminRankingData, getRecentMonthOptions, type AdminRankingRow } from '@/lib/admin-reporting';
+import {
+  getAdminRankingData,
+  getRecentMonthOptions,
+  type AdminRankingRow,
+  type RankingSource,
+} from '@/lib/admin-reporting';
 import AdminPeriodFilterBar from '../_components/AdminPeriodFilterBar';
 
 function formatCurrency(value: number) {
@@ -28,13 +48,24 @@ export default async function AdminRankingPage({
   const monthParam = typeof params.month === 'string' ? params.month : undefined;
   const startParam = typeof params.start === 'string' ? params.start : undefined;
   const endParam = typeof params.end === 'string' ? params.end : undefined;
+  const sourceParam = typeof params.source === 'string' ? params.source : 'duolife';
 
   const [data, monthOptions] = await Promise.all([
-    getAdminRankingData(monthParam, startParam, endParam),
+    getAdminRankingData(monthParam, startParam, endParam, sourceParam),
     Promise.resolve(getRecentMonthOptions(24)),
   ]);
 
-  const { totals, podium, ranking, period } = data;
+  const { totals, podium, ranking, period, source } = data;
+
+  function buildUrlWithSource(newSource: RankingSource) {
+    const q = new URLSearchParams();
+    if (newSource !== 'duolife') q.set('source', newSource);
+    if (monthParam) q.set('month', monthParam);
+    if (startParam) q.set('start', startParam);
+    if (endParam) q.set('end', endParam);
+    const qStr = q.toString();
+    return `/admin/ranking${qStr ? `?${qStr}` : ''}`;
+  }
 
   return (
     <div className="space-y-6 font-sans">
@@ -48,6 +79,68 @@ export default async function AdminRankingPage({
           </p>
         </div>
       </section>
+
+      {/* Seletor de Origem dos Dados (DuoLife vs Wix Import1 vs Consolidado) */}
+      <div className="bg-white rounded-2xl border border-gray-200 p-3 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-xs font-bold uppercase tracking-wider text-gray-500 mr-1 flex items-center gap-1.5">
+            <Database size={14} className="text-[#0e4a5a]" /> Origem:
+          </span>
+          <div className="inline-flex rounded-xl bg-gray-100 p-1 border border-gray-200 text-xs font-medium">
+            <Link
+              href={buildUrlWithSource('duolife')}
+              className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                source === 'duolife'
+                  ? 'bg-white text-[#0e4a5a] font-bold shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              Produção Atual (DuoLife)
+            </Link>
+            <Link
+              href={buildUrlWithSource('wix')}
+              className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                source === 'wix'
+                  ? 'bg-white text-[#0e4a5a] font-bold shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-amber-500" />
+              Histórico Wix (Import1 / CodigoVenda)
+            </Link>
+            <Link
+              href={buildUrlWithSource('consolidated')}
+              className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                source === 'consolidated'
+                  ? 'bg-white text-[#0e4a5a] font-bold shadow-xs'
+                  : 'text-gray-600 hover:text-gray-900'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full bg-blue-500" />
+              Consolidado (DuoLife + Wix)
+            </Link>
+          </div>
+        </div>
+
+        <div className="text-xs text-gray-500 flex items-center gap-1.5">
+          {source === 'duolife' && (
+            <span>
+              Exibindo cotações e apólices emitidas diretamente no novo sistema DuoLife.
+            </span>
+          )}
+          {source === 'wix' && (
+            <span>
+              Recalculado sobre a base de 1.373 propostas do Wix Import1 agrupadas pelo <strong>CodigoVenda</strong> (slug do parceiro).
+            </span>
+          )}
+          {source === 'consolidated' && (
+            <span>
+              Unificando a produção nativa do DuoLife com o histórico do Wix para cada corretor.
+            </span>
+          )}
+        </div>
+      </div>
 
       {/* Barra de Filtros de Período */}
       <AdminPeriodFilterBar
@@ -66,25 +159,29 @@ export default async function AdminRankingPage({
             </div>
           </div>
           <div className="mt-2 text-2xl font-black text-gray-900">{formatCurrency(totals.totalPremium)}</div>
-          <p className="mt-1 text-xs text-gray-500">Prêmios de seguros e serviços</p>
+          <p className="mt-1 text-xs text-gray-500">Prêmios de seguros e serviços fechados</p>
         </div>
 
         <div className="card no-hover">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Apólices Emitidas</span>
+            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+              {source === 'duolife' ? 'Apólices Emitidas' : 'Negócios Fechados'}
+            </span>
             <div className="w-8 h-8 rounded-lg bg-[#0e4a5a]/10 text-[#0e4a5a] flex items-center justify-center">
               <Shield size={18} />
             </div>
           </div>
           <div className="mt-2 text-2xl font-black text-gray-900">{totals.totalSales}</div>
           <p className="mt-1 text-xs text-gray-500">
-            De um total de {totals.totalQuotes} cotações geradas
+            De um total de {totals.totalQuotes} cotações/propostas geradas
           </p>
         </div>
 
         <div className="card no-hover">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">Parceiros com Venda</span>
+            <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
+              {source === 'duolife' ? 'Parceiros com Venda' : 'Produtores com Venda'}
+            </span>
             <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center">
               <Users size={18} />
             </div>
@@ -95,8 +192,8 @@ export default async function AdminRankingPage({
           </div>
           <p className="mt-1 text-xs text-gray-500">
             {totals.totalPartnersActive > 0
-              ? `${Math.round((totals.totalPartnersProducing / totals.totalPartnersActive) * 100)}% da rede ativa`
-              : 'Nenhum parceiro cadastrado'}
+              ? `${Math.round((totals.totalPartnersProducing / totals.totalPartnersActive) * 100)}% dos produtores com fechamento`
+              : 'Nenhum produtor no período'}
           </p>
         </div>
 
@@ -110,6 +207,7 @@ export default async function AdminRankingPage({
           <div className="mt-2 text-2xl font-black text-gray-900">{formatCurrency(totals.averageTicket)}</div>
           <p className="mt-1 text-xs text-gray-500">
             Conversão geral: {formatPercent(totals.overallConversionRate)}
+            {totals.totalPending > 0 && ` • ${totals.totalPending} pendentes`}
           </p>
         </div>
       </div>
@@ -117,9 +215,13 @@ export default async function AdminRankingPage({
       {/* Pódio Top 3 (Campeões do Período) */}
       {podium.length > 0 && (podium[0].salesCount > 0 || podium[0].premiumTotal > 0) && (
         <section className="space-y-3">
-          <div className="flex items-center gap-2">
-            <Trophy className="text-amber-500" size={20} />
-            <h2 className="text-base font-bold text-gray-900">Pódio dos Líderes de Produção</h2>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Trophy className="text-amber-500" size={20} />
+              <h2 className="text-base font-bold text-gray-900">
+                Pódio dos Líderes de Produção ({source === 'duolife' ? 'DuoLife' : source === 'wix' ? 'Wix Import1' : 'Consolidado'})
+              </h2>
+            </div>
           </div>
 
           <div className="grid gap-4 md:grid-cols-3">
@@ -130,13 +232,18 @@ export default async function AdminRankingPage({
                   <Trophy size={32} />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="px-2.5 py-0.5 rounded-full bg-amber-500 text-white text-xs font-black tracking-wider uppercase">
                       1º Lugar 🥇
                     </span>
                     {podium[0].partnerCode && (
                       <span className="text-[11px] font-mono text-amber-900 bg-amber-100 px-2 py-0.5 rounded">
                         ref:{podium[0].partnerCode}
+                      </span>
+                    )}
+                    {!podium[0].isLinkedToDuoLife && (
+                      <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-semibold">
+                        Wix
                       </span>
                     )}
                   </div>
@@ -149,7 +256,7 @@ export default async function AdminRankingPage({
                       <span className="text-base font-black text-gray-900">{formatCurrency(podium[0].premiumTotal)}</span>
                     </div>
                     <div>
-                      <span className="text-[11px] text-gray-500 block">Apólices</span>
+                      <span className="text-[11px] text-gray-500 block">Negócios Fechados</span>
                       <span className="text-base font-black text-gray-900">{podium[0].salesCount}</span>
                     </div>
                   </div>
@@ -157,12 +264,16 @@ export default async function AdminRankingPage({
 
                 <div className="mt-4 pt-3 flex justify-between items-center text-xs">
                   <span className="text-gray-500">Conversão: <strong className="text-gray-800">{formatPercent(podium[0].conversionRate)}</strong></span>
-                  <Link
-                    href={`/admin/parceiros/${podium[0].partnerId}`}
-                    className="text-[#0e4a5a] font-semibold hover:underline inline-flex items-center gap-1"
-                  >
-                    Ver Corretora <ArrowUpRight size={13} />
-                  </Link>
+                  {podium[0].partnerId ? (
+                    <Link
+                      href={`/admin/parceiros/${podium[0].partnerId}`}
+                      className="text-[#0e4a5a] font-semibold hover:underline inline-flex items-center gap-1"
+                    >
+                      Ver Corretora <ArrowUpRight size={13} />
+                    </Link>
+                  ) : (
+                    <span className="text-gray-400 text-[11px]">Origem Wix Import1</span>
+                  )}
                 </div>
               </div>
             )}
@@ -174,13 +285,18 @@ export default async function AdminRankingPage({
                   <Medal size={32} />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="px-2.5 py-0.5 rounded-full bg-slate-600 text-white text-xs font-black tracking-wider uppercase">
                       2º Lugar 🥈
                     </span>
                     {podium[1].partnerCode && (
                       <span className="text-[11px] font-mono text-slate-800 bg-slate-100 px-2 py-0.5 rounded">
                         ref:{podium[1].partnerCode}
+                      </span>
+                    )}
+                    {!podium[1].isLinkedToDuoLife && (
+                      <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-semibold">
+                        Wix
                       </span>
                     )}
                   </div>
@@ -193,7 +309,7 @@ export default async function AdminRankingPage({
                       <span className="text-base font-black text-gray-900">{formatCurrency(podium[1].premiumTotal)}</span>
                     </div>
                     <div>
-                      <span className="text-[11px] text-gray-500 block">Apólices</span>
+                      <span className="text-[11px] text-gray-500 block">Negócios Fechados</span>
                       <span className="text-base font-black text-gray-900">{podium[1].salesCount}</span>
                     </div>
                   </div>
@@ -201,12 +317,16 @@ export default async function AdminRankingPage({
 
                 <div className="mt-4 pt-3 flex justify-between items-center text-xs">
                   <span className="text-gray-500">Conversão: <strong className="text-gray-800">{formatPercent(podium[1].conversionRate)}</strong></span>
-                  <Link
-                    href={`/admin/parceiros/${podium[1].partnerId}`}
-                    className="text-[#0e4a5a] font-semibold hover:underline inline-flex items-center gap-1"
-                  >
-                    Ver Corretora <ArrowUpRight size={13} />
-                  </Link>
+                  {podium[1].partnerId ? (
+                    <Link
+                      href={`/admin/parceiros/${podium[1].partnerId}`}
+                      className="text-[#0e4a5a] font-semibold hover:underline inline-flex items-center gap-1"
+                    >
+                      Ver Corretora <ArrowUpRight size={13} />
+                    </Link>
+                  ) : (
+                    <span className="text-gray-400 text-[11px]">Origem Wix Import1</span>
+                  )}
                 </div>
               </div>
             )}
@@ -218,13 +338,18 @@ export default async function AdminRankingPage({
                   <Award size={32} />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="px-2.5 py-0.5 rounded-full bg-amber-700 text-white text-xs font-black tracking-wider uppercase">
                       3º Lugar 🥉
                     </span>
                     {podium[2].partnerCode && (
                       <span className="text-[11px] font-mono text-amber-900 bg-orange-100 px-2 py-0.5 rounded">
                         ref:{podium[2].partnerCode}
+                      </span>
+                    )}
+                    {!podium[2].isLinkedToDuoLife && (
+                      <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.5 rounded font-semibold">
+                        Wix
                       </span>
                     )}
                   </div>
@@ -237,7 +362,7 @@ export default async function AdminRankingPage({
                       <span className="text-base font-black text-gray-900">{formatCurrency(podium[2].premiumTotal)}</span>
                     </div>
                     <div>
-                      <span className="text-[11px] text-gray-500 block">Apólices</span>
+                      <span className="text-[11px] text-gray-500 block">Negócios Fechados</span>
                       <span className="text-base font-black text-gray-900">{podium[2].salesCount}</span>
                     </div>
                   </div>
@@ -245,12 +370,16 @@ export default async function AdminRankingPage({
 
                 <div className="mt-4 pt-3 flex justify-between items-center text-xs">
                   <span className="text-gray-500">Conversão: <strong className="text-gray-800">{formatPercent(podium[2].conversionRate)}</strong></span>
-                  <Link
-                    href={`/admin/parceiros/${podium[2].partnerId}`}
-                    className="text-[#0e4a5a] font-semibold hover:underline inline-flex items-center gap-1"
-                  >
-                    Ver Corretora <ArrowUpRight size={13} />
-                  </Link>
+                  {podium[2].partnerId ? (
+                    <Link
+                      href={`/admin/parceiros/${podium[2].partnerId}`}
+                      className="text-[#0e4a5a] font-semibold hover:underline inline-flex items-center gap-1"
+                    >
+                      Ver Corretora <ArrowUpRight size={13} />
+                    </Link>
+                  ) : (
+                    <span className="text-gray-400 text-[11px]">Origem Wix Import1</span>
+                  )}
                 </div>
               </div>
             )}
@@ -264,30 +393,41 @@ export default async function AdminRankingPage({
           <div>
             <h2 className="admin-section-title">Classificação Geral da Rede</h2>
             <p className="admin-section-copy">
-              Listagem ordenada por volume em prêmios emitidos no período selecionado.
+              Listagem ordenada por volume em prêmios fechados no período selecionado.
             </p>
           </div>
           <span className="text-xs font-semibold text-gray-500 bg-gray-100 px-3 py-1 rounded-full self-start md:self-auto">
-            {ranking.length} corretoras avaliadas
+            {ranking.length} produtores analisados
           </span>
         </div>
 
         {ranking.length === 0 ? (
-          <div className="p-12 text-center text-gray-500">
-            Nenhum parceiro encontrado com os filtros selecionados.
+          <div className="p-12 text-center text-gray-500 space-y-2">
+            <p>Nenhum registro de produção encontrado para os filtros selecionados.</p>
+            {source === 'wix' && period.monthKey !== 'all' && (
+              <p className="text-xs text-amber-700">
+                Dica: O banco histórico do Wix abrange os anos anteriores. Tente selecionar <strong>&quot;Todo o Histórico&quot;</strong> no filtro de período acima.
+              </p>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[850px] text-left text-sm">
+            <table className="w-full min-w-[950px] text-left text-sm">
               <thead className="table-head">
                 <tr>
                   <th className="px-4 py-3 font-semibold text-center w-14">#</th>
-                  <th className="px-4 py-3 font-semibold">Parceiro / Corretora</th>
-                  <th className="px-4 py-3 font-semibold text-center">Cotações</th>
-                  <th className="px-4 py-3 font-semibold text-center">Apólices</th>
+                  <th className="px-4 py-3 font-semibold">Parceiro / CodigoVenda</th>
+                  <th className="px-4 py-3 font-semibold text-center">Cotações / Propostas</th>
+                  <th className="px-4 py-3 font-semibold text-center">Fechados</th>
+                  <th className="px-4 py-3 font-semibold text-center">Pendentes</th>
                   <th className="px-4 py-3 font-semibold text-center">Conversão</th>
                   <th className="px-4 py-3 font-semibold text-right">Volume Emitido</th>
-                  <th className="px-4 py-3 font-semibold text-right">Comissões</th>
+                  {source === 'duolife' && (
+                    <th className="px-4 py-3 font-semibold text-right">Comissões</th>
+                  )}
+                  {source === 'consolidated' && (
+                    <th className="px-4 py-3 font-semibold text-center">Detalhamento</th>
+                  )}
                   <th className="px-4 py-3 font-semibold text-right">Ticket Médio</th>
                   <th className="px-4 py-3 font-semibold text-center">Ações</th>
                 </tr>
@@ -300,7 +440,7 @@ export default async function AdminRankingPage({
 
                   return (
                     <tr
-                      key={row.partnerId}
+                      key={`${row.partnerCode}-${row.partnerId || row.partnerName}`}
                       className={`table-row ${
                         isTop1
                           ? 'bg-amber-50/30'
@@ -330,13 +470,19 @@ export default async function AdminRankingPage({
                       </td>
 
                       <td className="px-4 py-3.5">
-                        <div className="font-bold text-gray-900 flex items-center gap-2">
+                        <div className="font-bold text-gray-900 flex items-center gap-2 flex-wrap">
                           <span>{row.partnerName}</span>
-                          <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
-                            {row.personType}
-                          </span>
+                          {row.isLinkedToDuoLife ? (
+                            <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              DuoLife
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
+                              Wix Import1
+                            </span>
+                          )}
                           {row.partnerCode && (
-                            <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                            <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-gray-100 text-gray-700 border border-gray-200">
                               ref:{row.partnerCode}
                             </span>
                           )}
@@ -349,11 +495,25 @@ export default async function AdminRankingPage({
                       </td>
 
                       <td className="px-4 py-3.5 text-center">
-                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-bold ${
-                          row.salesCount > 0 ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'text-gray-500'
-                        }`}>
+                        <span
+                          className={`inline-flex px-2 py-0.5 rounded-full text-xs font-bold ${
+                            row.salesCount > 0
+                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                              : 'text-gray-500'
+                          }`}
+                        >
                           {row.salesCount}
                         </span>
+                      </td>
+
+                      <td className="px-4 py-3.5 text-center text-xs font-medium text-gray-600">
+                        {row.pendingCount > 0 ? (
+                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                            {row.pendingCount}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">0</span>
+                        )}
                       </td>
 
                       <td className="px-4 py-3.5 text-center text-xs font-semibold text-gray-600">
@@ -364,21 +524,42 @@ export default async function AdminRankingPage({
                         {formatCurrency(row.premiumTotal)}
                       </td>
 
-                      <td className="px-4 py-3.5 text-right text-xs font-medium text-gray-600">
-                        {formatCurrency(row.commissionTotal)}
-                      </td>
+                      {source === 'duolife' && (
+                        <td className="px-4 py-3.5 text-right text-xs font-medium text-gray-600">
+                          {formatCurrency(row.commissionTotal)}
+                        </td>
+                      )}
+
+                      {source === 'consolidated' && (
+                        <td className="px-4 py-3.5 text-center text-[11px] text-gray-500">
+                          <div className="inline-flex flex-col text-left">
+                            <span>DuoLife: <strong>{row.duolifeSalesCount || 0}</strong> ({formatCurrency(row.duolifePremiumTotal || 0)})</span>
+                            <span>Wix: <strong>{row.wixSalesCount || 0}</strong> ({formatCurrency(row.wixPremiumTotal || 0)})</span>
+                          </div>
+                        </td>
+                      )}
 
                       <td className="px-4 py-3.5 text-right text-xs text-gray-600">
                         {formatCurrency(row.ticketMedio)}
                       </td>
 
                       <td className="px-4 py-3.5 text-center">
-                        <Link
-                          href={`/admin/parceiros/${row.partnerId}`}
-                          className="btn btn-secondary py-1 px-2.5 text-xs inline-flex items-center gap-1"
-                        >
-                          Detalhes
-                        </Link>
+                        {row.partnerId ? (
+                          <Link
+                            href={`/admin/parceiros/${row.partnerId}`}
+                            className="btn btn-secondary py-1 px-2.5 text-xs inline-flex items-center gap-1"
+                          >
+                            Detalhes
+                          </Link>
+                        ) : (
+                          <Link
+                            href={`/admin/parceiros?novo=1&codigo=${encodeURIComponent(row.partnerCode)}`}
+                            className="btn btn-outline py-1 px-2.5 text-xs inline-flex items-center gap-1 text-[#0e4a5a]"
+                            title="Cadastrar corretora no DuoLife com este código de indicação"
+                          >
+                            <PlusCircle size={12} /> Cadastrar
+                          </Link>
+                        )}
                       </td>
                     </tr>
                   );
