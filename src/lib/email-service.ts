@@ -10,6 +10,7 @@ export interface EmailTemplate {
   body_html: string;
   body_text?: string | null;
   variables: string[];
+  design_json?: any;
   is_active: boolean;
   created_at: string;
   updated_at: string;

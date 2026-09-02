@@ -21,7 +21,7 @@ export async function GET() {
     await ensureDefaultEmailTemplates();
 
     const templates = await sql<EmailTemplate[]>`
-      SELECT id, code, name, subject, body_html, body_text, variables, is_active, created_at, updated_at
+      SELECT id, code, name, subject, body_html, body_text, variables, design_json, is_active, created_at, updated_at
       FROM email_templates
       ORDER BY updated_at DESC, name ASC
     `;
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { name, subject, body_html, code, is_active = true } = body;
+    const { name, subject, body_html, code, is_active = true, design_json } = body;
 
     if (!name || typeof name !== 'string' || !name.trim()) {
       return Response.json({ error: 'Nome do template é obrigatório' }, { status: 400 });
@@ -69,19 +69,26 @@ export async function POST(req: NextRequest) {
     // Extrai automaticamente as variáveis {{variavel}}
     const detectedVars = extractTemplateVariables(body_html);
 
+    const parsedDesignJson = design_json
+      ? typeof design_json === 'string'
+        ? JSON.parse(design_json)
+        : design_json
+      : null;
+
     const [created] = await sql<EmailTemplate[]>`
       INSERT INTO email_templates (
-        code, name, subject, body_html, variables, is_active, updated_at
+        code, name, subject, body_html, variables, design_json, is_active, updated_at
       ) VALUES (
         ${normalizedCode},
         ${name.trim()},
         ${subject.trim()},
         ${body_html},
         ${sql.json(detectedVars)},
+        ${parsedDesignJson ? sql.json(parsedDesignJson) : null},
         ${Boolean(is_active)},
         NOW()
       )
-      RETURNING id, code, name, subject, body_html, variables, is_active, created_at, updated_at
+      RETURNING id, code, name, subject, body_html, variables, design_json, is_active, created_at, updated_at
     `;
 
     return Response.json({

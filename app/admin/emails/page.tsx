@@ -20,8 +20,11 @@ import {
   Sparkles,
   HelpCircle,
   FileCode,
+  Palette,
+  Code,
 } from 'lucide-react';
 import type { EmailTemplate, EmailDispatchLog } from '@/lib/email-service';
+import { EmailVisualEditor } from '@/components/admin/EmailVisualEditor/EmailVisualEditor';
 
 export default function AdminEmailsPage() {
   const [activeTab, setActiveTab] = useState<'templates' | 'logs'>('templates');
@@ -37,6 +40,8 @@ export default function AdminEmailsPage() {
 
   // Estados do Drawer do Editor
   const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [editorMode, setEditorMode] = useState<'visual' | 'code'>('visual');
+  const [formDesignJson, setFormDesignJson] = useState<string | null>(null);
   const [editingTemplate, setEditingTemplate] = useState<Partial<EmailTemplate> | null>(null);
   const [formName, setFormName] = useState('');
   const [formCode, setFormCode] = useState('');
@@ -148,6 +153,8 @@ export default function AdminEmailsPage() {
     setFormCode('');
     setFormSubject('');
     setFormIsActive(true);
+    setFormDesignJson(null);
+    setEditorMode('visual');
     setFormHtml(`<!DOCTYPE html>
 <html>
 <head>
@@ -188,6 +195,18 @@ export default function AdminEmailsPage() {
     setFormSubject(template.subject);
     setFormHtml(template.body_html);
     setFormIsActive(template.is_active);
+
+    if (template.design_json) {
+      const jsonStr = typeof template.design_json === 'string'
+        ? template.design_json
+        : JSON.stringify(template.design_json);
+      setFormDesignJson(jsonStr);
+      setEditorMode('visual');
+    } else {
+      setFormDesignJson(null);
+      setEditorMode('code');
+    }
+
     setIsEditorOpen(true);
     setError(null);
     setSuccess(null);
@@ -232,6 +251,7 @@ export default function AdminEmailsPage() {
           code: formCode.trim() || undefined,
           subject: formSubject.trim(),
           body_html: formHtml,
+          design_json: formDesignJson || undefined,
           is_active: formIsActive,
         }),
       });
@@ -429,15 +449,22 @@ export default function AdminEmailsPage() {
                       <h3 className="font-bold text-base text-gray-900 group-hover:text-primary transition line-clamp-1">
                         {tpl.name}
                       </h3>
-                      <span
-                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
-                          tpl.is_active
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : 'bg-gray-100 text-gray-500'
-                        }`}
-                      >
-                        {tpl.is_active ? 'Ativo' : 'Inativo'}
-                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {tpl.design_json && (
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-800 border border-cyan-200">
+                            Visual
+                          </span>
+                        )}
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                            tpl.is_active
+                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                              : 'bg-gray-100 text-gray-500'
+                          }`}
+                        >
+                          {tpl.is_active ? 'Ativo' : 'Inativo'}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-1 font-mono text-[11px] bg-gray-50 border border-gray-200 text-gray-700 px-2 py-1 rounded-md w-fit max-w-full">
@@ -603,167 +630,214 @@ export default function AdminEmailsPage() {
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header do Drawer */}
-            <header className="px-6 py-4 border-b border-gray-200 bg-white flex justify-between items-center shrink-0">
+            <header className="px-6 py-3.5 border-b border-gray-200 bg-white flex justify-between items-center shrink-0 flex-wrap gap-3">
               <div className="flex items-center gap-3">
                 <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary border border-primary/20 shrink-0">
                   <Mail className="size-5" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-lg text-gray-900 leading-tight">
+                  <h3 className="font-bold text-base text-gray-900 leading-tight">
                     {editingTemplate?.id ? 'Editar Modelo de E-mail' : 'Novo Modelo de E-mail'}
                   </h3>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    Edite o código HTML à esquerda e acompanhe a renderização em tempo real à direita.
+                    {editorMode === 'visual'
+                      ? 'Arraste blocos da esquerda, edite estilos no painel direito e visualize em Desktop/Mobile.'
+                      : 'Edite o código HTML à esquerda e acompanhe a renderização em tempo real à direita.'}
                   </p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsEditorOpen(false)}
-                className="rounded-lg p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition"
-              >
-                <X className="size-5" />
-              </button>
+
+              <div className="flex items-center gap-3">
+                <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200">
+                  <button
+                    type="button"
+                    onClick={() => setEditorMode('visual')}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition ${
+                      editorMode === 'visual'
+                        ? 'bg-white text-primary shadow-xs'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <Palette className="size-3.5 text-primary" />
+                    Editor Visual (Drag & Drop)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditorMode('code')}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition ${
+                      editorMode === 'code'
+                        ? 'bg-white text-primary shadow-xs'
+                        : 'text-gray-600 hover:text-gray-900'
+                    }`}
+                  >
+                    <Code className="size-3.5 text-primary" />
+                    Editor de Código (Split-View)
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsEditorOpen(false)}
+                  className="rounded-lg p-2 text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition"
+                >
+                  <X className="size-5" />
+                </button>
+              </div>
             </header>
 
-            {/* Corpo do Editor Split-View */}
-            <form onSubmit={handleSaveTemplate} className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
-              {/* Lado Esquerdo: Formulário e Editor de Código */}
-              <div className="w-full lg:w-1/2 p-6 flex flex-col gap-4 overflow-y-auto border-r border-gray-200 bg-white">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-gray-700 uppercase">Nome do Template *</label>
-                    <input
-                      required
-                      type="text"
-                      value={formName}
-                      onChange={(e) => setFormName(e.target.value)}
-                      placeholder="Ex: Confirmação de Apólice"
-                      className="rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary shadow-xs"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-bold text-gray-700 uppercase">Código Único (Slug)</label>
-                    <input
-                      type="text"
-                      value={formCode}
-                      onChange={(e) => setFormCode(e.target.value)}
-                      placeholder="Ex: apolice_confirmada"
-                      className="rounded-xl border border-gray-300 px-3 py-2 text-sm font-mono text-gray-900 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary shadow-xs"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-bold text-gray-700 uppercase">Assunto do E-mail *</label>
-                  <input
-                    required
-                    type="text"
-                    value={formSubject}
-                    onChange={(e) => setFormSubject(e.target.value)}
-                    placeholder="Ex: Sua apólice DuoLife #{{cotacao_id}} já está ativa!"
-                    className="rounded-xl border border-gray-300 px-3 py-2 text-sm text-gray-900 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary shadow-xs"
-                  />
-                </div>
-
-                {/* Toolbar de Chips de Variáveis */}
-                <div className="flex flex-col gap-1.5">
-                  <span className="text-xs font-bold text-gray-700 uppercase">Inserir Variáveis Dinâmicas:</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {[
-                      'nome',
-                      'email',
-                      'telefone',
-                      'cotacao_id',
-                      'produto_nome',
-                      'valor',
-                      'cobertura',
-                      'parceiro_nome',
-                      'link_proposta',
-                      'link_fatura',
-                      '-data-',
-                      '-hora-',
-                      '-ano-',
-                    ].map((v) => (
-                      <button
-                        key={v}
-                        type="button"
-                        onClick={() => handleInsertVariable(v)}
-                        className="text-[11px] font-mono bg-gray-100 hover:bg-primary/10 text-gray-700 hover:text-primary border border-gray-200 px-2 py-1 rounded-md transition"
-                        title={`Clique para inserir {{${v}}}`}
-                      >
-                        {'{{' + v + '}}'}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Editor de HTML */}
-                <div className="flex-1 flex flex-col gap-1.5 min-h-[350px]">
-                  <label className="text-xs font-bold text-gray-700 uppercase">Código HTML do Template *</label>
-                  <textarea
-                    ref={editorTextareaRef}
-                    required
-                    value={formHtml}
-                    onChange={(e) => setFormHtml(e.target.value)}
-                    className="w-full flex-1 p-3 font-mono text-xs border border-gray-300 rounded-xl bg-gray-50 focus:bg-white text-gray-900 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary shadow-xs resize-none"
-                    spellCheck="false"
-                  />
-                </div>
+            {/* Barra de Configurações Básicas do Template */}
+            <div className="px-6 py-3 bg-gray-50/80 border-b border-gray-200 grid grid-cols-1 md:grid-cols-3 gap-3 shrink-0 text-xs">
+              <div className="flex flex-col gap-1">
+                <label className="font-bold text-gray-700 uppercase text-[10px]">Nome do Template *</label>
+                <input
+                  required
+                  type="text"
+                  value={formName}
+                  onChange={(e) => setFormName(e.target.value)}
+                  placeholder="Ex: Confirmação de Apólice"
+                  className="rounded-lg border border-gray-300 px-2.5 py-1.5 bg-white text-xs text-gray-900 focus:border-primary focus:outline-none"
+                />
               </div>
 
-              {/* Lado Direito: Pré-visualização em Iframe */}
-              <div className="w-full lg:w-1/2 p-6 flex flex-col gap-4 overflow-y-auto bg-gray-50/70 border-t lg:border-t-0">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                    Prévia em Tempo Real (Sandbox)
-                  </h4>
-                  <span className="text-[11px] text-gray-500">Dados simulados realisticamente</span>
-                </div>
+              <div className="flex flex-col gap-1">
+                <label className="font-bold text-gray-700 uppercase text-[10px]">Código Único (Slug)</label>
+                <input
+                  type="text"
+                  value={formCode}
+                  onChange={(e) => setFormCode(e.target.value)}
+                  placeholder="Ex: apolice_confirmada"
+                  className="rounded-lg border border-gray-300 px-2.5 py-1.5 bg-white text-xs font-mono text-gray-900 focus:border-primary focus:outline-none"
+                />
+              </div>
 
-                <div className="flex-1 min-h-[450px] bg-white border border-gray-200 rounded-xl shadow-xs overflow-hidden flex flex-col">
-                  <div className="bg-gray-100 border-b border-gray-200 px-4 py-2.5 text-xs text-gray-600 font-sans flex flex-col gap-1">
-                    <div><strong className="text-gray-800">De:</strong> DuoLife Hub &lt;noreply@duolife.com.br&gt;</div>
-                    <div><strong className="text-gray-800">Assunto:</strong> {getPreviewHtml(formSubject) || '(sem assunto)'}</div>
-                  </div>
-                  <iframe
-                    ref={iframePreviewRef}
-                    title="Prévia do E-mail"
-                    className="flex-1 w-full border-none min-h-[400px]"
-                    sandbox="allow-same-origin"
-                  />
-                </div>
+              <div className="flex flex-col gap-1">
+                <label className="font-bold text-gray-700 uppercase text-[10px]">Assunto do E-mail *</label>
+                <input
+                  required
+                  type="text"
+                  value={formSubject}
+                  onChange={(e) => setFormSubject(e.target.value)}
+                  placeholder="Ex: Sua apólice DuoLife #{{cotacao_id}} já está ativa!"
+                  className="rounded-lg border border-gray-300 px-2.5 py-1.5 bg-white text-xs text-gray-900 focus:border-primary focus:outline-none"
+                />
+              </div>
+            </div>
 
-                {/* Teste Rápido de Disparo */}
-                <div className="border border-gray-200 bg-white p-4 rounded-xl flex flex-col gap-2 shadow-xs">
-                  <span className="text-xs font-bold text-gray-800">Testar envio para um e-mail:</span>
-                  <div className="flex gap-2">
-                    <input
-                      type="email"
-                      value={testEmailAddress}
-                      onChange={(e) => setTestEmailAddress(e.target.value)}
-                      placeholder="Deixe vazio para enviar para sua própria conta"
-                      className="flex-1 rounded-xl border border-gray-300 px-3 py-1.5 text-xs text-gray-900 focus:border-primary focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      disabled={sendingTest}
-                      onClick={handleSendTestEmail}
-                      className="inline-flex items-center gap-1.5 rounded-xl bg-gray-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-gray-800 disabled:opacity-50 transition"
-                    >
-                      <Send className="size-3" />
-                      {sendingTest ? 'Enviando...' : 'Enviar Teste'}
-                    </button>
-                  </div>
-                  {testStatusMsg && (
-                    <div className={`text-xs font-semibold mt-1 ${testStatusMsg.type === 'success' ? 'text-emerald-700' : 'text-red-600'}`}>
-                      {testStatusMsg.text}
+            {/* Corpo do Editor: Alternável entre Visual e Código */}
+            {editorMode === 'visual' ? (
+              <div className="flex-1 overflow-hidden min-h-0 bg-white">
+                <EmailVisualEditor
+                  initialDesignJson={formDesignJson}
+                  initialHtml={formHtml}
+                  onChange={(html, json) => {
+                    setFormHtml(html);
+                    setFormDesignJson(json);
+                  }}
+                />
+              </div>
+            ) : (
+              <form onSubmit={handleSaveTemplate} className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
+                {/* Lado Esquerdo: Editor de Código e Variáveis */}
+                <div className="w-full lg:w-1/2 p-6 flex flex-col gap-4 overflow-y-auto border-r border-gray-200 bg-white">
+                  {/* Toolbar de Chips de Variáveis */}
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-xs font-bold text-gray-700 uppercase">Inserir Variáveis Dinâmicas:</span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        'nome',
+                        'email',
+                        'telefone',
+                        'cotacao_id',
+                        'produto_nome',
+                        'valor',
+                        'cobertura',
+                        'parceiro_nome',
+                        'codigo_venda',
+                        'link_proposta',
+                        'link_fatura',
+                        '-data-',
+                        '-hora-',
+                        '-ano-',
+                      ].map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          onClick={() => handleInsertVariable(v)}
+                          className="text-[11px] font-mono bg-gray-100 hover:bg-primary/10 text-gray-700 hover:text-primary border border-gray-200 px-2 py-1 rounded-md transition"
+                          title={`Clique para inserir {{${v}}}`}
+                        >
+                          {'{{' + v + '}}'}
+                        </button>
+                      ))}
                     </div>
-                  )}
+                  </div>
+
+                  {/* Editor de HTML */}
+                  <div className="flex-1 flex flex-col gap-1.5 min-h-[350px]">
+                    <label className="text-xs font-bold text-gray-700 uppercase">Código HTML do Template *</label>
+                    <textarea
+                      ref={editorTextareaRef}
+                      required
+                      value={formHtml}
+                      onChange={(e) => setFormHtml(e.target.value)}
+                      className="w-full flex-1 p-3 font-mono text-xs border border-gray-300 rounded-xl bg-gray-50 focus:bg-white text-gray-900 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary shadow-xs resize-none"
+                      spellCheck="false"
+                    />
+                  </div>
                 </div>
-              </div>
-            </form>
+
+                {/* Lado Direito: Pré-visualização em Iframe */}
+                <div className="w-full lg:w-1/2 p-6 flex flex-col gap-4 overflow-y-auto bg-gray-50/70 border-t lg:border-t-0">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                      Prévia em Tempo Real (Sandbox)
+                    </h4>
+                    <span className="text-[11px] text-gray-500">Dados simulados realisticamente</span>
+                  </div>
+
+                  <div className="flex-1 min-h-[450px] bg-white border border-gray-200 rounded-xl shadow-xs overflow-hidden flex flex-col">
+                    <div className="bg-gray-100 border-b border-gray-200 px-4 py-2.5 text-xs text-gray-600 font-sans flex flex-col gap-1">
+                      <div><strong className="text-gray-800">De:</strong> DuoLife Hub &lt;noreply@duolife.com.br&gt;</div>
+                      <div><strong className="text-gray-800">Assunto:</strong> {getPreviewHtml(formSubject) || '(sem assunto)'}</div>
+                    </div>
+                    <iframe
+                      ref={iframePreviewRef}
+                      title="Prévia do E-mail"
+                      className="flex-1 w-full border-none min-h-[400px]"
+                      sandbox="allow-same-origin"
+                    />
+                  </div>
+
+                  {/* Teste Rápido de Disparo */}
+                  <div className="border border-gray-200 bg-white p-4 rounded-xl flex flex-col gap-2 shadow-xs">
+                    <span className="text-xs font-bold text-gray-800">Testar envio para um e-mail:</span>
+                    <div className="flex gap-2">
+                      <input
+                        type="email"
+                        value={testEmailAddress}
+                        onChange={(e) => setTestEmailAddress(e.target.value)}
+                        placeholder="Deixe vazio para enviar para sua própria conta"
+                        className="flex-1 rounded-xl border border-gray-300 px-3 py-1.5 text-xs text-gray-900 focus:border-primary focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        disabled={sendingTest}
+                        onClick={handleSendTestEmail}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-gray-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-gray-800 disabled:opacity-50 transition"
+                      >
+                        <Send className="size-3" />
+                        {sendingTest ? 'Enviando...' : 'Enviar Teste'}
+                      </button>
+                    </div>
+                    {testStatusMsg && (
+                      <div className={`text-xs font-semibold mt-1 ${testStatusMsg.type === 'success' ? 'text-emerald-700' : 'text-red-600'}`}>
+                        {testStatusMsg.text}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </form>
+            )}
 
             {/* Footer do Drawer */}
             <footer className="px-6 py-4 border-t border-gray-200 bg-white flex justify-end gap-3 shrink-0">

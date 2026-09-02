@@ -23,7 +23,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
 
   try {
     const [template] = await sql<EmailTemplate[]>`
-      SELECT id, code, name, subject, body_html, body_text, variables, is_active, created_at, updated_at
+      SELECT id, code, name, subject, body_html, body_text, variables, design_json, is_active, created_at, updated_at
       FROM email_templates
       WHERE id = ${id} OR code = ${id}
       LIMIT 1
@@ -51,10 +51,10 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
 
   try {
     const body = await req.json();
-    const { name, subject, body_html, is_active } = body;
+    const { name, subject, body_html, is_active, design_json } = body;
 
     const [existing] = await sql<EmailTemplate[]>`
-      SELECT id, code, name, subject, body_html, variables, is_active
+      SELECT id, code, name, subject, body_html, variables, design_json, is_active
       FROM email_templates
       WHERE id = ${id}
       LIMIT 1
@@ -69,6 +69,10 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
     const updatedHtml = body_html !== undefined ? String(body_html) : existing.body_html;
     const updatedIsActive = is_active !== undefined ? Boolean(is_active) : existing.is_active;
 
+    const updatedDesignJson = design_json !== undefined
+      ? (design_json ? (typeof design_json === 'string' ? JSON.parse(design_json) : design_json) : null)
+      : existing.design_json;
+
     const detectedVars = extractTemplateVariables(updatedHtml);
 
     const [updated] = await sql<EmailTemplate[]>`
@@ -78,10 +82,11 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
         subject = ${updatedSubject},
         body_html = ${updatedHtml},
         variables = ${sql.json(detectedVars)},
+        design_json = ${updatedDesignJson ? sql.json(updatedDesignJson) : null},
         is_active = ${updatedIsActive},
         updated_at = NOW()
       WHERE id = ${id}
-      RETURNING id, code, name, subject, body_html, variables, is_active, created_at, updated_at
+      RETURNING id, code, name, subject, body_html, variables, design_json, is_active, created_at, updated_at
     `;
 
     return Response.json({ ok: true, template: updated });

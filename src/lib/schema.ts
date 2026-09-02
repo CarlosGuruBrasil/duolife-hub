@@ -631,11 +631,13 @@ async function runRuntimeSchemaSetup(): Promise<void> {
       body_html   TEXT NOT NULL,
       body_text   TEXT,
       variables   JSONB NOT NULL DEFAULT '[]'::jsonb,
+      design_json JSONB DEFAULT NULL,
       is_active   BOOLEAN NOT NULL DEFAULT true,
       created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
+  await sql`ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS design_json JSONB DEFAULT NULL`;
   await sql`CREATE INDEX IF NOT EXISTS idx_email_templates_code ON email_templates (code)`;
 
   // Logs de Disparo de E-mail
