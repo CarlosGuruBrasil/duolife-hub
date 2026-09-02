@@ -1,6 +1,9 @@
 import crypto from 'crypto';
 import { sql } from '@/lib/pg';
 import { sendMail } from '@/lib/mailer';
+import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
+import { sendTemplatedEmail } from '@/lib/email-service';
+import { logger } from '@/lib/logger';
 
 type ResetUserType = 'partner' | 'admin';
 type ResetMailPurpose = 'reset' | 'invite';
@@ -67,16 +70,73 @@ export async function issuePasswordResetEmail({
   `;
 
   const resetUrl = buildResetUrl(rawToken, origin);
-  const html = buildResetMailHtml(userName, resetUrl, purpose);
 
-  const mailResult = await sendMail({
-    to: email,
-    subject: purpose === 'invite' ? 'Crie seu acesso - DuoLife Hub' : 'Redefinição de Senha - DuoLife Hub',
-    html,
-  });
+  // 1. Tenta acionar o motor de automação por árvore de decisão para RECUPERAR_SENHA
+  let dispatchSuccess = false;
+  try {
+    const triggerResult = await dispatchDomainEvent('RECUPERAR_SENHA', {
+      contextId: userId,
+      usuario: {
+        id: userId,
+        nome: userName,
+        email,
+        tipo: userType,
+      },
+      cliente: {
+        nome: userName,
+        email,
+      },
+      dados: {
+        link_reset: resetUrl,
+        reset_url: resetUrl,
+        tempo_expiracao: '1 hora',
+        proposito: purpose,
+        is_invite: purpose === 'invite',
+      },
+    });
 
-  if (!mailResult.success) {
-    throw new Error('Falha ao enviar e-mail de recuperação');
+    if (triggerResult.actionsExecutedCount > 0) {
+      dispatchSuccess = true;
+    }
+  } catch (err) {
+    logger.warn({ err, userId }, 'Falha ao despachar gatilho RECUPERAR_SENHA, usando fallback');
+  }
+
+  // 2. Se nenhuma árvore foi executada, dispara o template gerenciável recuperacao_senha
+  if (!dispatchSuccess) {
+    try {
+      const templateResult = await sendTemplatedEmail({
+        templateCode: 'recuperacao_senha',
+        to: email,
+        toName: userName,
+        variables: {
+          nome: userName,
+          email,
+          link_reset: resetUrl,
+          reset_url: resetUrl,
+          tempo_expiracao: '1 hora',
+        },
+      });
+      if (templateResult.success) {
+        dispatchSuccess = true;
+      }
+    } catch (err) {
+      logger.warn({ err }, 'Falha no template gerenciável recuperacao_senha, usando fallback legado');
+    }
+  }
+
+  // 3. Fallback de contingência final: HTML estático pré-compilado via sendMail
+  if (!dispatchSuccess) {
+    const html = buildResetMailHtml(userName, resetUrl, purpose);
+    const mailResult = await sendMail({
+      to: email,
+      subject: purpose === 'invite' ? 'Crie seu acesso - DuoLife Hub' : 'Redefinição de Senha - DuoLife Hub',
+      html,
+    });
+
+    if (!mailResult.success) {
+      throw new Error('Falha ao enviar e-mail de recuperação');
+    }
   }
 
   return { resetUrl, expiresAt };

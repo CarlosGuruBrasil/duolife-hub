@@ -79,11 +79,18 @@ export async function dispatchDomainEvent(
                   ];
 
             for (const d of destList) {
-              if (d.destinatario_tipo === 'CLIENTE' && context.cliente?.email) {
-                recipientsToDispatch.push({
-                  email: context.cliente.email,
-                  nome: context.cliente.nome || 'Cliente',
-                });
+              if (d.destinatario_tipo === 'CLIENTE') {
+                if (context.cliente?.email) {
+                  recipientsToDispatch.push({
+                    email: context.cliente.email,
+                    nome: context.cliente.nome || 'Cliente',
+                  });
+                } else if (context.usuario?.email) {
+                  recipientsToDispatch.push({
+                    email: context.usuario.email,
+                    nome: context.usuario.nome || 'Usuário',
+                  });
+                }
               } else if (d.destinatario_tipo === 'PARCEIRO' && context.parceiro?.email) {
                 recipientsToDispatch.push({
                   email: context.parceiro.email,
@@ -102,10 +109,18 @@ export async function dispatchDomainEvent(
               }
             }
 
+            // Fallback para quando o evento for de usuário direto e não houver destinatário explícito
+            if (recipientsToDispatch.length === 0 && context.usuario?.email) {
+              recipientsToDispatch.push({
+                email: context.usuario.email,
+                nome: context.usuario.nome || 'Usuário',
+              });
+            }
+
             // Variáveis formatadas para o template
             const templateVars: Record<string, any> = {
-              nome: context.cliente?.nome,
-              email: context.cliente?.email,
+              nome: context.usuario?.nome || context.cliente?.nome || context.parceiro?.nome || 'Cliente',
+              email: context.usuario?.email || context.cliente?.email || context.parceiro?.email || '',
               documento: context.cliente?.documento,
               telefone: context.cliente?.telefone,
               cotacao_id: context.cotacao?.id,
@@ -122,6 +137,9 @@ export async function dispatchDomainEvent(
               vencimento: context.transacao?.vencimento || '',
               parceiro_nome: context.parceiro?.nome || 'DuoLife',
               codigo_venda: context.parceiro?.codigoVenda || '',
+              link_reset: context.dados?.link_reset || context.dados?.reset_url || '',
+              reset_url: context.dados?.link_reset || context.dados?.reset_url || '',
+              tempo_expiracao: context.dados?.tempo_expiracao || '1 hora',
               ...(context.dados || {}),
             };
 
@@ -355,6 +373,43 @@ export async function ensureDefaultTriggers(): Promise<void> {
             posicaoY: 220,
             configuracao: {
               template_id: 'cotacao_gerada',
+              destinatarios: [
+                { destinatario_tipo: 'CLIENTE', destinatario_email: '', destinatario_nome: '' },
+              ],
+            },
+          },
+        ],
+      },
+    },
+    {
+      code: 'trigger_recuperar_senha',
+      name: 'Fluxo Padrão — Recuperação de Senha',
+      description: 'Dispara e-mail com link de redefinição de senha quando solicitado pelo usuário',
+      event_type: 'RECUPERAR_SENHA',
+      tree_definition: {
+        nos: [
+          {
+            id: 'root-recuperar-senha',
+            tipo: 'GATILHO',
+            titulo: 'Solicitação de Reset de Senha',
+            subtitulo: 'Evento: RECUPERAR_SENHA',
+            parentId: null,
+            ativo: true,
+            posicaoX: 500,
+            posicaoY: 60,
+            configuracao: { gatilho_codigo: 'RECUPERAR_SENHA' },
+          },
+          {
+            id: 'action-email-reset',
+            tipo: 'ACAO_EMAIL',
+            titulo: 'Enviar E-mail de Redefinição',
+            subtitulo: 'Dispara template com o link seguro',
+            parentId: 'root-recuperar-senha',
+            ativo: true,
+            posicaoX: 500,
+            posicaoY: 220,
+            configuracao: {
+              template_id: 'recuperacao_senha',
               destinatarios: [
                 { destinatario_tipo: 'CLIENTE', destinatario_email: '', destinatario_nome: '' },
               ],

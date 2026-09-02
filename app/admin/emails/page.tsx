@@ -755,6 +755,8 @@ export default function AdminEmailsPage() {
                         'codigo_venda',
                         'link_proposta',
                         'link_fatura',
+                        'link_reset',
+                        'tempo_expiracao',
                         '-data-',
                         '-hora-',
                         '-ano-',

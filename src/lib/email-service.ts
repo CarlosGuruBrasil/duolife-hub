@@ -351,6 +351,57 @@ export async function ensureDefaultEmailTemplates(): Promise<void> {
 </html>`,
       variables: ['nome', 'cotacao_id', 'valor', 'produto_nome'],
     },
+    {
+      code: 'recuperacao_senha',
+      name: 'Recuperação / Redefinição de Senha',
+      subject: 'Redefinição de Senha — DuoLife Hub',
+      body_html: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f7faf9; color: #1e293b; margin: 0; padding: 24px; }
+    .container { max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+    .header { background: #0e4a5a; color: #ffffff; padding: 28px 24px; text-align: center; }
+    .content { padding: 32px 24px; line-height: 1.6; }
+    .btn-container { text-align: center; margin: 32px 0; }
+    .btn { display: inline-block; background-color: #00d4e0; color: #072a33; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; }
+    .notice { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 24px 0; font-size: 13px; color: #64748b; }
+    .footer { font-size: 12px; color: #64748b; text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2 style="margin: 0; font-size: 22px;">DuoLife Hub</h2>
+    </div>
+    <div class="content">
+      <h3 style="color: #0e4a5a; margin-top: 0;">Olá, {{nome|Usuário}}!</h3>
+      <p>Recebemos uma solicitação para redefinir a senha da sua conta de acesso ao <strong>DuoLife Hub</strong>.</p>
+      <p>Para criar uma nova senha segura, clique no botão abaixo:</p>
+      
+      <div class="btn-container">
+        <a href="{{link_reset|https://duolife.com.br}}" class="btn" target="_blank">Redefinir Minha Senha</a>
+      </div>
+
+      <div class="notice">
+        <p style="margin: 0 0 6px 0;"><strong>Atenção:</strong> Este link é temporário e expira em <strong>{{tempo_expiracao|1 hora}}</strong>.</p>
+        <p style="margin: 0;">Se você não solicitou esta alteração, pode ignorar este e-mail com segurança. Sua senha atual permanecerá inalterada.</p>
+      </div>
+
+      <p style="font-size: 12px; color: #94a3b8; word-break: break-all;">
+        Se o botão acima não funcionar, copie e cole este link diretamente no seu navegador:<br>
+        <a href="{{link_reset|https://duolife.com.br}}" style="color: #0e4a5a;">{{link_reset}}</a>
+      </p>
+    </div>
+    <div class="footer">
+      DuoLife Seguros & Benefícios &bull; Solicitação gerada em {{-data-}} às {{-hora-}}
+    </div>
+  </div>
+</body>
+</html>`,
+      variables: ['nome', 'link_reset', 'tempo_expiracao'],
+    },
   ];
 
   for (const tpl of defaultTemplates) {

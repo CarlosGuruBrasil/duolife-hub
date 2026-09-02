@@ -126,7 +126,7 @@ export interface AutomationTriggerLogRecord {
 }
 
 export interface TriggerEvaluationContext {
-  eventType: string;
+  eventType?: string;
   contextId?: string;
   cliente?: {
     nome?: string;
@@ -154,6 +154,12 @@ export interface TriggerEvaluationContext {
     vencimento?: string;
     forma_pagamento?: string;
     link_fatura?: string;
+  };
+  usuario?: {
+    id?: string;
+    nome?: string;
+    email?: string;
+    tipo?: 'partner' | 'admin' | string;
   };
   dados?: Record<string, any>;
 }

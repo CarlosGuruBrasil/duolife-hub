@@ -52,6 +52,11 @@ export const EVENTOS_DISPONIVEIS: Array<{ codigo: EventoDominio; nome: string; d
     nome: 'Novo Lead / Contato Recebido',
     descricao: 'Disparado na recepção de um novo formulário de interesse ou importação do Wix.',
   },
+  {
+    codigo: 'RECUPERAR_SENHA',
+    nome: 'Recuperação de Senha',
+    descricao: 'Disparado quando um usuário (parceiro ou admin) solicita a redefinição de sua senha de acesso.',
+  },
 ];
 
 export async function GET() {
