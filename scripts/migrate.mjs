@@ -25,7 +25,9 @@ try {
   for (const name of files) {
     const [applied] = await sql`SELECT 1 FROM schema_migrations WHERE name = ${name}`;
     if (applied) continue;
-    const migration = await readFile(join(migrationsDir, name), 'utf8');
+    const rawMigration = await readFile(join(migrationsDir, name), 'utf8');
+    const migration = rawMigration.replace(/^\uFEFF/, '').trim();
+    if (!migration) continue;
     await sql.begin(async (tx) => {
       await tx.unsafe(migration);
       await tx`INSERT INTO schema_migrations (name) VALUES (${name})`;

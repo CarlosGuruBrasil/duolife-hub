@@ -1,4 +1,4 @@
-﻿-- Migration: 008-set-carlosad-dev.sql
+-- Migration: 008-set-carlosad-dev.sql
 -- Promove o usuário carlosad1981@gmail.com para desenvolvedor (duolife_dev)
 
 UPDATE admin_users
