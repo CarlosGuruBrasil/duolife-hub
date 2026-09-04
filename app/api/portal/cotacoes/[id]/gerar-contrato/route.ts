@@ -6,6 +6,7 @@ import { getAccessibleQuoteById } from '@/lib/access';
 import { parseJsonbField } from '@/lib/json-safe';
 import { calcularPrecoServidor } from '@/lib/pricing';
 import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
+import { getZapSignConfig } from '@/lib/system-settings';
 
 export async function POST(
   req: NextRequest,
@@ -86,16 +87,14 @@ export async function POST(
     }
 
     // 2. Determina o template do ZapSign
-    // Prioridade: plano 100k sempre usa o template 100k (mesmo em renovação — 61% das renovações reais
-    // são do plano 100k, que já tem coleta de dados simplificada compatível). Renovação de outros planos
-    // usa o template de renovação; senão, o template oficial.
+    const zapConfig = await getZapSignConfig();
     const isRenovacao = clientData.renovacao === true || clientData.renovacao === 'true' || clientData.renovacao === 'Sim';
     const isPlano100k = clientData.tipo === '100k';
     const templateId = isPlano100k
-      ? process.env.ZAPSIGN_TEMPLATE_100K
+      ? zapConfig.template100k
       : isRenovacao
-        ? process.env.ZAPSIGN_TEMPLATE_RENOVACAO
-        : process.env.ZAPSIGN_TEMPLATE_OFICIAL;
+        ? zapConfig.templateRenovacao
+        : zapConfig.templateOficial;
 
     if (!templateId) {
       return Response.json({ error: 'Template do ZapSign não configurado' }, { status: 422 });
@@ -288,7 +287,7 @@ export async function POST(
     }));
 
     // 6. Faz o POST para o ZapSign
-    const sandbox = process.env.ZAPSIGN_SANDBOX === 'true';
+    const sandbox = zapConfig.isSandbox;
     const payload = {
       template_id: templateId,
       signer_name: cotacao.client_name,
@@ -301,8 +300,12 @@ export async function POST(
       external_id: cotacao.id
     };
 
-    const token = process.env.ZAPSIGN_API_TOKEN;
-    const baseUrl = process.env.ZAPSIGN_BASE_URL || 'https://sandbox.api.zapsign.com.br/api/v1';
+    const token = zapConfig.apiToken;
+    const baseUrl = zapConfig.baseUrl;
+
+    if (!token) {
+      return Response.json({ error: 'Token da ZapSign não configurado' }, { status: 500 });
+    }
 
     const response = await fetch(`${baseUrl}/models/create-doc/`, {
       method: 'POST',

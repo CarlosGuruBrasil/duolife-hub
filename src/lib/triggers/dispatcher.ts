@@ -345,6 +345,43 @@ export async function ensureDefaultTriggers(): Promise<void> {
       },
     },
     {
+      code: 'trigger_fatura_gerada',
+      name: 'Fluxo Padrão — Fatura Gerada Asaas',
+      description: 'Dispara e-mail com link do boleto e PIX para o cliente assim que a cobrança é emitida',
+      event_type: 'FATURA_GERADA',
+      tree_definition: {
+        nos: [
+          {
+            id: 'root-fatura',
+            tipo: 'GATILHO',
+            titulo: 'Fatura Gerada',
+            subtitulo: 'Evento: FATURA_GERADA',
+            parentId: null,
+            ativo: true,
+            posicaoX: 500,
+            posicaoY: 60,
+            configuracao: { gatilho_codigo: 'FATURA_GERADA' },
+          },
+          {
+            id: 'action-email-fatura',
+            tipo: 'ACAO_EMAIL',
+            titulo: 'Enviar Boleto e PIX ao Segurado',
+            subtitulo: 'Dispara template de fatura com link',
+            parentId: 'root-fatura',
+            ativo: true,
+            posicaoX: 500,
+            posicaoY: 220,
+            configuracao: {
+              template_id: 'fatura_gerada',
+              destinatarios: [
+                { destinatario_tipo: 'CLIENTE', destinatario_email: '', destinatario_nome: '' },
+              ],
+            },
+          },
+        ],
+      },
+    },
+    {
       code: 'trigger_cotacao_gerada',
       name: 'Fluxo Padrão — Nova Cotação Gerada',
       description: 'Envia proposta detalhada para o cliente quando a cotação é criada',

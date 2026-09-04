@@ -314,6 +314,52 @@ export async function ensureDefaultEmailTemplates(): Promise<void> {
       variables: ['nome', 'cotacao_id'],
     },
     {
+      code: 'fatura_gerada',
+      name: 'Fatura e Boleto para Pagamento',
+      subject: 'Fatura Disponível para Pagamento — Proposta #{{cotacao_id}}',
+      body_html: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f7faf9; color: #1e293b; margin: 0; padding: 24px; }
+    .container { max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+    .header { background: #0e4a5a; color: #ffffff; padding: 24px; text-align: center; }
+    .content { padding: 32px 24px; line-height: 1.6; }
+    .card-info { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 20px 0; }
+    .btn { display: inline-block; background: #00d4e0; color: #0e4a5a; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; }
+    .footer { font-size: 12px; color: #64748b; text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2 style="margin:0;">Fatura de Seguro Disponível</h2>
+    </div>
+    <div class="content">
+      <p>Olá, <strong>{{nome|Cliente}}</strong>,</p>
+      <p>Seu contrato da proposta <strong>#{{cotacao_id}}</strong> foi assinado com sucesso! A cobrança oficial já foi gerada e está pronta para liquidação.</p>
+      <div class="card-info">
+        <p style="margin: 4px 0;"><strong>Valor:</strong> R$ {{valor|0,00}}</p>
+        <p style="margin: 4px 0;"><strong>Vencimento:</strong> {{vencimento}}</p>
+        <p style="margin: 4px 0;"><strong>Opções de Pagamento:</strong> Boleto Bancário e PIX (QRCode)</p>
+      </div>
+      <p>Clique no botão abaixo para abrir a fatura e efetuar o pagamento:</p>
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="{{link_fatura}}" class="btn" target="_blank">Acessar Boleto / Pagar via PIX</a>
+      </div>
+      <p style="font-size: 13px; color: #64748b;">Assim que o pagamento for compensado pelo banco, sua cobertura será ativada e a apólice será emitida automaticamente.</p>
+      <p style="margin-top: 24px;">Atenciosamente,<br><strong>Equipe DuoLife</strong></p>
+    </div>
+    <div class="footer">
+      DuoLife Hub &bull; {{-ano-}}
+    </div>
+  </div>
+</body>
+</html>`,
+      variables: ['nome', 'cotacao_id', 'valor', 'vencimento', 'link_fatura'],
+    },
+    {
       code: 'pagamento_confirmado',
       name: 'Confirmação de Pagamento Recebido',
       subject: 'Pagamento Confirmado — Proposta #{{cotacao_id}}',

@@ -4,6 +4,7 @@ import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { getAccessibleQuoteById } from '@/lib/access';
 import { parseJsonbField } from '@/lib/json-safe';
+import { getZapSignConfig } from '@/lib/system-settings';
 
 export async function POST(
   req: NextRequest,
@@ -61,8 +62,13 @@ export async function POST(
     }
 
     // 2. Consulta status na API da ZapSign
-    const token = process.env.ZAPSIGN_API_TOKEN;
-    const baseUrl = process.env.ZAPSIGN_BASE_URL || 'https://sandbox.api.zapsign.com.br/api/v1';
+    const zapConfig = await getZapSignConfig();
+    const token = zapConfig.apiToken;
+    const baseUrl = zapConfig.baseUrl;
+
+    if (!token) {
+      return Response.json({ error: 'Token da ZapSign não configurado' }, { status: 500 });
+    }
 
     const response = await fetch(`${baseUrl}/docs/${docToken}/`, {
       method: 'GET',

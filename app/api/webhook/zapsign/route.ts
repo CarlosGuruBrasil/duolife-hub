@@ -6,9 +6,12 @@ import { verifyWebhookToken } from '@/lib/webhook-auth';
 import { parseJsonbField } from '@/lib/json-safe';
 import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
 import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
+import { getZapSignConfig } from '@/lib/system-settings';
+import { generateAsaasPaymentForQuote } from '@/lib/asaas-service';
 
-function isAuthorized(req: NextRequest) {
-  const secret = process.env.ZAPSIGN_WEBHOOK_SECRET;
+async function isAuthorized(req: NextRequest) {
+  const zapConfig = await getZapSignConfig();
+  const secret = zapConfig.webhookSecret || process.env.ZAPSIGN_WEBHOOK_SECRET;
 
   const headerSecret =
     req.headers.get('x-zapsign-webhook-secret') ||
@@ -62,7 +65,7 @@ function extractSignedFileUrl(payload: any) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!isAuthorized(req)) {
+  if (!(await isAuthorized(req))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -216,6 +219,27 @@ export async function POST(req: NextRequest) {
           });
         } catch (dispatchErr) {
           logger.error({ dispatchErr, cotacaoId: document.cotacao_id }, 'Falha ao despachar evento CONTRATO_ASSINADO');
+        }
+
+        // Gera cobrança/boleto Asaas automaticamente em background e despacha e-mail
+        try {
+          const paymentResult = await generateAsaasPaymentForQuote(document.cotacao_id);
+          if (paymentResult.ok) {
+            logger.info(
+              { cotacaoId: document.cotacao_id, checkoutId: paymentResult.checkoutId },
+              'zapsign.webhook.asaas_payment_generated'
+            );
+          } else {
+            logger.error(
+              { cotacaoId: document.cotacao_id, error: paymentResult.error },
+              'zapsign.webhook.asaas_payment_failed'
+            );
+          }
+        } catch (paymentErr) {
+          logger.error(
+            { paymentErr, cotacaoId: document.cotacao_id },
+            'zapsign.webhook.asaas_payment_exception'
+          );
         }
       }
     }

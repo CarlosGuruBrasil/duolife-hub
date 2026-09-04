@@ -33,6 +33,11 @@ export const EVENTOS_DISPONIVEIS: Array<{ codigo: EventoDominio; nome: string; d
     descricao: 'Disparado quando o signatário recusa a assinatura ou o documento é cancelado no ZapSign.',
   },
   {
+    codigo: 'FATURA_GERADA',
+    nome: 'Fatura / Boleto Gerado (Asaas)',
+    descricao: 'Disparado automaticamente assim que a cobrança Asaas é criada com link de boleto e PIX.',
+  },
+  {
     codigo: 'PAGAMENTO_CONFIRMADO',
     nome: 'Pagamento Confirmado (Asaas)',
     descricao: 'Disparado quando a cobrança Pix, Boleto ou Cartão é compensada e aprovada.',

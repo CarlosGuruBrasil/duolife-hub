@@ -13,6 +13,7 @@ export type EventoDominio =
   | 'PROPOSTA_ENVIADA'
   | 'CONTRATO_ASSINADO'
   | 'CONTRATO_RECUSADO'
+  | 'FATURA_GERADA'
   | 'PAGAMENTO_CONFIRMADO'
   | 'FATURA_VENCIDA'
   | 'APOLICE_EMITIDA'
@@ -154,6 +155,7 @@ export interface TriggerEvaluationContext {
     vencimento?: string;
     forma_pagamento?: string;
     link_fatura?: string;
+    status?: string;
   };
   usuario?: {
     id?: string;

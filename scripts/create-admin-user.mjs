@@ -19,7 +19,7 @@ async function main() {
   const email = 'carlosad1981@gmail.com'.toLowerCase().trim();
   const password = 'Carlosad$2026';
   const name = 'Carlos Augusto Duarte';
-  const role = 'duolife_admin';
+  const role = 'duolife_dev';
 
   // Garantir que a tabela admin_users existe
   await sql`
