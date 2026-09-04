@@ -147,9 +147,10 @@ interface CotacaoFormRCProps {
   adminSelectedPartnerId?: string;
   publicToken?: string;
   productId?: string;
+  initialCotacaoId?: string;
 }
 
-export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, productId }: CotacaoFormRCProps) {
+export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, productId, initialCotacaoId }: CotacaoFormRCProps) {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<FormState>(initialForm);
@@ -261,6 +262,147 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
     const clean = v.replace('R$', '').replace(/\./g, '').replace(',', '.').trim();
     return parseFloat(clean) || 0;
   };
+
+  // Carrega os dados da cotação se for uma continuidade (rascunho)
+  useEffect(() => {
+    if (!initialCotacaoId) return;
+
+    async function loadCotacao() {
+      try {
+        setLoading(true);
+        const res = await fetch(`/api/cotacoes/${initialCotacaoId}`, {
+          headers: getHeaders()
+        });
+        const data = await res.json();
+        if (data.ok && data.cotacao) {
+          const c = data.cotacao;
+          setCotacaoId(c.id);
+
+          const cd = typeof c.client_data === 'string'
+            ? JSON.parse(c.client_data)
+            : c.client_data || {};
+
+          const toDateInput = (iso?: string | null) => {
+            if (!iso) return '';
+            try {
+              return String(iso).split('T')[0];
+            } catch {
+              return '';
+            }
+          };
+
+          let atuacaoArray: string[] = [];
+          if (Array.isArray(cd.atuacao)) {
+            atuacaoArray = cd.atuacao;
+          } else if (typeof cd.atuacao === 'string' && cd.atuacao) {
+            atuacaoArray = cd.atuacao.split(':').filter(Boolean);
+          }
+
+          let ppeArray: string[] = [];
+          if (Array.isArray(cd.ppeCargoSelect)) {
+            ppeArray = cd.ppeCargoSelect;
+          } else if (typeof cd.ppeCargoSelect === 'string' && cd.ppeCargoSelect && cd.ppeCargoSelect !== '0') {
+            ppeArray = cd.ppeCargoSelect.split(',').filter(Boolean);
+          }
+
+          setForm((prev) => ({
+            ...prev,
+            nome: cd.nome || c.client_name || '',
+            cpfCnpj: applyCpfCnpjMask(cd.cpf || c.client_cpf_cnpj || ''),
+            email: cd.email || c.client_email || '',
+            celular: applyPhoneMask(cd.celular || c.client_phone || ''),
+            oab: cd.oab || '',
+            dataNascto: toDateInput(cd.dataNascto),
+            dataAtividade: toDateInput(cd.dataAtividade),
+            cep: applyCepMask(cd.cep || ''),
+            logradouro: cd.logradouro || '',
+            numero: cd.numero || '',
+            complemento: cd.complemento || '',
+            bairro: cd.bairro || '',
+            cidade: cd.cidade || '',
+            uf: cd.uf || '',
+            faturamentoAntes: cd.faturamentoAntes || '',
+            faturamentoDepois: cd.faturamentoDepois || '',
+            atuacao: atuacaoArray,
+            ppeCargos: cd.ppeCargos === 'Sim' || cd.ppeCargos === true ? 'Sim' : 'Não',
+            ppeRepresenta: cd.ppeRepresenta === 'Sim' || cd.ppeRepresenta === true ? 'Sim' : 'Não',
+            ppeCargoSelect: ppeArray,
+            isRenovacao: cd.renovacao || cd.isRenovacao === 'Sim' ? 'Sim' : 'Não',
+            seguradora: cd.seguradora || '',
+            vigencia: toDateInput(cd.vigencia),
+            limite: cd.limite || '',
+            franquiaAnterior: cd.franquiaAnterior || '',
+            premio: cd.premio || '',
+            dataRetroativa: toDateInput(cd.dataRetroativa),
+            propostaRecusada: cd.propostaRecusada || 'Não',
+            propostaDetalhe: cd.propostaDetalhe || '',
+            reclamacaoProfissional: cd.reclamacaoProfissional || 'Não',
+            reclamacaoDetalhe: cd.reclamacaoDetalhe || '',
+            investigacaoAutoridade: cd.investigacaoAutoridade || 'Não',
+            investigacaoDetalhe: cd.investigacaoDetalhe || '',
+            fatoTerceiros: cd.fatoTerceiros || 'Não',
+            fatoDetalhe: cd.fatoDetalhe || '',
+            pagouReclamacao: cd.pagouReclamacao || 'Não',
+            pagouDetalhe: cd.pagouDetalhe || '',
+          }));
+
+          if (cd.cupomCodigo) {
+            setCupomCode(cd.cupomCodigo);
+            setCupomAplicado(true);
+            setCupomDesconto(Number(cd.cupomDesconto) || 0);
+          }
+
+          if (cd.tipo) {
+            setPlanoSel({
+              tipoDePlano: cd.tipo,
+              nomeExibido: cd.nomePlano || cd.tipo,
+              cobertura: cd.valorCobertura || (c.importancia_segurada ? Number(c.importancia_segurada).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ 100.000,00'),
+              franquia: cd.planoFranquia || 'R$ 1.000,00',
+              ordem: 1,
+              parcela: String(cd.valor || '0'),
+              valorPagoKovr: 0,
+            });
+          }
+
+          if (cd.parcela) {
+            setParcelaSel({
+              qtd: Number(cd.parcela) || 1,
+              valor: Number(cd.valorParcela) || Number(cd.valor) || 0,
+            });
+          }
+
+          if (cd.signUrl) setSignUrl(cd.signUrl);
+          if (cd.contratoToken) setDocToken(cd.contratoToken);
+          if (['assinado', 'pagamento_gerado', 'aprovada'].includes(c.status)) {
+            setContratoAssinado(true);
+          }
+          if (cd.linkBoleto) {
+            setLinkPagamento(cd.linkBoleto);
+            setPaymentDueDate(cd.dataVencimento || '');
+            setCheckoutId(cd.checkoutId || '');
+          }
+
+          // Posiciona no passo ideal de continuidade
+          if (c.status === 'contrato_gerado' && cd.signUrl) {
+            setStep(6);
+          } else if (c.status === 'pagamento_gerado' && cd.linkBoleto) {
+            setStep(6);
+          } else if (cd.tipo) {
+            setStep(5); // Passo de Confirmação do Plano
+          } else if (cd.logradouro && (cd.cpf || c.client_cpf_cnpj)) {
+            setStep(3); // Passo de Dados Profissionais
+          }
+        }
+      } catch (err) {
+        console.error('Erro ao carregar cotação para continuidade:', err);
+        setError('Não foi possível carregar os dados prévios da cotação.');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadCotacao();
+  }, [initialCotacaoId]);
 
   function updateField(field: keyof FormState, value: any) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -449,6 +591,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
       delete payloadClientData.isRenovacao;
 
       const payload = {
+        cotacaoId: cotacaoId || undefined,
         clientName: form.nome,
         clientCpfCnpj: form.cpfCnpj.replace(/\D/g, ''),
         clientEmail: form.email,

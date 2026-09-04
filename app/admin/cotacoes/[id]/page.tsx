@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { ArrowLeft, ExternalLink, FileText, UserCheck, CreditCard, ShieldCheck, FileCheck } from 'lucide-react';
+import { ArrowLeft, ExternalLink, FileText, UserCheck, CreditCard, ShieldCheck, FileCheck, Play } from 'lucide-react';
 import { verifyAuth, isInternalUser } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { PagamentosPanel } from './_pagamentos-client';
@@ -113,12 +113,40 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
           </p>
         </div>
 
-        <div className="text-left md:text-right border-t md:border-t-0 pt-3 md:pt-0 border-slate-100">
-          <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block">Valor Contratado</span>
-          <span className="text-2xl font-black text-slate-900 block">{valorTotalCalculado}</span>
-          <span className="text-xs text-slate-500 font-medium block">{parcelaInfo}</span>
+        <div className="flex flex-col md:items-end gap-3 border-t md:border-t-0 pt-3 md:pt-0 border-slate-100">
+          <div className="text-left md:text-right">
+            <span className="text-xs text-slate-400 uppercase tracking-wider font-semibold block">Valor Contratado</span>
+            <span className="text-2xl font-black text-slate-900 block">{valorTotalCalculado}</span>
+            <span className="text-xs text-slate-500 font-medium block">{parcelaInfo}</span>
+          </div>
+          {cotacao.status === 'rascunho' && (
+            <Link
+              href={`/admin/cotacoes/nova?cotacaoId=${cotacao.id}`}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#00d4e0] text-[#072a33] font-black rounded-xl shadow-xs hover:bg-[#00b8c4] transition-all text-xs uppercase tracking-wider shrink-0"
+              title="Dar continuidade a esta cotação rascunho"
+            >
+              <Play size={13} className="fill-current" /> Dar Continuidade à Cotação
+            </Link>
+          )}
         </div>
       </div>
+
+      {cotacao.status === 'rascunho' && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-amber-900">
+          <div className="text-xs">
+            <strong className="block text-sm font-bold">Esta cotação está salva como Rascunho</strong>
+            <span className="text-amber-800">
+              Você pode continuar de onde parou: revisar os dados cadastrais, alterar coberturas e gerar o contrato para assinatura.
+            </span>
+          </div>
+          <Link
+            href={`/admin/cotacoes/nova?cotacaoId=${cotacao.id}`}
+            className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs transition-colors shrink-0 shadow-xs"
+          >
+            <Play size={12} className="fill-current" /> Continuar Preenchimento
+          </Link>
+        </div>
+      )}
 
       {/* Grid com Detalhes da Proposta, ZapSign e Asaas */}
       <div className="grid md:grid-cols-2 gap-6">

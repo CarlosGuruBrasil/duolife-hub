@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import CotacaoFormRC from '@/components/portal/CotacaoFormRC';
 import { User, Building2 } from 'lucide-react';
@@ -11,19 +12,38 @@ interface PartnerOption {
   razao_social: string;
 }
 
-export default function AdminNovaCotacaoPage() {
+function AdminNovaCotacaoContent() {
+  const searchParams = useSearchParams();
+  const cotacaoId = searchParams.get('cotacaoId') || undefined;
+
   const [partners, setPartners] = useState<PartnerOption[]>([]);
   const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchPartners() {
+    async function init() {
       try {
+        let partnerIdFromCotacao: string | null = null;
+        if (cotacaoId) {
+          try {
+            const resCot = await fetch(`/api/cotacoes/${cotacaoId}`);
+            const dataCot = await resCot.json();
+            if (dataCot.ok && dataCot.cotacao?.partner_id) {
+              partnerIdFromCotacao = dataCot.cotacao.partner_id;
+            }
+          } catch (e) {
+            console.error('Erro ao buscar cotação inicial:', e);
+          }
+        }
+
         const res = await fetch('/api/admin/parceiros');
         const data = await res.json();
         if (data.parceiros) {
-          // Sort to put DuoLife on top or just sort alphabetically
           setPartners(data.parceiros);
+        }
+
+        if (partnerIdFromCotacao) {
+          setSelectedPartnerId(partnerIdFromCotacao);
         }
       } catch (err) {
         console.error(err);
@@ -31,11 +51,11 @@ export default function AdminNovaCotacaoPage() {
         setLoading(false);
       }
     }
-    fetchPartners();
-  }, []);
+    init();
+  }, [cotacaoId]);
 
   if (loading) {
-    return <div className="p-8 text-center">Carregando parceiros...</div>;
+    return <div className="p-8 text-center text-slate-500">Carregando dados...</div>;
   }
 
   if (!selectedPartnerId) {
@@ -45,9 +65,11 @@ export default function AdminNovaCotacaoPage() {
           <Link href="/admin/cotacoes" className="text-sm font-medium" style={{ color: 'var(--primary)' }}>
             ← Voltar para cotações
           </Link>
-          <h1 className="text-2xl font-bold mt-3" style={{ color: 'var(--primary-dark)' }}>Iniciar Nova Cotação</h1>
+          <h1 className="text-2xl font-bold mt-3" style={{ color: 'var(--primary-dark)' }}>
+            {cotacaoId ? 'Continuar Cotação' : 'Iniciar Nova Cotação'}
+          </h1>
           <p className="text-gray-500 mt-1">
-            Como administrador, você pode iniciar uma cotação em nome de qualquer corretor parceiro, ou registrar como Venda Direta DuoLife.
+            Como administrador, você pode iniciar ou dar continuidade a uma cotação em nome de qualquer corretor parceiro, ou registrar como Venda Direta DuoLife.
           </p>
         </div>
 
@@ -58,7 +80,7 @@ export default function AdminNovaCotacaoPage() {
               <button
                 key={p.id}
                 onClick={() => setSelectedPartnerId(p.id)}
-                className="w-full text-left flex items-center gap-3 p-4 border rounded-lg hover:border-emerald-500 hover:bg-emerald-50 transition"
+                className="w-full text-left flex items-center gap-3 p-4 border rounded-lg hover:border-emerald-500 hover:bg-emerald-50 transition cursor-pointer"
               >
                 <div className="bg-emerald-100 p-2 rounded-full text-emerald-600">
                   {p.nome_fantasia === 'DuoLife' ? <Building2 size={20} /> : <User size={20} />}
@@ -86,12 +108,14 @@ export default function AdminNovaCotacaoPage() {
         <div>
           <button 
             onClick={() => setSelectedPartnerId(null)}
-            className="text-sm font-medium mb-3 inline-block" 
+            className="text-sm font-medium mb-3 inline-block cursor-pointer" 
             style={{ color: 'var(--primary)' }}
           >
             ← Trocar parceiro
           </button>
-          <h1 className="text-2xl font-bold" style={{ color: 'var(--primary-dark)' }}>Nova Proposta / Venda RC ADV</h1>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--primary-dark)' }}>
+            {cotacaoId ? 'Continuar Cotação / Proposta RC ADV' : 'Nova Proposta / Venda RC ADV'}
+          </h1>
           <p className="text-gray-500 mt-1">
             Simulando como: <strong className="text-gray-800">{selectedPartner?.nome_fantasia || selectedPartner?.razao_social}</strong>
           </p>
@@ -99,8 +123,16 @@ export default function AdminNovaCotacaoPage() {
       </div>
 
       <div className="bg-white p-6 rounded-xl shadow mb-8">
-        <CotacaoFormRC adminSelectedPartnerId={selectedPartnerId} />
+        <CotacaoFormRC adminSelectedPartnerId={selectedPartnerId} initialCotacaoId={cotacaoId} />
       </div>
     </div>
+  );
+}
+
+export default function AdminNovaCotacaoPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-center text-slate-500">Carregando cotação...</div>}>
+      <AdminNovaCotacaoContent />
+    </Suspense>
   );
 }

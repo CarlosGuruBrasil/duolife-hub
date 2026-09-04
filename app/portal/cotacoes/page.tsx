@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Plus } from 'lucide-react';
+import { Plus, Play } from 'lucide-react';
 import { getPartnerAccessContext, verifyPartnerAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema, seedInitialData } from '@/lib/schema';
@@ -14,6 +14,7 @@ interface CotacaoRow {
   premio_final: string | null;
   status: string;
   created_at: string;
+  product_id: string;
   product_name: string;
 }
 
@@ -45,6 +46,7 @@ export default async function CotacoesPage() {
           c.premio_final,
           c.status,
           c.created_at,
+          c.product_id,
           p.name AS product_name
         FROM cotacoes c
         JOIN products p ON p.id = c.product_id
@@ -61,6 +63,7 @@ export default async function CotacoesPage() {
           c.premio_final,
           c.status,
           c.created_at,
+          c.product_id,
           p.name AS product_name
         FROM cotacoes c
         JOIN products p ON p.id = c.product_id
@@ -95,7 +98,7 @@ export default async function CotacoesPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left text-sm">
+            <table className="w-full min-w-[850px] text-left text-sm">
               <thead className="table-head">
                 <tr>
                   <th className="px-5 py-3 font-semibold">Cliente</th>
@@ -104,6 +107,7 @@ export default async function CotacoesPage() {
                   <th className="px-5 py-3 font-semibold">Prêmio</th>
                   <th className="px-5 py-3 font-semibold">Status</th>
                   <th className="px-5 py-3 font-semibold">Criada em</th>
+                  <th className="px-5 py-3 font-semibold text-center">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -122,6 +126,20 @@ export default async function CotacoesPage() {
                       </span>
                     </td>
                     <td className="px-5 py-4 text-gray-500">{formatDate(cotacao.created_at)}</td>
+                    <td className="px-5 py-4 text-center">
+                      {cotacao.status === 'rascunho' ? (
+                        <Link
+                          href={`/portal/cotacoes/nova?product=${encodeURIComponent(cotacao.product_id)}&cotacaoId=${cotacao.id}`}
+                          className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg text-white transition-opacity hover:opacity-90 shadow-xs"
+                          style={{ background: 'var(--primary)' }}
+                          title="Dar continuidade a este rascunho"
+                        >
+                          <Play size={11} className="fill-current" /> Continuar
+                        </Link>
+                      ) : (
+                        <span className="text-xs text-gray-400">—</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

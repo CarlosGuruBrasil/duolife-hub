@@ -7,10 +7,23 @@ import { sql } from '@/lib/pg';
 
 type Product = { id: string; name: string; description: string | null; product_type: 'insurance' | 'service'; flow_key: string; is_quoteable: boolean };
 
-export default async function NovaCotacaoPage({ searchParams }: { searchParams: Promise<{ product?: string }> }) {
+export default async function NovaCotacaoPage({ searchParams }: { searchParams: Promise<{ product?: string; cotacaoId?: string }> }) {
   const user = await verifyPartnerAuth();
   if (!user?.partnerId) redirect('/login');
-  const { product: productId } = await searchParams;
+  const { product: paramProductId, cotacaoId } = await searchParams;
+
+  let productId = paramProductId;
+  if (cotacaoId && !productId) {
+    const [c] = await sql`
+      SELECT product_id FROM cotacoes
+      WHERE id = ${cotacaoId} AND partner_id = ${user.partnerId}
+      LIMIT 1
+    `;
+    if (c?.product_id) {
+      productId = c.product_id;
+    }
+  }
+
   const products = await sql<Product[]>`
     SELECT p.id, p.name, p.description, p.product_type, p.flow_key, p.is_quoteable
     FROM products p JOIN partner_product_availability ppa ON ppa.product_id = p.id
@@ -32,5 +45,18 @@ export default async function NovaCotacaoPage({ searchParams }: { searchParams: 
   if (!product) redirect('/portal/cotacoes/nova');
   if (!product.is_quoteable || product.flow_key !== 'rc_professional_v1') return <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6"><h1 className="font-semibold text-amber-900">Este fluxo ainda não está disponível</h1><p className="mt-1 text-sm text-amber-800">A oferta foi habilitada, mas a jornada digital ainda está em preparação.</p><Link href="/portal/cotacoes/nova" className="mt-4 inline-block text-sm font-semibold text-amber-900 underline">Voltar ao catálogo</Link></div>;
 
-  return <div><div className="mb-8"><Link href="/portal/cotacoes/nova" className="text-sm font-medium" style={{ color: 'var(--primary)' }}>← Trocar produto</Link><h1 className="page-title mt-3">{product.name}</h1><p className="muted mt-1 text-sm">Preencha as etapas para iniciar sua proposta.</p></div><CotacaoFormRC productId={product.id} /></div>;
+  return (
+    <div>
+      <div className="mb-8">
+        <Link href="/portal/cotacoes/nova" className="text-sm font-medium" style={{ color: 'var(--primary)' }}>← Trocar produto</Link>
+        <h1 className="page-title mt-3">
+          {cotacaoId ? `Continuar Cotação — ${product.name}` : product.name}
+        </h1>
+        <p className="muted mt-1 text-sm">
+          {cotacaoId ? 'Revise os dados e avance para finalizar sua proposta.' : 'Preencha as etapas para iniciar sua proposta.'}
+        </p>
+      </div>
+      <CotacaoFormRC productId={product.id} initialCotacaoId={cotacaoId} />
+    </div>
+  );
 }

@@ -8,6 +8,8 @@ import { upsertInsuranceClient } from '@/lib/insurance-ops';
 import { calcularPrecoServidor } from '@/lib/pricing';
 
 const cotacaoSchema = z.object({
+  id: z.string().trim().optional(),
+  cotacaoId: z.string().trim().optional(),
   clientName: z.string().trim().min(2),
   clientCpfCnpj: z.string().trim().min(11),
   clientEmail: z.string().trim().email().optional().or(z.literal('')),
@@ -257,6 +259,31 @@ export async function POST(req: NextRequest) {
         LIMIT 1
       `;
       renewedFromCotacaoId = previous?.id || null;
+    }
+    
+    // Se for continuidade de uma cotação existente, atualiza os dados em vez de criar duplicada
+    const existingId = data.cotacaoId || data.id;
+    if (existingId) {
+      const [updatedCotacao] = await sql`
+        UPDATE cotacoes
+        SET
+          client_id = ${client.id},
+          client_name = ${data.clientName},
+          client_cpf_cnpj = ${data.clientCpfCnpj},
+          client_email = ${data.clientEmail || null},
+          client_phone = ${data.clientPhone || null},
+          client_data = ${JSON.stringify(clientDataFinal)}::jsonb,
+          importancia_segurada = ${data.importanciaSegurada || null},
+          premio_calculado = ${premioCalculado},
+          notes = ${data.notes || null},
+          updated_at = NOW()
+        WHERE id = ${existingId}
+        RETURNING id, status, created_at
+      `;
+
+      if (updatedCotacao) {
+        return Response.json({ ok: true, cotacao: updatedCotacao }, { status: 200 });
+      }
     }
 
     const [cotacao] = await sql`

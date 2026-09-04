@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Plus, ExternalLink, FileText, Search } from 'lucide-react';
+import { Plus, ExternalLink, FileText, Search, Play } from 'lucide-react';
 import { verifyAuth, isInternalUser } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { RecusarCotacaoButton } from './_recusar-button';
@@ -329,6 +329,15 @@ export default async function AdminCotacoesPage({
 
                       <td className="px-6 py-4 text-center">
                         <div className="flex items-center justify-center gap-2">
+                          {cotacao.status === 'rascunho' && (
+                            <Link
+                              href={`/admin/cotacoes/nova?cotacaoId=${cotacao.id}`}
+                              className="inline-flex items-center gap-1 text-xs font-bold text-[#072a33] bg-[#00d4e0] hover:bg-[#00b8c4] px-3 py-1.5 rounded-lg transition-colors shadow-xs"
+                              title="Continuar preenchimento desta cotação rascunho"
+                            >
+                              <Play size={11} className="fill-current" /> Continuar
+                            </Link>
+                          )}
                           <Link
                             href={`/admin/cotacoes/${cotacao.id}`}
                             className="text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg transition-colors"
