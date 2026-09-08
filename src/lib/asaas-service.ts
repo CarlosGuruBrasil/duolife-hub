@@ -104,7 +104,8 @@ export async function generateAsaasPaymentForQuote(cotacaoId: string): Promise<G
     // 4. Cadastra ou recupera o cliente no Asaas se ainda não existir ID
     if (!clienteId) {
       const cleanDoc = String(cotacao.client_cpf_cnpj).replace(/\D/g, '');
-      const cleanPhone = clientData.celular ? String(clientData.celular).replace(/\D/g, '') : '';
+      const rawPhone = clientData.celular || clientData.telefone || cotacao.client_phone || '';
+      const cleanPhone = rawPhone ? String(rawPhone).replace(/\D/g, '') : '';
       const cleanCep = clientData.cep ? String(clientData.cep).replace(/\D/g, '') : '';
 
       // Verifica se o cliente já existe no Asaas antes de tentar criar
@@ -129,7 +130,7 @@ export async function generateAsaasPaymentForQuote(cotacaoId: string): Promise<G
         const clientPayload = {
           name: cotacao.client_name,
           cpfCnpj: cleanDoc,
-          email: cotacao.client_email || 'suporte@duolife.net.br',
+          email: cotacao.client_email || clientData.email || 'suporte@duolife.net.br',
           mobilePhone: cleanPhone,
           address: clientData.logradouro || '',
           addressNumber: String(clientData.numero || ''),
@@ -166,24 +167,26 @@ export async function generateAsaasPaymentForQuote(cotacaoId: string): Promise<G
     }
 
     // 5. Prepara os valores e parcelamento — recalculado no servidor
-    const tipoDePlano = clientData.tipo || clientData.tipoDePlano || null;
+    const tipoDePlano = clientData.tipo || clientData.tipoDePlano || clientData.nomePlano || clientData.plano || null;
     const preco = await calcularPrecoServidor({
       tipoDePlano,
       qtdParcelasSolicitada: Number(clientData.parcela) || 1,
       cupomCodigo: clientData.cupomCodigo || null,
     });
 
-    if (!preco) {
-      logger.error({ cotacaoId: cotacao.id, tipoDePlano }, 'asaas.payment.plano_nao_encontrado');
-      return { ok: false, error: 'Não foi possível recalcular o preço do plano — cotação inconsistente' };
+    let valorTotal = preco ? Math.round(preco.valorTotal * 100) / 100 : 0;
+    let qtdParcelas = preco ? preco.qtdParcelas : (Number(clientData.parcela) || 1);
+    let valorParcela = preco ? Math.round(preco.valorParcela * 100) / 100 : 0;
+
+    // Fallback de segurança para cotações com contrato já assinado no banco:
+    if ((!valorTotal || valorTotal <= 0) && (cotacao.premio_final || cotacao.premio_calculado)) {
+      valorTotal = Number(cotacao.premio_final || cotacao.premio_calculado);
+      qtdParcelas = Number(clientData.parcela) || 1;
+      valorParcela = qtdParcelas > 1 ? Math.round((valorTotal / qtdParcelas) * 100) / 100 : valorTotal;
     }
 
-    const valorTotal = Math.round(preco.valorTotal * 100) / 100;
-    const qtdParcelas = preco.qtdParcelas;
-    const valorParcela = Math.round(preco.valorParcela * 100) / 100;
-
     if (!valorTotal || valorTotal <= 0) {
-      logger.error({ cotacaoId: cotacao.id }, 'asaas.payment.valor_invalido');
+      logger.error({ cotacaoId: cotacao.id, tipoDePlano }, 'asaas.payment.valor_invalido');
       return { ok: false, error: 'Cotação sem valor de prêmio calculado — não é possível gerar cobrança' };
     }
 
@@ -192,7 +195,7 @@ export async function generateAsaasPaymentForQuote(cotacaoId: string): Promise<G
     dataVencimento.setDate(dataVencimento.getDate() + 3);
     const dueDateStr = dataVencimento.toISOString().split('T')[0];
 
-    const descricao = `Seguro RC Advogado - Plano ${clientData.tipo || clientData.tipoDePlano || ''}`;
+    const descricao = `Seguro RC Advogado - Plano ${tipoDePlano || ''}`;
 
     // 6. Cria a cobrança ou parcelamento no Asaas
     let paymentPayload: Record<string, any> = {

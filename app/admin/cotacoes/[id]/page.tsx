@@ -4,6 +4,7 @@ import { ArrowLeft, ExternalLink, FileText, UserCheck, CreditCard, ShieldCheck, 
 import { verifyAuth, isInternalUser } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { PagamentosPanel } from './_pagamentos-client';
+import { GerarBoletoButton } from '../_gerar-boleto-button';
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
 
@@ -219,9 +220,11 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
                       href={linkBoleto}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition-colors"
+                      className="inline-flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 !text-white text-white font-bold px-3.5 py-1.5 rounded-lg text-xs transition-colors shadow-xs"
                     >
-                      📄 Abrir Fatura / Pix <ExternalLink size={12} />
+                      <span>📄</span>
+                      <span className="!text-white text-white">Abrir Fatura / Pix</span>
+                      <ExternalLink size={12} className="!text-white text-white shrink-0" />
                     </a>
                   )}
                 </div>
@@ -233,7 +236,14 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
                 )}
               </div>
             ) : (
-              <p className="text-xs text-slate-500 font-medium">Nenhuma fatura do Asaas foi gerada para esta cotação ainda.</p>
+              <div className="space-y-3">
+                <p className="text-xs text-slate-500 font-medium">Nenhuma fatura do Asaas foi gerada para esta cotação ainda.</p>
+                {cotacao.status === 'assinado' && (
+                  <div className="pt-1">
+                    <GerarBoletoButton id={cotacao.id} clientName={cotacao.client_name} variant="card" />
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
@@ -258,9 +268,11 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
                     href={signUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 bg-purple-700 hover:bg-purple-800 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition-colors"
+                    className="inline-flex items-center gap-1.5 bg-purple-700 hover:bg-purple-800 !text-white text-white font-bold px-3.5 py-1.5 rounded-lg text-xs transition-colors shadow-xs"
                   >
-                    ✍️ Ver Assinatura <ExternalLink size={12} />
+                    <span>✍️</span>
+                    <span className="!text-white text-white">Ver Assinatura</span>
+                    <ExternalLink size={12} className="!text-white text-white shrink-0" />
                   </a>
                 </div>
               </div>

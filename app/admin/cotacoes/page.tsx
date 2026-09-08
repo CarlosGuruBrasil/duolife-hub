@@ -4,6 +4,7 @@ import { Plus, ExternalLink, FileText, Search, Play } from 'lucide-react';
 import { verifyAuth, isInternalUser } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { RecusarCotacaoButton } from './_recusar-button';
+import { GerarBoletoButton } from './_gerar-boleto-button';
 import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
 import { formatCurrency, formatDateTime } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
@@ -305,6 +306,8 @@ export default async function AdminCotacoesPage({
                             >
                               📄 Fatura Asaas <ExternalLink size={10} />
                             </a>
+                          ) : cotacao.status === 'assinado' ? (
+                            <GerarBoletoButton id={cotacao.id} clientName={cotacao.client_name} variant="table" />
                           ) : (
                             <span className="text-xs text-slate-400 font-normal">—</span>
                           )}
