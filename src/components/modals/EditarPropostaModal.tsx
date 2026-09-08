@@ -423,13 +423,15 @@ export default function EditarPropostaModal({
 
         {/* Banner de Aviso de Bloqueio Financeiro */}
         {isFinancialLocked && (
-          <div className="mx-6 mt-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl p-3.5 flex items-start gap-3 text-xs leading-relaxed">
+          <div className="mx-6 mt-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl p-3.5 flex items-start gap-3 text-xs overflow-hidden">
             <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-            <div>
-              <strong className="font-bold text-amber-950 block mb-0.5">
+            <div className="flex-1 min-w-0">
+              <span className="font-bold text-amber-950 block mb-1">
                 Valores Financeiros Preservados:
-              </strong>
-              Esta proposta possui contrato assinado ou cobrança gerada. Os dados cadastrais, vigência e notas podem ser alterados livremente. Os valores financeiros (cobertura e prêmio) estão preservados para manter a conformidade com o ZapSign e o Asaas.
+              </span>
+              <p className="text-amber-800 leading-relaxed break-words whitespace-normal m-0">
+                Esta proposta possui contrato assinado ou cobrança gerada. Os dados cadastrais, vigência e notas podem ser alterados livremente. Os valores financeiros (cobertura e prêmio) estão preservados para manter a conformidade com o ZapSign e o Asaas.
+              </p>
             </div>
           </div>
         )}
@@ -475,17 +477,17 @@ export default function EditarPropostaModal({
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
             {/* Mensagem de Erro */}
             {errorMessage && (
-              <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-xl p-3.5 flex items-start gap-2.5 text-xs">
+              <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-xl p-3.5 flex items-start gap-2.5 text-xs overflow-hidden">
                 <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                <span>{errorMessage}</span>
+                <span className="flex-1 min-w-0 break-words">{errorMessage}</span>
               </div>
             )}
 
             {/* Mensagem de Sucesso */}
             {successMessage && (
-              <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3.5 flex items-start gap-2.5 text-xs">
+              <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3.5 flex items-start gap-2.5 text-xs overflow-hidden">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>{successMessage}</span>
+                <span className="flex-1 min-w-0 break-words">{successMessage}</span>
               </div>
             )}
 

@@ -274,17 +274,17 @@ export default function EditarClienteModal({
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
             {/* Mensagem de Erro */}
             {errorMessage && (
-              <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-xl p-3.5 flex items-start gap-2.5 text-xs">
+              <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-xl p-3.5 flex items-start gap-2.5 text-xs overflow-hidden">
                 <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                <span>{errorMessage}</span>
+                <span className="flex-1 min-w-0 break-words">{errorMessage}</span>
               </div>
             )}
 
             {/* Mensagem de Sucesso */}
             {successMessage && (
-              <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3.5 flex items-start gap-2.5 text-xs">
+              <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-xl p-3.5 flex items-start gap-2.5 text-xs overflow-hidden">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <span>{successMessage}</span>
+                <span className="flex-1 min-w-0 break-words">{successMessage}</span>
               </div>
             )}
 
