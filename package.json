@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "bash scripts/dev-clean.sh",
+    "dev": "node scripts/dev-clean.mjs",
     "build": "next build",
     "start": "node scripts/migrate.mjs && next start",
     "test": "echo \"No tests configured\"",
