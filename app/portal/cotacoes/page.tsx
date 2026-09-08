@@ -114,7 +114,9 @@ export default async function CotacoesPage() {
                 {cotacoes.map((cotacao) => (
                   <tr key={cotacao.id} className="table-row">
                     <td className="px-5 py-4">
-                      <div className="font-semibold" style={{ color: 'var(--primary)' }}>{cotacao.client_name}</div>
+                      <Link href={`/portal/cotacoes/${cotacao.id}`} className="font-semibold hover:underline block" style={{ color: 'var(--primary)' }}>
+                        {cotacao.client_name}
+                      </Link>
                       <div className="text-xs text-gray-500">{cotacao.client_cpf_cnpj}</div>
                     </td>
                     <td className="px-5 py-4 text-gray-600">{cotacao.product_name}</td>
@@ -127,18 +129,24 @@ export default async function CotacoesPage() {
                     </td>
                     <td className="px-5 py-4 text-gray-500">{formatDate(cotacao.created_at)}</td>
                     <td className="px-5 py-4 text-center">
-                      {cotacao.status === 'rascunho' ? (
+                      <div className="flex items-center justify-center gap-2">
+                        {cotacao.status === 'rascunho' && (
+                          <Link
+                            href={`/portal/cotacoes/nova?product=${encodeURIComponent(cotacao.product_id)}&cotacaoId=${cotacao.id}`}
+                            className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-lg text-white transition-opacity hover:opacity-90 shadow-xs"
+                            style={{ background: 'var(--primary)' }}
+                            title="Dar continuidade a este rascunho"
+                          >
+                            <Play size={11} className="fill-current" /> Continuar
+                          </Link>
+                        )}
                         <Link
-                          href={`/portal/cotacoes/nova?product=${encodeURIComponent(cotacao.product_id)}&cotacaoId=${cotacao.id}`}
-                          className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg text-white transition-opacity hover:opacity-90 shadow-xs"
-                          style={{ background: 'var(--primary)' }}
-                          title="Dar continuidade a este rascunho"
+                          href={`/portal/cotacoes/${cotacao.id}`}
+                          className="text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-lg transition-colors"
                         >
-                          <Play size={11} className="fill-current" /> Continuar
+                          {cotacao.status === 'rascunho' ? 'Detalhes' : 'Ver / Editar'}
                         </Link>
-                      ) : (
-                        <span className="text-xs text-gray-400">—</span>
-                      )}
+                      </div>
                     </td>
                   </tr>
                 ))}

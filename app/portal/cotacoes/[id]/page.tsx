@@ -1,13 +1,12 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { ArrowLeft, ExternalLink, FileText, UserCheck, CreditCard, ShieldCheck, FileCheck, Play } from 'lucide-react';
-import { verifyAuth, isInternalUser } from '@/lib/auth';
+import { ArrowLeft, ExternalLink, FileText, CreditCard, ShieldCheck, FileCheck, Play } from 'lucide-react';
+import { verifyPartnerAuth, getPartnerAccessContext } from '@/lib/auth';
 import { sql } from '@/lib/pg';
-import { PagamentosPanel } from './_pagamentos-client';
-import { GerarBoletoButton } from '../_gerar-boleto-button';
+import { ensureSchema } from '@/lib/schema';
+import { PagamentosPanel } from '@/components/portal/PagamentosPanel';
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
-import { isDateBeforeToday } from '@/lib/business-days';
 import EditarPropostaButton from '@/components/modals/EditarPropostaButton';
 
 const statusLabel: Record<string, string> = {
@@ -34,11 +33,11 @@ const statusColor: Record<string, string> = {
   contrato_gerado: 'bg-amber-50 text-amber-800 border-amber-200'
 };
 
-function parseClientData(data: unknown) {
+function parseClientData(data: unknown): Record<string, unknown> {
   if (!data) return {};
   if (typeof data === 'string') {
     try {
-      return JSON.parse(data);
+      return JSON.parse(data) as Record<string, unknown>;
     } catch {
       return {};
     }
@@ -49,26 +48,45 @@ function parseClientData(data: unknown) {
   return {};
 }
 
-export default async function AdminCotacaoDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const user = await verifyAuth();
-  if (!user || !isInternalUser(user)) {
-    redirect('/login');
-  }
+export default async function PortalCotacaoDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const user = await verifyPartnerAuth();
+  if (!user) redirect('/login');
+  const access = await getPartnerAccessContext(user);
+  if (!access) redirect('/login');
 
+  await ensureSchema();
   const { id } = await params;
 
-  const [cotacao] = await sql`
-    SELECT
-      c.id, c.client_name, c.client_cpf_cnpj, c.client_email, c.client_phone,
-      c.status, c.importancia_segurada, c.premio_final, c.premio_calculado, c.client_data, c.created_at,
-      c.notes,
-      p.name AS product_name,
-      part.nome_fantasia AS partner_name
-    FROM cotacoes c
-    JOIN products p ON p.id = c.product_id
-    JOIN partners part ON part.id = c.partner_id
-    WHERE c.id = ${id}
-  `;
+  const [cotacao] = access.visibleUserIds === null
+    ? await sql`
+        SELECT
+          c.id, c.client_id, c.client_name, c.client_cpf_cnpj, c.client_email, c.client_phone,
+          c.status, c.importancia_segurada, c.premio_final, c.premio_calculado, c.client_data, c.created_at,
+          c.notes, c.product_id,
+          p.name AS product_name,
+          part.nome_fantasia AS partner_name
+        FROM cotacoes c
+        JOIN products p ON p.id = c.product_id
+        JOIN partners part ON part.id = c.partner_id
+        WHERE c.id = ${id}
+          AND c.partner_id = ${access.partnerId}
+        LIMIT 1
+      `
+    : await sql`
+        SELECT
+          c.id, c.client_id, c.client_name, c.client_cpf_cnpj, c.client_email, c.client_phone,
+          c.status, c.importancia_segurada, c.premio_final, c.premio_calculado, c.client_data, c.created_at,
+          c.notes, c.product_id,
+          p.name AS product_name,
+          part.nome_fantasia AS partner_name
+        FROM cotacoes c
+        JOIN products p ON p.id = c.product_id
+        JOIN partners part ON part.id = c.partner_id
+        WHERE c.id = ${id}
+          AND c.partner_id = ${access.partnerId}
+          AND c.partner_user_id IN ${sql(access.visibleUserIds)}
+        LIMIT 1
+      `;
 
   if (!cotacao) notFound();
 
@@ -89,18 +107,16 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
     ? formatCurrency(clientData.valor as number)
     : formatCurrency(cotacao.premio_final ?? cotacao.premio_calculado);
   const parcelaInfo = clientData.parcela ? `${clientData.parcela}x parcela(s)` : '1x À Vista';
-  
-  const linkBoleto = safeExternalUrl(clientData.linkBoleto);
+
+  const linkBoleto = safeExternalUrl(clientData.linkBoleto as string | undefined);
   const checkoutId = String(clientData.checkoutId || '');
-  const signUrl = safeExternalUrl(clientData.signUrl);
+  const signUrl = safeExternalUrl(clientData.signUrl as string | undefined);
   const contratoGeradoEm = String(clientData.contratoGeradoEm || '');
-  const rawVigencia = clientData.dataInicioVigencia || clientData.vigencia || clientData.dataVigencia;
-  const isPastVigencia = rawVigencia ? isDateBeforeToday(String(rawVigencia)) : false;
 
   return (
     <div className="space-y-6 max-w-[1100px] mx-auto">
       {/* Voltar */}
-      <Link href="/admin/cotacoes" className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 transition-colors">
+      <Link href="/portal/cotacoes" className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 transition-colors">
         <ArrowLeft size={14} /> Voltar para Cotações
       </Link>
 
@@ -136,7 +152,7 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
                 client_phone: cotacao.client_phone,
                 importancia_segurada: cotacao.importancia_segurada,
                 premio_final: cotacao.premio_final ?? cotacao.premio_calculado,
-                notes: cotacao.notes,
+                notes: cotacao.notes ? String(cotacao.notes) : null,
                 client_data: clientData,
               }}
               variant="outline"
@@ -144,11 +160,11 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
             />
             {cotacao.status === 'rascunho' && (
               <Link
-                href={`/admin/cotacoes/nova?cotacaoId=${cotacao.id}`}
+                href={`/portal/cotacoes/nova?product=${encodeURIComponent(cotacao.product_id)}&cotacaoId=${cotacao.id}`}
                 className="inline-flex items-center gap-2 px-4 py-2 bg-[#00d4e0] text-[#072a33] font-black rounded-xl shadow-xs hover:bg-[#00b8c4] transition-all text-xs uppercase tracking-wider shrink-0"
                 title="Dar continuidade a esta cotação rascunho"
               >
-                <Play size={13} className="fill-current" /> Dar Continuidade à Cotação
+                <Play size={13} className="fill-current" /> Continuar Cotação
               </Link>
             )}
           </div>
@@ -164,7 +180,7 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
             </span>
           </div>
           <Link
-            href={`/admin/cotacoes/nova?cotacaoId=${cotacao.id}`}
+            href={`/portal/cotacoes/nova?product=${encodeURIComponent(cotacao.product_id)}&cotacaoId=${cotacao.id}`}
             className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs transition-colors shrink-0 shadow-xs"
           >
             <Play size={12} className="fill-current" /> Continuar Preenchimento
@@ -191,7 +207,7 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
                 client_phone: cotacao.client_phone,
                 importancia_segurada: cotacao.importancia_segurada,
                 premio_final: cotacao.premio_final ?? cotacao.premio_calculado,
-                notes: cotacao.notes,
+                notes: cotacao.notes ? String(cotacao.notes) : null,
                 client_data: clientData,
               }}
               variant="ghost"
@@ -232,12 +248,20 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
           </div>
 
           {/* Endereço */}
-          {clientData.logradouro && (
+          {Boolean(clientData.logradouro) && (
             <div className="pt-3 border-t border-slate-100 text-xs">
               <span className="text-slate-400 font-semibold uppercase tracking-wider block text-[11px]">Endereço Cadastrado</span>
               <p className="text-slate-700 mt-1 font-medium">
                 {String(clientData.logradouro)}, {String(clientData.numero || 'S/N')} · {String(clientData.bairro || '')} · {String(clientData.cidade || '')}/{String(clientData.uf || '')} (CEP: {String(clientData.cep || '')})
               </p>
+            </div>
+          )}
+
+          {/* Observações */}
+          {Boolean(cotacao.notes) && (
+            <div className="pt-3 border-t border-slate-100 text-xs">
+              <span className="text-slate-400 font-semibold uppercase tracking-wider block text-[11px]">Observações</span>
+              <p className="text-slate-700 mt-1">{String(cotacao.notes)}</p>
             </div>
           )}
         </div>
@@ -272,29 +296,14 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
                   )}
                 </div>
 
-                {clientData.dataVencimento && (
+                {Boolean(clientData.dataVencimento) && (
                   <p className="text-xs text-slate-500 font-medium">
                     Data de Vencimento: <strong className="text-slate-900">{formatDate(String(clientData.dataVencimento))}</strong>
                   </p>
                 )}
               </div>
             ) : (
-              <div className="space-y-3">
-                <p className="text-xs text-slate-500 font-medium">Nenhuma fatura do Asaas foi gerada para esta cotação ainda.</p>
-                {cotacao.status === 'assinado' && (
-                  <div className="pt-1 space-y-2">
-                    {isPastVigencia && (
-                      <div className="text-xs bg-amber-50 border border-amber-200 text-amber-900 p-3 rounded-xl">
-                        <strong className="block font-bold mb-0.5">⚠️ Vigência anterior à data atual:</strong>
-                        <span>
-                          A geração automática foi retida para parceiros. Como administrador, ao gerar a cobrança agora o vencimento será calculado automaticamente para a <strong>data atual + 2 dias úteis</strong>.
-                        </span>
-                      </div>
-                    )}
-                    <GerarBoletoButton id={cotacao.id} clientName={cotacao.client_name} variant="card" />
-                  </div>
-                )}
-              </div>
+              <p className="text-xs text-slate-500 font-medium">Nenhuma fatura do Asaas foi gerada para esta cotação ainda.</p>
             )}
           </div>
 
@@ -309,7 +318,7 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
                 <div className="flex items-center justify-between text-xs bg-purple-50/80 border border-purple-200/80 p-3 rounded-xl">
                   <div>
                     <span className="font-bold text-purple-900 block">Documento de Contrato Gerado</span>
-                    {contratoGeradoEm && (
+                    {Boolean(contratoGeradoEm) && (
                       <span className="text-purple-700 text-[11px] block">
                         Gerado em: {formatDateTime(contratoGeradoEm)}
                       </span>
@@ -353,11 +362,10 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
       {/* Histórico Técnico de Pagamentos das Parcelas */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs">
         <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 flex items-center gap-2">
-          <CreditCard size={16} className="text-slate-600" /> Histórico de Parcelas & Ordens Financeiras
+          <CreditCard size={16} className="text-slate-600" /> Histórico de Parcelas & Pagamentos
         </h2>
         <PagamentosPanel cotacaoId={cotacao.id} />
       </div>
     </div>
   );
 }
-

@@ -1,17 +1,31 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { getPartnerAccessContext, verifyPartnerAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { formatCurrency, formatDateTime as formatDate } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
+import EditarClienteButton from '@/components/modals/EditarClienteButton';
+import EditarPropostaButton from '@/components/modals/EditarPropostaButton';
 
 function formatDocument(value: string) {
   const digits = value.replace(/\D/g, '');
   if (digits.length === 11) return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
   if (digits.length === 14) return digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
   return value;
+}
+
+function parseJsonField<T>(field: unknown): T {
+  if (!field) return {} as T;
+  if (typeof field === 'string') {
+    try {
+      return JSON.parse(field) as T;
+    } catch {
+      return {} as T;
+    }
+  }
+  return field as T;
 }
 
 const statusLabel: Record<string, string> = {
@@ -41,7 +55,7 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
 
   const [client] = access.visibleUserIds === null
     ? await sql`
-        SELECT id, full_name, document_number, email, phone
+        SELECT id, full_name, document_number, email, phone, birth_date, metadata
         FROM insurance_clients
         WHERE id = ${id}
           AND EXISTS (
@@ -53,7 +67,7 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
         LIMIT 1
       `
     : await sql`
-        SELECT id, full_name, document_number, email, phone
+        SELECT id, full_name, document_number, email, phone, birth_date, metadata
         FROM insurance_clients
         WHERE id = ${id}
           AND EXISTS (
@@ -76,6 +90,12 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
           c.created_at,
           c.premio_final,
           c.importancia_segurada,
+          c.client_name,
+          c.client_cpf_cnpj,
+          c.client_email,
+          c.client_phone,
+          c.client_data,
+          c.notes,
           p.name AS product_name,
           po.status AS payment_status,
           po.installment_count,
@@ -97,6 +117,12 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
           c.created_at,
           c.premio_final,
           c.importancia_segurada,
+          c.client_name,
+          c.client_cpf_cnpj,
+          c.client_email,
+          c.client_phone,
+          c.client_data,
+          c.notes,
           p.name AS product_name,
           po.status AS payment_status,
           po.installment_count,
@@ -154,6 +180,21 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
         ORDER BY pi.due_date ASC NULLS LAST, pi.installment_number ASC
       `;
 
+  const clientMeta = parseJsonField<Record<string, unknown>>(client.metadata);
+  const latestQuoteData = quotes[0] ? parseJsonField<Record<string, unknown>>(quotes[0].client_data) : {};
+
+  const clientAddress = (clientMeta.address && typeof clientMeta.address === 'object')
+    ? (clientMeta.address as Record<string, string>)
+    : {
+        cep: String(latestQuoteData.cep || ''),
+        logradouro: String(latestQuoteData.logradouro || latestQuoteData.rua || ''),
+        numero: String(latestQuoteData.numero || ''),
+        complemento: String(latestQuoteData.complemento || ''),
+        bairro: String(latestQuoteData.bairro || ''),
+        cidade: String(latestQuoteData.cidade || ''),
+        uf: String(latestQuoteData.uf || ''),
+      };
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -162,7 +203,30 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
             <ArrowLeft size={16} /> Voltar para clientes
           </Link>
           <h1 className="page-title">{client.full_name}</h1>
-          <p className="muted mt-1 text-sm">{formatDocument(client.document_number)} • {client.email || '-'} • {client.phone || '-'}</p>
+          <p className="muted mt-1 text-sm">
+            {formatDocument(client.document_number)} • {client.email || '-'} • {client.phone || '-'}
+            {client.birth_date ? ` • Nasc: ${new Date(client.birth_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}` : ''}
+          </p>
+          {clientAddress.logradouro && (
+            <p className="text-xs text-slate-500 mt-1">
+              📍 {clientAddress.logradouro}, {clientAddress.numero || 'S/N'} {clientAddress.bairro ? `· ${clientAddress.bairro}` : ''} {clientAddress.cidade ? `· ${clientAddress.cidade}/${clientAddress.uf}` : ''} {clientAddress.cep ? `· CEP: ${clientAddress.cep}` : ''}
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <EditarClienteButton
+            cliente={{
+              id: client.id,
+              full_name: client.full_name,
+              document_number: client.document_number,
+              email: client.email,
+              phone: client.phone,
+              birth_date: client.birth_date ? String(client.birth_date).slice(0, 10) : null,
+              address: clientAddress,
+            }}
+            variant="primary"
+            size="md"
+          />
         </div>
       </div>
 
@@ -171,7 +235,7 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
           <h2 className="text-lg font-bold" style={{ color: 'var(--primary)' }}>Produtos e operações</h2>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px] text-left text-sm">
+          <table className="w-full min-w-[980px] text-left text-sm">
             <thead className="table-head">
               <tr>
                 <th className="px-5 py-3 font-semibold">Produto</th>
@@ -180,6 +244,7 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
                 <th className="px-5 py-3 font-semibold">Pagamento</th>
                 <th className="px-5 py-3 font-semibold">Prêmio</th>
                 <th className="px-5 py-3 font-semibold">Criada em</th>
+                <th className="px-5 py-3 font-semibold text-center">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -202,6 +267,34 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
                   </td>
                   <td className="px-5 py-4">{formatCurrency(quote.premio_final)}</td>
                   <td className="px-5 py-4 text-gray-500">{formatDate(quote.created_at)}</td>
+                  <td className="px-5 py-4 text-center">
+                    <div className="flex items-center justify-center gap-2">
+                      <EditarPropostaButton
+                        cotacao={{
+                          id: quote.id,
+                          status: quote.status,
+                          client_name: quote.client_name,
+                          client_cpf_cnpj: quote.client_cpf_cnpj,
+                          client_email: quote.client_email,
+                          client_phone: quote.client_phone,
+                          importancia_segurada: quote.importancia_segurada,
+                          premio_final: quote.premio_final,
+                          notes: quote.notes,
+                          client_data: parseJsonField(quote.client_data),
+                        }}
+                        variant="ghost"
+                        size="sm"
+                      >
+                        <span className="text-xs text-[#0e4a5a] font-semibold hover:underline">✏️ Editar</span>
+                      </EditarPropostaButton>
+                      <Link
+                        href={`/portal/cotacoes/${quote.id}`}
+                        className="text-xs font-semibold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-lg transition-colors inline-flex items-center gap-1"
+                      >
+                        Ver <ExternalLink size={11} />
+                      </Link>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
