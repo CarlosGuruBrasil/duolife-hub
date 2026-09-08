@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Copy, Check, ExternalLink, Link2, Palette, Building, Share2 } from 'lucide-react';
 import type { WhiteLabelConfig } from '@/lib/white-label';
 
@@ -133,8 +133,14 @@ export default function PartnerProfileForm({
     }
   }
 
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const currentRefCode = form.wixCode || whiteLabel.wixCode || saleLink.code || saleLink.token;
-  const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'https://duolife.com.br';
+  const serverBaseUrl = saleLink.directUrl ? saleLink.directUrl.split('/contratar/')[0] : 'https://duolife.com.br';
+  const baseUrl = mounted && typeof window !== 'undefined' ? window.location.origin : serverBaseUrl;
   const dynamicDirectUrl = `${baseUrl}/contratar/${saleLink.token}`;
   const dynamicRefUrl = `${baseUrl}/?ref=${encodeURIComponent(currentRefCode)}`;
 

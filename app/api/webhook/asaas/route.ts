@@ -5,6 +5,7 @@ import { logger } from '@/lib/logger';
 import { ensureSaleForPaidQuote } from '@/lib/insurance-ops';
 import { verifyWebhookToken } from '@/lib/webhook-auth';
 import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
+import { getAsaasConfig } from '@/lib/system-settings';
 
 function normalizeAsaasStatus(value: string | null | undefined) {
   return String(value || '').toLowerCase();
@@ -40,7 +41,8 @@ export async function POST(req: NextRequest) {
   try {
     await ensureSchema();
     const authHeader = req.headers.get('asaas-access-token');
-    const secret = process.env.ASAAS_WEBHOOK_SECRET;
+    const asaasCfg = await getAsaasConfig();
+    const secret = asaasCfg.webhookSecret || process.env.ASAAS_WEBHOOK_SECRET;
 
     // Fail-closed: sem secret configurado ou token que não bate, a requisição é sempre rejeitada.
     if (!verifyWebhookToken(authHeader, secret)) {
@@ -167,8 +169,17 @@ export async function POST(req: NextRequest) {
     if (isPaidEvent(event)) {
       
       // 1. Encontra a cotação vinculada a este pagamento
-      const [cotacao] = await sql<{ id: string, client_id: string | null, partner_id: string, product_id: string, importancia_segurada: number, status: string }[]>`
-        SELECT id, client_id, partner_id, product_id, importancia_segurada, status 
+      const [cotacao] = await sql<{
+        id: string;
+        client_id: string | null;
+        partner_id: string;
+        product_id: string;
+        importancia_segurada: number;
+        status: string;
+        premio_final: number | null;
+        premio_calculado: number | null;
+      }[]>`
+        SELECT id, client_id, partner_id, product_id, importancia_segurada, status, premio_final, premio_calculado 
         FROM cotacoes 
         WHERE id = COALESCE(${installment?.cotacao_id || null}, id)
           AND (
@@ -192,12 +203,16 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: true, ignored: true });
       }
 
-      if (cotacao.status === 'aprovada') {
-        logger.info({ cotacaoId: cotacao.id }, 'Asaas webhook ignored: Quote already approved');
-        return NextResponse.json({ success: true, ignored: true });
-      }
+      // Obtém o valor total da apólice (nunca apenas da parcela individual)
+      const [orderRow] = await sql<{ amount_total: number }[]>`
+        SELECT amount_total FROM payment_orders
+        WHERE cotacao_id = ${cotacao.id}
+        LIMIT 1
+      `;
 
-      const premioFinal = Number(payment.value);
+      const premioTotalApolice = Number(
+        orderRow?.amount_total || cotacao.premio_final || cotacao.premio_calculado || payment.value
+      );
 
       try {
         const sale = await ensureSaleForPaidQuote({
@@ -206,52 +221,54 @@ export async function POST(req: NextRequest) {
           partnerId: cotacao.partner_id,
           productId: cotacao.product_id,
           importanciaSegurada: Number(cotacao.importancia_segurada) || 0,
-          premioFinal,
+          premioFinal: premioTotalApolice,
         });
 
-        logger.info({ cotacaoId: cotacao.id, saleId: sale.saleId }, 'Sale successfully generated from webhook');
+        logger.info({ cotacaoId: cotacao.id, saleId: sale.saleId, created: sale.created }, 'Sale processed from webhook');
 
-        // Dispara gatilhos da árvore de decisão para PAGAMENTO_CONFIRMADO
-        try {
-          const [clientRow] = cotacao.client_id ? await sql<{ full_name: string; email: string; document_number: string; phone: string }[]>`
-            SELECT full_name, email, document_number, phone FROM insurance_clients WHERE id = ${cotacao.client_id} LIMIT 1
-          ` : [];
+        // Dispara gatilhos da árvore de decisão apenas se a venda foi criada pela primeira vez (evita spam em parcelas 2+ ou retries)
+        if (sale.created) {
+          try {
+            const [clientRow] = cotacao.client_id ? await sql<{ full_name: string; email: string; document_number: string; phone: string }[]>`
+              SELECT full_name, email, document_number, phone FROM insurance_clients WHERE id = ${cotacao.client_id} LIMIT 1
+            ` : [];
 
-          const [partnerRow] = await sql<{ razao_social: string; email: string; metadata: any }[]>`
-            SELECT razao_social, email, metadata FROM partners WHERE id = ${cotacao.partner_id} LIMIT 1
-          `;
+            const [partnerRow] = await sql<{ razao_social: string; email: string; metadata: any }[]>`
+              SELECT razao_social, email, metadata FROM partners WHERE id = ${cotacao.partner_id} LIMIT 1
+            `;
 
-          await dispatchDomainEvent('PAGAMENTO_CONFIRMADO', {
-            eventType: 'PAGAMENTO_CONFIRMADO',
-            contextId: cotacao.id,
-            cliente: {
-              nome: clientRow?.full_name,
-              email: clientRow?.email,
-              documento: clientRow?.document_number,
-              telefone: clientRow?.phone,
-            },
-            parceiro: {
-              id: cotacao.partner_id,
-              nome: partnerRow?.razao_social,
-              email: partnerRow?.email,
-              codigoVenda: partnerRow?.metadata?.whiteLabel?.wixCode,
-            },
-            cotacao: {
-              id: cotacao.id,
-              status: 'aprovada',
-              premio_final: premioFinal,
-              cobertura: Number(cotacao.importancia_segurada) || 0,
-            },
-            transacao: {
-              id: payment.id,
-              valor: premioFinal,
-              vencimento: payment.dueDate,
-              forma_pagamento: payment.billingType,
-              link_fatura: payment.invoiceUrl,
-            },
-          });
-        } catch (dispatchErr) {
-          logger.error({ dispatchErr, cotacaoId: cotacao.id }, 'Falha ao despachar gatilhos para pagamento confirmado');
+            await dispatchDomainEvent('PAGAMENTO_CONFIRMADO', {
+              eventType: 'PAGAMENTO_CONFIRMADO',
+              contextId: cotacao.id,
+              cliente: {
+                nome: clientRow?.full_name,
+                email: clientRow?.email,
+                documento: clientRow?.document_number,
+                telefone: clientRow?.phone,
+              },
+              parceiro: {
+                id: cotacao.partner_id,
+                nome: partnerRow?.razao_social,
+                email: partnerRow?.email,
+                codigoVenda: partnerRow?.metadata?.whiteLabel?.wixCode,
+              },
+              cotacao: {
+                id: cotacao.id,
+                status: 'aprovada',
+                premio_final: premioTotalApolice,
+                cobertura: Number(cotacao.importancia_segurada) || 0,
+              },
+              transacao: {
+                id: payment.id,
+                valor: Number(payment.value),
+                vencimento: payment.dueDate,
+                forma_pagamento: payment.billingType,
+                link_fatura: payment.invoiceUrl,
+              },
+            });
+          } catch (dispatchErr) {
+            logger.error({ dispatchErr, cotacaoId: cotacao.id }, 'Falha ao despachar gatilhos para pagamento confirmado');
+          }
         }
       } catch (err) {
         logger.error({ err, cotacaoId: cotacao.id }, 'Error saving sale data from webhook');

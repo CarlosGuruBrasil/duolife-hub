@@ -105,7 +105,7 @@ export async function getAsaasConfig(): Promise<AsaasConfig> {
   let envSetting = dbSettings['ASAAS_ENVIRONMENT'];
   if (!envSetting) {
     const envUrl = process.env.ASAAS_BASE_URL || '';
-    envSetting = envUrl.includes('sandbox') ? 'sandbox' : 'sandbox'; // padrão sandbox seguro
+    envSetting = envUrl.includes('sandbox') ? 'sandbox' : 'production';
   }
 
   const isSandbox = envSetting === 'sandbox';
@@ -136,7 +136,7 @@ export async function getZapSignConfig(): Promise<ZapSignConfig> {
   let envSetting = dbSettings['ZAPSIGN_ENVIRONMENT'];
   if (!envSetting) {
     const isSandboxEnv = process.env.ZAPSIGN_SANDBOX === 'true' || (process.env.ZAPSIGN_BASE_URL || '').includes('sandbox');
-    envSetting = isSandboxEnv ? 'sandbox' : 'sandbox'; // padrão sandbox seguro
+    envSetting = isSandboxEnv ? 'sandbox' : 'production';
   }
 
   const isSandbox = envSetting === 'sandbox';

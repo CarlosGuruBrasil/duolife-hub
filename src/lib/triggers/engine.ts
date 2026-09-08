@@ -119,13 +119,35 @@ export function evaluateDecisionTree(
   });
 
   const executableActions: NoArvore[] = [];
+  const visited = new Set<string>();
 
   // 2. Função recursiva de avaliação de galho
-  function evaluateBranch(parentId: string): boolean {
+  function evaluateBranch(parentId: string, depth = 0): boolean {
+    if (depth > 25) {
+      evaluatedNodes.push({
+        nodeId: parentId,
+        tipo: 'GATILHO',
+        evaluatedTo: false,
+        reason: 'Limite de profundidade da árvore excedido (máximo 25 níveis)',
+      });
+      return false;
+    }
+
     const children = childrenMap.get(parentId) || [];
     if (children.length === 0) return true;
 
     for (const child of children) {
+      if (visited.has(child.id)) {
+        evaluatedNodes.push({
+          nodeId: child.id,
+          tipo: child.tipo,
+          evaluatedTo: false,
+          reason: 'Ciclo detectado na árvore de decisão — nó ignorado',
+        });
+        continue;
+      }
+      visited.add(child.id);
+
       if (child.ativo === false) {
         evaluatedNodes.push({
           nodeId: child.id,
@@ -151,12 +173,16 @@ export function evaluateDecisionTree(
         });
 
         if (childPassed) {
-          evaluateBranch(child.id);
+          evaluateBranch(child.id, depth + 1);
         }
       } else if (child.tipo === 'LOGICO_E') {
-        // Todas as ramificações filhas de LOGICO_E devem passar
+        // Apenas filhos condicionais devem ser avaliados para aprovação do bloco E
         const grandChildren = childrenMap.get(child.id) || [];
-        const results = grandChildren.map((gc) => {
+        const conditionChildren = grandChildren.filter((gc) =>
+          gc.tipo === 'CONDICAO_SE' || gc.tipo === 'LOGICO_E' || gc.tipo === 'LOGICO_OU'
+        );
+
+        const results = conditionChildren.map((gc) => {
           if (gc.tipo === 'CONDICAO_SE') {
             const config = gc.configuracao || {};
             const actualVal = config.campo ? getNestedValue(context, config.campo) : undefined;
@@ -167,9 +193,10 @@ export function evaluateDecisionTree(
               evaluatedTo: res,
               reason: `Subcondição E: ${config.campo} ${config.operador} ${config.valor_comparacao} => ${res}`,
             });
+            visited.add(gc.id);
             return res;
           }
-          return true;
+          return false;
         });
 
         childPassed = results.length > 0 && results.every(Boolean);
@@ -181,12 +208,16 @@ export function evaluateDecisionTree(
         });
 
         if (childPassed) {
-          evaluateBranch(child.id);
+          evaluateBranch(child.id, depth + 1);
         }
       } else if (child.tipo === 'LOGICO_OU') {
-        // Pelo menos uma ramificação filha de LOGICO_OU deve passar
+        // Apenas filhos condicionais devem ser avaliados para aprovação do bloco OU
         const grandChildren = childrenMap.get(child.id) || [];
-        const results = grandChildren.map((gc) => {
+        const conditionChildren = grandChildren.filter((gc) =>
+          gc.tipo === 'CONDICAO_SE' || gc.tipo === 'LOGICO_E' || gc.tipo === 'LOGICO_OU'
+        );
+
+        const results = conditionChildren.map((gc) => {
           if (gc.tipo === 'CONDICAO_SE') {
             const config = gc.configuracao || {};
             const actualVal = config.campo ? getNestedValue(context, config.campo) : undefined;
@@ -197,9 +228,10 @@ export function evaluateDecisionTree(
               evaluatedTo: res,
               reason: `Subcondição OU: ${config.campo} ${config.operador} ${config.valor_comparacao} => ${res}`,
             });
+            visited.add(gc.id);
             return res;
           }
-          return true;
+          return false;
         });
 
         childPassed = results.length > 0 && results.some(Boolean);
@@ -211,7 +243,7 @@ export function evaluateDecisionTree(
         });
 
         if (childPassed) {
-          evaluateBranch(child.id);
+          evaluateBranch(child.id, depth + 1);
         }
       } else if (child.tipo.startsWith('ACAO_')) {
         // Ação ativada!
@@ -224,14 +256,14 @@ export function evaluateDecisionTree(
         });
 
         // Ações também podem ter filhos subsequentes
-        evaluateBranch(child.id);
+        evaluateBranch(child.id, depth + 1);
       }
     }
 
     return true;
   }
 
-  evaluateBranch(rootNode.id);
+  evaluateBranch(rootNode.id, 0);
 
   return { evaluatedNodes, executableActions };
 }

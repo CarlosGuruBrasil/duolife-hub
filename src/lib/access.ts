@@ -21,6 +21,10 @@ export async function getAccessibleQuoteById(quoteId: string, user: AuthUser) {
     return rows[0] ?? null;
   }
 
+  if (access.visibleUserIds.length === 0) {
+    return null;
+  }
+
   const rows = await sql`
     SELECT *
     FROM cotacoes

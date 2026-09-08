@@ -55,13 +55,38 @@ export async function generateAsaasPaymentForQuote(cotacaoId: string): Promise<G
 
     const clientData = parseJsonbField<Record<string, any>>(cotacao.client_data);
 
-    // 2. Idempotência: já existe uma cobrança gerada para esta cotação
+    // 2. Idempotência: já existe uma cobrança gerada para esta cotação (em client_data ou em payment_orders)
     if (clientData.checkoutId && clientData.linkBoleto) {
       return {
         ok: true,
         checkoutId: clientData.checkoutId,
         linkBoleto: clientData.linkBoleto,
         dueDate: clientData.dataVencimento,
+        alreadyExisted: true,
+      };
+    }
+
+    const [existingOrder] = await sql<any[]>`
+      SELECT external_payment_id, invoice_url, bank_slip_url, due_date
+      FROM payment_orders
+      WHERE cotacao_id = ${cotacao.id}
+      LIMIT 1
+    `;
+    if (existingOrder && (existingOrder.bank_slip_url || existingOrder.invoice_url)) {
+      const existingLink = existingOrder.bank_slip_url || existingOrder.invoice_url;
+      clientData.checkoutId = existingOrder.external_payment_id;
+      clientData.linkBoleto = existingLink;
+      clientData.dataVencimento = existingOrder.due_date;
+      await sql`
+        UPDATE cotacoes
+        SET client_data = ${JSON.stringify(clientData)}::jsonb, updated_at = NOW()
+        WHERE id = ${cotacao.id}
+      `;
+      return {
+        ok: true,
+        checkoutId: existingOrder.external_payment_id,
+        linkBoleto: existingLink,
+        dueDate: existingOrder.due_date,
         alreadyExisted: true,
       };
     }
@@ -76,48 +101,68 @@ export async function generateAsaasPaymentForQuote(cotacaoId: string): Promise<G
 
     let clienteId = clientData.clienteId;
 
-    // 4. Cadastra o cliente no Asaas se ainda não existir ID
+    // 4. Cadastra ou recupera o cliente no Asaas se ainda não existir ID
     if (!clienteId) {
       const cleanDoc = String(cotacao.client_cpf_cnpj).replace(/\D/g, '');
       const cleanPhone = clientData.celular ? String(clientData.celular).replace(/\D/g, '') : '';
       const cleanCep = clientData.cep ? String(clientData.cep).replace(/\D/g, '') : '';
 
-      const clientPayload = {
-        name: cotacao.client_name,
-        cpfCnpj: cleanDoc,
-        email: cotacao.client_email || 'suporte@duolife.net.br',
-        mobilePhone: cleanPhone,
-        address: clientData.logradouro || '',
-        addressNumber: String(clientData.numero || ''),
-        complement: clientData.complemento || '',
-        province: clientData.bairro || '',
-        postalCode: cleanCep,
-        notificationDisabled: true, // Notificações gerenciadas pelo motor DuoLife
-      };
-
-      const clientRes = await fetch(`${baseUrl}/customers`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'access_token': apiKey,
-        },
-        body: JSON.stringify(clientPayload),
-      });
-
-      const clientResText = await clientRes.text();
-
-      if (!clientRes.ok) {
-        logger.error({ status: clientRes.status, body: clientResText }, 'asaas.payment.customer_failed');
-        return { ok: false, error: `Falha ao cadastrar cliente no Asaas: ${clientResText}` };
+      // Verifica se o cliente já existe no Asaas antes de tentar criar
+      if (cleanDoc) {
+        try {
+          const findCustRes = await fetch(`${baseUrl}/customers?cpfCnpj=${cleanDoc}`, {
+            headers: { 'access_token': apiKey },
+          });
+          if (findCustRes.ok) {
+            const findCustJson = await findCustRes.json();
+            if (findCustJson.data && findCustJson.data.length > 0 && findCustJson.data[0]?.id) {
+              clienteId = findCustJson.data[0].id;
+              clientData.clienteId = clienteId;
+            }
+          }
+        } catch (findErr) {
+          logger.warn({ findErr, cotacaoId: cotacao.id }, 'asaas.payment.find_customer_warn');
+        }
       }
 
-      const clientJson = JSON.parse(clientResText);
-      clienteId = clientJson.id;
       if (!clienteId) {
-        logger.error({ cotacaoId: cotacao.id, body: clientResText }, 'asaas.payment.customer_sem_id');
-        return { ok: false, error: 'Resposta inesperada da Asaas ao cadastrar cliente' };
+        const clientPayload = {
+          name: cotacao.client_name,
+          cpfCnpj: cleanDoc,
+          email: cotacao.client_email || 'suporte@duolife.net.br',
+          mobilePhone: cleanPhone,
+          address: clientData.logradouro || '',
+          addressNumber: String(clientData.numero || ''),
+          complement: clientData.complemento || '',
+          province: clientData.bairro || '',
+          postalCode: cleanCep,
+          notificationDisabled: true, // Notificações gerenciadas pelo motor DuoLife
+        };
+
+        const clientRes = await fetch(`${baseUrl}/customers`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'access_token': apiKey,
+          },
+          body: JSON.stringify(clientPayload),
+        });
+
+        const clientResText = await clientRes.text();
+
+        if (!clientRes.ok) {
+          logger.error({ status: clientRes.status, body: clientResText }, 'asaas.payment.customer_failed');
+          return { ok: false, error: `Falha ao cadastrar cliente no Asaas: ${clientResText}` };
+        }
+
+        const clientJson = JSON.parse(clientResText);
+        clienteId = clientJson.id;
+        if (!clienteId) {
+          logger.error({ cotacaoId: cotacao.id, body: clientResText }, 'asaas.payment.customer_sem_id');
+          return { ok: false, error: 'Resposta inesperada da Asaas ao cadastrar cliente' };
+        }
+        clientData.clienteId = clienteId;
       }
-      clientData.clienteId = clienteId;
     }
 
     // 5. Prepara os valores e parcelamento — recalculado no servidor
@@ -133,9 +178,9 @@ export async function generateAsaasPaymentForQuote(cotacaoId: string): Promise<G
       return { ok: false, error: 'Não foi possível recalcular o preço do plano — cotação inconsistente' };
     }
 
-    const valorTotal = preco.valorTotal;
+    const valorTotal = Math.round(preco.valorTotal * 100) / 100;
     const qtdParcelas = preco.qtdParcelas;
-    const valorParcela = preco.valorParcela;
+    const valorParcela = Math.round(preco.valorParcela * 100) / 100;
 
     if (!valorTotal || valorTotal <= 0) {
       logger.error({ cotacaoId: cotacao.id }, 'asaas.payment.valor_invalido');

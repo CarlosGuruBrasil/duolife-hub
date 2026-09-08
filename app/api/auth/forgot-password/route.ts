@@ -47,7 +47,6 @@ export async function POST(req: Request) {
       userType: userType as 'partner' | 'admin',
       email,
       userName,
-      origin: req.headers.get('origin'),
       purpose: 'reset',
     });
 

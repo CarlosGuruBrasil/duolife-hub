@@ -207,6 +207,12 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
             nomeExibido: p.nomeExibido?.replace('Millhões', 'Milhões'),
           }));
           setPlanos(planosCorrigidos);
+          // Sincroniza planoSel se já tiver sido restaurado de rascunho com dados incompletos de parcelamento
+          setPlanoSel((current) => {
+            if (!current) return null;
+            const fullPlano = planosCorrigidos.find((p) => p.tipoDePlano === current.tipoDePlano);
+            return fullPlano ? { ...fullPlano, ...current, parcela2X: fullPlano.parcela2X, parcela3X: fullPlano.parcela3X, parcela4X: fullPlano.parcela4X, parcela5X: fullPlano.parcela5X, parcela6X: fullPlano.parcela6X } : current;
+          });
         }
       } catch (err) {
         console.error('Erro ao buscar planos:', err);
@@ -237,18 +243,25 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
   // Máscaras e Formatações
   const applyCepMask = (v: string) => v.replace(/\D/g, '').slice(0, 8).replace(/(\d{5})(\d)/, '$1-$2');
   const applyPhoneMask = (v: string) => {
-    const r = v.replace(/\D/g, '');
-    if (r.length > 10) {
-      return r.slice(0, 11).replace(/^(\d\d)(\d{5})(\d{4})$/, '($1) $2-$3');
-    }
-    return r.slice(0, 10).replace(/^(\d\d)(\d{4})(\d{4})$/, '($1) $2-$3');
+    const r = v.replace(/\D/g, '').slice(0, 11);
+    if (r.length <= 2) return r.length ? `(${r}` : '';
+    if (r.length <= 6) return `(${r.slice(0, 2)}) ${r.slice(2)}`;
+    if (r.length <= 10) return `(${r.slice(0, 2)}) ${r.slice(2, 6)}-${r.slice(6)}`;
+    return `(${r.slice(0, 2)}) ${r.slice(2, 7)}-${r.slice(7)}`;
   };
   const applyCpfCnpjMask = (v: string) => {
-    const r = v.replace(/\D/g, '');
-    if (r.length > 11) {
-      return r.slice(0, 14).replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+    const r = v.replace(/\D/g, '').slice(0, 14);
+    if (r.length <= 11) {
+      return r
+        .replace(/(\d{3})(\d)/, '$1.$2')
+        .replace(/(\d{3})(\d)/, '$1.$2')
+        .replace(/(\d{3})(\d{1,2})$/, '$1-$2');
     }
-    return r.slice(0, 11).replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
+    return r
+      .replace(/^(\d{2})(\d)/, '$1.$2')
+      .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
+      .replace(/\.(\d{3})(\d)/, '.$1/$2')
+      .replace(/(\d{4})(\d{1,2})$/, '$1-$2');
   };
   const applyMoneyMask = (v: string) => {
     let value = v.replace(/\D/g, '');
@@ -353,15 +366,25 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
           }
 
           if (cd.tipo) {
-            setPlanoSel({
-              tipoDePlano: cd.tipo,
-              nomeExibido: cd.nomePlano || cd.tipo,
-              cobertura: cd.valorCobertura || (c.importancia_segurada ? Number(c.importancia_segurada).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ 100.000,00'),
-              franquia: cd.planoFranquia || 'R$ 1.000,00',
-              ordem: 1,
-              parcela: String(cd.valor || '0'),
-              valorPagoKovr: 0,
-            });
+            const planoEncontrado = planos.find((p) => p.tipoDePlano === cd.tipo);
+            if (planoEncontrado) {
+              setPlanoSel(planoEncontrado);
+            } else {
+              setPlanoSel({
+                tipoDePlano: cd.tipo,
+                nomeExibido: cd.nomePlano || cd.tipo,
+                cobertura: cd.valorCobertura || (c.importancia_segurada ? Number(c.importancia_segurada).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : 'R$ 100.000,00'),
+                franquia: cd.planoFranquia || 'R$ 1.000,00',
+                ordem: 1,
+                parcela: String(cd.valor || '0'),
+                parcela2X: cd.parcela2X,
+                parcela3X: cd.parcela3X,
+                parcela4X: cd.parcela4X,
+                parcela5X: cd.parcela5X,
+                parcela6X: cd.parcela6X,
+                valorPagoKovr: 0,
+              });
+            }
           }
 
           if (cd.parcela) {
@@ -562,7 +585,13 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
 
       const formatDateForWix = (dateStr: string) => {
         if (!dateStr) return null;
-        return new Date(dateStr + 'T15:00:00Z').toISOString();
+        try {
+          const d = dateStr.includes('T') ? new Date(dateStr) : new Date(dateStr + 'T15:00:00Z');
+          if (isNaN(d.getTime())) return null;
+          return d.toISOString();
+        } catch {
+          return null;
+        }
       };
 
       const payloadClientData: any = {
@@ -656,10 +685,17 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
 
       if (data.ok && data.assinado) {
         setContratoAssinado(true);
-        setSuccess('Contrato assinado com sucesso! Gerando fatura...');
+        setSuccess('Contrato assinado com sucesso!');
         
-        // 3. Após assinado, gera pagamento no Asaas
-        await handleGerarPagamento();
+        // Se a verificação já gerou e retornou a cobrança Asaas
+        if (data.linkBoleto) {
+          setLinkPagamento(data.linkBoleto);
+          setCheckoutId(data.checkoutId || '');
+          setPaymentDueDate(data.dueDate || '');
+        } else {
+          // 3. Após assinado, gera pagamento no Asaas via endpoint dedicado
+          await handleGerarPagamento();
+        }
       } else {
         setError('O contrato ainda não consta como assinado. Complete a assinatura no painel.');
       }
@@ -717,7 +753,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
   return (
     <div className="max-w-4xl mx-auto">
       {/* Indicador de Passos */}
-      <div className="flex justify-between items-center mb-8 border-b border-gray-800 pb-4">
+      <div className="flex justify-between items-center mb-8 border-b border-gray-200 pb-4">
         {[
           { num: 1, label: 'Cobertura', icon: ShieldCheck },
           { num: 2, label: 'Segurado', icon: FileText },
@@ -734,11 +770,11 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
                   ? 'bg-accent text-slate-900 shadow-[0_0_10px_var(--color-accent)]' 
                   : step > s.num 
                     ? 'bg-primary text-white' 
-                    : 'bg-gray-800 text-gray-400'
+                    : 'bg-gray-100 text-gray-400 border border-gray-200'
               }`}>
                 {step > s.num ? <Check className="w-4 h-4" /> : s.num}
               </div>
-              <span className={`hidden md:inline text-xs font-semibold ${step === s.num ? 'text-accent' : 'text-gray-400'}`}>
+              <span className={`hidden md:inline text-xs font-semibold ${step === s.num ? 'text-primary font-bold' : 'text-gray-500'}`}>
                 {s.label}
               </span>
             </div>
@@ -1009,7 +1045,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
           
           <div className="bg-gray-50 border border-gray-200 p-4 rounded-xl mb-4">
             <label className="block">
-              <span className="field-label text-white">É uma renovação de apólice?</span>
+              <span className="field-label text-gray-900">É uma renovação de apólice?</span>
               <select
                 value={form.isRenovacao}
                 onChange={(e) => updateField('isRenovacao', e.target.value)}
@@ -1094,7 +1130,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
 
           {(form.ppeCargos === 'Sim' || form.ppeRepresenta === 'Sim') && (
             <div className="bg-gray-50 border border-gray-200 p-4 rounded-xl space-y-3">
-              <span className="field-label block font-semibold text-accent">Selecione as funções ocupadas:</span>
+              <span className="field-label block font-semibold text-primary">Selecione as funções ocupadas:</span>
               <div className="space-y-2">
                 {cargosPpe.map((cargo) => (
                   <label key={cargo.id} className="flex items-start space-x-2 cursor-pointer text-sm text-gray-700">
@@ -1359,7 +1395,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
                           : 'border-gray-200 bg-white hover:border-gray-300'
                       }`}
                     >
-                      <div className="font-bold text-sm text-gray-200">
+                      <div className="font-bold text-sm text-gray-900">
                         {op.qtd}x de {valorExibe} {op.qtd === 6 && <span className="text-xs text-orange-400 font-normal">(Juros de 2% a.m.)</span>}
                       </div>
                       <div className="text-xs text-gray-500 mt-1">
@@ -1485,21 +1521,30 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
                       <span>Abrir Pagamento em Nova Aba</span>
                     </a>
                     
-                    <button
-                      onClick={() => {
-                        router.push('/portal/cotacoes');
-                        router.refresh();
-                      }}
-                      className="btn btn-secondary text-sm w-full md:w-auto"
-                    >
-                      Voltar para Cotações
-                    </button>
+                    {!publicToken && (
+                      <button
+                        onClick={() => {
+                          router.push('/portal/cotacoes');
+                          router.refresh();
+                        }}
+                        className="btn btn-secondary text-sm w-full md:w-auto"
+                      >
+                        Voltar para Cotações
+                      </button>
+                    )}
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center py-10 space-y-3">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent"></div>
-                  <p className="text-sm text-gray-700">Gerando cobrança no Asaas...</p>
+                <div className="flex flex-col items-center justify-center py-10 space-y-4">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                  <p className="text-sm text-gray-700">Aguardando emissão da fatura no Asaas...</p>
+                  <button
+                    type="button"
+                    onClick={handleGerarPagamento}
+                    className="btn btn-secondary text-xs px-4 py-2 mt-1"
+                  >
+                    Tentar emitir fatura novamente
+                  </button>
                 </div>
               )}
             </div>

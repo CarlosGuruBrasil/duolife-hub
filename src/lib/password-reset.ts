@@ -17,8 +17,8 @@ interface IssueResetOptions {
   purpose?: ResetMailPurpose;
 }
 
-function buildResetUrl(rawToken: string, origin?: string | null) {
-  const baseOrigin = origin || process.env.NEXT_PUBLIC_APP_URL || 'https://duolife.com.br';
+function buildResetUrl(rawToken: string) {
+  const baseOrigin = (process.env.NEXT_PUBLIC_APP_URL || 'https://duolife.com.br').replace(/\/$/, '');
   return `${baseOrigin}/login/redefinir-senha?token=${rawToken}`;
 }
 
@@ -69,7 +69,7 @@ export async function issuePasswordResetEmail({
     VALUES (${userId}, ${userType}, ${tokenHash}, ${expiresAt.toISOString()})
   `;
 
-  const resetUrl = buildResetUrl(rawToken, origin);
+  const resetUrl = buildResetUrl(rawToken);
 
   // 1. Tenta acionar o motor de automação por árvore de decisão para RECUPERAR_SENHA
   let dispatchSuccess = false;

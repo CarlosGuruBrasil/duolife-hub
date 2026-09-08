@@ -42,7 +42,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       userType: 'partner',
       email: user.email,
       userName: user.name,
-      origin: req.headers.get('origin'),
       purpose: 'invite',
     });
 

@@ -91,7 +91,9 @@ export async function GET(req: NextRequest) {
             ORDER BY c.created_at DESC
             LIMIT 100
           `
-        : await sql`
+        : access.visibleUserIds.length === 0
+          ? []
+          : await sql`
             SELECT
               c.id,
               c.client_name,
@@ -264,6 +266,39 @@ export async function POST(req: NextRequest) {
     // Se for continuidade de uma cotação existente, atualiza os dados em vez de criar duplicada
     const existingId = data.cotacaoId || data.id;
     if (existingId) {
+      // Valida posse e permissão da cotação (blindagem contra IDOR)
+      const [existingQuote] = publicToken
+        ? await sql`
+            SELECT id, status FROM cotacoes
+            WHERE id = ${existingId}
+              AND source_token = ${publicToken}
+              AND partner_id = ${targetPartnerId}
+            LIMIT 1
+          `
+        : isInternal
+          ? await sql`
+              SELECT id, status FROM cotacoes
+              WHERE id = ${existingId}
+              LIMIT 1
+            `
+          : await sql`
+              SELECT id, status FROM cotacoes
+              WHERE id = ${existingId}
+                AND partner_id = ${targetPartnerId}
+              LIMIT 1
+            `;
+
+      if (!existingQuote) {
+        return Response.json({ error: 'Cotação não encontrada ou acesso negado' }, { status: 404 });
+      }
+
+      if (!['rascunho', 'enviada'].includes(existingQuote.status)) {
+        return Response.json(
+          { error: `Esta cotação já está no estado '${existingQuote.status}' e não pode mais ser alterada` },
+          { status: 422 }
+        );
+      }
+
       const [updatedCotacao] = await sql`
         UPDATE cotacoes
         SET

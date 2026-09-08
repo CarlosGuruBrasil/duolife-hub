@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useTransition } from 'react';
+import { useState, useEffect, useTransition, Suspense } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { Calendar, Filter, ChevronDown, Check, RefreshCw } from 'lucide-react';
 
@@ -15,7 +15,7 @@ interface AdminPeriodFilterBarProps {
   baseUrl?: string;
 }
 
-export default function AdminPeriodFilterBar({
+function AdminPeriodFilterBarInner({
   currentMonthKey,
   monthOptions,
   baseUrl = '/admin',
@@ -215,5 +215,13 @@ export default function AdminPeriodFilterBar({
         </form>
       )}
     </div>
+  );
+}
+
+export default function AdminPeriodFilterBar(props: AdminPeriodFilterBarProps) {
+  return (
+    <Suspense fallback={<div className="h-16 bg-white/50 backdrop-blur-md rounded-2xl border border-gray-200/80 animate-pulse" />}>
+      <AdminPeriodFilterBarInner {...props} />
+    </Suspense>
   );
 }

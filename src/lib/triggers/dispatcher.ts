@@ -170,7 +170,9 @@ export async function dispatchDomainEvent(
               output: { recipientsCount: recipientsToDispatch.length, templateCode },
             });
 
-            result.actionsExecutedCount++;
+            if (!hasActionError) {
+              result.actionsExecutedCount++;
+            }
           } else if (actionNode.tipo === 'ACAO_STATUS') {
             const config = actionNode.configuracao || {};
             const novoStatus = config.status;
@@ -196,7 +198,7 @@ export async function dispatchDomainEvent(
             const url = config.webhook_url;
 
             if (url) {
-              await fetch(url, {
+              const webhookRes = await fetch(url, {
                 method: config.webhook_method || 'POST',
                 headers: {
                   'Content-Type': 'application/json',
@@ -209,7 +211,13 @@ export async function dispatchDomainEvent(
                   timestamp: new Date().toISOString(),
                   context,
                 }),
+                signal: AbortSignal.timeout(10000),
               });
+
+              if (!webhookRes.ok) {
+                const text = await webhookRes.text().catch(() => '');
+                throw new Error(`Webhook retornou HTTP ${webhookRes.status}: ${text.slice(0, 100)}`);
+              }
             }
 
             actionsExecutedLogs.push({

@@ -163,9 +163,10 @@ export async function POST(req: NextRequest) {
         if (signedFileUrl) clientData.contratoPdf = signedFileUrl;
         clientData.assinadoEm = clientData.assinadoEm || new Date().toISOString();
 
-        const isTerminal = ESTADOS_TERMINAIS.includes(cotacao.status);
+        // Só avança para 'assinado' se a cotação ainda não progrediu para pagamento_gerado ou estado terminal
+        const canAdvanceToAssinado = ['contrato_gerado', 'enviada', 'rascunho'].includes(cotacao.status);
 
-        if (!isTerminal) {
+        if (canAdvanceToAssinado) {
           await sql`
             UPDATE cotacoes
             SET

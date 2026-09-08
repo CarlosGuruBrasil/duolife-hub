@@ -5,6 +5,8 @@ import { sql } from '@/lib/pg';
 import { getAccessibleQuoteById } from '@/lib/access';
 import { parseJsonbField } from '@/lib/json-safe';
 import { getZapSignConfig } from '@/lib/system-settings';
+import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
+import { generateAsaasPaymentForQuote } from '@/lib/asaas-service';
 
 export async function POST(
   req: NextRequest,
@@ -92,17 +94,29 @@ export async function POST(
       const pdfLink = resJson.signed_file_url || `https://app.zapsign.com.br/verificar/${docToken}`;
       
       clientData.contratoPdf = pdfLink;
-      clientData.assinadoEm = new Date().toISOString();
+      clientData.assinadoEm = clientData.assinadoEm || new Date().toISOString();
+
+      const canAdvanceToAssinado = ['contrato_gerado', 'enviada', 'rascunho'].includes(cotacao.status);
 
       // Atualiza no banco
-      await sql`
-        UPDATE cotacoes
-        SET
-          status = 'assinado',
-          client_data = ${JSON.stringify(clientData)}::jsonb,
-          updated_at = NOW()
-        WHERE id = ${cotacao.id}
-      `;
+      if (canAdvanceToAssinado) {
+        await sql`
+          UPDATE cotacoes
+          SET
+            status = 'assinado',
+            client_data = ${JSON.stringify(clientData)}::jsonb,
+            updated_at = NOW()
+          WHERE id = ${cotacao.id}
+        `;
+      } else {
+        await sql`
+          UPDATE cotacoes
+          SET
+            client_data = ${JSON.stringify(clientData)}::jsonb,
+            updated_at = NOW()
+          WHERE id = ${cotacao.id}
+        `;
+      }
 
       await sql`
         UPDATE signature_documents
@@ -116,11 +130,58 @@ export async function POST(
           AND provider = 'zapsign'
       `;
 
+      // Dispara gatilho de Contrato Assinado
+      try {
+        const [cotacaoCompleta] = await sql<{ client_id: string | null; partner_id: string; client_name: string; premio_final: number; importancia_segurada: number }[]>`
+          SELECT client_id, partner_id, client_name, premio_final, importancia_segurada
+          FROM cotacoes
+          WHERE id = ${cotacao.id}
+          LIMIT 1
+        `;
+
+        const [clientRow] = cotacaoCompleta?.client_id ? await sql<{ full_name: string; email: string; document_number: string; phone: string }[]>`
+          SELECT full_name, email, document_number, phone FROM insurance_clients WHERE id = ${cotacaoCompleta.client_id} LIMIT 1
+        ` : [];
+
+        await dispatchDomainEvent('CONTRATO_ASSINADO', {
+          eventType: 'CONTRATO_ASSINADO',
+          contextId: cotacao.id,
+          cliente: {
+            nome: clientRow?.full_name || cotacaoCompleta?.client_name,
+            email: clientRow?.email || clientData.email,
+            documento: clientRow?.document_number || clientData.cpf || clientData.cnpj,
+            telefone: clientRow?.phone || clientData.telefone,
+          },
+          cotacao: {
+            id: cotacao.id,
+            status: 'assinado',
+            premio_final: Number(cotacaoCompleta?.premio_final) || 0,
+            cobertura: Number(cotacaoCompleta?.importancia_segurada) || 0,
+          },
+          dados: {
+            contratoPdf: pdfLink,
+            assinadoEm: clientData.assinadoEm,
+          },
+        });
+      } catch (dispatchErr) {
+        logger.error({ dispatchErr, cotacaoId: cotacao.id }, 'api.portal.verificar-assinatura.dispatch_event_failed');
+      }
+
+      // Gera cobrança Asaas em background
+      let paymentInfo: any = null;
+      try {
+        paymentInfo = await generateAsaasPaymentForQuote(cotacao.id);
+      } catch (paymentErr) {
+        logger.error({ paymentErr, cotacaoId: cotacao.id }, 'api.portal.verificar-assinatura.asaas_payment_failed');
+      }
+
       return Response.json({
         ok: true,
-        status: 'assinado',
+        status: canAdvanceToAssinado ? 'assinado' : cotacao.status,
         assinado: true,
-        contratoPdf: pdfLink
+        contratoPdf: pdfLink,
+        checkoutId: paymentInfo?.checkoutId,
+        linkBoleto: paymentInfo?.linkBoleto,
       });
     }
 

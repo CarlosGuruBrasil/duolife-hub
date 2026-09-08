@@ -33,13 +33,22 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'A senha atual está incorreta.' }, { status: 400 });
     }
 
-    // Atualiza para a nova senha
-    const newHash = await bcrypt.hash(newPassword, 10);
-    await sql`
-      UPDATE partner_users 
-      SET password_hash = ${newHash} 
-      WHERE id = ${user.userId}
-    `;
+    // Gera o novo hash da senha
+    const newHash = await bcrypt.hash(newPassword, 12);
+
+    // Atualiza para a nova senha e revoga tokens antigos
+    await sql.begin(async (tx) => {
+      await tx`
+        UPDATE partner_users 
+        SET password_hash = ${newHash} 
+        WHERE id = ${user.userId}
+      `;
+      await tx`
+        UPDATE refresh_tokens
+        SET revoked = true
+        WHERE partner_user_id = ${user.userId}
+      `;
+    });
 
     logger.info({ userId: user.userId }, 'User changed password successfully');
     

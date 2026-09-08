@@ -44,11 +44,31 @@ export interface SendTemplatedEmailResult {
   logId?: string;
 }
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function resolveNestedVariable(obj: Record<string, any>, path: string): any {
+  if (obj[path] !== undefined) return obj[path];
+  const parts = path.split('.');
+  let current: any = obj;
+  for (const p of parts) {
+    if (current === undefined || current === null) return undefined;
+    current = current[p];
+  }
+  return current;
+}
+
 /**
  * Detecta variáveis no padrão {{nome_variavel}} ou {{nome_variavel|fallback}} no código HTML
  */
 export function extractTemplateVariables(html: string): string[] {
-  const matches = html.match(/\{\{([a-zA-Z0-9_-]+)(?:\|[^}]+)?\}\}/g) || [];
+  const matches = html.match(/\{\{([a-zA-Z0-9_.-]+)(?:\|[^}]+)?\}\}/g) || [];
   const uniqueVars = new Set<string>();
 
   for (const match of matches) {
@@ -70,7 +90,8 @@ export function extractTemplateVariables(html: string): string[] {
  */
 export function renderTemplateString(
   content: string,
-  variables: Record<string, any> = {}
+  variables: Record<string, any> = {},
+  isHtml = false
 ): string {
   const now = new Date();
   const dataHoje = now.toLocaleDateString('pt-BR');
@@ -86,24 +107,26 @@ export function renderTemplateString(
     '-aplicativo-': 'DuoLife Hub',
   };
 
-  return content.replace(/\{\{([a-zA-Z0-9_-]+)(?:\|([^}]+))?\}\}/g, (_, key: string, fallback?: string) => {
+  return content.replace(/\{\{([a-zA-Z0-9_.-]+)(?:\|([^}]+))?\}\}/g, (_, key: string, fallback?: string) => {
     // Variáveis globais do sistema
     if (systemVars[key] !== undefined) {
       return systemVars[key];
     }
 
-    // Variáveis informadas no contexto
-    if (variables[key] !== undefined && variables[key] !== null) {
-      const val = variables[key];
-      if (typeof val === 'object') {
-        return JSON.stringify(val);
+    // Variáveis informadas no contexto (direta ou por notação de ponto)
+    const resolvedVal = resolveNestedVariable(variables, key);
+    if (resolvedVal !== undefined && resolvedVal !== null) {
+      let strVal = typeof resolvedVal === 'object' ? JSON.stringify(resolvedVal) : String(resolvedVal);
+      // Se for template HTML e não for link/url de reset ou fatura, escapa entidades HTML
+      if (isHtml && !key.includes('link') && !key.includes('url') && !key.includes('html')) {
+        strVal = escapeHtml(strVal);
       }
-      return String(val);
+      return strVal;
     }
 
     // Fallback configurado na tag: {{nome|Cliente}}
     if (fallback !== undefined) {
-      return fallback;
+      return isHtml ? escapeHtml(fallback) : fallback;
     }
 
     // Se nenhuma correspondência, mantém tag visível ou vazia
@@ -146,8 +169,8 @@ export async function sendTemplatedEmail({
     ...variables,
   };
 
-  const renderedSubject = renderTemplateString(template.subject, mergedVars);
-  const renderedHtml = renderTemplateString(template.body_html, mergedVars);
+  const renderedSubject = renderTemplateString(template.subject, mergedVars, false);
+  const renderedHtml = renderTemplateString(template.body_html, mergedVars, true);
 
   // 3. Executa o envio via Mailer oficial
   const result = await sendMail({

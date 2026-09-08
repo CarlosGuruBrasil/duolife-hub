@@ -34,6 +34,8 @@ export async function GET() {
           ORDER BY cm.created_at DESC
           LIMIT 100
         `
+    : access.visibleUserIds.length === 0
+      ? []
       : await sql`
           SELECT
             cm.id,

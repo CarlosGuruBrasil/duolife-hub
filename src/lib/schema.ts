@@ -488,9 +488,12 @@ async function runRuntimeSchemaSetup(): Promise<void> {
   // Garante no máximo 1 contrato ativo por cotação a nível de banco, não só via checagem em aplicação
   // (clientData.contratoToken pode ser perdido/resetado sem essa garantia).
   await sql`
+    DROP INDEX IF EXISTS signature_documents_unique_active_cotacao;
+  `;
+  await sql`
     CREATE UNIQUE INDEX IF NOT EXISTS signature_documents_unique_active_cotacao
     ON signature_documents (cotacao_id)
-    WHERE status NOT IN ('cancelled', 'refused')
+    WHERE status NOT IN ('cancelled', 'refused', 'expired');
   `;
 
   // Controle de uso de cupom promocional — o Wix só guarda um contador estático (quantidadeUsada)

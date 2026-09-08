@@ -195,7 +195,6 @@ export async function POST(req: NextRequest) {
         userType: 'partner',
         email: criado.director.email,
         userName: criado.director.name,
-        origin: req.headers.get('origin'),
         purpose: 'invite',
       });
     } catch (err) {

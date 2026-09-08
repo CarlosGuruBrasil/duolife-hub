@@ -34,7 +34,9 @@ export async function GET() {
           ORDER BY s.issue_date DESC, s.created_at DESC
           LIMIT 100
         `
-      : await sql`
+      : access.visibleUserIds.length === 0
+        ? []
+        : await sql`
           SELECT
             s.id,
             s.policy_number,

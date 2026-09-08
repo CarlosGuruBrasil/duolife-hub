@@ -221,8 +221,8 @@ export async function resolvePartnerOrLink(refOrToken: string): Promise<Resolved
       metadata
     FROM partners
     WHERE (
-      metadata->'whiteLabel'->>'wixCode' ILIKE ${query}
-      OR metadata->'whiteLabel'->>'slug' ILIKE ${query}
+      LOWER(COALESCE(metadata->'whiteLabel'->>'wixCode', '')) = LOWER(${query})
+      OR LOWER(COALESCE(metadata->'whiteLabel'->>'slug', '')) = LOWER(${query})
       OR id = ${query}
     )
     AND status != 'suspended'
