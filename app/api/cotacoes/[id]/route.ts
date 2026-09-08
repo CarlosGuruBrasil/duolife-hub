@@ -59,6 +59,31 @@ export async function GET(
   }
 }
 
+function parseBirthDateInput(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+
+  let y: string, m: string, d: string;
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) {
+    [d, m, y] = trimmed.split('/');
+  } else if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+    [y, m, d] = trimmed.slice(0, 10).split('-');
+  } else {
+    return null;
+  }
+
+  const yearNum = parseInt(y, 10);
+  const monthNum = parseInt(m, 10);
+  const dayNum = parseInt(d, 10);
+  if (isNaN(yearNum) || isNaN(monthNum) || isNaN(dayNum)) return null;
+  if (yearNum < 1900 || yearNum > 2100 || monthNum < 1 || monthNum > 12 || dayNum < 1 || dayNum > 31) {
+    return null;
+  }
+
+  return `${yearNum}-${String(monthNum).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+}
+
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -77,15 +102,16 @@ export async function PATCH(
     const payload = await req.json();
 
     const currentClientData = parseJsonbField<Record<string, unknown>>(cotacao.client_data);
+    const inputClientData = parseJsonbField<Record<string, unknown>>(payload.client_data);
 
     // Normalização dos dados cadastrais do cliente (aceita camelCase ou snake_case)
-    const rawClientName = payload.clientName ?? payload.client_name;
+    const rawClientName = payload.clientName ?? payload.client_name ?? inputClientData.nome;
     const clientName = rawClientName !== undefined
       ? String(rawClientName).trim()
       : cotacao.client_name;
 
     let clientCpfCnpj = cotacao.client_cpf_cnpj;
-    const rawCpfCnpj = payload.clientCpfCnpj ?? payload.client_cpf_cnpj;
+    const rawCpfCnpj = payload.clientCpfCnpj ?? payload.client_cpf_cnpj ?? inputClientData.cpfCnpj;
     if (rawCpfCnpj !== undefined) {
       const normalizedDoc = String(rawCpfCnpj).replace(/\D/g, '');
       if (normalizedDoc) {
@@ -96,42 +122,34 @@ export async function PATCH(
       }
     }
 
-    const rawEmail = payload.clientEmail ?? payload.client_email;
+    const rawEmail = payload.clientEmail ?? payload.client_email ?? inputClientData.email;
     const clientEmail = rawEmail !== undefined
       ? (rawEmail ? String(rawEmail).trim().toLowerCase() : null)
       : cotacao.client_email;
 
-    const rawPhone = payload.clientPhone ?? payload.client_phone;
+    const rawPhone = payload.clientPhone ?? payload.client_phone ?? inputClientData.celular ?? inputClientData.telefone;
     const clientPhone = rawPhone !== undefined
       ? (rawPhone ? String(rawPhone).trim() : null)
       : cotacao.client_phone;
 
     // Data de nascimento
     let birthDate: string | null = null;
-    const rawBirthDate = payload.birthDate ?? payload.birth_date;
+    const rawBirthDate = payload.birthDate ?? payload.birth_date ?? inputClientData.dataNascto ?? inputClientData.birth_date;
     if (rawBirthDate !== undefined) {
-      if (rawBirthDate) {
-        const bd = String(rawBirthDate).trim();
-        if (/^\d{2}\/\d{2}\/\d{4}$/.test(bd)) {
-          const [d, m, y] = bd.split('/');
-          birthDate = `${y}-${m}-${d}`;
-        } else if (/^\d{4}-\d{2}-\d{2}/.test(bd)) {
-          birthDate = bd.slice(0, 10);
-        }
-      }
+      birthDate = parseBirthDateInput(rawBirthDate);
     } else if (currentClientData.dataNascto) {
-      birthDate = String(currentClientData.dataNascto).slice(0, 10);
+      birthDate = parseBirthDateInput(String(currentClientData.dataNascto));
     }
 
-    // Endereço
+    // Endereço (aceita payload.address ou campos diretos em payload.client_data ou cotacao.client_data)
     const currentAddress = {
-      cep: String(currentClientData.cep || ''),
-      logradouro: String(currentClientData.logradouro || currentClientData.rua || ''),
-      numero: String(currentClientData.numero || ''),
-      complemento: String(currentClientData.complemento || ''),
-      bairro: String(currentClientData.bairro || ''),
-      cidade: String(currentClientData.cidade || ''),
-      uf: String(currentClientData.uf || ''),
+      cep: String(inputClientData.cep || currentClientData.cep || ''),
+      logradouro: String(inputClientData.logradouro || inputClientData.rua || currentClientData.logradouro || currentClientData.rua || ''),
+      numero: String(inputClientData.numero || currentClientData.numero || ''),
+      complemento: String(inputClientData.complemento || currentClientData.complemento || ''),
+      bairro: String(inputClientData.bairro || currentClientData.bairro || ''),
+      cidade: String(inputClientData.cidade || currentClientData.cidade || ''),
+      uf: String(inputClientData.uf || currentClientData.uf || ''),
     };
 
     const updatedAddress = payload.address ? {
@@ -153,32 +171,40 @@ export async function PATCH(
 
     const proposal = (payload.proposalData || {}) as Record<string, unknown>;
 
-    const rawImportancia = proposal.importanciaSegurada ?? payload.importancia_segurada ?? payload.importanciaSegurada;
-    const importanciaSegurada = isFinancialMutable && rawImportancia !== undefined
-      ? Number(rawImportancia)
-      : (cotacao.importancia_segurada !== null ? Number(cotacao.importancia_segurada) : null);
+    const rawImportancia = proposal.importanciaSegurada ?? payload.importancia_segurada ?? payload.importanciaSegurada ?? (isFinancialMutable ? inputClientData.valorCobertura : undefined);
+    let importanciaSegurada: number | null = cotacao.importancia_segurada !== null ? Number(cotacao.importancia_segurada) : null;
+    if (isFinancialMutable && rawImportancia !== undefined) {
+      const num = typeof rawImportancia === 'number'
+        ? rawImportancia
+        : Number(String(rawImportancia).replace(/\D/g, '')) / (String(rawImportancia).includes(',') ? 100 : 1);
+      if (!isNaN(num) && num > 0) importanciaSegurada = num;
+    }
 
-    const rawPremio = proposal.premioFinal ?? payload.premio_final ?? payload.premioFinal;
-    const premioFinal = isFinancialMutable && rawPremio !== undefined
-      ? Number(rawPremio)
-      : (cotacao.premio_final !== null ? Number(cotacao.premio_final) : null);
+    const rawPremio = proposal.premioFinal ?? payload.premio_final ?? payload.premioFinal ?? (isFinancialMutable ? (inputClientData.valor ?? inputClientData.premioFinal) : undefined);
+    let premioFinal: number | null = cotacao.premio_final !== null ? Number(cotacao.premio_final) : null;
+    if (isFinancialMutable && rawPremio !== undefined) {
+      const num = typeof rawPremio === 'number'
+        ? rawPremio
+        : Number(String(rawPremio).replace(/\D/g, '')) / (String(rawPremio).includes(',') ? 100 : 1);
+      if (!isNaN(num) && num > 0) premioFinal = num;
+    }
 
-    const rawPlanoNome = proposal.planoNome ?? payload.plano_nome ?? payload.nomePlano;
+    const rawPlanoNome = proposal.planoNome ?? payload.plano_nome ?? payload.nomePlano ?? inputClientData.nomePlano;
     const planoNome = isFinancialMutable && rawPlanoNome !== undefined
       ? String(rawPlanoNome)
       : (currentClientData.nomePlano || currentClientData.tipoDePlano || currentClientData.tipo || 'RC Advogados');
 
-    const rawFranquia = proposal.franquia ?? payload.planoFranquia ?? payload.franquia;
+    const rawFranquia = proposal.franquia ?? payload.planoFranquia ?? payload.franquia ?? inputClientData.planoFranquia;
     const franquia = rawFranquia !== undefined
       ? String(rawFranquia)
       : (currentClientData.planoFranquia || currentClientData.franquia || 'R$ 1.000,00');
 
-    const rawParcela = proposal.parcela ?? payload.parcela;
+    const rawParcela = proposal.parcela ?? payload.parcela ?? inputClientData.parcela;
     const parcela = rawParcela !== undefined
       ? rawParcela
       : (currentClientData.parcela || 1);
 
-    const rawNotes = proposal.notes ?? payload.notes;
+    const rawNotes = proposal.notes ?? payload.notes ?? inputClientData.observacoes;
     const notes = rawNotes !== undefined
       ? (rawNotes ? String(rawNotes) : null)
       : cotacao.notes;
@@ -186,6 +212,7 @@ export async function PATCH(
     // Mesclagem de client_data preservando dados anteriores (tokens ZapSign, checkoutId, etc.)
     const mergedClientData: Record<string, unknown> = {
       ...currentClientData,
+      ...inputClientData,
       nome: clientName,
       cpfCnpj: clientCpfCnpj,
       email: clientEmail,
@@ -211,17 +238,20 @@ export async function PATCH(
       ...(premioFinal !== null ? { valor: premioFinal, premioFinal } : {}),
       ...(importanciaSegurada !== null ? { valorCobertura: `R$ ${importanciaSegurada.toLocaleString('pt-BR')}` } : {}),
       // Dados profissionais da proposta (sempre permitidos)
-      ...(proposal.oab !== undefined ? { oab: proposal.oab } : {}),
-      ...(proposal.oabUf !== undefined ? { oabUf: proposal.oabUf } : {}),
-      ...(proposal.atuacao !== undefined ? { atuacao: proposal.atuacao } : {}),
-      ...(proposal.titularidade !== undefined ? { titularidade: proposal.titularidade } : {}),
-      ...(proposal.escritorioAssociado !== undefined ? { escritorioAssociado: proposal.escritorioAssociado } : {}),
-      ...(proposal.faturamentoAntes !== undefined ? { faturamentoAntes: proposal.faturamentoAntes } : {}),
-      ...(proposal.faturamentoDepois !== undefined ? { faturamentoDepois: proposal.faturamentoDepois } : {}),
-      ...(proposal.dataInicioVigencia !== undefined ? {
-        dataInicioVigencia: proposal.dataInicioVigencia,
-        vigencia: proposal.dataInicioVigencia,
-        dataVigencia: proposal.dataInicioVigencia,
+      ...(proposal.oab !== undefined || inputClientData.oab !== undefined ? { oab: proposal.oab ?? inputClientData.oab } : {}),
+      ...(proposal.oabUf !== undefined || inputClientData.oabUf !== undefined || inputClientData.ufOab !== undefined ? {
+        oabUf: proposal.oabUf ?? inputClientData.oabUf ?? inputClientData.ufOab,
+        ufOab: proposal.oabUf ?? inputClientData.oabUf ?? inputClientData.ufOab,
+      } : {}),
+      ...(proposal.atuacao !== undefined || inputClientData.atuacao !== undefined ? { atuacao: proposal.atuacao ?? inputClientData.atuacao } : {}),
+      ...(proposal.titularidade !== undefined || inputClientData.titularidade !== undefined ? { titularidade: proposal.titularidade ?? inputClientData.titularidade } : {}),
+      ...(proposal.escritorioAssociado !== undefined || inputClientData.escritorioAssociado !== undefined ? { escritorioAssociado: proposal.escritorioAssociado ?? inputClientData.escritorioAssociado } : {}),
+      ...(proposal.faturamentoAntes !== undefined || inputClientData.faturamentoAntes !== undefined ? { faturamentoAntes: proposal.faturamentoAntes ?? inputClientData.faturamentoAntes } : {}),
+      ...(proposal.faturamentoDepois !== undefined || inputClientData.faturamentoDepois !== undefined ? { faturamentoDepois: proposal.faturamentoDepois ?? inputClientData.faturamentoDepois } : {}),
+      ...(proposal.dataInicioVigencia !== undefined || inputClientData.dataInicioVigencia !== undefined || inputClientData.vigencia !== undefined ? {
+        dataInicioVigencia: proposal.dataInicioVigencia ?? inputClientData.dataInicioVigencia ?? inputClientData.vigencia,
+        vigencia: proposal.dataInicioVigencia ?? inputClientData.dataInicioVigencia ?? inputClientData.vigencia,
+        dataVigencia: proposal.dataInicioVigencia ?? inputClientData.dataInicioVigencia ?? inputClientData.vigencia,
       } : {}),
     };
 
@@ -272,7 +302,11 @@ export async function PATCH(
 
     return Response.json({ ok: true, cotacao: updatedQuote });
   } catch (err) {
-    logger.error({ err, id }, 'api.cotacoes.patch.failed');
-    return Response.json({ error: 'Erro interno ao atualizar cotação' }, { status: 500 });
+    const errorDetails = err instanceof Error ? err.message : String(err);
+    logger.error({ err, id, details: errorDetails }, 'api.cotacoes.patch.failed');
+    return Response.json({
+      error: 'Erro interno ao atualizar cotação',
+      details: errorDetails,
+    }, { status: 500 });
   }
 }

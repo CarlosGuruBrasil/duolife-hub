@@ -204,7 +204,7 @@ export default function EditarClienteModal({
 
       const data = await res.json();
       if (!res.ok || !data.ok) {
-        throw new Error(data.error || 'Não foi possível salvar as alterações do cliente.');
+        throw new Error(data.details ? `${data.error} (${data.details})` : (data.error || 'Não foi possível salvar as alterações do cliente.'));
       }
 
       setSuccessMessage('Dados do cliente atualizados com sucesso!');

@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useTransition } from 'react';
+import React, { useState, useEffect, useTransition, useRef } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { Search, X, SlidersHorizontal, ChevronDown } from 'lucide-react';
+import { Search, X, SlidersHorizontal, ChevronDown, Loader2 } from 'lucide-react';
 import { PageSizeOption } from '@/types/admin-clients';
 
 interface ClientesFilterBarProps {
@@ -21,40 +21,59 @@ export function ClientesFilterBar({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [, startTransition] = useTransition();
+  const [isPending, startTransition] = useTransition();
 
   const currentSearch = searchParams.get('q') || '';
   const [searchValue, setSearchValue] = useState(currentSearch);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Sincroniza o estado interno se a URL for alterada externamente (ex: botão "Limpar todos")
   useEffect(() => {
     setSearchValue(currentSearch);
   }, [currentSearch]);
 
-  const applySearch = (val: string) => {
-    const params = new URLSearchParams(searchParams.toString());
-    const trimmed = val.trim();
-    if (trimmed) {
-      params.set('q', trimmed);
-    } else {
-      params.delete('q');
+  // Busca em tempo real a cada caractere digitado (debounce de 280ms)
+  useEffect(() => {
+    if (searchValue === currentSearch) return;
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
     }
+
+    debounceTimerRef.current = setTimeout(() => {
+      const params = new URLSearchParams(searchParams.toString());
+      const trimmed = searchValue.trim();
+      if (trimmed) {
+        params.set('q', trimmed);
+      } else {
+        params.delete('q');
+      }
+      params.set('page', '1');
+
+      startTransition(() => {
+        router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+      });
+    }, 280);
+
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, [searchValue, currentSearch, pathname, router, searchParams]);
+
+  const handleClear = () => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    setSearchValue('');
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('q');
     params.set('page', '1');
 
     startTransition(() => {
-      router.push(`${pathname}?${params.toString()}`);
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
     });
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      applySearch(searchValue);
-    }
-  };
-
-  const handleClear = () => {
-    setSearchValue('');
-    applySearch('');
   };
 
   const handlePageSizeChange = (newSize: string) => {
@@ -70,21 +89,21 @@ export function ClientesFilterBar({
   return (
     <div className="bg-white rounded-2xl border border-gray-200/80 p-4 shadow-xs space-y-3">
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-        {/* Barra de Busca Universal */}
+        {/* Barra de Busca Universal em Tempo Real */}
         <div className="relative flex-1 min-w-[240px]">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+          <div className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none">
+            {isPending ? (
+              <Loader2 className="h-4 w-4 text-[#00d4e0] animate-spin" />
+            ) : (
+              <Search className="h-4 w-4 text-gray-400" />
+            )}
+          </div>
           <input
             type="search"
             value={searchValue}
             onChange={(e) => setSearchValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onBlur={() => {
-              if (searchValue !== currentSearch) {
-                applySearch(searchValue);
-              }
-            }}
-            placeholder="Buscar por nome, CPF/CNPJ, e-mail ou telefone..."
-            aria-label="Buscar clientes"
+            placeholder="Buscar em tempo real por nome, CPF/CNPJ, e-mail ou telefone..."
+            aria-label="Buscar clientes em tempo real"
             className="w-full rounded-xl border border-gray-200 bg-gray-50/80 pl-10 pr-9 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:bg-white focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none transition-all"
           />
           {searchValue && (

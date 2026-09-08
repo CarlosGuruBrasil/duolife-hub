@@ -14,15 +14,27 @@ function inferDocumentType(documentNumber: string): 'cpf' | 'cnpj' {
 
 function parseBirthDateInput(value: string | null | undefined): string | null {
   if (!value) return null;
-  const trimmed = value.trim();
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+
+  let y: string, m: string, d: string;
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) {
-    const [d, m, y] = trimmed.split('/');
-    return `${y}-${m}-${d}`;
+    [d, m, y] = trimmed.split('/');
+  } else if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+    [y, m, d] = trimmed.slice(0, 10).split('-');
+  } else {
+    return null;
   }
-  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
-    return trimmed.slice(0, 10);
+
+  const yearNum = parseInt(y, 10);
+  const monthNum = parseInt(m, 10);
+  const dayNum = parseInt(d, 10);
+  if (isNaN(yearNum) || isNaN(monthNum) || isNaN(dayNum)) return null;
+  if (yearNum < 1900 || yearNum > 2100 || monthNum < 1 || monthNum > 12 || dayNum < 1 || dayNum > 31) {
+    return null;
   }
-  return null;
+
+  return `${yearNum}-${String(monthNum).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
 }
 
 export async function GET(
@@ -303,7 +315,7 @@ export async function PATCH(
       uf: payload.address.uf !== undefined ? String(payload.address.uf).trim().toUpperCase() : String(currentAddress.uf || ''),
     } : currentAddress;
 
-    // Atualiza insurance_clients com jsonb_set para address
+    // Atualiza insurance_clients com cast explícito de birth_date e merge seguro de JSONB
     const [updatedClient] = await sql`
       UPDATE insurance_clients
       SET
@@ -312,63 +324,71 @@ export async function PATCH(
         document_type = ${documentType},
         email = ${email},
         phone = ${phone},
-        birth_date = ${birthDate},
-        metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{address}', ${JSON.stringify(updatedAddress)}::jsonb, true),
+        birth_date = ${birthDate ? birthDate : null}::date,
+        metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify({ address: updatedAddress })}::jsonb,
         updated_at = NOW()
-      WHERE id = ${id}
+      WHERE id = ${existingClient.id}
       RETURNING *
     `;
 
-    // Sincronização com cotações associadas
+    if (!updatedClient) {
+      return Response.json({ error: 'Cliente não encontrado para atualização' }, { status: 404 });
+    }
+
+    // Sincronização com cotações associadas (com isolamento de erro para não abortar o update do cliente)
     const syncQuotes = payload.syncQuotes !== false;
     if (syncQuotes) {
-      const quotesToUpdate = isAdmin
-        ? await sql<{ id: string; client_data: unknown }[]>`
-            SELECT id, client_data
-            FROM cotacoes
-            WHERE client_id = ${id} OR client_cpf_cnpj = ${existingClient.document_number}
-          `
-        : await sql<{ id: string; client_data: unknown }[]>`
-            SELECT id, client_data
-            FROM cotacoes
-            WHERE (client_id = ${id} OR client_cpf_cnpj = ${existingClient.document_number})
-              AND partner_id = ${access!.partnerId}
+      try {
+        const quotesToUpdate = isAdmin
+          ? await sql<{ id: string; client_data: unknown }[]>`
+              SELECT id, client_data
+              FROM cotacoes
+              WHERE client_id = ${existingClient.id} OR client_cpf_cnpj = ${existingClient.document_number}
+            `
+          : await sql<{ id: string; client_data: unknown }[]>`
+              SELECT id, client_data
+              FROM cotacoes
+              WHERE (client_id = ${existingClient.id} OR client_cpf_cnpj = ${existingClient.document_number})
+                AND partner_id = ${access!.partnerId}
+            `;
+
+        for (const q of quotesToUpdate) {
+          const cd = parseJsonbField<Record<string, unknown>>(q.client_data);
+          const updatedCd: Record<string, unknown> = {
+            ...cd,
+            nome: fullName,
+            cpfCnpj: documentNumber,
+            ...(email !== undefined ? { email } : {}),
+            ...(phone !== undefined ? { celular: phone, telefone: phone } : {}),
+            ...(birthDate !== null ? { dataNascto: birthDate } : {}),
+          };
+
+          if (payload.address) {
+            updatedCd.cep = updatedAddress.cep || cd.cep;
+            updatedCd.logradouro = updatedAddress.logradouro || cd.logradouro;
+            updatedCd.rua = updatedAddress.logradouro || cd.rua;
+            updatedCd.numero = updatedAddress.numero || cd.numero;
+            updatedCd.complemento = updatedAddress.complemento || cd.complemento;
+            updatedCd.bairro = updatedAddress.bairro || cd.bairro;
+            updatedCd.cidade = updatedAddress.cidade || cd.cidade;
+            updatedCd.uf = updatedAddress.uf || cd.uf;
+          }
+
+          await sql`
+            UPDATE cotacoes
+            SET
+              client_id = ${existingClient.id},
+              client_name = ${fullName},
+              client_cpf_cnpj = ${documentNumber},
+              client_email = ${email},
+              client_phone = ${phone},
+              client_data = ${JSON.stringify(updatedCd)}::jsonb,
+              updated_at = NOW()
+            WHERE id = ${q.id}
           `;
-
-      for (const q of quotesToUpdate) {
-        const cd = parseJsonbField<Record<string, unknown>>(q.client_data);
-        const updatedCd: Record<string, unknown> = {
-          ...cd,
-          nome: fullName,
-          cpfCnpj: documentNumber,
-          ...(email !== undefined ? { email } : {}),
-          ...(phone !== undefined ? { celular: phone, telefone: phone } : {}),
-          ...(birthDate !== null ? { dataNascto: birthDate } : {}),
-        };
-
-        if (payload.address) {
-          updatedCd.cep = updatedAddress.cep || cd.cep;
-          updatedCd.logradouro = updatedAddress.logradouro || cd.logradouro;
-          updatedCd.rua = updatedAddress.logradouro || cd.rua;
-          updatedCd.numero = updatedAddress.numero || cd.numero;
-          updatedCd.complemento = updatedAddress.complemento || cd.complemento;
-          updatedCd.bairro = updatedAddress.bairro || cd.bairro;
-          updatedCd.cidade = updatedAddress.cidade || cd.cidade;
-          updatedCd.uf = updatedAddress.uf || cd.uf;
         }
-
-        await sql`
-          UPDATE cotacoes
-          SET
-            client_id = ${id},
-            client_name = ${fullName},
-            client_cpf_cnpj = ${documentNumber},
-            client_email = ${email},
-            client_phone = ${phone},
-            client_data = ${JSON.stringify(updatedCd)}::jsonb,
-            updated_at = NOW()
-          WHERE id = ${q.id}
-        `;
+      } catch (syncErr) {
+        logger.warn({ syncErr, clientId: existingClient.id }, 'api.clientes.patch.quotes_sync_failed');
       }
     }
 
@@ -385,7 +405,11 @@ export async function PATCH(
       },
     });
   } catch (err) {
-    logger.error({ err, id }, 'api.clientes.patch.failed');
-    return Response.json({ error: 'Erro interno ao atualizar cliente' }, { status: 500 });
+    const errorDetails = err instanceof Error ? err.message : String(err);
+    logger.error({ err, id, details: errorDetails }, 'api.clientes.patch.failed');
+    return Response.json({
+      error: 'Erro interno ao atualizar cliente',
+      details: errorDetails,
+    }, { status: 500 });
   }
 }

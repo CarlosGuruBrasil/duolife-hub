@@ -294,10 +294,35 @@ export default function EditarPropostaModal({
 
       const payload: Record<string, any> = {
         client_name: cleanName,
+        clientName: cleanName,
         client_cpf_cnpj: docDigits,
+        clientCpfCnpj: docDigits,
         client_email: clientEmail.trim() || null,
+        clientEmail: clientEmail.trim() || null,
         client_phone: cleanDigits(clientPhone) || null,
+        clientPhone: cleanDigits(clientPhone) || null,
+        birth_date: birthDate || null,
+        birthDate: birthDate || null,
         notes: notes.trim() || null,
+        address: {
+          cep: cleanDigits(cep) || null,
+          logradouro: logradouro.trim() || null,
+          numero: numero.trim() || null,
+          complemento: complemento.trim() || null,
+          bairro: bairro.trim() || null,
+          cidade: cidade.trim() || null,
+          uf: uf.trim() ? uf.trim().toUpperCase() : null,
+        },
+        proposalData: {
+          oab: oab.trim() || null,
+          oabUf: oabUf.trim() ? oabUf.trim().toUpperCase() : null,
+          atuacao: atuacao.trim() || null,
+          dataInicioVigencia: dataInicioVigencia || null,
+          planoNome: nomePlano.trim() || null,
+          franquia: planoFranquia.trim() || null,
+          parcela: parcelas ? Number(parcelas) : 1,
+          notes: notes.trim() || null,
+        },
         client_data: updatedClientData,
       };
 
@@ -308,10 +333,12 @@ export default function EditarPropostaModal({
 
         if (parsedCobertura > 0) {
           payload.importancia_segurada = parsedCobertura;
+          payload.proposalData.importanciaSegurada = parsedCobertura;
           updatedClientData.valorCobertura = parsedCobertura;
         }
         if (parsedPremio > 0) {
           payload.premio_final = parsedPremio;
+          payload.proposalData.premioFinal = parsedPremio;
           updatedClientData.valor = parsedPremio;
         }
       }
@@ -324,7 +351,7 @@ export default function EditarPropostaModal({
 
       const data = await res.json();
       if (!res.ok || !data.ok) {
-        throw new Error(data.error || 'Erro ao salvar os dados da proposta.');
+        throw new Error(data.details ? `${data.error} (${data.details})` : (data.error || 'Erro ao salvar os dados da proposta.'));
       }
 
       setSuccessMessage('Proposta atualizada com sucesso!');

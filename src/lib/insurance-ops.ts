@@ -40,7 +40,7 @@ export async function upsertInsuranceClient(input: {
       ${input.fullName},
       ${input.email || null},
       ${input.phone || null},
-      ${birthDate},
+      ${birthDate ? birthDate : null}::date,
       ${JSON.stringify(input.metadata || {})}::jsonb,
       NOW()
     )
