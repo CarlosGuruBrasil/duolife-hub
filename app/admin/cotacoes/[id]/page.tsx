@@ -7,6 +7,7 @@ import { PagamentosPanel } from './_pagamentos-client';
 import { GerarBoletoButton } from '../_gerar-boleto-button';
 import { formatCurrency, formatDate, formatDateTime } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
+import { isDateBeforeToday } from '@/lib/business-days';
 
 const statusLabel: Record<string, string> = {
   rascunho: 'Rascunho',
@@ -91,6 +92,8 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
   const checkoutId = String(clientData.checkoutId || '');
   const signUrl = safeExternalUrl(clientData.signUrl);
   const contratoGeradoEm = String(clientData.contratoGeradoEm || '');
+  const rawVigencia = clientData.dataInicioVigencia || clientData.vigencia || clientData.dataVigencia;
+  const isPastVigencia = rawVigencia ? isDateBeforeToday(String(rawVigencia)) : false;
 
   return (
     <div className="space-y-6 max-w-[1100px] mx-auto">
@@ -239,7 +242,15 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
               <div className="space-y-3">
                 <p className="text-xs text-slate-500 font-medium">Nenhuma fatura do Asaas foi gerada para esta cotação ainda.</p>
                 {cotacao.status === 'assinado' && (
-                  <div className="pt-1">
+                  <div className="pt-1 space-y-2">
+                    {isPastVigencia && (
+                      <div className="text-xs bg-amber-50 border border-amber-200 text-amber-900 p-3 rounded-xl">
+                        <strong className="block font-bold mb-0.5">⚠️ Vigência anterior à data atual:</strong>
+                        <span>
+                          A geração automática foi retida para parceiros. Como administrador, ao gerar a cobrança agora o vencimento será calculado automaticamente para a <strong>data atual + 2 dias úteis</strong>.
+                        </span>
+                      </div>
+                    )}
                     <GerarBoletoButton id={cotacao.id} clientName={cotacao.client_name} variant="card" />
                   </div>
                 )}

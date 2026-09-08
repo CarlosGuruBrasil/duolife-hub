@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { verifyAuth, unauthorized } from '@/lib/auth';
+import { verifyAuth, unauthorized, isInternalUser } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { getAccessibleQuoteById } from '@/lib/access';
@@ -39,7 +39,8 @@ export async function POST(
       return Response.json({ error: 'Cotação não encontrada' }, { status: 404 });
     }
 
-    const result = await generateAsaasPaymentForQuote(id);
+    const isManualAdmin = user ? isInternalUser(user) : false;
+    const result = await generateAsaasPaymentForQuote(id, { isManualAdmin });
 
     if (!result.ok) {
       return Response.json({ error: result.error || 'Falha ao gerar cobrança' }, { status: 400 });

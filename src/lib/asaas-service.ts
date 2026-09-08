@@ -5,6 +5,11 @@ import { calcularPrecoServidor } from './pricing';
 import { ESTADOS_TERMINAIS } from './cotacao-status';
 import { getAsaasConfig } from './system-settings';
 import { dispatchDomainEvent } from './triggers/dispatcher';
+import { addBusinessDays, isDateBeforeToday, parseDateSafe, getTodayISODate, formatToISODate } from './business-days';
+
+export interface GeneratePaymentOptions {
+  isManualAdmin?: boolean;
+}
 
 export interface GeneratePaymentResult {
   ok: boolean;
@@ -31,7 +36,10 @@ function extractPixPayload(pixTransaction: unknown): string | null {
  * Gera ou recupera cobrança no Asaas para uma cotação.
  * Idempotente: se já existir checkoutId gravado para a cotação, retorna os dados existentes.
  */
-export async function generateAsaasPaymentForQuote(cotacaoId: string): Promise<GeneratePaymentResult> {
+export async function generateAsaasPaymentForQuote(
+  cotacaoId: string,
+  options?: GeneratePaymentOptions
+): Promise<GeneratePaymentResult> {
   try {
     // 1. Busca a cotação no banco
     const [cotacao] = await sql<any[]>`
@@ -190,10 +198,34 @@ export async function generateAsaasPaymentForQuote(cotacaoId: string): Promise<G
       return { ok: false, error: 'Cotação sem valor de prêmio calculado — não é possível gerar cobrança' };
     }
 
-    // Data de vencimento: 3 dias a partir de hoje
-    const dataVencimento = new Date();
-    dataVencimento.setDate(dataVencimento.getDate() + 3);
-    const dueDateStr = dataVencimento.toISOString().split('T')[0];
+    // Regra de Data de Vencimento e Permissão:
+    // Se a data de vigência for igual ou superior à data atual: Data de vigência do contrato + 2 dias úteis.
+    // Se a data de vigência for anterior à data atual:
+    //   - Parceiro / automação: Não pode gerar cobrança (bloqueado com erro orientativo).
+    //   - Admin: Pode emitir com vencimento na Data atual + 2 dias úteis.
+    const rawVigencia = clientData.dataInicioVigencia || clientData.vigencia || clientData.dataVigencia;
+    const vigenciaDate = parseDateSafe(rawVigencia) || parseDateSafe(cotacao.created_at) || parseDateSafe(getTodayISODate())!;
+    const isPastVigencia = isDateBeforeToday(vigenciaDate);
+
+    let dueDateStr: string;
+
+    if (isPastVigencia) {
+      if (!options?.isManualAdmin) {
+        logger.warn(
+          { cotacaoId: cotacao.id, vigencia: formatToISODate(vigenciaDate) },
+          'asaas.payment.blocked_past_vigencia_for_partner'
+        );
+        return {
+          ok: false,
+          error: 'A data de vigência do contrato é anterior à data atual. Apenas administradores podem emitir esta cobrança.',
+        };
+      }
+      // Se for Admin: Data atual + 2 dias úteis
+      dueDateStr = addBusinessDays(getTodayISODate(), 2);
+    } else {
+      // Vigência igual ou posterior à data atual: Data de vigência + 2 dias úteis
+      dueDateStr = addBusinessDays(vigenciaDate, 2);
+    }
 
     const descricao = `Seguro RC Advogado - Plano ${tipoDePlano || ''}`;
 

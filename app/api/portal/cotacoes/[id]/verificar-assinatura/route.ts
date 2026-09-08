@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { verifyAuth, unauthorized } from '@/lib/auth';
+import { verifyAuth, unauthorized, isInternalUser } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { getAccessibleQuoteById } from '@/lib/access';
@@ -167,10 +167,11 @@ export async function POST(
         logger.error({ dispatchErr, cotacaoId: cotacao.id }, 'api.portal.verificar-assinatura.dispatch_event_failed');
       }
 
-      // Gera cobrança Asaas em background
+      // Gera cobrança Asaas em background (respeitando regra de vigência e permissão)
       let paymentInfo: any = null;
       try {
-        paymentInfo = await generateAsaasPaymentForQuote(cotacao.id);
+        const isManualAdmin = user ? isInternalUser(user) : false;
+        paymentInfo = await generateAsaasPaymentForQuote(cotacao.id, { isManualAdmin });
       } catch (paymentErr) {
         logger.error({ paymentErr, cotacaoId: cotacao.id }, 'api.portal.verificar-assinatura.asaas_payment_failed');
       }
@@ -182,6 +183,8 @@ export async function POST(
         contratoPdf: pdfLink,
         checkoutId: paymentInfo?.checkoutId,
         linkBoleto: paymentInfo?.linkBoleto,
+        dueDate: paymentInfo?.dueDate,
+        paymentError: paymentInfo?.ok === false ? paymentInfo.error : undefined,
       });
     }
 

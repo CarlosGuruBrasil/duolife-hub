@@ -222,18 +222,18 @@ export async function POST(req: NextRequest) {
           logger.error({ dispatchErr, cotacaoId: document.cotacao_id }, 'Falha ao despachar evento CONTRATO_ASSINADO');
         }
 
-        // Gera cobrança/boleto Asaas automaticamente em background e despacha e-mail
+        // Gera cobrança/boleto Asaas automaticamente em background se permitido pela regra de vigência
         try {
-          const paymentResult = await generateAsaasPaymentForQuote(document.cotacao_id);
+          const paymentResult = await generateAsaasPaymentForQuote(document.cotacao_id, { isManualAdmin: false });
           if (paymentResult.ok) {
             logger.info(
               { cotacaoId: document.cotacao_id, checkoutId: paymentResult.checkoutId },
               'zapsign.webhook.asaas_payment_generated'
             );
           } else {
-            logger.error(
-              { cotacaoId: document.cotacao_id, error: paymentResult.error },
-              'zapsign.webhook.asaas_payment_failed'
+            logger.warn(
+              { cotacaoId: document.cotacao_id, reason: paymentResult.error },
+              'zapsign.webhook.asaas_payment_retained_or_failed'
             );
           }
         } catch (paymentErr) {

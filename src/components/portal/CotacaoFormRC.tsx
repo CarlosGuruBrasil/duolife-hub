@@ -61,6 +61,7 @@ interface FormState {
   ppeCargoSelect: string[]; // IDs de 1 a 8
   
   isRenovacao: string; // 'Sim' | 'Não'
+  dataInicioVigencia: string;
   
   // Seguro anterior (Condicional)
   seguradora: string;
@@ -105,6 +106,7 @@ const initialForm: FormState = {
   ppeRepresenta: 'Não',
   ppeCargoSelect: [],
   isRenovacao: 'Não',
+  dataInicioVigencia: '',
   seguradora: '',
   vigencia: '',
   limite: '',
@@ -179,6 +181,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
   const [linkPagamento, setLinkPagamento] = useState('');
   const [paymentDueDate, setPaymentDueDate] = useState('');
   const [checkoutId, setCheckoutId] = useState('');
+  const [paymentBlockedReason, setPaymentBlockedReason] = useState<string | null>(null);
 
   // ------------------------------------------------------------------
   // Helper para os headers públicos
@@ -341,6 +344,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
             ppeRepresenta: cd.ppeRepresenta === 'Sim' || cd.ppeRepresenta === true ? 'Sim' : 'Não',
             ppeCargoSelect: ppeArray,
             isRenovacao: cd.renovacao || cd.isRenovacao === 'Sim' ? 'Sim' : 'Não',
+            dataInicioVigencia: toDateInput(cd.dataInicioVigencia || cd.vigencia || cd.dataVigencia),
             seguradora: cd.seguradora || '',
             vigencia: toDateInput(cd.vigencia),
             limite: cd.limite || '',
@@ -599,7 +603,8 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
         cpf: form.cpfCnpj.replace(/\D/g, ''),
         dataNascto: formatDateForWix(form.dataNascto),
         dataAtividade: formatDateForWix(form.dataAtividade),
-        vigencia: form.vigencia ? formatDateForWix(form.vigencia) : null,
+        dataInicioVigencia: form.dataInicioVigencia ? formatDateForWix(form.dataInicioVigencia) : null,
+        vigencia: form.vigencia ? formatDateForWix(form.vigencia) : (form.dataInicioVigencia ? formatDateForWix(form.dataInicioVigencia) : null),
         dataRetroativa: form.dataRetroativa ? formatDateForWix(form.dataRetroativa) : null,
         renovacao: form.isRenovacao === 'Sim',
         atuacao: form.atuacao.length > 0 ? form.atuacao.join(':') : '',
@@ -692,8 +697,11 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
           setLinkPagamento(data.linkBoleto);
           setCheckoutId(data.checkoutId || '');
           setPaymentDueDate(data.dueDate || '');
+          setPaymentBlockedReason(null);
+        } else if (data.paymentError) {
+          setPaymentBlockedReason(data.paymentError);
         } else {
-          // 3. Após assinado, gera pagamento no Asaas via endpoint dedicado
+          // 3. Após assinado, tenta gerar pagamento no Asaas via endpoint dedicado
           await handleGerarPagamento();
         }
       } else {
@@ -719,8 +727,11 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
         setLinkPagamento(data.linkBoleto);
         setPaymentDueDate(data.dueDate);
         setCheckoutId(data.checkoutId);
+        setPaymentBlockedReason(null);
       } else {
-        setError(data.error || 'Contrato assinado, mas falha ao gerar o boleto Asaas.');
+        const errMsg = data.error || 'Contrato assinado, mas falha ao gerar o boleto Asaas.';
+        setError(errMsg);
+        setPaymentBlockedReason(errMsg);
       }
     } catch {
       setError('Erro ao gerar pagamento no Asaas.');
@@ -1043,17 +1054,36 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
         <div className="card space-y-6">
           <h3 className="text-lg font-bold text-primary">3. Renovação e Perfil</h3>
           
-          <div className="bg-gray-50 border border-gray-200 p-4 rounded-xl mb-4">
+          <div className="bg-gray-50 border border-gray-200 p-5 rounded-xl mb-4 grid gap-5 md:grid-cols-2">
             <label className="block">
               <span className="field-label text-gray-900">É uma renovação de apólice?</span>
               <select
                 value={form.isRenovacao}
                 onChange={(e) => updateField('isRenovacao', e.target.value)}
-                className="form-input md:w-64 mt-2"
+                className="form-input mt-2"
               >
-                <option value="Não">Não</option>
-                <option value="Sim">Sim</option>
+                <option value="Não">Não (Novo Seguro)</option>
+                <option value="Sim">Sim (Renovação de seguro anterior)</option>
               </select>
+            </label>
+
+            <label className="block">
+              <span className="field-label text-gray-900">Data de Início da Vigência</span>
+              <input
+                type="date"
+                required
+                value={form.dataInicioVigencia}
+                onChange={(e) => {
+                  updateField('dataInicioVigencia', e.target.value);
+                  if (form.isRenovacao === 'Sim' && !form.vigencia) {
+                    updateField('vigencia', e.target.value);
+                  }
+                }}
+                className="form-input mt-2"
+              />
+              <span className="text-[11px] text-gray-500 mt-1 block font-normal">
+                Data a partir da qual o contrato passa a vigorar.
+              </span>
             </label>
           </div>
 
@@ -1535,16 +1565,40 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center py-10 space-y-4">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-                  <p className="text-sm text-gray-700">Aguardando emissão da fatura no Asaas...</p>
-                  <button
-                    type="button"
-                    onClick={handleGerarPagamento}
-                    className="btn btn-secondary text-xs px-4 py-2 mt-1"
-                  >
-                    Tentar emitir fatura novamente
-                  </button>
+                <div className="flex flex-col items-center justify-center py-8 space-y-4">
+                  {paymentBlockedReason ? (
+                    <div className="bg-amber-50 border border-amber-200 p-6 rounded-2xl max-w-lg w-full text-center space-y-3">
+                      <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center mx-auto">
+                        <AlertCircle className="w-5 h-5" />
+                      </div>
+                      <h4 className="font-bold text-amber-900 text-base">Emissão de Cobrança Retida</h4>
+                      <p className="text-xs text-amber-800 leading-relaxed">
+                        {paymentBlockedReason}
+                      </p>
+                      <div className="pt-2">
+                        <button
+                          type="button"
+                          disabled
+                          className="btn btn-secondary text-xs px-4 py-2 opacity-60 cursor-not-allowed w-full sm:w-auto"
+                          title="Apenas administradores podem liberar cobranças com data de vigência anterior à data atual."
+                        >
+                          Emissão Bloqueada para Parceiro
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+                      <p className="text-sm text-gray-700">Aguardando emissão da fatura no Asaas...</p>
+                      <button
+                        type="button"
+                        onClick={handleGerarPagamento}
+                        className="btn btn-secondary text-xs px-4 py-2 mt-1"
+                      >
+                        Tentar emitir fatura novamente
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
