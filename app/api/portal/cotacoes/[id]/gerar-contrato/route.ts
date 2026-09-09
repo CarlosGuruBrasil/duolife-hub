@@ -7,6 +7,7 @@ import { parseJsonbField } from '@/lib/json-safe';
 import { calcularPrecoServidor } from '@/lib/pricing';
 import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
 import { getZapSignConfig } from '@/lib/system-settings';
+import { parseAtuacaoList } from '@/lib/atuacao';
 
 export async function POST(
   req: NextRequest,
@@ -186,7 +187,7 @@ export async function POST(
     }
 
     // 4. Formata áreas de atuação
-    const areaAtuacao = clientData.atuacao ? String(clientData.atuacao).split(':') : [];
+    const areaAtuacao = parseAtuacaoList(clientData.atuacao);
     const checkArea = (name: string) => areaAtuacao.includes(name) ? 'X' : ' ';
 
     // Formatadores locais de data e moeda

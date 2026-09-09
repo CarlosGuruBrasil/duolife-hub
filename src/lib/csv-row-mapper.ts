@@ -1,4 +1,5 @@
 import type { RawCsvRow } from './csv-parser';
+import { parseAtuacaoList } from './atuacao';
 
 /**
  * Mapeamento dos campos "de cadastro" do export do Wix (BDRC) para o formato
@@ -96,13 +97,13 @@ export function toBool(value: string | null | undefined): boolean {
 }
 
 /**
- * Listas do Wix vêm delimitadas por '#': '#Civil#Bancário#' -> ['Civil','Bancário'].
+ * Listas do Wix vêm delimitadas por '#', ':', ';', ',' ou '|'.
  * '9999' é o sentinela de "nenhum" usado no PpeCargoSelect.
  */
 export function parseHashList(value: string | null | undefined): string[] {
   if (!value) return [];
   return value
-    .split('#')
+    .split(/[#:;,|]/)
     .map((part) => part.trim())
     .filter((part) => part && part !== '0' && part !== '9999');
 }
@@ -272,7 +273,7 @@ export function mapSeguradoFromCsvRow(row: RawCsvRow): SeguradoCsvData {
     enderecoCompleto,
     titularidade: cleanText(pick(idx, 'Titularidade')),
     escritorioAssociado: cleanText(pick(idx, 'EscritorioAssociado', 'Escritório Associado')),
-    atuacao: parseHashList(pick(idx, 'Atuacao', 'Atuação')),
+    atuacao: parseAtuacaoList(pick(idx, 'Atuacao', 'Atuação')),
     ppeCargos: toSimNao(pick(idx, 'PpeCargos')),
     ppeRepresenta: toSimNao(pick(idx, 'PpeRepresenta')),
     ppeCargoSelect: parseHashList(pick(idx, 'PpeCargoSelect')),
@@ -303,3 +304,5 @@ export function mapSeguradoFromCsvRow(row: RawCsvRow): SeguradoCsvData {
     codigoWix: cleanText(pick(idx, 'Codigo', 'Código')),
   };
 }
+
+export { parseAtuacaoList } from './atuacao';

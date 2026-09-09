@@ -24,3 +24,5 @@ export function formatDate(value: string | Date | null | undefined): string {
   if (isNaN(date.getTime())) return '-';
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(date);
 }
+
+export { formatAtuacao, parseAtuacaoList, AREAS_ATUACAO_MAP } from './atuacao';

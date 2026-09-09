@@ -17,6 +17,7 @@ import {
   ExternalLink,
   Download
 } from 'lucide-react';
+import { parseAtuacaoList } from '@/lib/atuacao';
 
 interface Plano {
   tipoDePlano: string;
@@ -307,12 +308,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
             }
           };
 
-          let atuacaoArray: string[] = [];
-          if (Array.isArray(cd.atuacao)) {
-            atuacaoArray = cd.atuacao;
-          } else if (typeof cd.atuacao === 'string' && cd.atuacao) {
-            atuacaoArray = cd.atuacao.split(':').filter(Boolean);
-          }
+          const atuacaoArray = parseAtuacaoList(cd.atuacao);
 
           let ppeArray: string[] = [];
           if (Array.isArray(cd.ppeCargoSelect)) {

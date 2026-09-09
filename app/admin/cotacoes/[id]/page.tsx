@@ -5,7 +5,7 @@ import { verifyAuth, isInternalUser } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { PagamentosPanel } from './_pagamentos-client';
 import { GerarBoletoButton } from '../_gerar-boleto-button';
-import { formatCurrency, formatDate, formatDateTime } from '@/lib/format';
+import { formatCurrency, formatDate, formatDateTime, formatAtuacao } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
 import { isDateBeforeToday } from '@/lib/business-days';
 import EditarPropostaButton from '@/components/modals/EditarPropostaButton';
@@ -269,7 +269,7 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
             <span className="text-slate-400 font-semibold uppercase tracking-wider block text-[11px]">Dados do Proponente / Advogado</span>
             <div className="grid grid-cols-2 gap-3">
               <div><span className="text-slate-400">OAB / UF:</span> <strong className="text-slate-900">{clientData.oab ? `OAB ${clientData.oab}` : 'Não informada'}</strong></div>
-              <div><span className="text-slate-400">Atuação:</span> <strong className="text-slate-900">{String(clientData.atuacao || 'Civil')}</strong></div>
+              <div><span className="text-slate-400">Atuação:</span> <strong className="text-slate-900">{formatAtuacao(clientData.atuacao)}</strong></div>
               <div><span className="text-slate-400">Titularidade:</span> <strong className="text-slate-900">{String(clientData.titularidade || 'Individual')}</strong></div>
               <div><span className="text-slate-400">Escritório:</span> <strong className="text-slate-900">{String(clientData.escritorioAssociado || 'N/A')}</strong></div>
             </div>

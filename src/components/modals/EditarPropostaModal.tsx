@@ -25,6 +25,7 @@ import {
   formatCurrencyBRL,
   parseCurrencyToNumber,
 } from './masks';
+import { formatAtuacao, parseAtuacaoList } from '@/lib/format';
 
 export interface EditarPropostaModalProps {
   isOpen: boolean;
@@ -151,11 +152,7 @@ export default function EditarPropostaModal({
       // Aba 2: Proposta & Seguro
       setOab(cd.oab || '');
       setOabUf(cd.oabUf || cd.ufOab || (cd.uf ? cd.uf.toUpperCase() : ''));
-      setAtuacao(
-        Array.isArray(cd.atuacao)
-          ? cd.atuacao.join(', ')
-          : String(cd.atuacao || 'Civil')
-      );
+      setAtuacao(formatAtuacao(cd.atuacao));
       setDataInicioVigencia(
         formatDateToInput(cd.dataInicioVigencia || cd.vigencia || cd.dataVigencia || '')
       );
@@ -283,7 +280,7 @@ export default function EditarPropostaModal({
         oab: oab.trim() || existingClientData.oab,
         oabUf: oabUf.trim() ? oabUf.trim().toUpperCase() : existingClientData.oabUf,
         ufOab: oabUf.trim() ? oabUf.trim().toUpperCase() : existingClientData.ufOab,
-        atuacao: atuacao.trim() || existingClientData.atuacao,
+        atuacao: parseAtuacaoList(atuacao.trim()).length > 0 ? parseAtuacaoList(atuacao.trim()) : existingClientData.atuacao,
         dataInicioVigencia: dataInicioVigencia || existingClientData.dataInicioVigencia,
         vigencia: dataInicioVigencia || existingClientData.vigencia,
         nomePlano: nomePlano.trim() || existingClientData.nomePlano,
@@ -316,7 +313,7 @@ export default function EditarPropostaModal({
         proposalData: {
           oab: oab.trim() || null,
           oabUf: oabUf.trim() ? oabUf.trim().toUpperCase() : null,
-          atuacao: atuacao.trim() || null,
+          atuacao: parseAtuacaoList(atuacao.trim()),
           dataInicioVigencia: dataInicioVigencia || null,
           planoNome: nomePlano.trim() || null,
           franquia: planoFranquia.trim() || null,
