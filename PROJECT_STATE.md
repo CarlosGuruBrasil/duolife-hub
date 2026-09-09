@@ -158,3 +158,16 @@ Transformar a DuoLife em um portal/admin operacional estável, com banco isolado
 - Evidência técnica:
   - `npx tsc --noEmit` aprovado em 2026-08-31
   - `npm run build` (Next.js 16 / Turbopack) aprovado com 54 rotas válidas
+
+## Sincronização Inteligente Wix e Data Original em 2026-09-09
+- Mudanças aplicadas:
+  - Comparativo Wix (`/admin/comparativo-wix` e `app/api/admin/comparativo-wix/route.ts`): sincronização automática de dados e compras para clientes iguais (`synced`), com retenção estrita de clientes divergentes (`divergent`).
+  - Motor financeiro Wix (`src/lib/wix-sales-sync.ts` e `src/lib/wix-compare.ts`): extração de parcelas Asaas (`payment_orders`, `payment_installments` com vencimentos e boletos), contratos ZapSign (`signature_documents`) e metadados profissionais (OAB, escritório, Asaas, ZapSign).
+  - Preservação da data original do Wix (`createdDate`) como `created_at` em todas as tabelas comerciais e cadastrais.
+  - Tela detalhada do segurado (`/admin/clientes/[id]/page.tsx`): exibição de dados profissionais, propostas e parcelas completas com busca por `client_id` ou CPF/CNPJ.
+- Evidência técnica:
+  - Commit `7d40145` publicado na branch `main`.
+  - `npx tsc --noEmit`: 0 erros.
+  - `npm run build`: 64 rotas compiladas com sucesso no Turbopack.
+  - Healthcheck de produção `https://duolife.com.br/api/health` verificado com status `200 OK`.
+
