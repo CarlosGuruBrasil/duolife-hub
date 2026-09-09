@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { formatCurrency, formatDate } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
@@ -156,10 +156,21 @@ export function PagamentosPanel({
     if (liveAsaas) loadAsaas();
   }, [liveAsaas, loadAsaas]);
 
+  // Mais recentes primeiro (vencimento decrescente).
+  const asaasCharges = useMemo(() => {
+    if (!asaas?.charges) return [];
+    return [...asaas.charges].sort((a, b) => {
+      const da = a.dueDate ?? '';
+      const db = b.dueDate ?? '';
+      if (da !== db) return da < db ? 1 : -1;
+      return (b.installmentNumber ?? 0) - (a.installmentNumber ?? 0);
+    });
+  }, [asaas]);
+
   if (error) return <p className="text-sm text-rose-600">{error}</p>;
   if (!orders) return <p className="text-sm text-gray-500">Carregando pagamentos...</p>;
 
-  const hasLiveCharges = !!asaas && asaas.charges.length > 0;
+  const hasLiveCharges = asaasCharges.length > 0;
 
   return (
     <div className="space-y-5">
@@ -224,7 +235,7 @@ export function PagamentosPanel({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {asaas!.charges.map((charge) => {
+                    {asaasCharges.map((charge) => {
                       const isCurrent =
                         asaas!.currentIds.includes(charge.id) ||
                         (!!charge.installment && asaas!.currentIds.includes(charge.installment));

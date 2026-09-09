@@ -363,12 +363,29 @@ export async function processCsvRowsBatch(
 
       // 5. Upsert / Criação de Cotação
       const externalRef = wixId || `CSV-${documentNumber}`;
-      const [existingCotacao] = await sql<Array<{ id: string }>>`
-        SELECT id FROM cotacoes
-        WHERE external_ref = ${externalRef}
-           OR (client_cpf_cnpj = ${documentNumber} AND created_at::date = ${createdAtDate.toISOString().slice(0, 10)}::date)
-        LIMIT 1
-      `;
+
+      // O registro do Wix é a identidade da cotação. O mesmo CPF aparece
+      // várias vezes no export (renovação, proposta refeita no mesmo dia) com
+      // IDs diferentes — casar por CPF+data colapsava esses registros numa
+      // cotação só e estourava o índice `signature_documents_unique_active_cotacao`
+      // ao tentar gravar o segundo contrato. Com wixId, só `external_ref` vale.
+      const [existingCotacao] = wixId
+        ? await sql<Array<{ id: string }>>`
+            SELECT id FROM cotacoes
+            WHERE external_ref = ${wixId}
+               OR metadata->>'wixId' = ${wixId}
+            LIMIT 1
+          `
+        : await sql<Array<{ id: string }>>`
+            SELECT id FROM cotacoes
+            WHERE external_ref = ${externalRef}
+               OR (
+                 client_cpf_cnpj = ${documentNumber}
+                 AND created_at::date = ${createdAtDate.toISOString().slice(0, 10)}::date
+                 AND (external_ref IS NULL OR external_ref = ${externalRef})
+               )
+            LIMIT 1
+          `;
 
       let cotacao: { id: string; is_new: boolean };
       if (existingCotacao) {
@@ -411,6 +428,7 @@ export async function processCsvRowsBatch(
             is_renewal,
             external_ref,
             corretora_id,
+            metadata,
             created_at,
             updated_at
           )
@@ -430,6 +448,7 @@ export async function processCsvRowsBatch(
             ${isRenewal},
             ${externalRef},
             'corretora_net4life_001',
+            ${JSON.stringify({ source: 'csv_import', wixId, wixContactId, codigoWix: segurado.codigoWix })}::jsonb,
             ${createdAtDate},
             NOW()
           )
@@ -722,37 +741,79 @@ export async function processCsvRowsBatch(
         const signStatus = (urlAssinado || cotacaoStatus === 'aprovada') ? 'signed' : 'pending';
         const extDocId = zapsignToken || `CSV-ZAP-${cotacao.id}`;
 
-        await sql`
-          INSERT INTO signature_documents (
-            cotacao_id,
-            client_id,
-            provider,
-            external_document_id,
-            sign_url,
-            signed_file_url,
-            status,
-            signed_at,
-            created_at,
-            updated_at
-          )
-          VALUES (
-            ${cotacao.id},
-            ${client.id},
-            'zapsign',
-            ${extDocId},
-            ${urlDocOriginal || urlProposta},
-            ${urlAssinado},
-            ${signStatus},
-            ${signStatus === 'signed' ? createdAtDate : null},
-            ${createdAtDate},
-            NOW()
-          )
-          ON CONFLICT (provider, external_document_id) DO UPDATE SET
-            signed_file_url = EXCLUDED.signed_file_url,
-            status = EXCLUDED.status,
-            updated_at = NOW()
-        `;
-        signaturesCreated++;
+        try {
+          // `signature_documents_unique_active_cotacao` permite no máximo um
+          // contrato não cancelado por cotação. Se já existe um ativo, atualiza
+          // esse registro — inserir um segundo violaria o índice e derrubaria a
+          // linha inteira da importação.
+          const [activeDoc] = await sql<Array<{ id: string; external_document_id: string | null }>>`
+            SELECT id, external_document_id
+            FROM signature_documents
+            WHERE cotacao_id = ${cotacao.id}
+              AND status NOT IN ('cancelled', 'refused', 'expired')
+            LIMIT 1
+          `;
+
+          if (activeDoc) {
+            await sql`
+              UPDATE signature_documents
+              SET
+                external_document_id = COALESCE(signature_documents.external_document_id, ${extDocId}),
+                sign_url = COALESCE(${urlDocOriginal || urlProposta}, signature_documents.sign_url),
+                signed_file_url = COALESCE(${urlAssinado}, signature_documents.signed_file_url),
+                status = ${signStatus},
+                signed_at = COALESCE(signature_documents.signed_at, ${signStatus === 'signed' ? createdAtDate : null}),
+                updated_at = NOW()
+              WHERE id = ${activeDoc.id}
+            `;
+            signaturesCreated++;
+          } else {
+            await sql`
+              INSERT INTO signature_documents (
+                cotacao_id,
+                client_id,
+                provider,
+                external_document_id,
+                sign_url,
+                signed_file_url,
+                status,
+                signed_at,
+                created_at,
+                updated_at
+              )
+              VALUES (
+                ${cotacao.id},
+                ${client.id},
+                'zapsign',
+                ${extDocId},
+                ${urlDocOriginal || urlProposta},
+                ${urlAssinado},
+                ${signStatus},
+                ${signStatus === 'signed' ? createdAtDate : null},
+                ${createdAtDate},
+                NOW()
+              )
+              ON CONFLICT (provider, external_document_id) DO UPDATE SET
+                signed_file_url = COALESCE(EXCLUDED.signed_file_url, signature_documents.signed_file_url),
+                status = EXCLUDED.status,
+                updated_at = NOW()
+            `;
+            signaturesCreated++;
+          }
+        } catch (signErr) {
+          // O contrato é acessório: cliente, cotação, venda e parcelas desta
+          // linha já foram gravados. Registra a pendência sem descartar a linha.
+          errorsCount++;
+          errors.push({
+            row: rowNum,
+            name,
+            doc: documentNumber,
+            message: `Contrato de assinatura não vinculado (demais dados importados): ${
+              signErr instanceof Error ? signErr.message : 'erro desconhecido'
+            }`,
+          });
+          logger.warn({ err: signErr, rowNum, cotacaoId: cotacao.id }, 'csv_import.signature_skipped');
+        }
       }
     } catch (err) {
       errorsCount++;
