@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { verifyAdminAuth, unauthorized } from '@/lib/auth';
+import { roleIsDev } from '@/lib/roles';
 import { compareClientsWithWix, syncWixClientsToLocalDb } from '@/lib/wix-compare';
 import { syncWixSalesToLocalDb } from '@/lib/wix-sales-sync';
 import { normalizeDigits } from '@/lib/wix-sync';
@@ -10,6 +11,13 @@ export const dynamic = 'force-dynamic';
 export async function GET(_req: NextRequest) {
   const admin = await verifyAdminAuth();
   if (!admin) return unauthorized();
+
+  if (!roleIsDev(admin.role)) {
+    return Response.json(
+      { error: 'Acesso permitido exclusivamente a desenvolvedores (duolife_dev).' },
+      { status: 403 }
+    );
+  }
 
   try {
     const result = await compareClientsWithWix();
@@ -30,6 +38,13 @@ export async function GET(_req: NextRequest) {
 export async function POST(_req: NextRequest) {
   const admin = await verifyAdminAuth();
   if (!admin) return unauthorized();
+
+  if (!roleIsDev(admin.role)) {
+    return Response.json(
+      { error: 'Acesso permitido exclusivamente a desenvolvedores (duolife_dev).' },
+      { status: 403 }
+    );
+  }
 
   try {
     // 1. Executa comparativo preliminar para identificar quais clientes são idênticos e quais têm divergências

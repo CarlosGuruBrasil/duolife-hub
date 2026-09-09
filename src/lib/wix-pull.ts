@@ -13,6 +13,7 @@ import {
 import { upsertInsuranceClient } from './insurance-ops';
 import { isWixIntegrationEnabled } from './system-settings';
 import { findPartnerByWixCode, logSyncEvent, normalizeDigits, normalizeMaybeString } from './wix-sync';
+import { parseFlexibleDate, extractWixCreationDate } from './wix-compare';
 
 const PAGE_SIZE = 100;
 
@@ -88,8 +89,15 @@ async function upsertItem(params: {
     normalizeMaybeString(data.codigoParceiro) ||
     normalizeMaybeString(data.codigo) ||
     null;
-  const wixCreatedAt = toIsoDate((params.item as { _createdDate?: unknown })._createdDate);
-  const wixUpdatedAt = toIsoDate((params.item as { _updatedDate?: unknown })._updatedDate);
+  const wixCreatedAt =
+    parseFlexibleDate(data._createdDate) ||
+    parseFlexibleDate((params.item as Record<string, unknown>)._createdDate) ||
+    extractWixCreationDate(data, params.item as Record<string, unknown>);
+  const wixUpdatedAt =
+    parseFlexibleDate(data._updatedDate) ||
+    parseFlexibleDate((params.item as Record<string, unknown>)._updatedDate) ||
+    extractWixCreationDate(data, { _updatedDate: (params.item as Record<string, unknown>)._updatedDate }) ||
+    wixCreatedAt;
   const payload = {
     collectionId: params.collectionId,
     item: params.item,
@@ -180,6 +188,11 @@ async function upsertLeadFromWix(params: {
         LIMIT 1
       `;
 
+  const wixCreatedAtStr =
+    parseFlexibleDate(data._createdDate) ||
+    extractWixCreationDate(data);
+  const leadDataCadastro = wixCreatedAtStr ? new Date(wixCreatedAtStr) : null;
+
   if (existingLead) {
     const [updated] = await sql`
       UPDATE leads
@@ -194,6 +207,7 @@ async function upsertLeadFromWix(params: {
         status = COALESCE(${status || 'novo'}, status),
         status_cliente = COALESCE(${statusCliente}, status_cliente),
         raw = ${JSON.stringify(raw)}::jsonb,
+        ${leadDataCadastro ? sql`data_cadastro = ${leadDataCadastro},` : sql``}
         synced_at = NOW(),
         source_system = 'wix',
         data_atualizacao = NOW()
@@ -233,7 +247,7 @@ async function upsertLeadFromWix(params: {
       ${JSON.stringify(raw)}::jsonb,
       NOW(),
       'wix',
-      NOW(),
+      ${leadDataCadastro ? leadDataCadastro : sql`NOW()`},
       NOW()
     )
     RETURNING id

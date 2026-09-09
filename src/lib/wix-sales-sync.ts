@@ -1,6 +1,11 @@
 import { sql } from './pg';
 import { ensureSchema } from './schema';
-import { fetchAllWixImport1Items, WixClientItem } from './wix-compare';
+import {
+  fetchAllWixImport1Items,
+  WixClientItem,
+  extractWixCreationDate,
+  parseFlexibleDate,
+} from './wix-compare';
 import { normalizeDigits, normalizeMaybeString } from './wix-sync';
 import { logger } from './logger';
 
@@ -499,24 +504,39 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
       const address = parseWixAddress(raw);
       const installmentsInfo = extractWixInstallments(raw, revenue);
 
-      const wixDate = wix.createdDate ? new Date(wix.createdDate) : new Date();
+      const rawDateStr =
+        parseFlexibleDate(raw._createdDate) ||
+        parseFlexibleDate(wix.createdDate) ||
+        extractWixCreationDate(raw, { createdDate: wix.createdDate, id: wix.id });
+      const wixDate = rawDateStr ? new Date(rawDateStr) : new Date();
       const issueDate = wixDate.toISOString().slice(0, 10);
       const expiryDate = new Date(wixDate.getTime() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
       // 3. Localiza ou cria o cliente segurado em insurance_clients
       let clientId: string | null = null;
+      let existingClientCreatedAt: string | null = null;
       if (documentNumber && !documentNumber.startsWith('WIX-')) {
-        const [existingClient] = await sql<Array<{ id: string }>>`
-          SELECT id FROM insurance_clients WHERE document_number = ${documentNumber} LIMIT 1
+        const [existingClient] = await sql<Array<{ id: string; created_at: string }>>`
+          SELECT id, created_at::text FROM insurance_clients WHERE document_number = ${documentNumber} LIMIT 1
         `;
-        if (existingClient) clientId = existingClient.id;
+        if (existingClient) {
+          clientId = existingClient.id;
+          existingClientCreatedAt = existingClient.created_at;
+        }
       }
       if (!clientId && wix.id) {
-        const [existingByExt] = await sql<Array<{ id: string }>>`
-          SELECT id FROM insurance_clients WHERE metadata->>'externalId' = ${wix.id} LIMIT 1
+        const [existingByExt] = await sql<Array<{ id: string; created_at: string }>>`
+          SELECT id, created_at::text FROM insurance_clients WHERE metadata->>'externalId' = ${wix.id} LIMIT 1
         `;
-        if (existingByExt) clientId = existingByExt.id;
+        if (existingByExt) {
+          clientId = existingByExt.id;
+          existingClientCreatedAt = existingByExt.created_at;
+        }
       }
+
+      const clientCreatedAt = rawDateStr
+        ? new Date(rawDateStr)
+        : (existingClientCreatedAt ? new Date(existingClientCreatedAt) : wixDate);
 
       const clientMetaPayload = {
         source: 'wix',
@@ -549,7 +569,7 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
             ${email},
             ${phone},
             ${JSON.stringify(clientMetaPayload)}::jsonb,
-            ${wixDate},
+            ${clientCreatedAt},
             NOW()
           )
           ON CONFLICT (document_number)
@@ -557,7 +577,7 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
             full_name = EXCLUDED.full_name,
             email = COALESCE(EXCLUDED.email, insurance_clients.email),
             phone = COALESCE(EXCLUDED.phone, insurance_clients.phone),
-            created_at = ${wixDate},
+            ${rawDateStr ? sql`created_at = ${clientCreatedAt},` : sql``}
             metadata = insurance_clients.metadata || EXCLUDED.metadata,
             updated_at = NOW()
           RETURNING id
@@ -571,7 +591,7 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
             full_name = COALESCE(${clientName || null}::text, full_name),
             email = COALESCE(${email || null}::text, email),
             phone = COALESCE(${phone || null}::text, phone),
-            created_at = ${wixDate},
+            ${rawDateStr ? sql`created_at = ${clientCreatedAt},` : sql``}
             metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify(clientMetaPayload)}::jsonb,
             updated_at = NOW()
           WHERE id = ${clientId}
@@ -579,10 +599,10 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
       }
 
       // Atualiza data_cadastro em leads para refletir a data real do Wix
-      if (documentNumber) {
+      if (documentNumber && rawDateStr) {
         await sql`
           UPDATE leads
-          SET data_cadastro = ${wixDate}
+          SET data_cadastro = ${clientCreatedAt}
           WHERE document_number = ${documentNumber}
              OR external_id = ${wix.id}
         `;

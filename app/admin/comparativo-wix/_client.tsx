@@ -42,8 +42,21 @@ function formatDocument(value: string | null | undefined) {
 function formatDateTime(value: string | null | undefined) {
   if (!value) return '-';
   try {
-    const d = new Date(value);
-    if (isNaN(d.getTime())) return '-';
+    let d = new Date(value);
+    if (isNaN(d.getTime()) && typeof value === 'string') {
+      const brMatch = value.trim().match(
+        /^(\d{1,2})[\/\.-](\d{1,2})[\/\.-](\d{4})(?:[\sT\-]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/
+      );
+      if (brMatch) {
+        const day = parseInt(brMatch[1], 10);
+        const month = parseInt(brMatch[2], 10);
+        const year = parseInt(brMatch[3], 10);
+        const hours = brMatch[4] ? parseInt(brMatch[4], 10) : 12;
+        const minutes = brMatch[5] ? parseInt(brMatch[5], 10) : 0;
+        d = new Date(year, month - 1, day, hours, minutes);
+      }
+    }
+    if (isNaN(d.getTime())) return value;
     return new Intl.DateTimeFormat('pt-BR', {
       dateStyle: 'short',
       timeStyle: 'short',

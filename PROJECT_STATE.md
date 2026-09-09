@@ -171,3 +171,13 @@ Transformar a DuoLife em um portal/admin operacional estável, com banco isolado
   - `npm run build`: 64 rotas compiladas com sucesso no Turbopack.
   - Healthcheck de produção `https://duolife.com.br/api/health` verificado com status `200 OK`.
 
+## Reorganização de Acesso - Comparativo Wix em 2026-09-09
+- Mudanças aplicadas:
+  - Movimentação do menu: O link do Comparativo Wix (`/admin/comparativo-wix`) foi transferido da seção "Rede" para o submenu dinâmico "Desenvolvimento" no `AdminShell.tsx`.
+  - Restrição na Interface (`app/admin/comparativo-wix/page.tsx`): Bloqueio de acesso para usuários que não possuam a role `duolife_dev`, exibindo tela amigável de Acesso Restrito e evitando execuções desnecessárias da rotina de comparação.
+  - Blindagem das APIs (`app/api/admin/comparativo-wix/route.ts`): Proteção das rotas `GET` e `POST` com validação de `roleIsDev(admin.role)`, retornando status HTTP 403 para acessos não autorizados.
+- Evidência técnica:
+  - `npx tsc --noEmit`: 0 erros.
+  - `npm run build`: 64 rotas compiladas com sucesso no Turbopack.
+
+

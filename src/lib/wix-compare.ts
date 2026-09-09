@@ -86,17 +86,168 @@ export interface WixComparisonResult {
   generatedAt: string;
 }
 
-function toIsoDate(value: unknown): string | null {
+export function parseFlexibleDate(value: unknown): string | null {
   if (!value) return null;
-  if (typeof value === 'string' || typeof value === 'number') {
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date.toISOString();
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
   }
+
+  if (typeof value === 'number') {
+    if (value > 1e11) {
+      const d = new Date(value);
+      return Number.isNaN(d.getTime()) ? null : d.toISOString();
+    }
+    if (value > 1e8) {
+      const d = new Date(value * 1000);
+      return Number.isNaN(d.getTime()) ? null : d.toISOString();
+    }
+  }
+
   if (typeof value === 'object' && value !== null) {
-    const candidate = value as { $date?: string; date?: string };
-    if (typeof candidate.$date === 'string') return toIsoDate(candidate.$date);
-    if (typeof candidate.date === 'string') return toIsoDate(candidate.date);
+    const obj = value as Record<string, unknown>;
+    if (obj.$date) return parseFlexibleDate(obj.$date);
+    if (obj.date) return parseFlexibleDate(obj.date);
+    if (obj._date) return parseFlexibleDate(obj._date);
+    if (obj.value) return parseFlexibleDate(obj.value);
   }
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed || trimmed === '-' || trimmed === 'null' || trimmed === 'undefined') return null;
+
+    // 1. Formato brasileiro: DD/MM/YYYY ou DD-MM-YYYY ou DD.MM.YYYY [HH:mm[:ss]]
+    const brMatch = trimmed.match(
+      /^(\d{1,2})[\/\.-](\d{1,2})[\/\.-](\d{4})(?:[\sT\-]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/
+    );
+    if (brMatch) {
+      const day = parseInt(brMatch[1], 10);
+      const month = parseInt(brMatch[2], 10);
+      const year = parseInt(brMatch[3], 10);
+      const hours = brMatch[4] ? parseInt(brMatch[4], 10) : 12;
+      const minutes = brMatch[5] ? parseInt(brMatch[5], 10) : 0;
+      const seconds = brMatch[6] ? parseInt(brMatch[6], 10) : 0;
+
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31 && year >= 1900 && year <= 2100) {
+        const d = new Date(Date.UTC(year, month - 1, day, hours, minutes, seconds));
+        if (!Number.isNaN(d.getTime())) return d.toISOString();
+      }
+    }
+
+    // 2. Formato ISO: YYYY-MM-DD
+    const isoMatch = trimmed.match(
+      /^(\d{4})[\/\.-](\d{1,2})[\/\.-](\d{1,2})(?:[\sT]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/
+    );
+    if (isoMatch) {
+      const year = parseInt(isoMatch[1], 10);
+      const month = parseInt(isoMatch[2], 10);
+      const day = parseInt(isoMatch[3], 10);
+      const hours = isoMatch[4] ? parseInt(isoMatch[4], 10) : 12;
+      const minutes = isoMatch[5] ? parseInt(isoMatch[5], 10) : 0;
+      const seconds = isoMatch[6] ? parseInt(isoMatch[6], 10) : 0;
+
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        const d = new Date(Date.UTC(year, month - 1, day, hours, minutes, seconds));
+        if (!Number.isNaN(d.getTime())) return d.toISOString();
+      }
+    }
+
+    // 3. Fallback para o Date nativo do JS
+    const d = new Date(trimmed);
+    if (!Number.isNaN(d.getTime())) return d.toISOString();
+  }
+
+  return null;
+}
+
+export function extractWixCreationDate(
+  raw: Record<string, unknown> | null | undefined,
+  item?: Record<string, unknown> | null
+): string | null {
+  if (!raw && !item) return null;
+
+  const candidateKeys = [
+    'data_cadastro',
+    'dataCadastro',
+    'dataDeCadastro',
+    'data_de_cadastro',
+    'Data de Cadastro',
+    'Data de cadastro',
+    'Data Cadastro',
+    'data de cadastro',
+    'data cadastro',
+    'data_criacao',
+    'dataCriacao',
+    'data_de_criacao',
+    'dataDeCriacao',
+    'dataRegistro',
+    'data_registro',
+    'dataEnvio',
+    'data_envio',
+    'dataContratacao',
+    'data_contratacao',
+    'dataVenda',
+    'data_venda',
+    'dataHora',
+    'data_hora',
+    'data',
+    'Data',
+    '_createdDate',
+    'createdDate',
+    '_createdAt',
+    'createdAt',
+    'wix_created_at',
+  ];
+
+  if (raw) {
+    for (const k of candidateKeys) {
+      if (raw[k] !== undefined && raw[k] !== null && raw[k] !== '') {
+        const parsed = parseFlexibleDate(raw[k]);
+        if (parsed) return parsed;
+      }
+    }
+
+    // Busca dinâmica por chave que contenha termos de data de cadastro/criação
+    for (const key of Object.keys(raw)) {
+      if (/^(data.*cadast|cadast.*data|data.*cria|data.*contrat|data.*regis|data.*envio|_?created|criado)/i.test(key)) {
+        const val = raw[key];
+        if (val !== undefined && val !== null && val !== '') {
+          const parsed = parseFlexibleDate(val);
+          if (parsed) return parsed;
+        }
+      }
+    }
+  }
+
+  if (item) {
+    for (const k of candidateKeys) {
+      if (item[k] !== undefined && item[k] !== null && item[k] !== '') {
+        const parsed = parseFlexibleDate(item[k]);
+        if (parsed) return parsed;
+      }
+    }
+
+    const itemPayload = item.payload as Record<string, unknown> | undefined;
+    const itemPayloadItem = itemPayload?.item as Record<string, unknown> | undefined;
+    const itemData = (item.data || itemPayloadItem?.data || itemPayloadItem) as Record<string, unknown> | undefined;
+    if (itemData && typeof itemData === 'object') {
+      for (const k of candidateKeys) {
+        if (itemData[k] !== undefined && itemData[k] !== null && itemData[k] !== '') {
+          const parsed = parseFlexibleDate(itemData[k]);
+          if (parsed) return parsed;
+        }
+      }
+      for (const key of Object.keys(itemData)) {
+        if (/^(data.*cadast|cadast.*data|data.*cria|data.*contrat|data.*regis|data.*envio|_?created|criado)/i.test(key)) {
+          const val = itemData[key];
+          if (val !== undefined && val !== null && val !== '') {
+            const parsed = parseFlexibleDate(val);
+            if (parsed) return parsed;
+          }
+        }
+      }
+    }
+  }
+
   return null;
 }
 
@@ -133,8 +284,12 @@ function parseWixItem(item: WixQueryItem): WixClientItem {
     normalizeMaybeString(data.codigoParceiro) ||
     normalizeMaybeString(data.codigo) ||
     null;
-  const createdDate = toIsoDate((item as { _createdDate?: unknown })._createdDate);
-  const updatedDate = toIsoDate((item as { _updatedDate?: unknown })._updatedDate);
+  const createdDate = extractWixCreationDate(data, item as Record<string, unknown>);
+  const updatedDate =
+    extractWixCreationDate(data, {
+      _updatedDate: (item as Record<string, unknown>)._updatedDate,
+      updatedDate: (item as Record<string, unknown>).updatedDate,
+    }) || createdDate;
 
   return {
     id: externalId,
@@ -204,7 +359,12 @@ export async function fetchAllDbClients(): Promise<DbClientItem[]> {
       email: r.email ? r.email.trim().toLowerCase() : null,
       phone: r.phone ? normalizeDigits(r.phone) : null,
       birthDate: r.birth_date,
-      createdAt: r.created_at,
+      createdAt:
+        meta.source === 'wix' || meta.wix
+          ? parseFlexibleDate((meta.wix as Record<string, unknown>)?._createdDate || meta.createdDate) ||
+            extractWixCreationDate(meta.wix as Record<string, unknown>, meta) ||
+            r.created_at
+          : r.created_at,
       updatedAt: r.updated_at,
       source,
       status,
@@ -314,6 +474,27 @@ export async function fetchAllWixImport1Items(): Promise<{
         const itemPayload = (m.payload as { item?: WixQueryItem })?.item;
         const rawData = itemPayload ? extractItemData(itemPayload) : (m.payload || {});
 
+        const payloadObj = (m.payload || {}) as Record<string, unknown>;
+        const payloadData =
+          ((payloadObj.item as Record<string, unknown>)?.data as Record<string, unknown>) ||
+          (payloadObj.data as Record<string, unknown>) ||
+          (payloadObj.item as Record<string, unknown>) ||
+          payloadObj;
+
+        const createdDate =
+          parseFlexibleDate(rawData._createdDate) ||
+          parseFlexibleDate(payloadData._createdDate) ||
+          parseFlexibleDate(payloadObj._createdDate) ||
+          parseFlexibleDate(m.wix_created_at) ||
+          extractWixCreationDate(rawData, payloadObj);
+
+        const updatedDate =
+          parseFlexibleDate(rawData._updatedDate) ||
+          parseFlexibleDate(payloadData._updatedDate) ||
+          parseFlexibleDate(payloadObj._updatedDate) ||
+          parseFlexibleDate(m.wix_updated_at) ||
+          createdDate;
+
         return {
           id: m.wix_item_id,
           name: m.name,
@@ -323,8 +504,8 @@ export async function fetchAllWixImport1Items(): Promise<{
           status: m.status,
           statusCliente: (rawData.statusCliente as string) || m.status,
           partnerCode: m.partner_code,
-          createdDate: m.wix_created_at,
-          updatedDate: m.wix_updated_at,
+          createdDate,
+          updatedDate,
           rawData,
         };
       });
@@ -404,7 +585,183 @@ function calculateDivergences(db: DbClientItem, wix: WixClientItem): FieldDiff[]
   return diffs;
 }
 
+export async function repairWixCreationDates(): Promise<{
+  clientsRepaired: number;
+  leadsRepaired: number;
+  wixItemsRepaired: number;
+}> {
+  await ensureSchema();
+  let clientsRepaired = 0;
+  let leadsRepaired = 0;
+  let wixItemsRepaired = 0;
+
+  try {
+    // 1. Atualiza wix_items onde wix_created_at é nulo
+    const unparsedWixItems = await sql<Array<{ id: string; payload: Record<string, unknown> | null }>>`
+      SELECT id, payload
+      FROM wix_items
+      WHERE wix_created_at IS NULL
+      LIMIT 2000
+    `;
+
+    for (const wi of unparsedWixItems) {
+      if (!wi.payload) continue;
+      const itemData = (wi.payload.item || wi.payload.data || wi.payload) as Record<string, unknown>;
+      const rawData = itemData && typeof itemData === 'object' && itemData.data ? (itemData.data as Record<string, unknown>) : itemData;
+      const extracted =
+        parseFlexibleDate(rawData?._createdDate) ||
+        parseFlexibleDate((wi.payload as Record<string, unknown>)?._createdDate) ||
+        parseFlexibleDate((itemData as Record<string, unknown>)?._createdDate) ||
+        extractWixCreationDate(rawData, wi.payload as Record<string, unknown>);
+      if (extracted) {
+        await sql`
+          UPDATE wix_items
+          SET wix_created_at = ${extracted}::timestamptz
+          WHERE id = ${wi.id}
+        `;
+        wixItemsRepaired++;
+      }
+    }
+
+    // 2. Atualiza leads vindos do Wix onde data_cadastro está desatualizada ou nula
+    const wixLeads = await sql<Array<{
+      id: string;
+      data_cadastro: string | null;
+      raw: Record<string, unknown> | null;
+    }>>`
+      SELECT id, data_cadastro::text, raw
+      FROM leads
+      WHERE origem = 'wix' OR source_system = 'wix'
+    `;
+
+    for (const l of wixLeads) {
+      const rawWix = (l.raw?.wix || l.raw) as Record<string, unknown> | undefined;
+      const extracted =
+        parseFlexibleDate(rawWix?._createdDate) ||
+        parseFlexibleDate((l.raw as Record<string, unknown>)?._createdDate) ||
+        extractWixCreationDate(rawWix, l.raw);
+      if (extracted) {
+        const extractedTime = new Date(extracted).getTime();
+        const currentTime = l.data_cadastro ? new Date(l.data_cadastro).getTime() : 0;
+        if (Math.abs(extractedTime - currentTime) > 60000) {
+          await sql`
+            UPDATE leads
+            SET data_cadastro = ${extracted}::timestamptz
+            WHERE id = ${l.id}
+          `;
+          leadsRepaired++;
+        }
+      }
+    }
+
+    // 3. Atualiza insurance_clients cruzando com wix_items e leads que possuem a data real
+    await sql`
+      UPDATE insurance_clients ic
+      SET created_at = wi.wix_created_at
+      FROM wix_items wi
+      WHERE wi.document_number = ic.document_number
+        AND wi.wix_created_at IS NOT NULL
+        AND (ic.created_at >= '2026-09-08'::timestamptz OR ic.metadata->>'source' = 'wix' OR ic.metadata ? 'allWixIds')
+        AND ABS(EXTRACT(EPOCH FROM (ic.created_at - wi.wix_created_at))) > 60
+    `;
+
+    await sql`
+      UPDATE insurance_clients ic
+      SET created_at = l.data_cadastro
+      FROM leads l
+      WHERE l.document_number = ic.document_number
+        AND l.data_cadastro IS NOT NULL
+        AND (ic.created_at >= '2026-09-08'::timestamptz OR ic.metadata->>'source' = 'wix' OR ic.metadata ? 'allWixIds')
+        AND ABS(EXTRACT(EPOCH FROM (ic.created_at - l.data_cadastro))) > 60
+    `;
+
+    // 4. Varre insurance_clients com metadata para garantir que a data _createdDate foi persistida
+    const clientsToInspect = await sql<Array<{
+      id: string;
+      created_at: string;
+      metadata: Record<string, unknown> | null;
+    }>>`
+      SELECT id, created_at::text, metadata
+      FROM insurance_clients
+      WHERE (created_at >= '2026-09-08'::timestamptz OR metadata->>'source' = 'wix' OR metadata ? 'allWixIds')
+        AND metadata IS NOT NULL
+    `;
+
+    for (const c of clientsToInspect) {
+      const raw = (c.metadata?.wix || c.metadata) as Record<string, unknown> | undefined;
+      const extracted =
+        parseFlexibleDate(raw?._createdDate) ||
+        parseFlexibleDate(c.metadata?.createdDate) ||
+        extractWixCreationDate(raw, c.metadata);
+      if (extracted) {
+        const extractedTime = new Date(extracted).getTime();
+        const currentTime = new Date(c.created_at).getTime();
+        if (Math.abs(extractedTime - currentTime) > 60000) {
+          await sql`
+            UPDATE insurance_clients
+            SET created_at = ${extracted}::timestamptz
+            WHERE id = ${c.id}
+          `;
+          clientsRepaired++;
+        }
+      }
+    }
+
+    // 5. Alinha cotações, vendas, ordens, parcelas e assinaturas com a data real do cliente
+    await sql`
+      UPDATE cotacoes c
+      SET created_at = ic.created_at
+      FROM insurance_clients ic
+      WHERE c.client_id = ic.id
+        AND (c.metadata->>'source' = 'wix' OR c.notes ILIKE '%wix%')
+        AND ABS(EXTRACT(EPOCH FROM (c.created_at - ic.created_at))) > 60
+    `;
+
+    await sql`
+      UPDATE sales s
+      SET created_at = ic.created_at
+      FROM insurance_clients ic
+      WHERE s.client_id = ic.id
+        AND (s.metadata->>'source' = 'wix' OR s.policy_number ILIKE '%WIX%')
+        AND ABS(EXTRACT(EPOCH FROM (s.created_at - ic.created_at))) > 60
+    `;
+
+    await sql`
+      UPDATE payment_orders po
+      SET created_at = ic.created_at
+      FROM insurance_clients ic
+      WHERE po.client_id = ic.id
+        AND po.raw_payload->>'source' = 'wix'
+        AND ABS(EXTRACT(EPOCH FROM (po.created_at - ic.created_at))) > 60
+    `;
+
+    await sql`
+      UPDATE payment_installments pi
+      SET created_at = ic.created_at
+      FROM insurance_clients ic
+      WHERE pi.client_id = ic.id
+        AND pi.raw_payload->>'source' = 'wix'
+        AND ABS(EXTRACT(EPOCH FROM (pi.created_at - ic.created_at))) > 60
+    `;
+
+    await sql`
+      UPDATE signature_documents sd
+      SET created_at = ic.created_at
+      FROM insurance_clients ic
+      WHERE sd.client_id = ic.id
+        AND sd.raw_payload->>'source' = 'wix'
+        AND ABS(EXTRACT(EPOCH FROM (sd.created_at - ic.created_at))) > 60
+    `;
+  } catch (err) {
+    console.warn('Erro ao reparar datas do Wix:', err);
+  }
+
+  return { clientsRepaired, leadsRepaired, wixItemsRepaired };
+}
+
 export async function compareClientsWithWix(): Promise<WixComparisonResult> {
+  await repairWixCreationDates().catch(() => {});
+
   const [dbClients, wixData] = await Promise.all([
     fetchAllDbClients(),
     fetchAllWixImport1Items(),
@@ -683,7 +1040,11 @@ export async function syncWixClientsToLocalDb(options?: {
       const statusCliente = wix.statusCliente || normalizeMaybeString(raw.statusCliente) || normalizeMaybeString(raw.StatusCliente) || null;
       const status = wix.status || statusCliente || normalizeMaybeString(raw.statusGeral) || null;
       const partnerCode = wix.partnerCode || normalizeMaybeString(raw.codigoVenda) || normalizeMaybeString(raw.codigoParceiro) || null;
-      const wixCreatedAt = wix.createdDate ? new Date(wix.createdDate) : new Date();
+      const rawDateStr =
+        parseFlexibleDate(raw._createdDate) ||
+        parseFlexibleDate(wix.createdDate) ||
+        extractWixCreationDate(raw, { createdDate: wix.createdDate, id: wix.id });
+      const wixCreatedAt = rawDateStr ? new Date(rawDateStr) : new Date();
 
       const oab = extractWixOab(raw);
       const escritorio = extractWixEscritorio(raw);
@@ -822,7 +1183,7 @@ export async function syncWixClientsToLocalDb(options?: {
             email = COALESCE(${email || null}::text, email),
             phone = COALESCE(${phone || null}::text, phone),
             birth_date = COALESCE(${birthDate || null}::date, birth_date),
-            created_at = ${wixCreatedAt},
+            ${rawDateStr ? sql`created_at = ${wixCreatedAt},` : sql``}
             metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify(metadataPayload)}::jsonb,
             updated_at = NOW()
           WHERE id = ${existingClient.id}
@@ -920,7 +1281,7 @@ export async function syncWixClientsToLocalDb(options?: {
             status = COALESCE(${status || null}::text, status),
             status_cliente = COALESCE(${statusCliente || null}::text, status_cliente),
             raw = ${JSON.stringify({ sourceCollection: 'Import1', wix: raw })}::jsonb,
-            data_cadastro = ${wixCreatedAt},
+            ${rawDateStr ? sql`data_cadastro = ${wixCreatedAt},` : sql``}
             synced_at = NOW(),
             data_atualizacao = NOW()
           WHERE id = ${existingLead.id}
