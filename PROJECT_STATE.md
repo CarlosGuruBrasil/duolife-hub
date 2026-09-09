@@ -180,4 +180,26 @@ Transformar a DuoLife em um portal/admin operacional estável, com banco isolado
   - `npx tsc --noEmit`: 0 erros.
   - `npm run build`: 64 rotas compiladas com sucesso no Turbopack.
 
+## Assistente de Truncamento do Banco Local no Comparativo Wix em 2026-09-09
+- Mudanças aplicadas:
+  - Nova API Administrativa (`app/api/admin/comparativo-wix/truncate/route.ts`): rota `POST` protegida para desenvolvedores (`duolife_dev`) que executa `TRUNCATE TABLE ... CASCADE` em `insurance_clients`, `cotacoes`, `sales`, `commissions`, `payment_orders`, `payment_installments`, `signature_documents`, `cupom_uso_eventos` (e opcionalmente `leads`). Exige confirmação textual `confirm === 'TRUNCAR'`.
+  - Interface do Comparativo Wix (`app/admin/comparativo-wix/_client.tsx`): adicionado botão "Truncar Banco Local" e modal de confirmação com dupla blindagem e aviso explícito de que o Wix permanece intacto.
+  - Atualização automática de dados após truncamento via recarregamento do comparativo.
+- Evidência técnica:
+  - `npx tsc --noEmit`: 0 erros.
+  - `npm run build`: 64 rotas compiladas com sucesso no Turbopack (incluindo `/api/admin/comparativo-wix/truncate`).
+
+## Sistema de Importação CSV e Reset Local em 2026-09-09
+- Mudanças aplicadas:
+  - Reset da base local: executado truncamento total das tabelas locais `insurance_clients`, `cotacoes`, `sales`, `commissions`, `payment_orders`, `payment_installments`, `signature_documents`, `cupom_uso_eventos` e `leads`.
+  - Módulo do Parser Seguro para Browser (`src/lib/csv-parser.ts`): parser RFC 4180 puro, isolado sem dependências de Node.js (`fs`, `os`), prevenindo erro de bundling do Turbopack em Client Components.
+  - Motor de Importação em Lote (`src/lib/csv-import.ts` e `app/api/admin/importar-csv/route.ts`): mapeamento das 71 colunas para as tabelas relacionais com normalização de CPF/CNPJ, valores monetários, datas e arrays JSON de parcelas Asaas.
+  - Interface Web (`app/admin/importar-csv/page.tsx` e `_client.tsx`): tela de upload com drag-and-drop, pré-visualização das linhas, validação de colunas e processamento em lotes de 50 com barra de progresso e métricas em tempo real.
+  - Submenu Desenvolvimento (`AdminShell.tsx`): adicionado item "Importar CSV" visível exclusivamente para perfil `duolife_dev`.
+- Evidência técnica:
+  - `npx tsc --noEmit`: 0 erros.
+  - `npm run build`: 64 rotas compiladas com sucesso no Turbopack.
+
+
+
 

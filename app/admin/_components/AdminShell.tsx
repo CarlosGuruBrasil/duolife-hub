@@ -27,6 +27,7 @@ import {
   Trophy,
   Mail,
   GitFork,
+  FileSpreadsheet,
 } from 'lucide-react';
 import type { AuthUser } from '@/lib/auth';
 import { roleIsDev } from '@/lib/roles';
@@ -117,6 +118,12 @@ export default function AdminShell({ children, user }: AdminShellProps) {
                 icon: ArrowRightLeft,
                 description: 'Auditoria DB vs. Wix Import1.',
               },
+              {
+                href: '/admin/importar-csv',
+                label: 'Importar CSV',
+                icon: FileSpreadsheet,
+                description: 'Importação de base de clientes e vendas.',
+              },
             ],
           },
         ]
@@ -148,6 +155,8 @@ export default function AdminShell({ children, user }: AdminShellProps) {
     currentPathLabel = 'Visão geral';
   } else if (pathname === '/admin/comparativo-wix') {
     currentPathLabel = 'Comparativo Wix (Teste)';
+  } else if (pathname === '/admin/importar-csv') {
+    currentPathLabel = 'Importar CSV (Clientes & Vendas)';
   } else if (pathname.startsWith('/admin/produtos/novo')) {
     currentPathLabel = 'Produtos / Novo Produto';
   } else if (pathname.startsWith('/admin/produtos/')) {

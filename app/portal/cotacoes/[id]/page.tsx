@@ -98,15 +98,59 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
     LIMIT 1
   `;
 
+  // Busca Ordem de Pagamento / Parcelas se houver
+  const [paymentOrder] = await sql<Array<{
+    id: string;
+    installment_count: number;
+    billing_type: string;
+    amount_total: string;
+    status: string;
+  }>>`
+    SELECT id, installment_count, billing_type, amount_total, status
+    FROM payment_orders
+    WHERE cotacao_id = ${id}
+    ORDER BY created_at DESC
+    LIMIT 1
+  `;
+
   const clientData = parseClientData(cotacao.client_data);
 
   const planoNome = String(clientData.nomePlano || clientData.tipoDePlano || 'RC Advogados');
   const cobertura = String(clientData.valorCobertura || (cotacao.importancia_segurada ? formatCurrency(cotacao.importancia_segurada) : ''));
   const franquia = String(clientData.planoFranquia || 'R$ 1.000,00');
-  const valorTotalCalculado = clientData.valor !== undefined && clientData.valor !== null
-    ? formatCurrency(clientData.valor as number)
+
+  const totalAmountNum = paymentOrder?.amount_total
+    ? parseFloat(paymentOrder.amount_total)
+    : (clientData.valor !== undefined && clientData.valor !== null
+        ? Number(clientData.valor)
+        : Number(cotacao.premio_final ?? cotacao.premio_calculado ?? 0));
+
+  const valorTotalCalculado = totalAmountNum > 0
+    ? formatCurrency(totalAmountNum)
     : formatCurrency(cotacao.premio_final ?? cotacao.premio_calculado);
-  const parcelaInfo = clientData.parcela ? `${clientData.parcela}x parcela(s)` : '1x À Vista';
+
+  const rawParcelas =
+    paymentOrder?.installment_count ??
+    clientData.installmentCount ??
+    clientData.parcela ??
+    clientData.parcelas ??
+    clientData.parcelasTotal ??
+    clientData.numParcelas;
+
+  const numParcelas = typeof rawParcelas === 'number'
+    ? rawParcelas
+    : parseInt(String(rawParcelas || '1'), 10) || 1;
+
+  const rawValorParcela =
+    clientData.valorParcela !== undefined && clientData.valorParcela !== null
+      ? Number(clientData.valorParcela)
+      : (totalAmountNum > 0 && numParcelas > 0 ? totalAmountNum / numParcelas : 0);
+
+  const parcelaInfo = numParcelas > 1
+    ? (rawValorParcela > 0
+        ? `${numParcelas}x de ${formatCurrency(rawValorParcela)}`
+        : `${numParcelas}x parcelas`)
+    : '1x À Vista';
 
   const linkBoleto = safeExternalUrl(clientData.linkBoleto as string | undefined);
   const checkoutId = String(clientData.checkoutId || '');

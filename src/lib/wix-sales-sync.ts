@@ -8,6 +8,10 @@ import {
 } from './wix-compare';
 import { normalizeDigits, normalizeMaybeString } from './wix-sync';
 import { logger } from './logger';
+import {
+  loadPartnerResolutionContext,
+  resolvePartnerFromCode,
+} from './wix-partners-catalog';
 
 export interface WixSalesSyncOptions {
   onlyForDocuments?: string[];
@@ -344,71 +348,8 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
     };
   }
 
-  // 1. Carrega parceiros para mapear por wixCode / slug / razaoSocial
-  const partnerRows = await sql<
-    Array<{
-      id: string;
-      razao_social: string;
-      nome_fantasia: string | null;
-      metadata: Record<string, unknown> | null;
-    }>
-  >`
-    SELECT id, razao_social, nome_fantasia, metadata
-    FROM partners
-    WHERE status != 'suspended'
-  `;
-
-  const partnerByCodeMap = new Map<string, string>();
-  let fallbackPartnerId = partnerRows[0]?.id || '';
-
-  for (const p of partnerRows) {
-    const wl = (p.metadata?.whiteLabel as Record<string, unknown>) || {};
-    const wixCode = String(wl.wixCode || '').trim().toLowerCase();
-    const slug = String(wl.slug || '').trim().toLowerCase();
-    const razao = p.razao_social.trim().toLowerCase();
-    const fantasia = (p.nome_fantasia || '').trim().toLowerCase();
-
-    if (wixCode) partnerByCodeMap.set(wixCode, p.id);
-    if (slug) partnerByCodeMap.set(slug, p.id);
-    if (razao) partnerByCodeMap.set(razao, p.id);
-    if (fantasia) partnerByCodeMap.set(fantasia, p.id);
-    partnerByCodeMap.set(p.id.toLowerCase(), p.id);
-
-    // Se for o parceiro matriz da NET4Life, guarda como fallback principal
-    if (slug.includes('net4life') || razao.includes('net4life') || p.id === 'corretora_net4life_001') {
-      fallbackPartnerId = p.id;
-    }
-  }
-
-  // Se tabela de parceiros estiver vazia, cria parceiro NET4Life padrão
-  if (!fallbackPartnerId) {
-    const [createdPartner] = await sql<Array<{ id: string }>>`
-      INSERT INTO partners (
-        razao_social,
-        nome_fantasia,
-        cnpj,
-        email,
-        phone,
-        status,
-        corretora_id,
-        metadata
-      )
-      VALUES (
-        'Net4life Corretora de Seguros Ltda',
-        'NET4Life Corretora de Seguros',
-        '07351909000133',
-        'contato@net4life.com.br',
-        '+55 11 91177-1319',
-        'active',
-        'corretora_net4life_001',
-        '{"whiteLabel": {"slug": "net4life", "wixCode": "net4life"}}'::jsonb
-      )
-      ON CONFLICT (email) DO UPDATE SET razao_social = EXCLUDED.razao_social
-      RETURNING id
-    `;
-    fallbackPartnerId = createdPartner.id;
-    partnerByCodeMap.set('net4life', fallbackPartnerId);
-  }
+  // 1. Carrega parceiros com suporte aos 25 códigos do catálogo Wix
+  const partnerContext = await loadPartnerResolutionContext();
 
   // 2. Carrega produto padrão de RC Advogados
   const [defaultProduct] = await sql<Array<{ id: string; code: string; policy_prefix: string | null }>>`
@@ -488,8 +429,8 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
 
       const email = wix.email ? wix.email.toLowerCase().trim() : (normalizeMaybeString(raw.email)?.toLowerCase().trim() || null);
       const phone = wix.phone ? normalizeDigits(wix.phone) : (normalizeDigits(raw.celular) || normalizeDigits(raw.telefone) || null);
-      const rawPartnerCode = (wix.partnerCode || normalizeMaybeString(raw.codigoVenda) || normalizeMaybeString(raw.codigoParceiro) || '').trim().toLowerCase();
-      const partnerId = partnerByCodeMap.get(rawPartnerCode) || fallbackPartnerId;
+      const rawPartnerCode = wix.partnerCode || normalizeMaybeString(raw.codigoVenda) || normalizeMaybeString(raw.codigoParceiro) || null;
+      const partnerId = resolvePartnerFromCode(rawPartnerCode, partnerContext);
       const corretoraId = 'corretora_net4life_001';
 
       const classification = classifyWixStatus(wix.statusCliente || wix.status);
