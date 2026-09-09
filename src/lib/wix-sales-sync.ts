@@ -4,12 +4,20 @@ import { fetchAllWixImport1Items, WixClientItem } from './wix-compare';
 import { normalizeDigits, normalizeMaybeString } from './wix-sync';
 import { logger } from './logger';
 
+export interface WixSalesSyncOptions {
+  onlyForDocuments?: string[];
+  excludeDocuments?: string[];
+}
+
 export interface WixSalesSyncResult {
   totalWixProcessed: number;
   salesCreated: number;
   salesUpdated: number;
   quotesCreated: number;
   quotesUpdated: number;
+  ordersCreated: number;
+  installmentsCreated: number;
+  signaturesCreated: number;
   pendingQuotesCount: number;
   canceledQuotesCount: number;
   totalRevenue: number;
@@ -44,7 +52,9 @@ export function extractWixRevenue(raw: Record<string, unknown> | null | undefine
     raw._receita ??
     raw.valor ??
     raw.premioTotal ??
-    raw.premio_total;
+    raw.premio_total ??
+    raw.valorPlano ??
+    raw.valor_plano;
   return parseWixNumber(val);
 }
 
@@ -55,9 +65,215 @@ export function extractWixCoverage(raw: Record<string, unknown> | null | undefin
     raw.cobertura ??
     raw.valorCobertura ??
     raw.limiteIndenizacao ??
-    raw.limite_indenizacao;
+    raw.limite_indenizacao ??
+    raw.coberturaEscolhida ??
+    raw.cobertura_escolhida;
   const parsed = parseWixNumber(val);
   return parsed > 0 ? parsed : 500000;
+}
+
+export function extractWixOab(raw: Record<string, unknown> | null | undefined): string | null {
+  if (!raw) return null;
+  return (
+    normalizeMaybeString(raw.oab) ||
+    normalizeMaybeString(raw.numeroOab) ||
+    normalizeMaybeString(raw.inscricaoOab) ||
+    normalizeMaybeString(raw.numero_oab) ||
+    normalizeMaybeString(raw.oabNumero) ||
+    null
+  );
+}
+
+export function extractWixEscritorio(raw: Record<string, unknown> | null | undefined): string | null {
+  if (!raw) return null;
+  return (
+    normalizeMaybeString(raw.escritorioAssociado) ||
+    normalizeMaybeString(raw.escritorio) ||
+    normalizeMaybeString(raw.associacao) ||
+    normalizeMaybeString(raw.nomeEscritorio) ||
+    normalizeMaybeString(raw.escritorio_associado) ||
+    null
+  );
+}
+
+export function extractWixAsaasCustomer(raw: Record<string, unknown> | null | undefined): string | null {
+  if (!raw) return null;
+  return (
+    normalizeMaybeString(raw.codigoAsaas) ||
+    normalizeMaybeString(raw.codigo_asaas) ||
+    normalizeMaybeString(raw.asaasCustomerId) ||
+    normalizeMaybeString(raw.asaasId) ||
+    normalizeMaybeString(raw.idAsaas) ||
+    null
+  );
+}
+
+export function extractWixZapSignToken(raw: Record<string, unknown> | null | undefined): string | null {
+  if (!raw) return null;
+  return (
+    normalizeMaybeString(raw.tokenZapsign) ||
+    normalizeMaybeString(raw.token_zapsign) ||
+    normalizeMaybeString(raw.zapsignToken) ||
+    normalizeMaybeString(raw.zapsign_token) ||
+    normalizeMaybeString(raw.tokenDoc) ||
+    null
+  );
+}
+
+export function extractWixTransactionCode(raw: Record<string, unknown> | null | undefined, wixId: string): string {
+  if (!raw) return `WIX-${wixId}`;
+  return (
+    normalizeMaybeString(raw.codigoTransacao) ||
+    normalizeMaybeString(raw.codigo_transacao) ||
+    normalizeMaybeString(raw.transacao) ||
+    normalizeMaybeString(raw.transactionId) ||
+    `WIX-${wixId}`
+  );
+}
+
+export function extractWixUrls(raw: Record<string, unknown> | null | undefined): {
+  bankSlipUrl: string | null;
+  signedFileUrl: string | null;
+} {
+  if (!raw) return { bankSlipUrl: null, signedFileUrl: null };
+  const bankSlipUrl =
+    normalizeMaybeString(raw.linkBoleto) ||
+    normalizeMaybeString(raw.boleto) ||
+    normalizeMaybeString(raw.urlBoleto) ||
+    normalizeMaybeString(raw.boletoUrl) ||
+    normalizeMaybeString(raw.faturaUrl) ||
+    normalizeMaybeString(raw.asaasInvoiceUrl) ||
+    normalizeMaybeString(raw.invoiceUrl) ||
+    null;
+
+  const signedFileUrl =
+    normalizeMaybeString(raw.propostaAssinada) ||
+    normalizeMaybeString(raw.linkProposta) ||
+    normalizeMaybeString(raw.urlProposta) ||
+    normalizeMaybeString(raw.propostaPdf) ||
+    normalizeMaybeString(raw.pdfProposta) ||
+    normalizeMaybeString(raw.documentoAssinado) ||
+    null;
+
+  return { bankSlipUrl, signedFileUrl };
+}
+
+export function extractWixInstallments(raw: Record<string, unknown> | null | undefined, totalAmount: number): {
+  count: number;
+  paidCount: number;
+  installmentAmount: number;
+  paidAmount: number;
+} {
+  if (!raw) {
+    return { count: 1, paidCount: 1, installmentAmount: totalAmount, paidAmount: totalAmount };
+  }
+
+  const forma = String(raw.formaPagamento || raw.forma_pagamento || raw.pagamento || '');
+  let count = 1;
+  const matchX = forma.match(/(\d+)\s*x/i);
+  if (matchX) {
+    count = parseInt(matchX[1], 10);
+  } else {
+    const matchParc = forma.match(/(\d+)\s*parcela/i);
+    if (matchParc) {
+      count = parseInt(matchParc[1], 10);
+    }
+  }
+
+  const rawValorPago = parseWixNumber(raw.valorPago || raw.valor_pago || raw.pago);
+  let installmentAmount = rawValorPago > 0 ? rawValorPago : (count > 0 ? totalAmount / count : totalAmount);
+
+  if (count === 1 && rawValorPago > 0 && totalAmount > rawValorPago) {
+    const ratio = Math.round(totalAmount / rawValorPago);
+    if (ratio > 1 && ratio <= 24) {
+      count = ratio;
+    }
+  }
+
+  const situacao = String(raw.situacaoPagamento || raw.situacao_pagamento || raw.statusPagamento || '').toLowerCase();
+  let paidCount = 0;
+  if (situacao.includes('todas') || situacao.includes('total') || situacao.includes('pago') || situacao === 'ativa') {
+    paidCount = count;
+  } else {
+    const matchPagas = situacao.match(/(\d+)\s*parcela.*paga/i);
+    if (matchPagas) {
+      paidCount = parseInt(matchPagas[1], 10);
+    } else if (rawValorPago > 0 && installmentAmount > 0) {
+      paidCount = Math.min(count, Math.max(1, Math.round(rawValorPago / installmentAmount)));
+    }
+  }
+
+  count = Math.max(1, Math.min(count, 36));
+  paidCount = Math.max(0, Math.min(paidCount, count));
+  const paidAmount = paidCount >= count ? totalAmount : (paidCount * installmentAmount);
+
+  return {
+    count,
+    paidCount,
+    installmentAmount: Math.round(installmentAmount * 100) / 100,
+    paidAmount: Math.round(paidAmount * 100) / 100,
+  };
+}
+
+export function parseWixAddress(raw: Record<string, unknown> | null | undefined): {
+  cep: string;
+  logradouro: string;
+  numero: string;
+  complemento: string;
+  bairro: string;
+  cidade: string;
+  uf: string;
+} {
+  const result = {
+    cep: '',
+    logradouro: '',
+    numero: '',
+    complemento: '',
+    bairro: '',
+    cidade: '',
+    uf: '',
+  };
+  if (!raw) return result;
+
+  if (raw.cep) result.cep = String(raw.cep).trim();
+  if (raw.logradouro || raw.rua) result.logradouro = String(raw.logradouro || raw.rua).trim();
+  if (raw.numero) result.numero = String(raw.numero).trim();
+  if (raw.complemento) result.complemento = String(raw.complemento).trim();
+  if (raw.bairro) result.bairro = String(raw.bairro).trim();
+  if (raw.cidade) result.cidade = String(raw.cidade).trim();
+  if (raw.uf || raw.estado) result.uf = String(raw.uf || raw.estado).trim();
+
+  const endStr = typeof raw.endereco === 'string' ? raw.endereco : (typeof raw.address === 'string' ? raw.address : '');
+  if (endStr && !result.logradouro) {
+    const cepMatch = endStr.match(/CEP:?\s*(\d{5}-?\d{3})/i);
+    if (cepMatch && !result.cep) result.cep = cepMatch[1].replace(/\D/g, '');
+
+    const parts = endStr.split(' - ').map(s => s.trim());
+    if (parts.length >= 1) {
+      const ruaNum = parts[0].split(',');
+      result.logradouro = ruaNum[0].trim();
+      if (ruaNum.length > 1 && !result.numero) {
+        result.numero = ruaNum[1].trim();
+      }
+    }
+    if (parts.length >= 2 && !result.bairro) {
+      result.bairro = parts[1];
+    }
+    if (parts.length >= 3 && !result.cidade) {
+      result.cidade = parts[2];
+    }
+    if (parts.length >= 4 && !result.uf) {
+      result.uf = parts[3].slice(0, 2);
+    }
+  }
+
+  return result;
+}
+
+function addMonthsToDate(baseDate: Date, months: number): string {
+  const d = new Date(baseDate.getTime());
+  d.setMonth(d.getMonth() + months);
+  return d.toISOString().slice(0, 10);
 }
 
 export function classifyWixStatus(statusRaw: unknown): 'fechado' | 'pendente' | 'cancelado' | 'outro' {
@@ -95,7 +311,7 @@ export function classifyWixStatus(statusRaw: unknown): 'fechado' | 'pendente' | 
   return 'outro';
 }
 
-export async function syncWixSalesToLocalDb(): Promise<WixSalesSyncResult> {
+export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Promise<WixSalesSyncResult> {
   await ensureSchema();
   const startTime = Date.now();
 
@@ -112,6 +328,9 @@ export async function syncWixSalesToLocalDb(): Promise<WixSalesSyncResult> {
       salesUpdated: 0,
       quotesCreated: 0,
       quotesUpdated: 0,
+      ordersCreated: 0,
+      installmentsCreated: 0,
+      signaturesCreated: 0,
       pendingQuotesCount: 0,
       canceledQuotesCount: 0,
       totalRevenue: 0,
@@ -156,6 +375,36 @@ export async function syncWixSalesToLocalDb(): Promise<WixSalesSyncResult> {
     }
   }
 
+  // Se tabela de parceiros estiver vazia, cria parceiro NET4Life padrão
+  if (!fallbackPartnerId) {
+    const [createdPartner] = await sql<Array<{ id: string }>>`
+      INSERT INTO partners (
+        razao_social,
+        nome_fantasia,
+        cnpj,
+        email,
+        phone,
+        status,
+        corretora_id,
+        metadata
+      )
+      VALUES (
+        'Net4life Corretora de Seguros Ltda',
+        'NET4Life Corretora de Seguros',
+        '07351909000133',
+        'contato@net4life.com.br',
+        '+55 11 91177-1319',
+        'active',
+        'corretora_net4life_001',
+        '{"whiteLabel": {"slug": "net4life", "wixCode": "net4life"}}'::jsonb
+      )
+      ON CONFLICT (email) DO UPDATE SET razao_social = EXCLUDED.razao_social
+      RETURNING id
+    `;
+    fallbackPartnerId = createdPartner.id;
+    partnerByCodeMap.set('net4life', fallbackPartnerId);
+  }
+
   // 2. Carrega produto padrão de RC Advogados
   const [defaultProduct] = await sql<Array<{ id: string; code: string; policy_prefix: string | null }>>`
     SELECT id, code, policy_prefix
@@ -176,10 +425,16 @@ export async function syncWixSalesToLocalDb(): Promise<WixSalesSyncResult> {
   let salesUpdated = 0;
   let quotesCreated = 0;
   let quotesUpdated = 0;
+  let ordersCreated = 0;
+  let installmentsCreated = 0;
+  let signaturesCreated = 0;
   let pendingQuotesCount = 0;
   let canceledQuotesCount = 0;
   let totalRevenue = 0;
   const details: WixSalesSyncResult['details'] = [];
+
+  const excludedSet = new Set((options?.excludeDocuments || []).map((d) => normalizeDigits(d)));
+  const onlySet = options?.onlyForDocuments ? new Set(options.onlyForDocuments.map((d) => normalizeDigits(d))) : null;
 
   for (const wix of wixItems) {
     try {
@@ -200,6 +455,32 @@ export async function syncWixSalesToLocalDb(): Promise<WixSalesSyncResult> {
         normalizeMaybeString(raw.nomeExibido) ||
         `Cliente ${documentNumber}`;
 
+      const docDigits = normalizeDigits(documentNumber);
+
+      // Filtro de exclusão: ignora clientes divergentes pendentes de decisão
+      if (docDigits && excludedSet.has(docDigits)) {
+        details.push({
+          wixId: wix.id,
+          clientName,
+          documentNumber,
+          action: 'skipped',
+          status: 'divergente_retido_aguarda_admin',
+        });
+        continue;
+      }
+
+      // Filtro de inclusão (se especificado)
+      if (onlySet && docDigits && !onlySet.has(docDigits)) {
+        details.push({
+          wixId: wix.id,
+          clientName,
+          documentNumber,
+          action: 'skipped',
+          status: 'ignorado_por_filtro',
+        });
+        continue;
+      }
+
       const email = wix.email ? wix.email.toLowerCase().trim() : (normalizeMaybeString(raw.email)?.toLowerCase().trim() || null);
       const phone = wix.phone ? normalizeDigits(wix.phone) : (normalizeDigits(raw.celular) || normalizeDigits(raw.telefone) || null);
       const rawPartnerCode = (wix.partnerCode || normalizeMaybeString(raw.codigoVenda) || normalizeMaybeString(raw.codigoParceiro) || '').trim().toLowerCase();
@@ -209,6 +490,15 @@ export async function syncWixSalesToLocalDb(): Promise<WixSalesSyncResult> {
       const classification = classifyWixStatus(wix.statusCliente || wix.status);
       const revenue = extractWixRevenue(raw);
       const coverage = extractWixCoverage(raw);
+      const oab = extractWixOab(raw);
+      const escritorio = extractWixEscritorio(raw);
+      const asaasCustomer = extractWixAsaasCustomer(raw);
+      const zapsignToken = extractWixZapSignToken(raw);
+      const transactionCode = extractWixTransactionCode(raw, wix.id);
+      const urls = extractWixUrls(raw);
+      const address = parseWixAddress(raw);
+      const installmentsInfo = extractWixInstallments(raw, revenue);
+
       const wixDate = wix.createdDate ? new Date(wix.createdDate) : new Date();
       const issueDate = wixDate.toISOString().slice(0, 10);
       const expiryDate = new Date(wixDate.getTime() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -227,6 +517,17 @@ export async function syncWixSalesToLocalDb(): Promise<WixSalesSyncResult> {
         `;
         if (existingByExt) clientId = existingByExt.id;
       }
+
+      const clientMetaPayload = {
+        source: 'wix',
+        externalId: wix.id,
+        oab,
+        escritorio,
+        asaasCustomerId: asaasCustomer,
+        zapsignToken,
+        address,
+        wix: raw,
+      };
 
       if (!clientId) {
         const docType = documentNumber.length > 11 ? 'cnpj' : 'cpf';
@@ -247,7 +548,7 @@ export async function syncWixSalesToLocalDb(): Promise<WixSalesSyncResult> {
             ${clientName},
             ${email},
             ${phone},
-            ${JSON.stringify({ source: 'wix', externalId: wix.id, wix: raw })}::jsonb,
+            ${JSON.stringify(clientMetaPayload)}::jsonb,
             ${wixDate},
             NOW()
           )
@@ -256,10 +557,35 @@ export async function syncWixSalesToLocalDb(): Promise<WixSalesSyncResult> {
             full_name = EXCLUDED.full_name,
             email = COALESCE(EXCLUDED.email, insurance_clients.email),
             phone = COALESCE(EXCLUDED.phone, insurance_clients.phone),
+            created_at = ${wixDate},
+            metadata = insurance_clients.metadata || EXCLUDED.metadata,
             updated_at = NOW()
           RETURNING id
         `;
         clientId = createdClient.id;
+      } else {
+        // Atualiza cliente existente preservando a data de cadastro original do Wix
+        await sql`
+          UPDATE insurance_clients
+          SET
+            full_name = COALESCE(${clientName || null}::text, full_name),
+            email = COALESCE(${email || null}::text, email),
+            phone = COALESCE(${phone || null}::text, phone),
+            created_at = ${wixDate},
+            metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify(clientMetaPayload)}::jsonb,
+            updated_at = NOW()
+          WHERE id = ${clientId}
+        `;
+      }
+
+      // Atualiza data_cadastro em leads para refletir a data real do Wix
+      if (documentNumber) {
+        await sql`
+          UPDATE leads
+          SET data_cadastro = ${wixDate}
+          WHERE document_number = ${documentNumber}
+             OR external_id = ${wix.id}
+        `;
       }
 
       // Determina status da cotação
@@ -272,6 +598,20 @@ export async function syncWixSalesToLocalDb(): Promise<WixSalesSyncResult> {
         cotacaoStatus = 'cancelada';
         canceledQuotesCount++;
       }
+
+      const quoteClientData = {
+        oab,
+        escritorio,
+        codigoAsaas: asaasCustomer,
+        tokenZapsign: zapsignToken,
+        codigoTransacao: transactionCode,
+        installmentCount: installmentsInfo.count,
+        paidInstallments: installmentsInfo.paidCount,
+        installmentAmount: installmentsInfo.installmentAmount,
+        address,
+        wix: raw,
+        partnerCode: rawPartnerCode,
+      };
 
       // 4. Localiza ou cria cotação vinculada ao item do Wix
       const [existingCotacao] = await sql<Array<{ id: string; status: string }>>`
@@ -297,11 +637,13 @@ export async function syncWixSalesToLocalDb(): Promise<WixSalesSyncResult> {
             client_cpf_cnpj = ${documentNumber},
             client_email = ${email},
             client_phone = ${phone},
+            client_data = COALESCE(client_data, '{}'::jsonb) || ${JSON.stringify(quoteClientData)}::jsonb,
             importancia_segurada = ${coverage},
             premio_calculado = ${revenue},
             premio_final = ${revenue},
             status = ${cotacaoStatus},
             metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify({ source: 'wix', wixId: wix.id, wix: raw })}::jsonb,
+            created_at = ${wixDate},
             updated_at = NOW()
           WHERE id = ${cotacaoId}
         `;
@@ -337,7 +679,7 @@ export async function syncWixSalesToLocalDb(): Promise<WixSalesSyncResult> {
             ${documentNumber},
             ${email},
             ${phone},
-            ${JSON.stringify({ wix: raw, partnerCode: rawPartnerCode })}::jsonb,
+            ${JSON.stringify(quoteClientData)}::jsonb,
             ${coverage},
             ${revenue},
             ${revenue},
@@ -355,6 +697,7 @@ export async function syncWixSalesToLocalDb(): Promise<WixSalesSyncResult> {
       }
 
       // 5. Se for venda fechada, cria ou atualiza em SALES
+      let saleId: string | null = null;
       if (classification === 'fechado') {
         const cleanWixId = wix.id.replace(/[^a-zA-Z0-9]/g, '').slice(-8).toUpperCase();
         const policyNumber = `${policyPrefix}-WIX-${cleanWixId}`;
@@ -369,8 +712,6 @@ export async function syncWixSalesToLocalDb(): Promise<WixSalesSyncResult> {
              OR policy_number = ${policyNumber}
           LIMIT 1
         `;
-
-        let saleId: string;
 
         if (existingSale) {
           saleId = existingSale.id;
@@ -389,6 +730,7 @@ export async function syncWixSalesToLocalDb(): Promise<WixSalesSyncResult> {
               issue_date = ${issueDate}::date,
               expiry_date = ${expiryDate}::date,
               metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify({ source: 'wix', wixId: wix.id })}::jsonb,
+              created_at = ${wixDate},
               updated_at = NOW()
             WHERE id = ${saleId}
           `;
@@ -491,6 +833,180 @@ export async function syncWixSalesToLocalDb(): Promise<WixSalesSyncResult> {
           revenue,
         });
       }
+
+      // 6. Sincroniza Ordem de Pagamento em PAYMENT_ORDERS
+      const orderStatus =
+        installmentsInfo.paidCount >= installmentsInfo.count
+          ? 'paid'
+          : (installmentsInfo.paidCount > 0 ? 'partially_paid' : 'pending');
+
+      const [paymentOrder] = await sql<Array<{ id: string }>>`
+        INSERT INTO payment_orders (
+          cotacao_id,
+          client_id,
+          partner_id,
+          product_id,
+          provider,
+          provider_customer_id,
+          external_payment_id,
+          billing_type,
+          status,
+          amount_total,
+          installment_count,
+          paid_installments,
+          paid_amount,
+          due_date,
+          invoice_url,
+          bank_slip_url,
+          description,
+          raw_payload,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          ${cotacaoId},
+          ${clientId},
+          ${partnerId},
+          ${defaultProductId},
+          'asaas',
+          ${asaasCustomer},
+          ${transactionCode},
+          'BOLETO',
+          ${orderStatus},
+          ${revenue},
+          ${installmentsInfo.count},
+          ${installmentsInfo.paidCount},
+          ${installmentsInfo.paidAmount},
+          ${issueDate}::date,
+          ${urls.bankSlipUrl},
+          ${urls.bankSlipUrl},
+          ${'Seguro RC Advogados - ' + clientName},
+          ${JSON.stringify({ source: 'wix', wixId: wix.id, transactionCode, raw })}::jsonb,
+          ${wixDate},
+          NOW()
+        )
+        ON CONFLICT (cotacao_id)
+        DO UPDATE SET
+          client_id = EXCLUDED.client_id,
+          partner_id = EXCLUDED.partner_id,
+          product_id = EXCLUDED.product_id,
+          provider_customer_id = COALESCE(EXCLUDED.provider_customer_id, payment_orders.provider_customer_id),
+          external_payment_id = COALESCE(EXCLUDED.external_payment_id, payment_orders.external_payment_id),
+          amount_total = EXCLUDED.amount_total,
+          installment_count = EXCLUDED.installment_count,
+          paid_installments = EXCLUDED.paid_installments,
+          paid_amount = EXCLUDED.paid_amount,
+          status = EXCLUDED.status,
+          bank_slip_url = COALESCE(EXCLUDED.bank_slip_url, payment_orders.bank_slip_url),
+          invoice_url = COALESCE(EXCLUDED.invoice_url, payment_orders.invoice_url),
+          updated_at = NOW()
+        RETURNING id
+      `;
+
+      if (paymentOrder?.id) {
+        ordersCreated++;
+        const orderId = paymentOrder.id;
+
+        // 7. Sincroniza Parcelas Individuais em PAYMENT_INSTALLMENTS
+        for (let i = 1; i <= installmentsInfo.count; i++) {
+          const isPaid = i <= installmentsInfo.paidCount;
+          const installmentDueDate = addMonthsToDate(wixDate, i - 1);
+          const extInstallmentId = `${transactionCode}-PARC-${i}`;
+
+          await sql`
+            INSERT INTO payment_installments (
+              payment_order_id,
+              cotacao_id,
+              client_id,
+              provider,
+              external_payment_id,
+              installment_number,
+              status,
+              billing_type,
+              amount,
+              net_amount,
+              due_date,
+              paid_at,
+              bank_slip_url,
+              invoice_url,
+              raw_payload,
+              created_at,
+              updated_at
+            )
+            VALUES (
+              ${orderId},
+              ${cotacaoId},
+              ${clientId},
+              'asaas',
+              ${extInstallmentId},
+              ${i},
+              ${isPaid ? 'received' : 'pending'},
+              'BOLETO',
+              ${installmentsInfo.installmentAmount},
+              ${installmentsInfo.installmentAmount},
+              ${installmentDueDate}::date,
+              ${isPaid ? wixDate : null},
+              ${urls.bankSlipUrl},
+              ${urls.bankSlipUrl},
+              ${JSON.stringify({ source: 'wix', installmentNumber: i, transactionCode })}::jsonb,
+              ${wixDate},
+              NOW()
+            )
+            ON CONFLICT (provider, external_payment_id)
+            DO UPDATE SET
+              status = EXCLUDED.status,
+              amount = EXCLUDED.amount,
+              due_date = EXCLUDED.due_date,
+              paid_at = EXCLUDED.paid_at,
+              bank_slip_url = COALESCE(EXCLUDED.bank_slip_url, payment_installments.bank_slip_url),
+              invoice_url = COALESCE(EXCLUDED.invoice_url, payment_installments.invoice_url),
+              updated_at = NOW()
+          `;
+          installmentsCreated++;
+        }
+      }
+
+      // 8. Sincroniza Contrato ZapSign em SIGNATURE_DOCUMENTS
+      if (zapsignToken) {
+        const isSigned = classification === 'fechado';
+        await sql`
+          INSERT INTO signature_documents (
+            cotacao_id,
+            client_id,
+            provider,
+            external_document_id,
+            sign_url,
+            signed_file_url,
+            status,
+            signed_at,
+            last_event_type,
+            raw_payload,
+            created_at,
+            updated_at
+          )
+          VALUES (
+            ${cotacaoId},
+            ${clientId},
+            'zapsign',
+            ${zapsignToken},
+            ${urls.signedFileUrl},
+            ${urls.signedFileUrl},
+            ${isSigned ? 'signed' : 'pending'},
+            ${isSigned ? wixDate : null},
+            ${isSigned ? 'doc_signed' : 'doc_created'},
+            ${JSON.stringify({ source: 'wix', token: zapsignToken, raw })}::jsonb,
+            ${wixDate},
+            NOW()
+          )
+          ON CONFLICT (provider, external_document_id)
+          DO UPDATE SET
+            signed_file_url = COALESCE(EXCLUDED.signed_file_url, signature_documents.signed_file_url),
+            status = EXCLUDED.status,
+            signed_at = COALESCE(EXCLUDED.signed_at, signature_documents.signed_at),
+            updated_at = NOW()
+        `;
+        signaturesCreated++;
+      }
     } catch (itemErr) {
       const errMsg = itemErr instanceof Error ? itemErr.message : String(itemErr);
       logger.warn({ err: itemErr, wixId: wix.id }, 'wix.sales.sync.item.failed');
@@ -513,6 +1029,9 @@ export async function syncWixSalesToLocalDb(): Promise<WixSalesSyncResult> {
     salesUpdated,
     quotesCreated,
     quotesUpdated,
+    ordersCreated,
+    installmentsCreated,
+    signaturesCreated,
     pendingQuotesCount,
     totalRevenue,
     durationMs,
@@ -524,6 +1043,9 @@ export async function syncWixSalesToLocalDb(): Promise<WixSalesSyncResult> {
     salesUpdated,
     quotesCreated,
     quotesUpdated,
+    ordersCreated,
+    installmentsCreated,
+    signaturesCreated,
     pendingQuotesCount,
     canceledQuotesCount,
     totalRevenue,

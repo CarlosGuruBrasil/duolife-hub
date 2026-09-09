@@ -75,19 +75,20 @@ export default async function AdminClienteDetalhePage({ params }: { params: Prom
       c.client_phone,
       c.client_data,
       c.notes,
-      p.name AS product_name,
-      pr.nome_fantasia AS partner_name,
+      COALESCE(p.name, 'RC Profissional') AS product_name,
+      COALESCE(pr.nome_fantasia, pr.razao_social, 'NET4Life') AS partner_name,
       po.status AS payment_status,
       po.installment_count,
       po.paid_installments,
       sd.status AS signature_status,
       sd.signed_file_url
     FROM cotacoes c
-    JOIN products p ON p.id = c.product_id
-    JOIN partners pr ON pr.id = c.partner_id
+    LEFT JOIN products p ON p.id = c.product_id
+    LEFT JOIN partners pr ON pr.id = c.partner_id
     LEFT JOIN payment_orders po ON po.cotacao_id = c.id
     LEFT JOIN signature_documents sd ON sd.cotacao_id = c.id
     WHERE c.client_id = ${id}
+       OR (c.client_cpf_cnpj = ${client.document_number} AND ${client.document_number} != '')
     ORDER BY c.created_at DESC
   `;
 
@@ -102,18 +103,27 @@ export default async function AdminClienteDetalhePage({ params }: { params: Prom
       pi.paid_at,
       pi.bank_slip_url,
       pi.invoice_url,
-      p.name AS product_name,
-      pr.nome_fantasia AS partner_name
+      COALESCE(p.name, 'RC Profissional') AS product_name,
+      COALESCE(pr.nome_fantasia, pr.razao_social, 'NET4Life') AS partner_name
     FROM payment_installments pi
     JOIN cotacoes c ON c.id = pi.cotacao_id
-    JOIN products p ON p.id = c.product_id
-    JOIN partners pr ON pr.id = c.partner_id
+    LEFT JOIN products p ON p.id = c.product_id
+    LEFT JOIN partners pr ON pr.id = c.partner_id
     WHERE pi.client_id = ${id}
+       OR c.client_id = ${id}
+       OR (c.client_cpf_cnpj = ${client.document_number} AND ${client.document_number} != '')
     ORDER BY pi.due_date ASC NULLS LAST, pi.installment_number ASC
   `;
 
   const clientMeta = parseJsonField<Record<string, unknown>>(client.metadata);
+  const rawWix = (clientMeta.wix && typeof clientMeta.wix === 'object') ? (clientMeta.wix as Record<string, unknown>) : {};
   const latestQuoteData = quotes[0] ? parseJsonField<Record<string, unknown>>(quotes[0].client_data) : {};
+  const quoteWix = (latestQuoteData.wix && typeof latestQuoteData.wix === 'object') ? (latestQuoteData.wix as Record<string, unknown>) : {};
+
+  const oab = String(clientMeta.oab || rawWix.oab || rawWix.numeroOab || latestQuoteData.oab || quoteWix.oab || quoteWix.numeroOab || '').trim();
+  const escritorio = String(clientMeta.escritorio || rawWix.escritorioAssociado || rawWix.escritorio || latestQuoteData.escritorio || quoteWix.escritorio || quoteWix.escritorioAssociado || '').trim();
+  const asaasCustomer = String(clientMeta.asaasCustomerId || rawWix.codigoAsaas || latestQuoteData.codigoAsaas || quoteWix.codigoAsaas || '').trim();
+  const zapsignToken = String(clientMeta.zapsignToken || rawWix.tokenZapsign || latestQuoteData.tokenZapsign || quoteWix.tokenZapsign || '').trim();
 
   const clientAddress = (clientMeta.address && typeof clientMeta.address === 'object')
     ? (clientMeta.address as Record<string, string>)
@@ -144,6 +154,32 @@ export default async function AdminClienteDetalhePage({ params }: { params: Prom
               <p className="text-xs text-gray-500 mt-1">
                 📍 {clientAddress.logradouro}, {clientAddress.numero || 'S/N'} {clientAddress.bairro ? `· ${clientAddress.bairro}` : ''} {clientAddress.cidade ? `· ${clientAddress.cidade}/${clientAddress.uf}` : ''} {clientAddress.cep ? `· CEP: ${clientAddress.cep}` : ''}
               </p>
+            )}
+
+            {/* Badges de Dados Profissionais (OAB, Escritório, Asaas, ZapSign) */}
+            {(oab || escritorio || asaasCustomer || zapsignToken) && (
+              <div className="flex flex-wrap items-center gap-2 mt-3 pt-2">
+                {oab && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 text-slate-800 border border-slate-200">
+                    ⚖️ OAB: {oab}
+                  </span>
+                )}
+                {escritorio && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-amber-50 text-amber-900 border border-amber-200 max-w-md truncate" title={escritorio}>
+                    🏢 {escritorio}
+                  </span>
+                )}
+                {asaasCustomer && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                    💳 Asaas: {asaasCustomer}
+                  </span>
+                )}
+                {zapsignToken && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-sky-50 text-sky-800 border border-sky-200">
+                    ✍️ ZapSign: {zapsignToken}
+                  </span>
+                )}
+              </div>
             )}
           </div>
           <div className="flex items-center gap-3">
@@ -182,7 +218,13 @@ export default async function AdminClienteDetalhePage({ params }: { params: Prom
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {quotes.map((quote) => (
+                {quotes.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-6 py-10 text-center text-sm text-gray-500">
+                      Nenhum produto ou proposta contratada para este cliente ainda.
+                    </td>
+                  </tr>
+                ) : quotes.map((quote) => (
                   <tr key={quote.id} className="hover:bg-gray-50/80 transition-colors duration-150">
                     <td className="px-6 py-4 font-medium text-gray-700">{quote.partner_name || 'DuoLife'}</td>
                     <td className="px-6 py-4 font-medium text-gray-700">{quote.product_name}</td>

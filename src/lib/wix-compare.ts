@@ -3,6 +3,13 @@ import { ensureSchema } from './schema';
 import { wixQueryItems, hasWixReadAccess, type WixQueryItem } from './wix-client';
 import { normalizeDigits, normalizeMaybeString } from './wix-sync';
 import { isWixIntegrationEnabled } from './system-settings';
+import {
+  extractWixOab,
+  extractWixEscritorio,
+  extractWixAsaasCustomer,
+  extractWixZapSignToken,
+  parseWixAddress,
+} from './wix-sales-sync';
 
 export interface DbClientItem {
   id: string;
@@ -598,7 +605,10 @@ function parseBirthDate(val: unknown): string | null {
   return null;
 }
 
-export async function syncWixClientsToLocalDb(): Promise<WixSyncResult> {
+export async function syncWixClientsToLocalDb(options?: {
+  excludeDocuments?: string[];
+  onlyDocuments?: string[];
+}): Promise<WixSyncResult> {
   await ensureSchema();
   const startTime = Date.now();
 
@@ -626,6 +636,9 @@ export async function syncWixClientsToLocalDb(): Promise<WixSyncResult> {
   let errorsCount = 0;
   const details: WixSyncResult['details'] = [];
 
+  const excludedSet = new Set((options?.excludeDocuments || []).map((d) => normalizeDigits(d)));
+  const onlySet = options?.onlyDocuments ? new Set(options.onlyDocuments.map((d) => normalizeDigits(d))) : null;
+
   for (const wix of wixItems) {
     try {
       const raw = wix.rawData || {};
@@ -637,6 +650,24 @@ export async function syncWixClientsToLocalDb(): Promise<WixSyncResult> {
         normalizeDigits(raw.documento) ||
         normalizeDigits(raw.cpfCnpj) ||
         null;
+
+      const docDigits = normalizeDigits(documentNumber);
+
+      // Se o cliente for divergente e foi marcado para exclusão, mantém o banco intacto
+      if (docDigits && excludedSet.has(docDigits)) {
+        details.push({
+          wixId: wix.id,
+          documentNumber,
+          name: wix.name,
+          action: 'skipped_no_doc',
+          error: 'Cliente divergente mantido intacto aguardando decisão do administrador',
+        });
+        continue;
+      }
+
+      if (onlySet && docDigits && !onlySet.has(docDigits)) {
+        continue;
+      }
 
       const name =
         wix.name ||
@@ -653,6 +684,12 @@ export async function syncWixClientsToLocalDb(): Promise<WixSyncResult> {
       const status = wix.status || statusCliente || normalizeMaybeString(raw.statusGeral) || null;
       const partnerCode = wix.partnerCode || normalizeMaybeString(raw.codigoVenda) || normalizeMaybeString(raw.codigoParceiro) || null;
       const wixCreatedAt = wix.createdDate ? new Date(wix.createdDate) : new Date();
+
+      const oab = extractWixOab(raw);
+      const escritorio = extractWixEscritorio(raw);
+      const asaasCustomerId = extractWixAsaasCustomer(raw);
+      const zapsignToken = extractWixZapSignToken(raw);
+      const address = parseWixAddress(raw);
 
       if (!documentNumber) {
         // Se não possui CPF/CNPJ, tentamos localizar por external_id no metadata ou email
@@ -748,6 +785,11 @@ export async function syncWixClientsToLocalDb(): Promise<WixSyncResult> {
         status,
         statusCliente,
         partnerCode,
+        oab,
+        escritorio,
+        asaasCustomerId,
+        zapsignToken,
+        address,
         lastSyncedAt: new Date().toISOString(),
         wix: raw,
       };
@@ -780,6 +822,7 @@ export async function syncWixClientsToLocalDb(): Promise<WixSyncResult> {
             email = COALESCE(${email || null}::text, email),
             phone = COALESCE(${phone || null}::text, phone),
             birth_date = COALESCE(${birthDate || null}::date, birth_date),
+            created_at = ${wixCreatedAt},
             metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify(metadataPayload)}::jsonb,
             updated_at = NOW()
           WHERE id = ${existingClient.id}
@@ -837,6 +880,7 @@ export async function syncWixClientsToLocalDb(): Promise<WixSyncResult> {
             email = COALESCE(EXCLUDED.email, insurance_clients.email),
             phone = COALESCE(EXCLUDED.phone, insurance_clients.phone),
             birth_date = COALESCE(EXCLUDED.birth_date, insurance_clients.birth_date),
+            created_at = ${wixCreatedAt},
             metadata = insurance_clients.metadata || EXCLUDED.metadata,
             updated_at = NOW()
         `;
@@ -876,6 +920,7 @@ export async function syncWixClientsToLocalDb(): Promise<WixSyncResult> {
             status = COALESCE(${status || null}::text, status),
             status_cliente = COALESCE(${statusCliente || null}::text, status_cliente),
             raw = ${JSON.stringify({ sourceCollection: 'Import1', wix: raw })}::jsonb,
+            data_cadastro = ${wixCreatedAt},
             synced_at = NOW(),
             data_atualizacao = NOW()
           WHERE id = ${existingLead.id}

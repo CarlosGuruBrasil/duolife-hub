@@ -25,6 +25,7 @@ import {
   Check,
 } from 'lucide-react';
 import type { WixComparisonResult, ComparedClientRow, MatchStatus, FieldDiff, WixSyncResult } from '@/lib/wix-compare';
+import type { WixSalesSyncResult } from '@/lib/wix-sales-sync';
 
 interface Props {
   initialData: WixComparisonResult;
@@ -64,7 +65,11 @@ export default function WixComparisonClient({ initialData }: Props) {
   const [data, setData] = useState<WixComparisonResult>(initialData);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [syncResult, setSyncResult] = useState<WixSyncResult | null>(null);
+  const [syncResult, setSyncResult] = useState<{
+    clientSync: WixSyncResult;
+    salesSync?: WixSalesSyncResult;
+    divergentCount?: number;
+  } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | MatchStatus>('all');
   const [sortOrder, setSortOrder] = useState<'newest' | 'oldest' | 'name'>('newest');
@@ -95,7 +100,13 @@ export default function WixComparisonClient({ initialData }: Props) {
   }
 
   async function handleSyncWix() {
-    if (!window.confirm('Tem certeza que deseja copiar os clientes faltantes do Wix para o banco local e atualizar todos os dados divergentes usando o Wix como fonte de verdade?')) {
+    const confirmMsg =
+      'Deseja iniciar a sincronização com o Wix?\n\n' +
+      '✓ CLIENTES IGUAIS (sem divergência): cadastros, compras, apólices e parcelas serão sincronizados automaticamente.\n' +
+      '⚠ CLIENTES DIVERGENTES: NÃO serão alterados e suas compras ficarão retidas aguardando sua decisão manual.\n\n' +
+      'Deseja prosseguir?';
+
+    if (!window.confirm(confirmMsg)) {
       return;
     }
 
@@ -109,7 +120,11 @@ export default function WixComparisonClient({ initialData }: Props) {
       });
       const json = await res.json();
       if (json.ok && json.sync) {
-        setSyncResult(json.sync);
+        setSyncResult({
+          clientSync: json.sync,
+          salesSync: json.salesSync,
+          divergentCount: json.divergentCount,
+        });
         if (json.data) {
           setData(json.data);
         }
@@ -192,9 +207,10 @@ export default function WixComparisonClient({ initialData }: Props) {
               onClick={handleSyncWix}
               disabled={syncing || loading}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-sm transition-all disabled:opacity-50"
+              title="Sincroniza novos cadastros e compras/parcelas de clientes idênticos. Mantém clientes divergentes intactos para sua decisão."
             >
               <RefreshCw className={`w-4 h-4 text-white ${syncing ? 'animate-spin' : ''}`} />
-              {syncing ? 'Sincronizando Banco...' : 'Copiar do Wix & Atualizar Banco'}
+              {syncing ? 'Sincronizando Banco & Compras...' : 'Copiar do Wix & Sincronizar Compras'}
             </button>
 
             <button
@@ -218,21 +234,37 @@ export default function WixComparisonClient({ initialData }: Props) {
 
         {/* Banner de Resultado da Sincronização */}
         {syncResult && (
-          <div className="mt-6 p-4 rounded-2xl bg-emerald-50 border border-emerald-200 animate-in fade-in duration-200">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-700 shrink-0">
-                  <CheckCircle2 className="w-5 h-5" />
+          <div className="mt-6 p-5 rounded-2xl bg-emerald-50 border border-emerald-200 animate-in fade-in duration-200">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-700 shrink-0 mt-0.5">
+                  <CheckCircle2 className="w-6 h-6" />
                 </div>
                 <div>
                   <h4 className="text-sm font-bold text-emerald-900">
                     Sincronização com o Wix Concluída com Sucesso!
                   </h4>
-                  <p className="text-xs text-emerald-800 mt-0.5">
-                    <strong>{syncResult.importedCount}</strong> novos clientes importados •{' '}
-                    <strong>{syncResult.updatedCount}</strong> clientes existentes atualizados com dados do Wix •{' '}
-                    <strong>{syncResult.unchangedCount}</strong> sem alterações necessárias ({((syncResult.durationMs || 0) / 1000).toFixed(2)}s).
-                  </p>
+                  <div className="text-xs text-emerald-800 mt-1 space-y-1">
+                    <p>
+                      <strong>Cadastros:</strong> {syncResult.clientSync.importedCount} novos clientes importados •{' '}
+                      {syncResult.clientSync.updatedCount} clientes existentes atualizados com data real do Wix •{' '}
+                      {syncResult.clientSync.unchangedCount} sem alteração cadastral ({((syncResult.clientSync.durationMs || 0) / 1000).toFixed(2)}s).
+                    </p>
+                    {syncResult.salesSync && (
+                      <p>
+                        <strong>Compras (Clientes Iguais):</strong>{' '}
+                        {syncResult.salesSync.salesCreated} novas apólices emitidas •{' '}
+                        {syncResult.salesSync.quotesCreated + syncResult.salesSync.quotesUpdated} propostas/cotações geradas com ordens de pagamento e parcelas •{' '}
+                        Total de <strong>R$ {syncResult.salesSync.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong> em prêmio.
+                      </p>
+                    )}
+                    {syncResult.divergentCount !== undefined && syncResult.divergentCount > 0 && (
+                      <p className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-100/80 border border-amber-300 text-amber-900 font-semibold mt-1">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+                        {syncResult.divergentCount} cliente(s) com divergências cadastrais mantidos intactos — compras retidas aguardando sua decisão.
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
               <button
@@ -495,14 +527,24 @@ export default function WixComparisonClient({ initialData }: Props) {
                     {/* Status Match Pill */}
                     <td className="px-5 py-4">
                       {row.matchStatus === 'synced' && (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Sincronizado
-                        </span>
+                        <div>
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" /> Sincronizado
+                          </span>
+                          <span className="text-[10px] text-emerald-700 font-semibold block mt-1">
+                            ✓ Compras & Parcelas OK
+                          </span>
+                        </div>
                       )}
                       {row.matchStatus === 'divergent' && (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600" /> {row.divergences.length} divergência{row.divergences.length > 1 ? 's' : ''}
-                        </span>
+                        <div>
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-600" /> {row.divergences.length} divergência{row.divergences.length > 1 ? 's' : ''}
+                          </span>
+                          <span className="text-[10px] text-amber-700 font-semibold block mt-1">
+                            Compras retidas • Aguarda decisão
+                          </span>
+                        </div>
                       )}
                       {row.matchStatus === 'only_db' && (
                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-cyan-50 text-cyan-800 border border-cyan-200">
