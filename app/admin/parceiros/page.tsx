@@ -16,7 +16,15 @@ interface Parceiro {
   email: string;
   phone: string | null;
   status: string;
+  corretora_id: string | null;
+  corretora_nome: string | null;
   created_at: string;
+}
+
+interface CorretoraOption {
+  id: string;
+  razao_social: string;
+  nome_fantasia: string;
 }
 
 const FORM_VAZIO = {
@@ -29,6 +37,7 @@ const FORM_VAZIO = {
   city: '',
   state: '',
   status: 'active' as 'active' | 'pending',
+  corretora_id: 'corretora_net4life_001',
   director_name: '',
   director_email: '',
 };
@@ -53,6 +62,7 @@ function AdminParceirosInner() {
   const statusFilter = searchParams.get('status') ?? '';
 
   const [parceiros, setParceiros] = useState<Parceiro[]>([]);
+  const [corretoras, setCorretoras] = useState<CorretoraOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
   const [canManageStatus, setCanManageStatus] = useState(false);
@@ -64,11 +74,23 @@ function AdminParceirosInner() {
   async function load() {
     setLoading(true);
     const qs = statusFilter ? `?status=${statusFilter}` : '';
-    const res = await fetch(`/api/admin/parceiros${qs}`);
-    const data = await res.json();
-    setParceiros(data.parceiros ?? []);
-    setCanManageStatus(Boolean(data.canManageStatus));
-    setLoading(false);
+    try {
+      const [resParceiros, resCorretoras] = await Promise.all([
+        fetch(`/api/admin/parceiros${qs}`),
+        fetch('/api/admin/corretoras'),
+      ]);
+      const data = await resParceiros.json();
+      const dataCorretoras = await resCorretoras.json();
+      setParceiros(data.parceiros ?? []);
+      setCanManageStatus(Boolean(data.canManageStatus));
+      setCorretoras((dataCorretoras.corretoras ?? []).map((c: any) => ({
+        id: c.id,
+        razao_social: c.razao_social,
+        nome_fantasia: c.nome_fantasia,
+      })));
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => { load(); }, [statusFilter]);
@@ -138,7 +160,7 @@ function AdminParceirosInner() {
           <span className="admin-eyebrow">REDE & CORRETORAS</span>
           <h1 className="admin-page-title">Parceiros</h1>
           <p className="admin-page-copy">
-            {statusFilter ? `Filtro: ${STATUS_LABELS[statusFilter]?.label ?? statusFilter}` : 'Gestão de parceiros e corretoras habilitadas.'}
+            {statusFilter ? `Filtro: ${STATUS_LABELS[statusFilter]?.label ?? statusFilter}` : 'Gestão de parceiros e corretores habilitados.'}
           </p>
         </div>
         {canManageStatus && (
@@ -147,7 +169,7 @@ function AdminParceirosInner() {
             onClick={() => { setShowForm((v) => !v); setFeedback(null); }}
             className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#00d4e0] text-[#072a33] font-black rounded-xl shadow-xs hover:bg-[#00b8c4] transition-all text-xs uppercase tracking-wider shrink-0"
           >
-            <Plus size={16} strokeWidth={2.5} /> {showForm ? 'Fechar' : 'Nova Corretora'}
+            <Plus size={16} strokeWidth={2.5} /> {showForm ? 'Fechar' : 'Novo Parceiro'}
           </button>
         )}
       </section>
@@ -169,7 +191,7 @@ function AdminParceirosInner() {
           <div>
             <h2 className="text-lg font-black" style={{ color: 'var(--primary)' }}>Cadastrar parceiro</h2>
             <p className="text-sm text-gray-500 mt-1">
-              A corretora e o acesso do diretor nascem juntos. O diretor recebe um convite por e-mail
+              O parceiro e o acesso do diretor nascem juntos. O diretor recebe um convite por e-mail
               e define a própria senha — a DuoLife não digita senha de parceiro.
             </p>
           </div>
@@ -185,12 +207,29 @@ function AdminParceirosInner() {
                   ? { background: '#072a33', color: '#00d4e0', borderColor: '#072a33' }
                   : { background: 'var(--bg-gray)', color: '#4a6771', borderColor: 'var(--border)' }}
               >
-                {tipo === 'pj' ? 'Corretora (PJ)' : 'Corretor independente (PF)'}
+                {tipo === 'pj' ? 'Corretora / PJ' : 'Corretor independente (PF)'}
               </button>
             ))}
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
+            <label className="block md:col-span-2">
+              <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">Corretora Mãe Vinculada</span>
+              <select
+                className="form-input mt-1.5 w-full bg-white text-gray-900 border-gray-200"
+                value={form.corretora_id}
+                onChange={(e) => setField('corretora_id', e.target.value)}
+              >
+                {corretoras.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nome_fantasia || c.razao_social} {c.id === 'corretora_net4life_001' ? '(Matriz #1)' : ''}
+                  </option>
+                ))}
+              </select>
+              <span className="text-[11px] text-gray-500 mt-1 block">
+                Corretora à qual este parceiro/corretor pertence. Herda as regras de produto e comissionamento.
+              </span>
+            </label>
             <label className="block">
               <span className="text-xs font-bold text-gray-600 uppercase tracking-wider">
                 {form.person_type === 'pj' ? 'Razão social' : 'Nome completo'}
@@ -329,6 +368,7 @@ function AdminParceirosInner() {
             <thead>
               <tr className="border-b" style={{ borderColor: 'var(--border)', background: 'var(--bg-gray)' }}>
                 <th className="text-left px-6 py-3 font-semibold text-gray-600">Empresa</th>
+                <th className="text-left px-6 py-3 font-semibold text-gray-600">Corretora</th>
                 <th className="text-left px-6 py-3 font-semibold text-gray-600">CNPJ / CPF</th>
                 <th className="text-left px-6 py-3 font-semibold text-gray-600">E-mail</th>
                 <th className="text-left px-6 py-3 font-semibold text-gray-600">Status</th>
@@ -346,6 +386,23 @@ function AdminParceirosInner() {
                       <div className="font-semibold">{p.razao_social}</div>
                       {p.nome_fantasia && p.nome_fantasia !== p.razao_social && (
                         <div className="text-xs text-gray-400">{p.nome_fantasia}</div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4">
+                      {p.corretora_id ? (
+                        <Link
+                          href={`/admin/corretoras/${p.corretora_id}`}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-teal-50 border border-teal-200 text-teal-800 hover:bg-teal-100 transition-colors"
+                          title="Ver corretora mãe"
+                        >
+                          <Building2 size={12} className="text-teal-600" />
+                          {p.corretora_nome || 'NET4Life'}
+                        </Link>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-gray-50 border border-gray-200 text-gray-600">
+                          <Building2 size={12} className="text-gray-400" />
+                          NET4Life
+                        </span>
                       )}
                     </td>
                     <td className="px-6 py-4 text-gray-500">{formatarDocumento(p)}</td>

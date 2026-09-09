@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
-import { getWhiteLabelConfig, type WhiteLabelConfig } from '@/lib/white-label';
+import { getWhiteLabelConfig, resolveHierarchicalWhiteLabel, type WhiteLabelConfig } from '@/lib/white-label';
 import { logger } from '@/lib/logger';
 
 export interface ResolvedPartnerLink {
@@ -153,6 +153,7 @@ export async function resolvePartnerOrLink(refOrToken: string): Promise<Resolved
       phone: string | null;
       status: string;
       partner_metadata: Record<string, unknown>;
+      corretora_metadata?: Record<string, unknown> | null;
     }>
   >`
     SELECT
@@ -165,9 +166,11 @@ export async function resolvePartnerOrLink(refOrToken: string): Promise<Resolved
       p.email,
       p.phone,
       p.status,
-      p.metadata AS partner_metadata
+      p.metadata AS partner_metadata,
+      c.metadata AS corretora_metadata
     FROM public_sale_links pl
     JOIN partners p ON p.id = pl.partner_id
+    LEFT JOIN corretoras c ON c.id = p.corretora_id
     WHERE pl.token = ${query}
       AND pl.status = 'active'
       AND (pl.expires_at IS NULL OR pl.expires_at > NOW())
@@ -176,7 +179,7 @@ export async function resolvePartnerOrLink(refOrToken: string): Promise<Resolved
 
   if (linkMatches && linkMatches.length > 0) {
     const item = linkMatches[0];
-    const wl = getWhiteLabelConfig(item.partner_metadata);
+    const wl = resolveHierarchicalWhiteLabel(item.partner_metadata, item.corretora_metadata);
     const code = wl.wixCode || wl.slug || item.token;
 
     return {
@@ -209,29 +212,32 @@ export async function resolvePartnerOrLink(refOrToken: string): Promise<Resolved
       phone: string | null;
       status: string;
       metadata: Record<string, unknown>;
+      corretora_metadata?: Record<string, unknown> | null;
     }>
   >`
     SELECT
-      id,
-      razao_social,
-      nome_fantasia,
-      email,
-      phone,
-      status,
-      metadata
-    FROM partners
+      p.id,
+      p.razao_social,
+      p.nome_fantasia,
+      p.email,
+      p.phone,
+      p.status,
+      p.metadata,
+      c.metadata AS corretora_metadata
+    FROM partners p
+    LEFT JOIN corretoras c ON c.id = p.corretora_id
     WHERE (
-      LOWER(COALESCE(metadata->'whiteLabel'->>'wixCode', '')) = LOWER(${query})
-      OR LOWER(COALESCE(metadata->'whiteLabel'->>'slug', '')) = LOWER(${query})
-      OR id = ${query}
+      LOWER(COALESCE(p.metadata->'whiteLabel'->>'wixCode', '')) = LOWER(${query})
+      OR LOWER(COALESCE(p.metadata->'whiteLabel'->>'slug', '')) = LOWER(${query})
+      OR p.id = ${query}
     )
-    AND status != 'suspended'
+    AND p.status != 'suspended'
     LIMIT 1
   `;
 
   if (partnerMatches && partnerMatches.length > 0) {
     const partner = partnerMatches[0];
-    const wl = getWhiteLabelConfig(partner.metadata);
+    const wl = resolveHierarchicalWhiteLabel(partner.metadata, partner.corretora_metadata);
     const code = wl.wixCode || wl.slug || partner.id;
 
     // Obtém ou cria o link de contratação deste parceiro

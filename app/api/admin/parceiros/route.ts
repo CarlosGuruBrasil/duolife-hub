@@ -19,20 +19,26 @@ export async function GET(req: NextRequest) {
   try {
     await ensureSchema();
 
-    const parceiros = status
-      ? await sql`
-          SELECT id, razao_social, nome_fantasia, cnpj, cpf, person_type, email, phone, status, created_at
-          FROM partners
-          WHERE status = ${status}
-          ORDER BY created_at DESC
-          LIMIT 200
-        `
-      : await sql`
-          SELECT id, razao_social, nome_fantasia, cnpj, cpf, person_type, email, phone, status, created_at
-          FROM partners
-          ORDER BY created_at DESC
-          LIMIT 200
-        `;
+    const parceiros = await sql`
+      SELECT
+        p.id,
+        p.razao_social,
+        p.nome_fantasia,
+        p.cnpj,
+        p.cpf,
+        p.person_type,
+        p.email,
+        p.phone,
+        p.status,
+        p.corretora_id,
+        c.nome_fantasia AS corretora_nome,
+        p.created_at
+      FROM partners p
+      LEFT JOIN corretoras c ON c.id = p.corretora_id
+      WHERE (${status}::text IS NULL OR p.status = ${status})
+      ORDER BY p.created_at DESC
+      LIMIT 200
+    `;
 
     return Response.json({ parceiros, canManageStatus: isPlatformAdmin(admin) });
   } catch (err) {
@@ -88,6 +94,7 @@ const createPartnerSchema = z.object({
   city: z.string().trim().optional(),
   state: z.string().trim().optional(),
   status: z.enum(['active', 'pending']).default('active'),
+  corretora_id: z.string().trim().optional(),
   director_name: z.string().trim().min(2, 'Informe o nome do diretor'),
   director_email: z.string().trim().email('E-mail do diretor inválido'),
 }).superRefine((data, ctx) => {
@@ -123,6 +130,7 @@ export async function POST(req: NextRequest) {
   const cpf = data.person_type === 'pf' ? documento : null;
   const email = data.email.toLowerCase();
   const directorEmail = data.director_email.toLowerCase();
+  const corretoraId = data.corretora_id || 'corretora_net4life_001';
 
   try {
     await ensureSchema();
@@ -142,7 +150,7 @@ export async function POST(req: NextRequest) {
       if (diretorEmUso) return { erro: 'Este e-mail de diretor já tem acesso em outra operação' };
 
       const [partner] = await tx`
-        INSERT INTO partners (razao_social, nome_fantasia, person_type, cnpj, cpf, email, phone, address, status, metadata)
+        INSERT INTO partners (razao_social, nome_fantasia, person_type, cnpj, cpf, email, phone, address, status, corretora_id, metadata)
         VALUES (
           ${data.razao_social},
           ${data.nome_fantasia || data.razao_social},
@@ -153,9 +161,10 @@ export async function POST(req: NextRequest) {
           ${data.phone},
           ${JSON.stringify({ city: data.city ?? null, state: data.state ?? null })}::jsonb,
           ${data.status},
+          ${corretoraId},
           ${JSON.stringify({ source: 'admin', created_by: admin.userId })}::jsonb
         )
-        RETURNING id, razao_social, nome_fantasia, person_type, status
+        RETURNING id, razao_social, nome_fantasia, person_type, status, corretora_id
       `;
 
       // Senha aleatória e descartada: o diretor só entra pelo convite, definindo a própria

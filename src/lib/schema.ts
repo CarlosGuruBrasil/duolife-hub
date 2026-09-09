@@ -7,6 +7,8 @@ let readyPromise: Promise<void> | null = null;
 
 const REQUIRED_TABLES = [
   'admin_users',
+  'corretoras',
+  'corretora_users',
   'partners',
   'partner_users',
   'products',
@@ -70,7 +72,102 @@ async function runRuntimeSchemaSetup(): Promise<void> {
     )
   `;
 
-  // Parceiros (corretoras)
+  // Corretoras de seguros (empresas gerenciadas ou conectadas à DuoLife)
+  await sql`
+    CREATE TABLE IF NOT EXISTS corretoras (
+      id            TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      razao_social  TEXT NOT NULL,
+      nome_fantasia TEXT NOT NULL,
+      cnpj          TEXT UNIQUE,
+      susep         TEXT,
+      email         TEXT NOT NULL,
+      phone         TEXT,
+      address       JSONB NOT NULL DEFAULT '{}',
+      status        TEXT NOT NULL DEFAULT 'active',
+      metadata      JSONB NOT NULL DEFAULT '{}',
+      created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_corretoras_cnpj ON corretoras(cnpj)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_corretoras_status ON corretoras(status)`;
+
+  // Usuários que gerenciam a corretora
+  await sql`
+    CREATE TABLE IF NOT EXISTS corretora_users (
+      id              TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      corretora_id    TEXT NOT NULL REFERENCES corretoras(id) ON DELETE CASCADE,
+      name            TEXT NOT NULL,
+      email           TEXT UNIQUE NOT NULL,
+      password_hash   TEXT NOT NULL,
+      role            TEXT NOT NULL DEFAULT 'corretora_admin',
+      permissions     JSONB NOT NULL DEFAULT '{}',
+      is_active       BOOLEAN NOT NULL DEFAULT true,
+      last_login_at   TIMESTAMPTZ,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_corretora_users_corretora_id ON corretora_users(corretora_id)`;
+
+  // Seed da Corretora NET4Life (#1)
+  await sql`
+    INSERT INTO corretoras (
+      id,
+      razao_social,
+      nome_fantasia,
+      cnpj,
+      susep,
+      email,
+      phone,
+      address,
+      status,
+      metadata
+    )
+    VALUES (
+      'corretora_net4life_001',
+      'Net4life Corretora de Seguros Ltda',
+      'NET4Life Corretora de Seguros',
+      '07351909000133',
+      '202018702',
+      'contato@net4life.com.br',
+      '+55 11 91177-1319',
+      '{"street": "Rod. José Carlos Daux, 8600 - Bloco 03 Sala 05", "neighborhood": "Santo Antônio de Lisboa", "city": "Florianópolis", "state": "SC", "phones": ["+55 (11) 91177-1319", "(48) 3028-0033"]}'::jsonb,
+      'active',
+      '{
+        "whiteLabel": {
+          "slug": "net4life",
+          "companyName": "NET4Life Corretora de Seguros",
+          "companySlogan": "Benefícios Corporativos & Seguros",
+          "companyPhone": "+55 (11) 91177-1319",
+          "companyEmail": "contato@net4life.com.br",
+          "companyWebsite": "https://net4life.com.br",
+          "logoUrl": "/images/corretoras/net4life-logo.svg",
+          "primaryColor": "#004172",
+          "secondaryColor": "#00a0af",
+          "accentColor": "#00689b",
+          "susep": "202018702",
+          "social": {
+            "linkedin": "https://www.linkedin.com/company/net4life/home/",
+            "instagram": "https://www.instagram.com/net4lifecorretora/",
+            "facebook": "https://www.facebook.com/net4lifecorretora"
+          }
+        }
+      }'::jsonb
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      razao_social  = EXCLUDED.razao_social,
+      nome_fantasia = EXCLUDED.nome_fantasia,
+      cnpj          = EXCLUDED.cnpj,
+      susep         = EXCLUDED.susep,
+      email         = EXCLUDED.email,
+      phone         = EXCLUDED.phone,
+      address       = EXCLUDED.address,
+      metadata      = EXCLUDED.metadata,
+      updated_at    = NOW()
+  `;
+
+  // Parceiros (corretores/canais vinculados a uma corretora)
   await sql`
     CREATE TABLE IF NOT EXISTS partners (
       id            TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
@@ -93,6 +190,11 @@ async function runRuntimeSchemaSetup(): Promise<void> {
   await sql`ALTER TABLE partners ADD COLUMN IF NOT EXISTS person_type TEXT NOT NULL DEFAULT 'pj'`;
   await sql`ALTER TABLE partners ADD COLUMN IF NOT EXISTS cpf TEXT`;
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS partners_cpf_key ON partners (cpf) WHERE cpf IS NOT NULL`;
+
+  // Vínculo do parceiro com sua corretora mãe (com fallback inicial para NET4Life)
+  await sql`ALTER TABLE partners ADD COLUMN IF NOT EXISTS corretora_id TEXT REFERENCES corretoras(id)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_partners_corretora_id ON partners(corretora_id)`;
+  await sql`UPDATE partners SET corretora_id = 'corretora_net4life_001' WHERE corretora_id IS NULL`;
 
   // Usuários dos parceiros
   await sql`
@@ -323,6 +425,11 @@ async function runRuntimeSchemaSetup(): Promise<void> {
   await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS status_cliente TEXT`;
   await sql`CREATE INDEX IF NOT EXISTS leads_status_cliente ON leads (status_cliente)`;
 
+  // Vinculação de leads à corretora
+  await sql`ALTER TABLE leads ADD COLUMN IF NOT EXISTS corretora_id TEXT REFERENCES corretoras(id)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_leads_corretora_id ON leads (corretora_id)`;
+  await sql`UPDATE leads SET corretora_id = 'corretora_net4life_001' WHERE corretora_id IS NULL`;
+
   // Clientes finais segurados
   await sql`
     CREATE TABLE IF NOT EXISTS insurance_clients (
@@ -376,12 +483,15 @@ async function runRuntimeSchemaSetup(): Promise<void> {
   // Renovação como conceito de primeira classe — antes só existia como flag solta em client_data.renovacao
   await sql`ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS is_renewal BOOLEAN NOT NULL DEFAULT false`;
   await sql`ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS renewed_from_cotacao_id TEXT REFERENCES cotacoes(id)`;
+  await sql`ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS corretora_id TEXT REFERENCES corretoras(id)`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_partner_id ON cotacoes (partner_id)`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_status     ON cotacoes (status)`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_source_token ON cotacoes (source_token)`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_client_id ON cotacoes (client_id)`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_is_renewal ON cotacoes (is_renewal)`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_renewed_from ON cotacoes (renewed_from_cotacao_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_cotacoes_corretora_id ON cotacoes (corretora_id)`;
+  await sql`UPDATE cotacoes SET corretora_id = 'corretora_net4life_001' WHERE corretora_id IS NULL`;
 
   // Vendas (apólices emitidas)
   await sql`
@@ -405,8 +515,11 @@ async function runRuntimeSchemaSetup(): Promise<void> {
     )
   `;
   await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS client_id TEXT REFERENCES insurance_clients(id)`;
+  await sql`ALTER TABLE sales ADD COLUMN IF NOT EXISTS corretora_id TEXT REFERENCES corretoras(id)`;
   await sql`CREATE INDEX IF NOT EXISTS sales_partner_id ON sales (partner_id)`;
   await sql`CREATE INDEX IF NOT EXISTS sales_client_id ON sales (client_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_sales_corretora_id ON sales (corretora_id)`;
+  await sql`UPDATE sales SET corretora_id = 'corretora_net4life_001' WHERE corretora_id IS NULL`;
 
   // Comissões a pagar
   await sql`
@@ -423,6 +536,9 @@ async function runRuntimeSchemaSetup(): Promise<void> {
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
+  await sql`ALTER TABLE commissions ADD COLUMN IF NOT EXISTS corretora_id TEXT REFERENCES corretoras(id)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_commissions_corretora_id ON commissions (corretora_id)`;
+  await sql`UPDATE commissions SET corretora_id = 'corretora_net4life_001' WHERE corretora_id IS NULL`;
 
   // Log de sincronização com sistemas externos (Wix, CV CRM, Meta)
   await sql`

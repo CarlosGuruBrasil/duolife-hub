@@ -3,6 +3,7 @@ import { FileText, TrendingUp, WalletCards } from 'lucide-react';
 import { verifyAdminAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
+import WixSalesSyncButton from './_sync-button';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +15,7 @@ interface VendaRow {
   commission_rate: string | null;
   commission_amount: string | null;
   status: string;
+  source: string | null;
   issue_date: string;
   expiry_date: string;
   created_at: string;
@@ -53,6 +55,7 @@ export default async function AdminVendasPage() {
       s.commission_rate,
       s.commission_amount,
       s.status,
+      COALESCE(s.metadata->>'source', 'duolife') AS source,
       s.issue_date,
       s.expiry_date,
       s.created_at,
@@ -73,12 +76,13 @@ export default async function AdminVendasPage() {
   return (
     <div className="space-y-6">
       {/* Header no Container Oficial admin-hero-card */}
-      <section className="admin-hero-card">
+      <section className="admin-hero-card flex-row items-center justify-between flex-wrap gap-4">
         <div>
           <span className="admin-eyebrow">OPERAÇÃO DE VENDAS</span>
           <h1 className="admin-page-title">Vendas</h1>
           <p className="admin-page-copy">Todas as apólices emitidas na plataforma.</p>
         </div>
+        <WixSalesSyncButton />
       </section>
 
       {/* Cards de Métricas Grid Padronizado */}
@@ -126,7 +130,18 @@ export default async function AdminVendasPage() {
                   <tr key={venda.id} className="table-row">
                     <td className="px-5 py-4 text-gray-600">{venda.partner_name}</td>
                     <td className="px-5 py-4 font-semibold" style={{ color: 'var(--primary)' }}>{venda.client_name}</td>
-                    <td className="px-5 py-4 text-gray-600">{venda.policy_number || '-'}</td>
+                    <td className="px-5 py-4 text-gray-600">
+                      <div className="font-semibold text-gray-800">{venda.policy_number || '-'}</div>
+                      {venda.source === 'wix' ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-cyan-50 border border-cyan-200 text-[#0e4a5a] mt-0.5">
+                          Wix Import1
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 mt-0.5">
+                          DuoLife
+                        </span>
+                      )}
+                    </td>
                     <td className="px-5 py-4 text-gray-600">{venda.product_name}</td>
                     <td className="px-5 py-4 text-gray-600">{formatCurrency(venda.premio_total)}</td>
                     <td className="px-5 py-4 text-gray-600">

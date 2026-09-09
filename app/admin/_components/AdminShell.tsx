@@ -8,6 +8,7 @@ import type { LucideIcon } from 'lucide-react';
 import {
   BarChart3,
   Briefcase,
+  Building,
   Building2,
   ChevronDown,
   ChevronLeft,
@@ -59,7 +60,8 @@ const navSections: Array<{ title: string; items: NavItem[] }> = [
   {
     title: 'Rede',
     items: [
-      { href: '/admin/parceiros', label: 'Parceiros', icon: Building2, description: 'Corretoras e estrutura.' },
+      { href: '/admin/corretoras', label: 'Corretoras', icon: Building, description: 'Empresas corretoras master.' },
+      { href: '/admin/parceiros', label: 'Parceiros', icon: Building2, description: 'Corretores e escritórios credenciados.' },
       { href: '/admin/ranking', label: 'Ranking', icon: Trophy, description: 'Líderes de produção e vendas.' },
       { href: '/admin/clientes', label: 'Clientes', icon: Users, description: 'Carteira de segurados.' },
       { href: '/admin/comparativo-wix', label: 'Comparativo Wix', icon: ArrowRightLeft, description: 'Auditoria DB vs. Wix Import1.' },
