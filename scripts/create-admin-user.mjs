@@ -16,10 +16,14 @@ if (!databaseUrl) {
 const sql = postgres(databaseUrl, { max: 1 });
 
 async function main() {
-  const email = 'carlosad1981@gmail.com'.toLowerCase().trim();
-  const password = 'Carlosad$2026';
-  const name = 'Carlos Augusto Duarte';
-  const role = 'duolife_dev';
+  const email = (process.env.ADMIN_EMAIL || 'carlosad1981@gmail.com').toLowerCase().trim();
+  const password = process.env.ADMIN_PASSWORD || process.env.INITIAL_ADMIN_PASSWORD;
+  if (!password) {
+    console.error('ADMIN_PASSWORD não informada nas variáveis de ambiente.');
+    process.exit(1);
+  }
+  const name = process.env.ADMIN_NAME || 'Carlos Augusto Duarte';
+  const role = process.env.ADMIN_ROLE || 'duolife_dev';
 
   // Garantir que a tabela admin_users existe
   await sql`

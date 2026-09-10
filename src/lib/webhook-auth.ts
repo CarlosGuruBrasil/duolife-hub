@@ -1,14 +1,13 @@
 import crypto from 'crypto';
 
-// Fail-closed: sem secret configurado, a requisição é sempre rejeitada.
-// Comparação em tempo constante para evitar timing attack no valor do token.
+// Fail-closed: sem secret configurado ou token ausente, a requisição é sempre rejeitada.
+// Usa hash SHA-256 de tamanho fixo (32 bytes) para garantir comparação em tempo constante
+// sem vazar o comprimento do secret configurado (mitigando timing attacks).
 export function verifyWebhookToken(received: string | null, secretEnvValue: string | undefined): boolean {
-  if (!secretEnvValue) return false;
-  if (!received) return false;
+  if (!secretEnvValue || !received) return false;
 
-  const receivedBuf = Buffer.from(received);
-  const secretBuf = Buffer.from(secretEnvValue);
-  if (receivedBuf.length !== secretBuf.length) return false;
+  const receivedHash = crypto.createHash('sha256').update(received).digest();
+  const secretHash = crypto.createHash('sha256').update(secretEnvValue).digest();
 
-  return crypto.timingSafeEqual(receivedBuf, secretBuf);
+  return crypto.timingSafeEqual(receivedHash, secretHash);
 }

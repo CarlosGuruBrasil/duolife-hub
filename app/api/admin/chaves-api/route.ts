@@ -4,6 +4,20 @@ import { roleIsDev } from '@/lib/roles';
 import { getAllSystemSettings, updateSystemSettings } from '@/lib/system-settings';
 import { logger } from '@/lib/logger';
 
+const SECRET_KEYS = new Set([
+  'ASAAS_API_KEY',
+  'ASAAS_WEBHOOK_SECRET',
+  'ZAPSIGN_API_TOKEN',
+  'ZAPSIGN_WEBHOOK_SECRET',
+  'WIX_API_KEY',
+]);
+
+function maskSecret(val: string): string {
+  if (!val) return '';
+  if (val.length <= 8) return '********';
+  return `********${val.slice(-4)}`;
+}
+
 export async function GET() {
   const user = await verifyAuth();
   if (!user) return unauthorized();
@@ -19,7 +33,7 @@ export async function GET() {
     const dbSettings = await getAllSystemSettings();
 
     // Mapeia os valores atuais com fallback para variáveis de ambiente
-    const settings = {
+    const rawSettings: Record<string, string> = {
       ASAAS_API_KEY: dbSettings['ASAAS_API_KEY'] || process.env.ASAAS_API_KEY || '',
       ASAAS_ENVIRONMENT: dbSettings['ASAAS_ENVIRONMENT'] || (process.env.ASAAS_BASE_URL?.includes('sandbox') ? 'sandbox' : 'sandbox'),
       ASAAS_WEBHOOK_SECRET: dbSettings['ASAAS_WEBHOOK_SECRET'] || process.env.ASAAS_WEBHOOK_SECRET || '',
@@ -35,6 +49,12 @@ export async function GET() {
       WIX_SITE_ID: dbSettings['WIX_SITE_ID'] || process.env.WIX_SITE_ID || process.env.WIX_SITEID || '',
       WIX_INTEGRATION_ENABLED: dbSettings['WIX_INTEGRATION_ENABLED'] || process.env.WIX_INTEGRATION_ENABLED || 'true',
     };
+
+    // Mascara segredos para evitar information disclosure no browser
+    const settings: Record<string, string> = {};
+    for (const [key, value] of Object.entries(rawSettings)) {
+      settings[key] = SECRET_KEYS.has(key) ? maskSecret(value) : value;
+    }
 
     return Response.json({
       ok: true,
@@ -66,10 +86,25 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: 'Payload de configurações inválido' }, { status: 400 });
     }
 
-    const updatedBy = user.email || user.name || 'duolife_dev';
-    await updateSystemSettings(settings, updatedBy);
+    // Filtra para nunca sobrescrever chaves de API com a máscara retornada pelo GET
+    const sanitizedSettings: Record<string, string> = {};
+    for (const [key, value] of Object.entries(settings)) {
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (SECRET_KEYS.has(key) && (trimmed.startsWith('********') || trimmed === '')) {
+          // Não alterou o segredo existente, ignora
+          continue;
+        }
+        sanitizedSettings[key] = trimmed;
+      }
+    }
 
-    logger.info({ user: user.email, keysUpdated: Object.keys(settings) }, 'api.admin.chaves-api.update.success');
+    const updatedBy = user.email || user.name || 'duolife_dev';
+    if (Object.keys(sanitizedSettings).length > 0) {
+      await updateSystemSettings(sanitizedSettings, updatedBy);
+    }
+
+    logger.info({ user: user.email, keysUpdated: Object.keys(sanitizedSettings) }, 'api.admin.chaves-api.update.success');
 
     return Response.json({
       ok: true,

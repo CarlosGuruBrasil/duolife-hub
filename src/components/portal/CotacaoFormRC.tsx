@@ -18,6 +18,7 @@ import {
   Download
 } from 'lucide-react';
 import { parseAtuacaoList } from '@/lib/atuacao';
+import ClienteSearchSelector, { type ClienteBuscaResult, type RenewalData } from '@/components/portal/ClienteSearchSelector';
 
 interface Plano {
   tipoDePlano: string;
@@ -183,6 +184,10 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
   const [paymentDueDate, setPaymentDueDate] = useState('');
   const [checkoutId, setCheckoutId] = useState('');
   const [paymentBlockedReason, setPaymentBlockedReason] = useState<string | null>(null);
+
+  // Cliente pesquisado e renovação
+  const [selectedCliente, setSelectedCliente] = useState<ClienteBuscaResult | null>(null);
+  const [isRenovacaoAtiva, setIsRenovacaoAtiva] = useState(false);
 
   // ------------------------------------------------------------------
   // Helper para os headers públicos
@@ -429,6 +434,55 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
 
   function updateField(field: keyof FormState, value: any) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function handleSelectCliente(cliente: ClienteBuscaResult) {
+    setSelectedCliente(cliente);
+    setIsRenovacaoAtiva(false);
+
+    setForm((prev) => ({
+      ...prev,
+      nome: cliente.fullName || prev.nome,
+      cpfCnpj: cliente.documentFormatted || applyCpfCnpjMask(cliente.documentNumber) || prev.cpfCnpj,
+      email: cliente.email || prev.email,
+      celular: cliente.phone ? applyPhoneMask(cliente.phone) : prev.celular,
+      oab: cliente.oab || prev.oab,
+      dataNascto: cliente.birthDate || prev.dataNascto,
+      dataAtividade: cliente.dataAtividade || prev.dataAtividade,
+      cep: cliente.address?.cep ? applyCepMask(cliente.address.cep) : prev.cep,
+      logradouro: cliente.address?.logradouro || prev.logradouro,
+      numero: cliente.address?.numero || prev.numero,
+      complemento: cliente.address?.complemento || prev.complemento,
+      bairro: cliente.address?.bairro || prev.bairro,
+      cidade: cliente.address?.cidade || prev.cidade,
+      uf: cliente.address?.uf || prev.uf,
+    }));
+  }
+
+  function handleApplyRenewal(renewal: RenewalData) {
+    setIsRenovacaoAtiva(true);
+    setForm((prev) => ({
+      ...prev,
+      isRenovacao: 'Sim',
+      dataInicioVigencia: renewal.dataInicioVigenciaSugerida || prev.dataInicioVigencia,
+      seguradora: renewal.seguradora || prev.seguradora,
+      vigencia: renewal.vigenciaAnterior || prev.vigencia,
+      limite: renewal.limite || prev.limite,
+      franquiaAnterior: renewal.franquia || prev.franquiaAnterior,
+      premio: renewal.premio || prev.premio,
+      dataRetroativa: renewal.dataRetroativa || prev.dataRetroativa,
+      faturamentoAntes: renewal.faturamentoAntes ? applyMoneyMask(renewal.faturamentoAntes) : prev.faturamentoAntes,
+      faturamentoDepois: renewal.faturamentoDepois ? applyMoneyMask(renewal.faturamentoDepois) : prev.faturamentoDepois,
+      atuacao: renewal.atuacao && renewal.atuacao.length > 0 ? renewal.atuacao : prev.atuacao,
+      ppeCargos: renewal.ppeCargos || prev.ppeCargos,
+      ppeRepresenta: renewal.ppeRepresenta || prev.ppeRepresenta,
+      ppeCargoSelect: renewal.ppeCargoSelect && renewal.ppeCargoSelect.length > 0 ? renewal.ppeCargoSelect : prev.ppeCargoSelect,
+    }));
+  }
+
+  function handleClearClienteSelection() {
+    setSelectedCliente(null);
+    setIsRenovacaoAtiva(false);
   }
 
   // Busca CEP via API
@@ -807,6 +861,17 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
       {step === 2 && (
         <div className="card space-y-6">
           <h3 className="text-lg font-bold text-primary">2. Dados do Proponente / Segurado</h3>
+
+          <ClienteSearchSelector
+            adminSelectedPartnerId={adminSelectedPartnerId}
+            publicToken={publicToken}
+            selectedCliente={selectedCliente}
+            isRenovacaoAtiva={isRenovacaoAtiva}
+            onSelectCliente={handleSelectCliente}
+            onApplyRenewal={handleApplyRenewal}
+            onClearSelection={handleClearClienteSelection}
+          />
+
           <div className="grid gap-5 md:grid-cols-2">
             <label className="block">
               <span className="field-label">Nome Completo</span>
@@ -1055,7 +1120,15 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
               <span className="field-label text-gray-900">É uma renovação de apólice?</span>
               <select
                 value={form.isRenovacao}
-                onChange={(e) => updateField('isRenovacao', e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  updateField('isRenovacao', val);
+                  if (val === 'Não') {
+                    setIsRenovacaoAtiva(false);
+                  } else if (selectedCliente?.renewalData?.hasPreviousPolicy) {
+                    setIsRenovacaoAtiva(true);
+                  }
+                }}
                 className="form-input mt-2"
               >
                 <option value="Não">Não (Novo Seguro)</option>

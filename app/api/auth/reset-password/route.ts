@@ -3,9 +3,14 @@ import bcrypt from 'bcryptjs';
 import { NextResponse } from 'next/server';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
+import { rateLimit, rateLimitResponse } from '@/lib/rate-limit';
 
 export async function POST(req: Request) {
   try {
+    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
+    const ipLimit = rateLimit(`reset-password:ip:${clientIp}`, 10, 15 * 60 * 1000); // 10 tentativas por IP a cada 15 min
+    if (!ipLimit.ok) return rateLimitResponse(ipLimit.retryAfter);
+
     const { token, newPassword } = await req.json();
 
     if (!token || !newPassword || newPassword.length < 6) {

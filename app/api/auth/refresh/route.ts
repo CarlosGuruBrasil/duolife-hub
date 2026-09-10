@@ -37,7 +37,7 @@ export async function POST() {
       permissions: normalizePermissions(user.permissions),
     };
 
-    const token = jwt.sign(payload, getJwtSecret(), { expiresIn: '8h' });
+    const token = jwt.sign(payload, getJwtSecret(), { algorithm: 'HS256', expiresIn: '8h' });
     const isProduction = process.env.NODE_ENV === 'production';
 
     cookieStore.set('duolife_token', token, {

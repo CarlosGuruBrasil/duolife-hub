@@ -81,7 +81,7 @@ export async function verifyAuth(): Promise<AuthUser | null> {
     const token = cookieStore.get('duolife_token')?.value;
     if (!token) return null;
 
-    const decoded = jwt.verify(token, getJwtSecret());
+    const decoded = jwt.verify(token, getJwtSecret(), { algorithms: ['HS256'] });
     if (!isAuthUser(decoded)) return null;
 
     if (roleIsInternal(decoded.role)) {

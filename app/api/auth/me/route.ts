@@ -145,7 +145,7 @@ export async function PATCH(req: NextRequest) {
       name,
       email: lowerEmail,
     };
-    const newToken = jwt.sign(updatedPayload, getJwtSecret(), { expiresIn: '8h' });
+    const newToken = jwt.sign(updatedPayload, getJwtSecret(), { algorithm: 'HS256', expiresIn: '8h' });
     const cookieStore = await cookies();
     cookieStore.set('duolife_token', newToken, {
       httpOnly: true,

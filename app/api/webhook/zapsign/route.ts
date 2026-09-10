@@ -84,6 +84,22 @@ export async function POST(req: NextRequest) {
   const normalizedStatus = normalizeStatus(payload);
   const signedFileUrl = extractSignedFileUrl(payload);
 
+  const eventUniqueKey = payload?.event_id || payload?.id
+    ? String(payload.event_id || payload.id)
+    : `${eventType}:${externalDocumentId || externalId || ''}:${normalizedStatus}`;
+
+  // Proteção Anti-Replay / Idempotência:
+  // Se o evento exato já foi gravado e processado com sucesso, descarta reprocessamento duplicado
+  const [existingProcessed] = await sql<{ id: string }[]>`
+    SELECT id FROM webhook_events
+    WHERE provider = 'zapsign' AND external_id = ${eventUniqueKey} AND processed = true
+    LIMIT 1
+  `;
+  if (existingProcessed) {
+    logger.info({ eventUniqueKey }, 'ZapSign Webhook replay descartado (evento já processado)');
+    return NextResponse.json({ ok: true, ignored: true, message: 'Evento já processado com sucesso' });
+  }
+
   const [eventRow] = await sql<{ id: string }[]>`
     INSERT INTO webhook_events (
       provider,
@@ -96,7 +112,7 @@ export async function POST(req: NextRequest) {
     VALUES (
       'zapsign',
       ${eventType},
-      ${externalDocumentId || externalId},
+      ${eventUniqueKey},
       true,
       ${JSON.stringify(payload)}::jsonb,
       false

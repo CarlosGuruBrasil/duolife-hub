@@ -4,6 +4,7 @@ import { roleIsInternal } from '@/lib/roles';
 import { logger } from '@/lib/logger';
 import { sendTemplatedEmail, renderTemplateString } from '@/lib/email-service';
 import { sendMail } from '@/lib/mailer';
+import { rateLimit, rateLimitResponse } from '@/lib/rate-limit';
 
 export async function POST(req: NextRequest) {
   const user = await verifyAuth();
@@ -12,16 +13,21 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Acesso restrito' }, { status: 403 });
   }
 
+  // Rate limit: max 5 disparos de teste por minuto por operador
+  const rl = rateLimit(`admin:test-email:${user.userId}`, 5, 60 * 1000);
+  if (!rl.ok) return rateLimitResponse(rl.retryAfter);
+
   try {
     const body = await req.json();
-    const { templateCode, recipientEmail, subject, htmlContent, customVariables } = body;
+    const { templateCode, subject, htmlContent, customVariables } = body;
 
-    const targetEmail = (recipientEmail && typeof recipientEmail === 'string' && recipientEmail.trim())
-      ? recipientEmail.trim()
-      : user.email;
+    // Blindagem de Segurança (VULN-12 / Anti-Open-Relay):
+    // E-mails de teste disparados pelo painel administrativo são enviados EXCLUSIVAMENTE
+    // para o endereço autenticado do próprio operador solicitante, impedindo relay ou phishing.
+    const targetEmail = user.email ? String(user.email).trim().toLowerCase() : null;
 
     if (!targetEmail) {
-      return Response.json({ error: 'E-mail de destino não informado' }, { status: 400 });
+      return Response.json({ error: 'Operador autenticado não possui e-mail cadastrado para teste' }, { status: 400 });
     }
 
     // Variáveis de simulação padrão

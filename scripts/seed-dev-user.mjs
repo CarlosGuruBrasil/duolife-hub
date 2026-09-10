@@ -13,9 +13,13 @@ if (!databaseUrl) throw new Error('DATABASE_URL ausente');
 const sql = postgres(databaseUrl);
 
 async function main() {
-  const password = 'net4life2026';
+  const password = process.env.DEV_USER_PASSWORD;
+  if (!password) {
+    console.error('DEV_USER_PASSWORD não configurada no ambiente.');
+    process.exit(1);
+  }
   const hash = await bcrypt.hash(password, 10);
-  const email = 'carlos@guru.dev.br';
+  const email = (process.env.DEV_USER_EMAIL || 'carlos@guru.dev.br').toLowerCase().trim();
 
   // 1. Admin User
   await sql`

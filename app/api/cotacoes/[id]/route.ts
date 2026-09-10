@@ -3,6 +3,7 @@ import { verifyAuth, unauthorized } from '@/lib/auth';
 import { getAccessibleQuoteById } from '@/lib/access';
 import { upsertInsuranceClient } from '@/lib/insurance-ops';
 import { parseJsonbField } from '@/lib/json-safe';
+import { calcularPrecoServidor } from '@/lib/pricing';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
 
@@ -162,8 +163,36 @@ export async function PATCH(
       uf: payload.address.uf !== undefined ? String(payload.address.uf).trim().toUpperCase() : currentAddress.uf,
     } : currentAddress;
 
+    // Lista de campos protegidos do sistema que nunca podem ser sobrescritos pelo cliente via PATCH
+    const PROTECTED_CLIENT_DATA_KEYS = [
+      'contratoToken',
+      'docToken',
+      'signUrl',
+      'sign_url',
+      'contratoGeradoEm',
+      'checkoutId',
+      'asaasCustomerId',
+      'asaasPaymentId',
+      'asaasPaymentStatus',
+      'asaasSubscriptionId',
+      'asaasInvoiceUrl',
+      'asaasBankSlipUrl',
+      'asaasPixQrCode',
+      'asaasPixCopiaECola',
+      'status',
+      'partnerId',
+      'partner_id',
+      'clientId',
+      'client_id',
+    ];
+
+    const sanitizedInputClientData = { ...inputClientData };
+    for (const key of PROTECTED_CLIENT_DATA_KEYS) {
+      delete sanitizedInputClientData[key];
+    }
+
     // Regra da Opção 1:
-    // Status rascunho ou enviada: permite atualizar todos os campos.
+    // Status rascunho ou enviada: permite atualizar campos de proposta e recalcular prêmio.
     // Status assinado, pagamento_gerado, aprovada, emitida (e outros status pós-emissão/contrato):
     // Preserva os valores financeiros originais da cotação (importanciaSegurada, premioFinal e plano)
     // para integridade com ZapSign e Asaas, tanto para corretores quanto administradores.
@@ -171,7 +200,7 @@ export async function PATCH(
 
     const proposal = (payload.proposalData || {}) as Record<string, unknown>;
 
-    const rawImportancia = proposal.importanciaSegurada ?? payload.importancia_segurada ?? payload.importanciaSegurada ?? (isFinancialMutable ? inputClientData.valorCobertura : undefined);
+    const rawImportancia = proposal.importanciaSegurada ?? payload.importancia_segurada ?? payload.importanciaSegurada ?? (isFinancialMutable ? sanitizedInputClientData.valorCobertura : undefined);
     let importanciaSegurada: number | null = cotacao.importancia_segurada !== null ? Number(cotacao.importancia_segurada) : null;
     if (isFinancialMutable && rawImportancia !== undefined) {
       const num = typeof rawImportancia === 'number'
@@ -180,39 +209,56 @@ export async function PATCH(
       if (!isNaN(num) && num > 0) importanciaSegurada = num;
     }
 
-    const rawPremio = proposal.premioFinal ?? payload.premio_final ?? payload.premioFinal ?? (isFinancialMutable ? (inputClientData.valor ?? inputClientData.premioFinal) : undefined);
-    let premioFinal: number | null = cotacao.premio_final !== null ? Number(cotacao.premio_final) : null;
-    if (isFinancialMutable && rawPremio !== undefined) {
-      const num = typeof rawPremio === 'number'
-        ? rawPremio
-        : Number(String(rawPremio).replace(/\D/g, '')) / (String(rawPremio).includes(',') ? 100 : 1);
-      if (!isNaN(num) && num > 0) premioFinal = num;
-    }
-
-    const rawPlanoNome = proposal.planoNome ?? payload.plano_nome ?? payload.nomePlano ?? inputClientData.nomePlano;
+    const rawPlanoNome = proposal.planoNome ?? payload.plano_nome ?? payload.nomePlano ?? sanitizedInputClientData.nomePlano;
     const planoNome = isFinancialMutable && rawPlanoNome !== undefined
       ? String(rawPlanoNome)
       : (currentClientData.nomePlano || currentClientData.tipoDePlano || currentClientData.tipo || 'RC Advogados');
 
-    const rawFranquia = proposal.franquia ?? payload.planoFranquia ?? payload.franquia ?? inputClientData.planoFranquia;
+    const rawFranquia = proposal.franquia ?? payload.planoFranquia ?? payload.franquia ?? sanitizedInputClientData.planoFranquia;
     const franquia = rawFranquia !== undefined
       ? String(rawFranquia)
       : (currentClientData.planoFranquia || currentClientData.franquia || 'R$ 1.000,00');
 
-    const rawParcela = proposal.parcela ?? payload.parcela ?? inputClientData.parcela;
+    const rawParcela = proposal.parcela ?? payload.parcela ?? sanitizedInputClientData.parcela;
     const parcela = rawParcela !== undefined
-      ? rawParcela
-      : (currentClientData.parcela || 1);
+      ? (Number(rawParcela) || 1)
+      : (Number(currentClientData.parcela) || 1);
 
-    const rawNotes = proposal.notes ?? payload.notes ?? inputClientData.observacoes;
+    const rawNotes = proposal.notes ?? payload.notes ?? sanitizedInputClientData.observacoes;
     const notes = rawNotes !== undefined
       ? (rawNotes ? String(rawNotes) : null)
       : cotacao.notes;
 
-    // Mesclagem de client_data preservando dados anteriores (tokens ZapSign, checkoutId, etc.)
+    const cupomCodigo = (payload.cupomCodigo ?? sanitizedInputClientData.cupomCodigo ?? currentClientData.cupomCodigo) as string | null | undefined;
+
+    // Prevenção de Price Tampering:
+    // O prêmio final é recalculado no servidor a partir da tabela oficial de planos e cupom,
+    // nunca aceitando valores enviados arbitrariamente pelo cliente.
+    let premioFinal: number | null = cotacao.premio_final !== null ? Number(cotacao.premio_final) : null;
+    let valorParcelaCalculada: number | null = null;
+    let parcelasCalculadas: number = parcela;
+
+    if (isFinancialMutable) {
+      const targetPlano = (sanitizedInputClientData.tipo || sanitizedInputClientData.tipoDePlano || rawPlanoNome || currentClientData.tipoDePlano || currentClientData.tipo || currentClientData.nomePlano) as string | null | undefined;
+      const precoCalculado = await calcularPrecoServidor({
+        tipoDePlano: targetPlano,
+        qtdParcelasSolicitada: parcela,
+        cupomCodigo,
+      });
+
+      if (precoCalculado) {
+        premioFinal = precoCalculado.valorTotal;
+        valorParcelaCalculada = precoCalculado.valorParcela;
+        parcelasCalculadas = precoCalculado.qtdParcelas;
+      } else if (user.role !== 'duolife_admin' && !cotacao.premio_final) {
+        return Response.json({ error: 'Não foi possível calcular o preço oficial do plano selecionado' }, { status: 422 });
+      }
+    }
+
+    // Mesclagem de client_data preservando dados protegidos anteriores (tokens ZapSign, checkoutId, etc.)
     const mergedClientData: Record<string, unknown> = {
       ...currentClientData,
-      ...inputClientData,
+      ...sanitizedInputClientData,
       nome: clientName,
       cpfCnpj: clientCpfCnpj,
       email: clientEmail,
@@ -228,30 +274,36 @@ export async function PATCH(
       bairro: updatedAddress.bairro,
       cidade: updatedAddress.cidade,
       uf: updatedAddress.uf,
-      // Plano e coberturas
+      // Plano e coberturas oficiais recalculados
       nomePlano: planoNome,
       tipoDePlano: planoNome,
       tipo: planoNome,
       planoFranquia: franquia,
       franquia: franquia,
-      parcela,
+      parcela: parcelasCalculadas,
       ...(premioFinal !== null ? { valor: premioFinal, premioFinal } : {}),
+      ...(valorParcelaCalculada !== null ? { valorParcela: valorParcelaCalculada } : {}),
       ...(importanciaSegurada !== null ? { valorCobertura: `R$ ${importanciaSegurada.toLocaleString('pt-BR')}` } : {}),
+      // Preserva tokens invioláveis gerados anteriormente no servidor
+      ...(currentClientData.contratoToken ? { contratoToken: currentClientData.contratoToken } : {}),
+      ...(currentClientData.signUrl ? { signUrl: currentClientData.signUrl } : {}),
+      ...(currentClientData.docToken ? { docToken: currentClientData.docToken } : {}),
+      ...(currentClientData.checkoutId ? { checkoutId: currentClientData.checkoutId } : {}),
       // Dados profissionais da proposta (sempre permitidos)
-      ...(proposal.oab !== undefined || inputClientData.oab !== undefined ? { oab: proposal.oab ?? inputClientData.oab } : {}),
-      ...(proposal.oabUf !== undefined || inputClientData.oabUf !== undefined || inputClientData.ufOab !== undefined ? {
-        oabUf: proposal.oabUf ?? inputClientData.oabUf ?? inputClientData.ufOab,
-        ufOab: proposal.oabUf ?? inputClientData.oabUf ?? inputClientData.ufOab,
+      ...(proposal.oab !== undefined || sanitizedInputClientData.oab !== undefined ? { oab: proposal.oab ?? sanitizedInputClientData.oab } : {}),
+      ...(proposal.oabUf !== undefined || sanitizedInputClientData.oabUf !== undefined || sanitizedInputClientData.ufOab !== undefined ? {
+        oabUf: proposal.oabUf ?? sanitizedInputClientData.oabUf ?? sanitizedInputClientData.ufOab,
+        ufOab: proposal.oabUf ?? sanitizedInputClientData.oabUf ?? sanitizedInputClientData.ufOab,
       } : {}),
-      ...(proposal.atuacao !== undefined || inputClientData.atuacao !== undefined ? { atuacao: proposal.atuacao ?? inputClientData.atuacao } : {}),
-      ...(proposal.titularidade !== undefined || inputClientData.titularidade !== undefined ? { titularidade: proposal.titularidade ?? inputClientData.titularidade } : {}),
-      ...(proposal.escritorioAssociado !== undefined || inputClientData.escritorioAssociado !== undefined ? { escritorioAssociado: proposal.escritorioAssociado ?? inputClientData.escritorioAssociado } : {}),
-      ...(proposal.faturamentoAntes !== undefined || inputClientData.faturamentoAntes !== undefined ? { faturamentoAntes: proposal.faturamentoAntes ?? inputClientData.faturamentoAntes } : {}),
-      ...(proposal.faturamentoDepois !== undefined || inputClientData.faturamentoDepois !== undefined ? { faturamentoDepois: proposal.faturamentoDepois ?? inputClientData.faturamentoDepois } : {}),
-      ...(proposal.dataInicioVigencia !== undefined || inputClientData.dataInicioVigencia !== undefined || inputClientData.vigencia !== undefined ? {
-        dataInicioVigencia: proposal.dataInicioVigencia ?? inputClientData.dataInicioVigencia ?? inputClientData.vigencia,
-        vigencia: proposal.dataInicioVigencia ?? inputClientData.dataInicioVigencia ?? inputClientData.vigencia,
-        dataVigencia: proposal.dataInicioVigencia ?? inputClientData.dataInicioVigencia ?? inputClientData.vigencia,
+      ...(proposal.atuacao !== undefined || sanitizedInputClientData.atuacao !== undefined ? { atuacao: proposal.atuacao ?? sanitizedInputClientData.atuacao } : {}),
+      ...(proposal.titularidade !== undefined || sanitizedInputClientData.titularidade !== undefined ? { titularidade: proposal.titularidade ?? sanitizedInputClientData.titularidade } : {}),
+      ...(proposal.escritorioAssociado !== undefined || sanitizedInputClientData.escritorioAssociado !== undefined ? { escritorioAssociado: proposal.escritorioAssociado ?? sanitizedInputClientData.escritorioAssociado } : {}),
+      ...(proposal.faturamentoAntes !== undefined || sanitizedInputClientData.faturamentoAntes !== undefined ? { faturamentoAntes: proposal.faturamentoAntes ?? sanitizedInputClientData.faturamentoAntes } : {}),
+      ...(proposal.faturamentoDepois !== undefined || sanitizedInputClientData.faturamentoDepois !== undefined ? { faturamentoDepois: proposal.faturamentoDepois ?? sanitizedInputClientData.faturamentoDepois } : {}),
+      ...(proposal.dataInicioVigencia !== undefined || sanitizedInputClientData.dataInicioVigencia !== undefined || sanitizedInputClientData.vigencia !== undefined ? {
+        dataInicioVigencia: proposal.dataInicioVigencia ?? sanitizedInputClientData.dataInicioVigencia ?? sanitizedInputClientData.vigencia,
+        vigencia: proposal.dataInicioVigencia ?? sanitizedInputClientData.dataInicioVigencia ?? sanitizedInputClientData.vigencia,
+        dataVigencia: proposal.dataInicioVigencia ?? sanitizedInputClientData.dataInicioVigencia ?? sanitizedInputClientData.vigencia,
       } : {}),
     };
 
@@ -306,7 +358,6 @@ export async function PATCH(
     logger.error({ err, id, details: errorDetails }, 'api.cotacoes.patch.failed');
     return Response.json({
       error: 'Erro interno ao atualizar cotação',
-      details: errorDetails,
     }, { status: 500 });
   }
 }

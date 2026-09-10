@@ -58,7 +58,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Payload inválido' }, { status: 400 });
     }
 
-    logger.info({ event, paymentId: payment.id }, 'Asaas Webhook received');
+    const eventKey = payload.id ? String(payload.id) : `${event}:${payment.id}:${payment.status || ''}`;
+
+    // Proteção Anti-Replay / Idempotência:
+    // Se o evento exato já foi processado com sucesso, descarta reprocessamento duplicado
+    const [existingProcessed] = await sql<{ id: string }[]>`
+      SELECT id FROM webhook_events
+      WHERE provider = 'asaas' AND external_id = ${eventKey} AND processed = true
+      LIMIT 1
+    `;
+    if (existingProcessed) {
+      logger.info({ eventKey }, 'Asaas Webhook replay descartado (evento já processado)');
+      return NextResponse.json({ ok: true, ignored: true, message: 'Evento já processado com sucesso' });
+    }
+
+    logger.info({ event, paymentId: payment.id, eventKey }, 'Asaas Webhook received');
 
     const [webhookEvent] = await sql<{ id: string }[]>`
       INSERT INTO webhook_events (
@@ -72,7 +86,7 @@ export async function POST(req: NextRequest) {
       VALUES (
         'asaas',
         ${event},
-        ${payment.id},
+        ${eventKey},
         true,
         ${JSON.stringify(payload)}::jsonb,
         false

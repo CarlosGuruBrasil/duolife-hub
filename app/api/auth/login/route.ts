@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
         managerUserId: null,
         permissions: {},
       };
-      const token = jwt.sign(payload, getJwtSecret(), { expiresIn: '8h' });
+      const token = jwt.sign(payload, getJwtSecret(), { algorithm: 'HS256', expiresIn: '8h' });
       const cookieStore = await cookies();
       cookieStore.set('duolife_token', token, {
         httpOnly: true, secure: process.env.NODE_ENV === 'production',
@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
       managerUserId: user.manager_user_id,
       permissions: normalizePermissions(user.permissions),
     };
-    const token = jwt.sign(payload, getJwtSecret(), { expiresIn: '8h' });
+    const token = jwt.sign(payload, getJwtSecret(), { algorithm: 'HS256', expiresIn: '8h' });
     const refreshRaw = await createRefreshToken(user.id);
     const cookieStore = await cookies();
     const isProduction = process.env.NODE_ENV === 'production';

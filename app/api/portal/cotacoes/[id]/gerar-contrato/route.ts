@@ -8,11 +8,13 @@ import { calcularPrecoServidor } from '@/lib/pricing';
 import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
 import { getZapSignConfig } from '@/lib/system-settings';
 import { parseAtuacaoList } from '@/lib/atuacao';
+import { rateLimit, rateLimitResponse } from '@/lib/rate-limit';
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
   const publicToken = req.headers.get('x-public-token');
   let targetPartnerId: string | null = null;
   let user = null;
@@ -30,6 +32,10 @@ export async function POST(
     if (!user) return unauthorized();
     targetPartnerId = user.partnerId;
   }
+
+  const actorKey = user ? user.userId : `${clientIp}:${targetPartnerId || 'anon'}`;
+  const rl = rateLimit(`gerar-contrato:${actorKey}`, 10, 60 * 1000); // 10 gerações por minuto
+  if (!rl.ok) return rateLimitResponse(rl.retryAfter);
 
   const { id } = await params;
 

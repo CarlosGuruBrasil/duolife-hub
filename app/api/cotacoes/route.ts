@@ -250,13 +250,14 @@ export async function POST(req: NextRequest) {
     const premioCalculado = preco.valorTotal;
 
     // Renovação como conceito de primeira classe (não só uma flag solta em client_data.renovacao).
-    // Tenta linkar com a cotação aprovada mais recente do mesmo cliente, quando existir.
-    const isRenewal = data.clientData?.renovacao === true || data.clientData?.renovacao === 'true';
+    // Tenta linkar com a cotação aprovada/emitida mais recente do mesmo cliente, quando existir.
+    const isRenewal = data.clientData?.renovacao === true || data.clientData?.renovacao === 'true' || data.clientData?.isRenovacao === 'Sim';
     let renewedFromCotacaoId: string | null = null;
     if (isRenewal) {
       const [previous] = await sql`
         SELECT id FROM cotacoes
-        WHERE client_id = ${client.id} AND status = 'aprovada'
+        WHERE client_id = ${client.id}
+          AND status IN ('aprovada', 'emitida', 'assinado', 'pagamento_gerado')
         ORDER BY created_at DESC
         LIMIT 1
       `;
@@ -311,6 +312,8 @@ export async function POST(req: NextRequest) {
           importancia_segurada = ${data.importanciaSegurada || null},
           premio_calculado = ${premioCalculado},
           notes = ${data.notes || null},
+          is_renewal = ${isRenewal},
+          renewed_from_cotacao_id = ${renewedFromCotacaoId},
           updated_at = NOW()
         WHERE id = ${existingId}
         RETURNING id, status, created_at

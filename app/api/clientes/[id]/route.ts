@@ -409,7 +409,6 @@ export async function PATCH(
     logger.error({ err, id, details: errorDetails }, 'api.clientes.patch.failed');
     return Response.json({
       error: 'Erro interno ao atualizar cliente',
-      details: errorDetails,
     }, { status: 500 });
   }
 }

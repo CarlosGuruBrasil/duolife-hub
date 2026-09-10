@@ -2,14 +2,22 @@ import { NextResponse } from 'next/server';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
 import { issuePasswordResetEmail } from '@/lib/password-reset';
+import { rateLimit, rateLimitResponse } from '@/lib/rate-limit';
 
 export async function POST(req: Request) {
   try {
+    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
+    const ipLimit = rateLimit(`forgot-password:ip:${clientIp}`, 5, 15 * 60 * 1000); // 5 requisições por IP a cada 15 min
+    if (!ipLimit.ok) return rateLimitResponse(ipLimit.retryAfter);
+
     const { email } = await req.json();
 
     if (!email || !email.includes('@')) {
       return NextResponse.json({ error: 'E-mail inválido' }, { status: 400 });
     }
+
+    const emailLimit = rateLimit(`forgot-password:email:${email.toLowerCase().trim()}`, 3, 15 * 60 * 1000); // 3 tentativas por e-mail a cada 15 min
+    if (!emailLimit.ok) return rateLimitResponse(emailLimit.retryAfter);
 
     // Procura o usuário primeiro em partner_users, depois em admin_users
     let userId = '';
