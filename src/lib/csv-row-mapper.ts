@@ -306,3 +306,44 @@ export function mapSeguradoFromCsvRow(row: RawCsvRow): SeguradoCsvData {
 }
 
 export { parseAtuacaoList } from './atuacao';
+
+/**
+ * Converte o payload bruto de um item do Wix (`Import1`) numa linha no formato
+ * `RawCsvRow`, para que a importação ao vivo possa reaproveitar exatamente o
+ * mesmo mapeamento cadastral do importador CSV.
+ *
+ * O `buildRowIndex` normaliza a chave (sem acento/pontuação, minúscula), então
+ * `dataNascto` (Wix) e `DataNascto` (CSV) caem no mesmo índice — não é preciso
+ * duplicar a tabela de nomes de coluna.
+ */
+export function wixRawToCsvRow(raw: Record<string, unknown> | null | undefined): RawCsvRow {
+  const row: RawCsvRow = {};
+  if (!raw) return row;
+
+  for (const [key, value] of Object.entries(raw)) {
+    if (value === null || value === undefined) continue;
+    if (typeof value === 'string') {
+      row[key] = value;
+    } else if (typeof value === 'number' || typeof value === 'boolean') {
+      row[key] = String(value);
+    } else if (Array.isArray(value)) {
+      // Listas do Wix (ex.: atuacao, ppeCargoSelect) chegam como array;
+      // o parser de lista aceita '#' como delimitador.
+      const flat = value.filter((v) => typeof v === 'string' || typeof v === 'number');
+      if (flat.length) row[key] = flat.join('#');
+    } else if (value instanceof Date) {
+      row[key] = value.toISOString();
+    } else if (typeof value === 'object') {
+      // Datas do Wix chegam como { $date: '...' }.
+      const dateVal = (value as Record<string, unknown>).$date;
+      if (typeof dateVal === 'string') row[key] = dateVal;
+    }
+  }
+
+  return row;
+}
+
+/** Extrai o bloco cadastral/profissional completo de um item bruto do Wix. */
+export function mapSeguradoFromWixRaw(raw: Record<string, unknown> | null | undefined): SeguradoCsvData {
+  return mapSeguradoFromCsvRow(wixRawToCsvRow(raw));
+}

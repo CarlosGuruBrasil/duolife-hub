@@ -12,6 +12,7 @@ import {
   loadPartnerResolutionContext,
   resolvePartnerFromCode,
 } from './wix-partners-catalog';
+import { mapSeguradoFromWixRaw } from './csv-row-mapper';
 
 export interface WixSalesSyncOptions {
   onlyForDocuments?: string[];
@@ -429,6 +430,8 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
 
       const email = wix.email ? wix.email.toLowerCase().trim() : (normalizeMaybeString(raw.email)?.toLowerCase().trim() || null);
       const phone = wix.phone ? normalizeDigits(wix.phone) : (normalizeDigits(raw.celular) || normalizeDigits(raw.telefone) || null);
+      // `segurado` (bloco cadastral completo) é resolvido logo abaixo e serve de
+      // último fallback para o telefone — ver `phoneFinal`.
       const rawPartnerCode = wix.partnerCode || normalizeMaybeString(raw.codigoVenda) || normalizeMaybeString(raw.codigoParceiro) || null;
       const partnerId = resolvePartnerFromCode(rawPartnerCode, partnerContext);
       const corretoraId = 'corretora_net4life_001';
@@ -445,6 +448,18 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
       const address = parseWixAddress(raw);
       const installmentsInfo = extractWixInstallments(raw, revenue);
 
+      // Bloco cadastral/profissional completo (nascimento, endereço, vigência,
+      // seguro anterior, declarações de sinistro) — mesmo mapeamento usado pelo
+      // importador CSV, para que o sync ao vivo não entregue menos que ele.
+      const segurado = mapSeguradoFromWixRaw(raw);
+      const phoneFinal = phone || segurado.celularDigits;
+
+      // `extractWixCoverage` devolve 500000 como padrão fixo; quando o item do
+      // Wix não traz cobertura explícita, o apelido de plano ('100k', '1mi')
+      // resolvido pelo mesmo motor do CSV é mais confiável.
+      const coverageFinal =
+        coverage !== 500000 ? coverage : (segurado.valorCobertura || coverage);
+
       const rawDateStr =
         parseFlexibleDate(raw._createdDate) ||
         parseFlexibleDate(wix.createdDate) ||
@@ -452,6 +467,19 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
       const wixDate = rawDateStr ? new Date(rawDateStr) : new Date();
       const issueDate = wixDate.toISOString().slice(0, 10);
       const expiryDate = new Date(wixDate.getTime() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+      // Vigência real declarada no item do Wix tem prioridade sobre a data de
+      // criação — mesma regra do importador CSV.
+      const vigenciaInicioIso = segurado.dataInicioVigencia || issueDate;
+      const vigenciaFimIso =
+        segurado.fimVigencia ||
+        (segurado.dataInicioVigencia
+          ? new Date(
+              new Date(`${segurado.dataInicioVigencia}T12:00:00Z`).getTime() +
+                365 * 24 * 60 * 60 * 1000
+            )
+              .toISOString()
+              .slice(0, 10)
+          : expiryDate);
 
       // 3. Localiza ou cria o cliente segurado em insurance_clients
       let clientId: string | null = null;
@@ -479,14 +507,36 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
         ? new Date(rawDateStr)
         : (existingClientCreatedAt ? new Date(existingClientCreatedAt) : wixDate);
 
+      const seguradoAddress = {
+        cep: segurado.cep || address.cep || null,
+        logradouro: segurado.logradouro || address.logradouro || null,
+        numero: segurado.numero || address.numero || null,
+        complemento: segurado.complemento || address.complemento || null,
+        bairro: segurado.bairro || address.bairro || null,
+        cidade: segurado.cidade || address.cidade || null,
+        uf: segurado.uf || address.uf || null,
+        completo: segurado.enderecoCompleto,
+      };
+
       const clientMetaPayload = {
         source: 'wix',
         externalId: wix.id,
-        oab,
-        escritorio,
+        oab: oab || segurado.oab,
+        escritorio: escritorio || segurado.escritorioAssociado,
         asaasCustomerId: asaasCustomer,
         zapsignToken,
         address,
+        codigoWix: segurado.codigoWix,
+        lgpd: segurado.lgpd,
+        atuacao: segurado.atuacao,
+        titularidade: segurado.titularidade,
+        escritorioAssociado: segurado.escritorioAssociado,
+        celular: segurado.celular,
+        dataNascto: segurado.dataNascto,
+        dataAtividade: segurado.dataAtividade,
+        planName: segurado.nomePlano,
+        coverageAmount: coverageFinal,
+        endereco: seguradoAddress,
         wix: raw,
       };
 
@@ -499,6 +549,7 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
             full_name,
             email,
             phone,
+            birth_date,
             metadata,
             created_at,
             updated_at
@@ -508,7 +559,8 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
             ${docType},
             ${clientName},
             ${email},
-            ${phone},
+            ${phoneFinal},
+            ${segurado.dataNascto},
             ${JSON.stringify(clientMetaPayload)}::jsonb,
             ${clientCreatedAt},
             NOW()
@@ -518,6 +570,7 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
             full_name = EXCLUDED.full_name,
             email = COALESCE(EXCLUDED.email, insurance_clients.email),
             phone = COALESCE(EXCLUDED.phone, insurance_clients.phone),
+            birth_date = COALESCE(EXCLUDED.birth_date, insurance_clients.birth_date),
             ${rawDateStr ? sql`created_at = ${clientCreatedAt},` : sql``}
             metadata = insurance_clients.metadata || EXCLUDED.metadata,
             updated_at = NOW()
@@ -531,7 +584,8 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
           SET
             full_name = COALESCE(${clientName || null}::text, full_name),
             email = COALESCE(${email || null}::text, email),
-            phone = COALESCE(${phone || null}::text, phone),
+            phone = COALESCE(${phoneFinal || null}::text, phone),
+            birth_date = COALESCE(${segurado.dataNascto}::date, birth_date),
             ${rawDateStr ? sql`created_at = ${clientCreatedAt},` : sql``}
             metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify(clientMetaPayload)}::jsonb,
             updated_at = NOW()
@@ -561,7 +615,78 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
       }
 
       const quoteClientData = {
-        oab,
+        nome: clientName,
+        cpfCnpj: documentNumber,
+        email,
+
+        // Dados pessoais / profissionais do proponente
+        celular: segurado.celular,
+        oab: oab || segurado.oab,
+        dataNascto: segurado.dataNascto,
+        dataAtividade: segurado.dataAtividade,
+
+        // Endereço
+        cep: seguradoAddress.cep,
+        logradouro: seguradoAddress.logradouro,
+        numero: seguradoAddress.numero,
+        complemento: seguradoAddress.complemento,
+        bairro: seguradoAddress.bairro,
+        cidade: seguradoAddress.cidade,
+        uf: seguradoAddress.uf,
+        enderecoCompleto: seguradoAddress.completo,
+
+        // Perfil profissional
+        titularidade: segurado.titularidade,
+        escritorioAssociado: segurado.escritorioAssociado || escritorio,
+        atuacao: segurado.atuacao,
+        ppeCargos: segurado.ppeCargos,
+        ppeRepresenta: segurado.ppeRepresenta,
+        ppeCargoSelect: segurado.ppeCargoSelect,
+        lgpd: segurado.lgpd,
+
+        // Plano e vigência
+        tipoDePlano: segurado.tipoDePlano,
+        nomePlano: segurado.nomePlano,
+        plano: segurado.nomePlano,
+        valorCobertura: coverageFinal,
+        cobertura: coverageFinal,
+        planoFranquia: segurado.planoFranquia,
+        franquia: segurado.planoFranquia,
+        dataInicioVigencia: vigenciaInicioIso,
+        fimVigencia: vigenciaFimIso,
+        isRenovacao: segurado.isRenovacao,
+
+        // Seguro anterior
+        seguradora: segurado.seguradora,
+        vigencia: segurado.vigencia,
+        limite: segurado.limite,
+        franquiaAnterior: segurado.franquiaAnterior,
+        premio: segurado.premio,
+        dataRetroativa: segurado.dataRetroativa,
+
+        // Declarações de sinistro
+        propostaRecusada: segurado.propostaRecusada,
+        propostaDetalhe: segurado.propostaDetalhe,
+        reclamacaoProfissional: segurado.reclamacaoProfissional,
+        reclamacaoDetalhe: segurado.reclamacaoDetalhe,
+        investigacaoAutoridade: segurado.investigacaoAutoridade,
+        investigacaoDetalhe: segurado.investigacaoDetalhe,
+        fatoTerceiros: segurado.fatoTerceiros,
+        fatoDetalhe: segurado.fatoDetalhe,
+        pagouReclamacao: segurado.pagouReclamacao,
+        pagouDetalhe: segurado.pagouDetalhe,
+
+        valor: revenue,
+        parcela: installmentsInfo.count,
+        parcelas: installmentsInfo.count,
+        valorParcela: installmentsInfo.installmentAmount,
+        urlAssinado: urls.signedFileUrl,
+        linkBoleto: urls.bankSlipUrl,
+        contratoToken: zapsignToken,
+        origem: 'wix_sync',
+        codigoVenda: rawPartnerCode ? rawPartnerCode.toLowerCase() : null,
+        codigoWix: segurado.codigoWix,
+
         escritorio,
         codigoAsaas: asaasCustomer,
         tokenZapsign: zapsignToken,
@@ -597,9 +722,9 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
             client_name = ${clientName},
             client_cpf_cnpj = ${documentNumber},
             client_email = ${email},
-            client_phone = ${phone},
+            client_phone = ${phoneFinal},
             client_data = COALESCE(client_data, '{}'::jsonb) || ${JSON.stringify(quoteClientData)}::jsonb,
-            importancia_segurada = ${coverage},
+            importancia_segurada = ${coverageFinal},
             premio_calculado = ${revenue},
             premio_final = ${revenue},
             status = ${cotacaoStatus},
@@ -639,9 +764,9 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
             ${clientName},
             ${documentNumber},
             ${email},
-            ${phone},
+            ${phoneFinal},
             ${JSON.stringify(quoteClientData)}::jsonb,
-            ${coverage},
+            ${coverageFinal},
             ${revenue},
             ${revenue},
             ${cotacaoStatus},
@@ -683,13 +808,13 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
               partner_id = ${partnerId},
               corretora_id = ${corretoraId},
               product_id = ${defaultProductId},
-              importancia_segurada = ${coverage},
+              importancia_segurada = ${coverageFinal},
               premio_total = ${revenue},
               commission_rate = ${commissionRate},
               commission_amount = ${commissionAmount},
               status = 'ativa',
-              issue_date = ${issueDate}::date,
-              expiry_date = ${expiryDate}::date,
+              issue_date = ${vigenciaInicioIso}::date,
+              expiry_date = ${vigenciaFimIso}::date,
               metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify({ source: 'wix', wixId: wix.id })}::jsonb,
               created_at = ${wixDate},
               updated_at = NOW()
@@ -731,13 +856,13 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
               ${corretoraId},
               ${defaultProductId},
               ${policyNumber},
-              ${coverage},
+              ${coverageFinal},
               ${revenue},
               ${commissionRate},
               ${commissionAmount},
               'ativa',
-              ${issueDate}::date,
-              ${expiryDate}::date,
+              ${vigenciaInicioIso}::date,
+              ${vigenciaFimIso}::date,
               ${JSON.stringify({ source: 'wix', wixId: wix.id, collectionId: 'Import1' })}::jsonb,
               ${wixDate},
               NOW()
