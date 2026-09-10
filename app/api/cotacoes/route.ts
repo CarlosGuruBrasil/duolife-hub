@@ -216,21 +216,32 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: 'O fluxo deste produto ainda não está disponível' }, { status: 422 });
     }
 
+    const clientDataInput = (data.clientData || {}) as Record<string, any>;
+
+    const addressFromInput = (clientDataInput.cep || clientDataInput.logradouro) ? {
+      cep: clientDataInput.cep || '',
+      logradouro: clientDataInput.logradouro || '',
+      numero: clientDataInput.numero || '',
+      complemento: clientDataInput.complemento || '',
+      bairro: clientDataInput.bairro || '',
+      cidade: clientDataInput.cidade || '',
+      uf: String(clientDataInput.uf || '').toUpperCase(),
+    } : undefined;
+
     const client = await upsertInsuranceClient({
       documentNumber: data.clientCpfCnpj,
       fullName: data.clientName,
       email: data.clientEmail || null,
       phone: data.clientPhone || null,
-      birthDate: typeof data.clientData?.dataNascto === 'string' ? data.clientData.dataNascto : null,
+      birthDate: typeof clientDataInput.dataNascto === 'string' ? clientDataInput.dataNascto : null,
       metadata: {
         source: publicToken ? 'public_link' : 'portal',
         partnerId: targetPartnerId,
+        ...(clientDataInput.oab ? { oab: clientDataInput.oab } : {}),
+        ...(clientDataInput.dataAtividade ? { dataAtividade: clientDataInput.dataAtividade } : {}),
+        ...(addressFromInput ? { address: addressFromInput } : {}),
       },
     });
-
-    // O preço nunca é aceito do cliente — recalculado aqui a partir da tabela real de planos
-    // e do cupom validado no servidor, pra fechar a brecha de manipulação de valor.
-    const clientDataInput = (data.clientData || {}) as Record<string, unknown>;
     const preco = await calcularPrecoServidor({
       tipoDePlano: (clientDataInput.tipo as string) || (clientDataInput.tipoDePlano as string) || null,
       qtdParcelasSolicitada: Number(clientDataInput.parcela) || 1,
