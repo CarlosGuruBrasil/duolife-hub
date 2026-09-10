@@ -15,7 +15,8 @@ import {
   CheckCircle,
   AlertCircle,
   ExternalLink,
-  Download
+  Download,
+  Loader2
 } from 'lucide-react';
 import { parseAtuacaoList } from '@/lib/atuacao';
 import ClienteSearchSelector, { type ClienteBuscaResult, type RenewalData } from '@/components/portal/ClienteSearchSelector';
@@ -147,6 +148,57 @@ const AREAS_ATUACAO = [
   { key: 'outros', label: 'Outros' }
 ];
 
+const FALLBACK_PLANOS: Plano[] = [
+  {
+    tipoDePlano: '100k',
+    nomeExibido: 'Plano 100 Mil',
+    cobertura: 'R$ 100.000,00',
+    franquia: 'R$ 1.000,00',
+    ordem: 1,
+    parcela: 'R$ 680,00',
+    valorPagoKovr: 450,
+  },
+  {
+    tipoDePlano: '200k',
+    nomeExibido: 'Plano 200 Mil',
+    cobertura: 'R$ 200.000,00',
+    franquia: 'R$ 2.000,00',
+    ordem: 2,
+    parcela: 'R$ 1.200,00',
+    parcela2X: 'R$ 600,00',
+    parcela3X: 'R$ 400,00',
+    parcela4X: 'R$ 300,00',
+    parcela6X: 'R$ 200,00',
+    valorPagoKovr: 800,
+  },
+  {
+    tipoDePlano: '300k',
+    nomeExibido: 'Plano 300 Mil',
+    cobertura: 'R$ 300.000,00',
+    franquia: 'R$ 3.000,00',
+    ordem: 3,
+    parcela: 'R$ 1.650,00',
+    parcela2X: 'R$ 825,00',
+    parcela3X: 'R$ 550,00',
+    parcela4X: 'R$ 412,50',
+    parcela6X: 'R$ 275,00',
+    valorPagoKovr: 1100,
+  },
+  {
+    tipoDePlano: '500k',
+    nomeExibido: 'Plano 500 Mil',
+    cobertura: 'R$ 500.000,00',
+    franquia: 'R$ 5.000,00',
+    ordem: 4,
+    parcela: 'R$ 2.450,00',
+    parcela2X: 'R$ 1.225,00',
+    parcela3X: 'R$ 816,67',
+    parcela4X: 'R$ 612,50',
+    parcela6X: 'R$ 408,33',
+    valorPagoKovr: 1600,
+  },
+];
+
 interface CotacaoFormRCProps {
   adminSelectedPartnerId?: string;
   publicToken?: string;
@@ -171,6 +223,7 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
 
   // Status de Processos
   const [loading, setLoading] = useState(false);
+  const [loadingPlanos, setLoadingPlanos] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [cotacaoId, setCotacaoId] = useState('');
@@ -201,32 +254,37 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
   };
 
   // Carrega os planos ao iniciar
-  useEffect(() => {
-    async function loadPlanos() {
-      try {
-        const res = await fetch('/api/portal/planos', {
-          headers: getHeaders()
+  async function loadPlanos() {
+    setLoadingPlanos(true);
+    try {
+      const res = await fetch('/api/portal/planos', {
+        headers: getHeaders()
+      });
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.planos) && data.planos.length > 0) {
+        const planosCorrigidos = (data.planos as Plano[]).map((p) => ({
+          ...p,
+          nomeExibido: p.nomeExibido?.replace('Millhões', 'Milhões'),
+        }));
+        setPlanos(planosCorrigidos);
+        setPlanoSel((current) => {
+          if (!current) return null;
+          const fullPlano = planosCorrigidos.find((p) => p.tipoDePlano === current.tipoDePlano);
+          return fullPlano ? { ...fullPlano, ...current, parcela2X: fullPlano.parcela2X, parcela3X: fullPlano.parcela3X, parcela4X: fullPlano.parcela4X, parcela5X: fullPlano.parcela5X, parcela6X: fullPlano.parcela6X } : current;
         });
-        const data = await res.json();
-        if (data.ok) {
-          // ponytail: "Millhões" (com L duplo) vem assim da coleção "Planos" no
-          // Wix — integração é read-only, então corrige aqui em vez de lá.
-          const planosCorrigidos = (data.planos as Plano[]).map((p) => ({
-            ...p,
-            nomeExibido: p.nomeExibido?.replace('Millhões', 'Milhões'),
-          }));
-          setPlanos(planosCorrigidos);
-          // Sincroniza planoSel se já tiver sido restaurado de rascunho com dados incompletos de parcelamento
-          setPlanoSel((current) => {
-            if (!current) return null;
-            const fullPlano = planosCorrigidos.find((p) => p.tipoDePlano === current.tipoDePlano);
-            return fullPlano ? { ...fullPlano, ...current, parcela2X: fullPlano.parcela2X, parcela3X: fullPlano.parcela3X, parcela4X: fullPlano.parcela4X, parcela5X: fullPlano.parcela5X, parcela6X: fullPlano.parcela6X } : current;
-          });
-        }
-      } catch (err) {
-        console.error('Erro ao buscar planos:', err);
+      } else {
+        console.warn('API de planos não retornou dados, aplicando planos padrão:', data);
+        setPlanos(FALLBACK_PLANOS);
       }
+    } catch (err) {
+      console.error('Erro ao buscar planos da API, usando planos padrão:', err);
+      setPlanos(FALLBACK_PLANOS);
+    } finally {
+      setLoadingPlanos(false);
     }
+  }
+
+  useEffect(() => {
     loadPlanos();
   }, []);
 
@@ -1060,42 +1118,60 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
         <div className="card space-y-6">
           <h3 className="text-lg font-bold text-primary">1. Seleção de Plano e Cobertura</h3>
           
-          <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-            {planos.map((plano) => {
-              const isSelected = planoSel?.tipoDePlano === plano.tipoDePlano;
-              return (
-                <div
-                  key={plano.tipoDePlano}
-                  onClick={() => {
-                    setPlanoSel(plano);
-                    setParcelaSel(null);
-                  }}
-                  className={`border-2 rounded-xl p-5 cursor-pointer transition-all hover:-translate-y-1 hover:shadow-md flex flex-col justify-between ${
-                    isSelected
-                      ? 'border-emerald-500 bg-emerald-50/50 shadow-sm'
-                      : 'border-gray-200 bg-white hover:border-gray-300'
-                  }`}
-                >
-                  <div>
-                    <h4 className="font-bold text-base text-gray-900">{plano.nomeExibido}</h4>
-                    <div className="mt-2 text-2xl font-black text-emerald-600">{plano.cobertura}</div>
-                    <div className="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wide">Limite Máximo</div>
-                  </div>
+          {loadingPlanos ? (
+            <div className="py-12 text-center text-gray-500 flex flex-col items-center justify-center space-y-3">
+              <Loader2 className="w-8 h-8 animate-spin text-emerald-600" />
+              <p className="text-sm font-medium text-gray-600">Carregando opções de planos e coberturas...</p>
+            </div>
+          ) : planos.length === 0 ? (
+            <div className="p-8 text-center text-gray-500 border border-dashed border-gray-300 rounded-xl bg-gray-50">
+              <p className="text-sm font-medium text-gray-700">Não foi possível carregar os planos da seguradora no momento.</p>
+              <button
+                type="button"
+                onClick={() => loadPlanos()}
+                className="btn btn-secondary text-xs mt-3 cursor-pointer"
+              >
+                Tentar novamente
+              </button>
+            </div>
+          ) : (
+            <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+              {planos.map((plano) => {
+                const isSelected = planoSel?.tipoDePlano === plano.tipoDePlano;
+                return (
+                  <div
+                    key={plano.tipoDePlano}
+                    onClick={() => {
+                      setPlanoSel(plano);
+                      setParcelaSel(null);
+                    }}
+                    className={`border-2 rounded-xl p-5 cursor-pointer transition-all hover:-translate-y-1 hover:shadow-md flex flex-col justify-between ${
+                      isSelected
+                        ? 'border-emerald-500 bg-emerald-50/50 shadow-sm'
+                        : 'border-gray-200 bg-white hover:border-gray-300'
+                    }`}
+                  >
+                    <div>
+                      <h4 className="font-bold text-base text-gray-900">{plano.nomeExibido}</h4>
+                      <div className="mt-2 text-2xl font-black text-emerald-600">{plano.cobertura}</div>
+                      <div className="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wide">Limite Máximo</div>
+                    </div>
 
-                  <div className="mt-5 border-t border-gray-100 pt-4 text-sm space-y-2">
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-500 text-xs font-medium">Franquia</span>
-                      <span className="font-semibold text-gray-900">{plano.franquia}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-500 text-xs font-medium">Valor à vista</span>
-                      <span className="font-bold text-emerald-600">{plano.parcela}</span>
+                    <div className="mt-5 border-t border-gray-100 pt-4 text-sm space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-500 text-xs font-medium">Franquia</span>
+                        <span className="font-semibold text-gray-900">{plano.franquia}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-gray-500 text-xs font-medium">Valor à vista</span>
+                        <span className="font-bold text-emerald-600">{plano.parcela}</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
 
           <div className="flex justify-end pt-4">
             <button

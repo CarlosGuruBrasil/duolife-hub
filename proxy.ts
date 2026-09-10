@@ -12,6 +12,12 @@ export async function proxy(req: NextRequest) {
 
   // 1. Proteção do Portal de Parceiros (/portal e /api/portal)
   if (pathname.startsWith('/portal') || pathname.startsWith('/api/portal')) {
+    // Requisições com token público de contratação (ex.: /contratar/[token])
+    const publicToken = req.headers.get('x-public-token');
+    if (publicToken && isApi) {
+      return NextResponse.next();
+    }
+
     if (!token) {
       return isApi
         ? NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
@@ -20,9 +26,13 @@ export async function proxy(req: NextRequest) {
 
     try {
       const { payload } = await jwtVerify(token, JWT_SECRET, { algorithms: ['HS256'] });
-      if (!payload.partnerId && !String(payload.role || '').startsWith('partner_')) {
+      const role = String(payload.role || '');
+      const isPartner = !!payload.partnerId || role.startsWith('partner_');
+      const isAdmin = role.startsWith('duolife_');
+
+      if (!isPartner && !isAdmin) {
         return isApi
-          ? NextResponse.json({ error: 'Acesso negado: parceiro inválido' }, { status: 403 })
+          ? NextResponse.json({ error: 'Acesso negado: perfil inválido' }, { status: 403 })
           : redirectToPath(req, '/login');
       }
     } catch {
