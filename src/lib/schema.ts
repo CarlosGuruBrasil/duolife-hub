@@ -492,6 +492,14 @@ async function runRuntimeSchemaSetup(): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_renewed_from ON cotacoes (renewed_from_cotacao_id)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_cotacoes_corretora_id ON cotacoes (corretora_id)`;
   await sql`UPDATE cotacoes SET corretora_id = 'corretora_net4life_001' WHERE corretora_id IS NULL`;
+  // Vincula cotações sem partner_user_id ao usuário correspondente do parceiro
+  await sql`
+    UPDATE cotacoes c
+    SET partner_user_id = pu.id
+    FROM partner_users pu
+    WHERE c.partner_id = pu.partner_id
+      AND c.partner_user_id IS NULL
+  `;
 
   // Vendas (apólices emitidas)
   await sql`

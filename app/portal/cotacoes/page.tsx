@@ -68,7 +68,7 @@ export default async function CotacoesPage() {
         FROM cotacoes c
         JOIN products p ON p.id = c.product_id
         WHERE c.partner_id = ${access.partnerId}
-          AND c.partner_user_id IN ${sql(access.visibleUserIds)}
+          AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
         ORDER BY c.created_at DESC
         LIMIT 100
       `;

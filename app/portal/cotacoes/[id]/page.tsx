@@ -85,7 +85,7 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
         JOIN partners part ON part.id = c.partner_id
         WHERE c.id = ${id}
           AND c.partner_id = ${access.partnerId}
-          AND c.partner_user_id IN ${sql(access.visibleUserIds)}
+          AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
         LIMIT 1
       `;
 

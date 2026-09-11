@@ -109,7 +109,7 @@ export async function GET(req: NextRequest) {
             FROM cotacoes c
             JOIN products p ON p.id = c.product_id
             WHERE c.partner_id = ${targetPartnerId}
-              AND c.partner_user_id IN ${sql(access.visibleUserIds)}
+              AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
             ORDER BY c.created_at DESC
             LIMIT 100
           `;
@@ -173,7 +173,13 @@ export async function POST(req: NextRequest) {
           return Response.json({ error: 'Administradores precisam informar o Parceiro dono da cotação' }, { status: 400 });
         }
         targetPartnerId = data.adminSelectedPartnerId;
-        userId = null;
+        const [pu] = await sql`
+          SELECT id FROM partner_users
+          WHERE partner_id = ${targetPartnerId}
+          ORDER BY created_at ASC
+          LIMIT 1
+        `;
+        userId = pu?.id || null;
       } else if (!targetPartnerId) {
         return unauthorized();
       }

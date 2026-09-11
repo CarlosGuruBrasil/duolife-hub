@@ -23,7 +23,7 @@ export default async function PortalDashboard() {
   ] = await Promise.all([
     access.visibleUserIds === null
       ? sql`SELECT COUNT(*) as total FROM cotacoes WHERE partner_id = ${access.partnerId}`
-      : sql`SELECT COUNT(*) as total FROM cotacoes WHERE partner_id = ${access.partnerId} AND partner_user_id IN ${sql(access.visibleUserIds)}`,
+      : sql`SELECT COUNT(*) as total FROM cotacoes WHERE partner_id = ${access.partnerId} AND (partner_user_id IN ${sql(access.visibleUserIds)} OR partner_user_id IS NULL)`,
 
     access.visibleUserIds === null
       ? sql`
@@ -37,7 +37,7 @@ export default async function PortalDashboard() {
           JOIN cotacoes c ON c.id = s.cotacao_id
           WHERE s.partner_id = ${access.partnerId}
             AND s.status = 'ativa'
-            AND c.partner_user_id IN ${sql(access.visibleUserIds)}
+            AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
         `,
 
     access.visibleUserIds === null
@@ -53,7 +53,7 @@ export default async function PortalDashboard() {
           JOIN cotacoes c ON c.id = s.cotacao_id
           WHERE cm.partner_id = ${access.partnerId}
             AND cm.status = 'pendente'
-            AND c.partner_user_id IN ${sql(access.visibleUserIds)}
+            AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
         `,
 
     getOrCreatePartnerSaleLink(access.partnerId),

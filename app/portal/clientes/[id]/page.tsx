@@ -75,7 +75,7 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
             FROM cotacoes c
             WHERE c.client_id = insurance_clients.id
               AND c.partner_id = ${access.partnerId}
-              AND c.partner_user_id IN ${sql(access.visibleUserIds)}
+              AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
           )
         LIMIT 1
       `;
@@ -135,7 +135,7 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
         LEFT JOIN signature_documents sd ON sd.cotacao_id = c.id
         WHERE c.client_id = ${id}
           AND c.partner_id = ${access.partnerId}
-          AND c.partner_user_id IN ${sql(access.visibleUserIds)}
+          AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
         ORDER BY c.created_at DESC
       `;
 
@@ -176,7 +176,7 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
         JOIN products p ON p.id = c.product_id
         WHERE pi.client_id = ${id}
           AND c.partner_id = ${access.partnerId}
-          AND c.partner_user_id IN ${sql(access.visibleUserIds)}
+          AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
         ORDER BY pi.due_date ASC NULLS LAST, pi.installment_number ASC
       `;
 

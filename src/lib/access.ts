@@ -30,7 +30,7 @@ export async function getAccessibleQuoteById(quoteId: string, user: AuthUser) {
     FROM cotacoes
     WHERE id = ${quoteId}
       AND partner_id = ${access.partnerId}
-      AND partner_user_id IN ${sql(access.visibleUserIds)}
+      AND (partner_user_id IN ${sql(access.visibleUserIds)} OR partner_user_id IS NULL)
     LIMIT 1
   `;
   return rows[0] ?? null;

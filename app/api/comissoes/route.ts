@@ -54,7 +54,7 @@ export async function GET() {
           JOIN products p ON p.id = s.product_id
           JOIN cotacoes c ON c.id = s.cotacao_id
           WHERE cm.partner_id = ${access.partnerId}
-            AND c.partner_user_id IN ${sql(access.visibleUserIds)}
+            AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
           ORDER BY cm.created_at DESC
           LIMIT 100
         `;

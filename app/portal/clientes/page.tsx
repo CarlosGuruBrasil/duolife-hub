@@ -111,7 +111,7 @@ export default async function PortalClientesPage() {
             FROM cotacoes c2
             WHERE c2.client_id = ic.id
               AND c2.partner_id = ${access.partnerId}
-              AND c2.partner_user_id IN ${sql(access.visibleUserIds)}
+              AND (c2.partner_user_id IN ${sql(access.visibleUserIds)} OR c2.partner_user_id IS NULL)
             ORDER BY c2.created_at DESC
             LIMIT 1
           ) AS last_quote_status,
@@ -121,7 +121,7 @@ export default async function PortalClientesPage() {
             JOIN cotacoes c3 ON c3.id = po.cotacao_id
             WHERE po.client_id = ic.id
               AND po.partner_id = ${access.partnerId}
-              AND c3.partner_user_id IN ${sql(access.visibleUserIds)}
+              AND (c3.partner_user_id IN ${sql(access.visibleUserIds)} OR c3.partner_user_id IS NULL)
             ORDER BY po.created_at DESC
             LIMIT 1
           ) AS last_payment_status,
@@ -132,7 +132,7 @@ export default async function PortalClientesPage() {
         JOIN cotacoes c
           ON c.client_id = ic.id
          AND c.partner_id = ${access.partnerId}
-         AND c.partner_user_id IN ${sql(access.visibleUserIds)}
+         AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
         LEFT JOIN payment_orders po
           ON po.client_id = ic.id
          AND po.partner_id = ${access.partnerId}

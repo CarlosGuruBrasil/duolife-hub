@@ -69,7 +69,7 @@ export async function GET(
           SELECT 1 FROM cotacoes
           WHERE client_id = ${id}
             AND partner_id = ${access.partnerId}
-            AND partner_user_id IN ${sql(access.visibleUserIds)}
+            AND (partner_user_id IN ${sql(access.visibleUserIds)} OR partner_user_id IS NULL)
           LIMIT 1
         `;
         hasAccess = !!row;
@@ -171,7 +171,7 @@ export async function GET(
           LEFT JOIN partners part ON part.id = c.partner_id
           WHERE c.client_id = ${id}
             AND c.partner_id = ${access.partnerId}
-            AND c.partner_user_id IN ${sql(access.visibleUserIds)}
+            AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
           ORDER BY c.created_at DESC
         `;
       }
@@ -228,7 +228,7 @@ export async function PATCH(
           SELECT 1 FROM cotacoes
           WHERE client_id = ${id}
             AND partner_id = ${access.partnerId}
-            AND partner_user_id IN ${sql(access.visibleUserIds)}
+            AND (partner_user_id IN ${sql(access.visibleUserIds)} OR partner_user_id IS NULL)
           LIMIT 1
         `;
         hasAccess = !!row;
