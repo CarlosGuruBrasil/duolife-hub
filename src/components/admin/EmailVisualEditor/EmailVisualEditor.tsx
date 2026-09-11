@@ -1315,6 +1315,10 @@ export function EmailVisualEditor({
                                     marginTop: block.styles?.marginTop ?? 0,
                                     backgroundColor: block.styles?.backgroundColor || 'transparent',
                                     padding: block.styles?.padding ? `${block.styles.padding}px` : '2px',
+                                    borderRadius: block.styles?.borderRadius ? `${block.styles.borderRadius}px` : undefined,
+                                    border: block.styles?.borderWidth && block.styles?.borderColor
+                                      ? `${block.styles.borderWidth}px ${block.styles.borderStyle || 'solid'} ${block.styles.borderColor}`
+                                      : undefined,
                                   }}
                                   onClick={(e) => handleSelectBlock(e, section.id, block.id)}
                                 >

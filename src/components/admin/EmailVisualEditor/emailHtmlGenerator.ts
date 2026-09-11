@@ -192,6 +192,9 @@ function renderBlock(
   const mb = styles?.marginBottom ?? 12;
   const blockBg = styles?.backgroundColor ? `background-color: ${styles.backgroundColor};` : '';
   const blockPad = styles?.padding ? `padding: ${styles.padding}px;` : '';
+  const blockRadius = styles?.borderRadius ? `border-radius: ${styles.borderRadius}px;` : '';
+  const blockBorder = styles?.borderWidth && styles?.borderColor ? `border: ${styles.borderWidth}px ${styles.borderStyle || 'solid'} ${styles.borderColor};` : '';
+  const blockCombinedStyles = `margin-top: ${mt}px; margin-bottom: ${mb}px; ${blockBg} ${blockPad} ${blockRadius} ${blockBorder}`.trim();
 
   switch (content.type) {
     case 'text': {
@@ -202,7 +205,7 @@ function renderBlock(
       const lineHeight = data.lineHeight ? `${data.lineHeight}` : '1.5';
 
       return `
-        <table role="presentation" data-block-id="${block.id}" data-block-type="${content.type}" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-top: ${mt}px; margin-bottom: ${mb}px; ${blockBg} ${blockPad}">
+        <table role="presentation" data-block-id="${block.id}" data-block-type="${content.type}" border="0" cellpadding="0" cellspacing="0" width="100%" style="${blockCombinedStyles}">
           <tr>
             <td align="${align}" data-text-cell="true" style="font-family: ${fontFamily}; font-size: ${fontSize}; line-height: ${lineHeight}; color: ${color}; text-align: ${align}; word-break: break-word;">
               ${data.html}

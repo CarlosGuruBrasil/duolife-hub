@@ -87,6 +87,10 @@ export interface EmailBlock {
     marginRight?: number;
     backgroundColor?: string;
     padding?: number;
+    borderRadius?: number;
+    borderWidth?: number;
+    borderColor?: string;
+    borderStyle?: 'solid' | 'dashed' | 'dotted';
   };
 }
 

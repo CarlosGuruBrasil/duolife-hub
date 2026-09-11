@@ -308,6 +308,47 @@ function parseHtmlToDomDocument(html: string): Document | null {
   return null;
 }
 
+/**
+ * Extrai as regras CSS de tags <style> no <head> e aplica como estilos inline nos elementos correspondentes
+ * para garantir que classes CSS de templates legados (.header, .btn, .card-info, .footer, .container, body)
+ * sejam preservadas fielmente no Editor Visual.
+ */
+export function inlineStylesFromHead(doc: Document): void {
+  const styleTags = Array.from(doc.querySelectorAll('style'));
+  if (styleTags.length === 0) return;
+
+  for (const styleTag of styleTags) {
+    const cssText = styleTag.textContent || '';
+    const ruleRegex = /([^{]+)\{([^}]+)\}/g;
+    let match: RegExpExecArray | null;
+    while ((match = ruleRegex.exec(cssText)) !== null) {
+      const selectorRaw = match[1].trim();
+      const styleBlock = match[2].trim();
+      if (!selectorRaw || !styleBlock) continue;
+      if (selectorRaw.startsWith('@')) continue;
+
+      const selectors = selectorRaw.split(',').map((s) => s.trim()).filter(Boolean);
+      const parsedRules = parseInlineStyleString(styleBlock);
+
+      for (const sel of selectors) {
+        try {
+          const elements = Array.from(doc.querySelectorAll(sel));
+          for (const el of elements) {
+            const currentStyles = parseInlineStyleString(el.getAttribute('style'));
+            const merged = { ...parsedRules, ...currentStyles };
+            const styleStr = Object.entries(merged)
+              .map(([k, v]) => `${k}: ${v}`)
+              .join('; ');
+            el.setAttribute('style', styleStr);
+          }
+        } catch {
+          // Ignora seletores não suportados
+        }
+      }
+    }
+  }
+}
+
 // ============================================================================
 // EXTRAÇÃO DE ESTILOS GLOBAIS
 // ============================================================================
@@ -325,7 +366,7 @@ function extractGlobalStyles(doc: Document, fallbackStyles?: EmailDesignGlobalSt
   const body = doc.body;
   if (body) {
     const bodyStyles = parseInlineStyleString(body.getAttribute('style'));
-    const bodyBg = parseColor(bodyStyles['background-color']) || parseColor(body.getAttribute('bgcolor'));
+    const bodyBg = parseColor(bodyStyles['background-color']) || parseColor(bodyStyles['background']) || parseColor(body.getAttribute('bgcolor'));
     if (bodyBg) current.backgroundColor = bodyBg;
 
     if (bodyStyles['font-family']) {
@@ -346,13 +387,13 @@ function extractGlobalStyles(doc: Document, fallbackStyles?: EmailDesignGlobalSt
     }
   }
 
-  // Container Central de Conteúdo
+  // Container Central de Conteúdo (tabela ou div com max-width / container)
   const container = doc.querySelector(
-    'table[data-email-container="true"], table.email-container, table[style*="max-width"]'
+    'table[data-email-container="true"], table.email-container, table[style*="max-width"], div.container, div[class*="container"], div[style*="max-width"]'
   );
   if (container) {
     const containerStyles = parseInlineStyleString(container.getAttribute('style'));
-    const contBg = parseColor(containerStyles['background-color']) || parseColor(container.getAttribute('bgcolor'));
+    const contBg = parseColor(containerStyles['background-color']) || parseColor(containerStyles['background']) || parseColor(container.getAttribute('bgcolor'));
     if (contBg) current.contentBackgroundColor = contBg;
 
     // max-width ou width
@@ -366,7 +407,7 @@ function extractGlobalStyles(doc: Document, fallbackStyles?: EmailDesignGlobalSt
   }
 
   // Link Color
-  const sampleLink = doc.querySelector('a:not([data-button-link])');
+  const sampleLink = doc.querySelector('a:not([data-button-link]):not(.btn):not([class*="btn"])');
   if (sampleLink) {
     const lStyles = parseInlineStyleString(sampleLink.getAttribute('style'));
     const lColor = parseColor(lStyles['color']);
@@ -443,7 +484,7 @@ function extractButtonBlockData(
   blockEl: Element,
   existingData?: ButtonBlockContent
 ): ButtonBlockContent {
-  const a = blockEl.querySelector('a[data-button-link]') || blockEl.querySelector('a');
+  const a = blockEl.querySelector('a[data-button-link]') || (blockEl.tagName === 'A' ? blockEl : blockEl.querySelector('a'));
   const aStyles = parseInlineStyleString(a?.getAttribute('style'));
 
   // Texto e URL do link
@@ -453,20 +494,23 @@ function extractButtonBlockData(
   // Cores
   const textColor = parseColor(aStyles['color']) || existingData?.textColor || '#ffffff';
 
-  // Fundo do botão (pode estar na td envoltória ou no próprio <a>)
-  const btnCell = a?.closest('td') || blockEl.querySelector('td[bgcolor], td[style*="background-color"]') || a;
-  const cellStyles = btnCell ? parseInlineStyleString(btnCell.getAttribute('style')) : {};
+  // Fundo do botão (pode estar em background-color ou background na tag <a> ou no container)
+  const parentCell = a?.closest('td') || a?.parentElement;
+  const parentStyles = parentCell ? parseInlineStyleString(parentCell.getAttribute('style')) : {};
   const buttonColor =
-    parseColor(cellStyles['background-color']) ||
-    parseColor(btnCell?.getAttribute('bgcolor')) ||
     parseColor(aStyles['background-color']) ||
+    parseColor(aStyles['background']) ||
+    parseColor(parentStyles['background-color']) ||
+    parseColor(parentStyles['background']) ||
+    parseColor(parentCell?.getAttribute('bgcolor')) ||
     existingData?.buttonColor ||
     '#0e4a5a';
 
   // Alinhamento
   let align: 'left' | 'center' | 'right' = existingData?.align || 'center';
-  const alignCell = blockEl.querySelector('td[align]') || blockEl.querySelector('td');
-  const rawAlign = (alignCell?.getAttribute('align') || cellStyles['text-align'] || '').toLowerCase();
+  const alignContainer = blockEl.querySelector('td[align]') || blockEl.closest('div[style*="text-align"]') || blockEl;
+  const containerStyles = parseInlineStyleString(alignContainer?.getAttribute('style'));
+  const rawAlign = (alignContainer?.getAttribute('align') || containerStyles['text-align'] || aStyles['text-align'] || '').toLowerCase();
   if (rawAlign === 'left' || rawAlign === 'center' || rawAlign === 'right') {
     align = rawAlign;
   }
@@ -685,13 +729,21 @@ function extractHtmlBlockData(
  */
 function extractBlockWrapperStyles(blockEl: Element) {
   const styles = parseInlineStyleString(blockEl.getAttribute('style'));
+  const pad = parsePadding(blockEl);
+  const br = parseBorderRadius(blockEl);
+  const b = parseBorder(blockEl);
+
   return {
     marginTop: parsePx(styles['margin-top']),
     marginBottom: parsePx(styles['margin-bottom']),
     marginLeft: parsePx(styles['margin-left']),
     marginRight: parsePx(styles['margin-right']),
-    backgroundColor: parseColor(styles['background-color']),
-    padding: parsePx(styles['padding'])
+    backgroundColor: parseColor(styles['background-color']) || parseColor(styles['background']),
+    padding: pad.paddingTop ?? parsePx(styles['padding']),
+    borderRadius: br.borderRadius,
+    borderWidth: b.borderWidth,
+    borderColor: b.borderColor,
+    borderStyle: b.borderStyle
   };
 }
 
@@ -700,30 +752,43 @@ function extractBlockWrapperStyles(blockEl: Element) {
 // ============================================================================
 
 function detectBlockType(el: Element): BlockType {
-  // 1. Botão: tem link com data-button-link ou link com cara de botão (fundo e padding)
-  if (el.querySelector('a[data-button-link]')) return 'button';
-  const aTag = el.querySelector('a');
-  if (aTag) {
-    const aStyles = parseInlineStyleString(aTag.getAttribute('style'));
-    const parentTd = aTag.closest('td');
-    const tdStyles = parseInlineStyleString(parentTd?.getAttribute('style'));
-    const hasBtnBg = Boolean(
-      aStyles['background-color'] ||
-      tdStyles['background-color'] ||
-      parentTd?.getAttribute('bgcolor')
-    );
-    const hasBtnPad = Boolean(aStyles['padding'] || tdStyles['padding']);
-    if (hasBtnBg && hasBtnPad) return 'button';
+  // 1. Botão: possui atributos semânticos ou link estilizado como botão
+  if (el.hasAttribute('data-button-cell') || el.querySelector('[data-button-link]')) {
+    return 'button';
   }
 
-  // 2. Imagem: possui <img> sem muito texto adicional
+  const aTag = el.tagName === 'A' ? el : el.querySelector('a');
+  if (aTag) {
+    const aClasses = (aTag.className || '').toLowerCase();
+    const isBtnClass = aClasses.includes('btn') || aClasses.includes('button');
+
+    const aStyles = parseInlineStyleString(aTag.getAttribute('style'));
+    const parentEl = aTag.parentElement;
+    const parentStyles = parseInlineStyleString(parentEl?.getAttribute('style'));
+
+    const hasBg = Boolean(
+      aStyles['background-color'] ||
+      aStyles['background'] ||
+      parentStyles['background-color'] ||
+      parentStyles['background'] ||
+      parentEl?.getAttribute('bgcolor')
+    );
+    const hasPad = Boolean(aStyles['padding'] || aStyles['padding-top'] || parentStyles['padding']);
+
+    // Se tem classe de botão ou se tem cor de fundo e padding
+    if (isBtnClass || (hasBg && hasPad)) {
+      return 'button';
+    }
+  }
+
+  // 2. Imagem: possui <img> sem muito texto adicional ao redor
   if (el.querySelector('img')) {
     const textLen = (el.textContent || '').trim().length;
     if (textLen < 50) return 'image';
   }
 
   // 3. Divisor: célula com border-top ou tag <hr>
-  if (el.querySelector('hr') || el.querySelector('td[style*="border-top"]')) {
+  if (el.tagName === 'HR' || el.querySelector('hr') || el.querySelector('td[style*="border-top"], td[data-divider-line]')) {
     return 'divider';
   }
 
@@ -738,13 +803,17 @@ function detectBlockType(el: Element): BlockType {
   }
 
   // 5. Tabela de dados
-  const table = el.querySelector('table');
-  if (table && (table.querySelector('th') || table.querySelectorAll('tr').length > 2)) {
+  const table = el.tagName === 'TABLE' ? el : el.querySelector('table');
+  if (table && (table.querySelector('th') || table.querySelectorAll('tr').length > 1)) {
     return 'table';
   }
 
-  // 6. Texto: parágrafos, cabeçalhos, listas
-  if (el.querySelector('p, h1, h2, h3, h4, h5, h6, ul, ol, span, blockquote') || el.hasAttribute('data-text-cell')) {
+  // 6. Texto: parágrafos, cabeçalhos, listas, cards de texto
+  if (
+    el.querySelector('p, h1, h2, h3, h4, h5, h6, ul, ol, span, blockquote') ||
+    el.hasAttribute('data-text-cell') ||
+    ['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'UL', 'OL', 'BLOCKQUOTE'].includes(el.tagName)
+  ) {
     return 'text';
   }
 
@@ -800,154 +869,480 @@ function createBlockFromElement(el: Element, forcedType?: BlockType): EmailBlock
 }
 
 // ============================================================================
-// PARSER RAW HTML (SEM DESIGN PRÉVIO OU TEMPLATE IMPORTADO)
+// AUXILIARES DE PARSING SEMÂNTICO (HEADER, FOOTER, CARDS, BOTÕES)
 // ============================================================================
 
+function isHeaderLike(el: Element): boolean {
+  const cls = (el.className || '').toLowerCase();
+  const id = (el.id || '').toLowerCase();
+  const tag = el.tagName.toLowerCase();
+  return cls.includes('header') || id.includes('header') || tag === 'header';
+}
+
+function isFooterLike(el: Element): boolean {
+  const cls = (el.className || '').toLowerCase();
+  const id = (el.id || '').toLowerCase();
+  const tag = el.tagName.toLowerCase();
+  return cls.includes('footer') || id.includes('footer') || tag === 'footer';
+}
+
+function isCardLike(el: Element): boolean {
+  const cls = (el.className || '').toLowerCase();
+  if (cls.includes('card') || cls.includes('box') || cls.includes('alert') || cls.includes('highlight') || cls.includes('info')) {
+    return true;
+  }
+  const styles = parseInlineStyleString(el.getAttribute('style'));
+  const hasBg = Boolean(styles['background-color'] || styles['background']);
+  const hasBorder = Boolean(styles['border'] || styles['border-width'] || styles['border-color']);
+  return hasBg && (hasBorder || Boolean(styles['border-radius']) || Boolean(styles['padding']));
+}
+
+function isButtonElement(el: Element): boolean {
+  return detectBlockType(el) === 'button';
+}
+
 /**
- * Analisa um HTML bruto completo e gera uma estrutura EmailDesign completa,
- * dividida em seções e blocos, garantindo que templates legados ou colados
- * não sofram perda de conteúdo ou fiquem vazios.
+ * Converte uma lista de elementos HTML em uma sequência organizada de EmailBlocks,
+ * agrupando parágrafos consecutivos simples e mantendo cards e botões como blocos destacados.
  */
-export function parseRawHtmlToDesign(html: string): EmailDesign {
-  const doc = parseHtmlToDomDocument(html);
-  if (!doc) {
-    return createBlankDesign();
+function parseElementsToBlocks(
+  elements: Element[],
+  options?: { defaultColor?: string; defaultAlign?: 'left' | 'center' | 'right' }
+): EmailBlock[] {
+  const blocks: EmailBlock[] = [];
+  let pendingTextHtml: string[] = [];
+
+  function flushPendingText() {
+    if (pendingTextHtml.length === 0) return;
+    const combinedHtml = pendingTextHtml.join('\n');
+    pendingTextHtml = [];
+
+    blocks.push({
+      id: generateUniqueId('blk'),
+      type: 'text',
+      content: {
+        type: 'text',
+        data: {
+          html: combinedHtml,
+          align: options?.defaultAlign || 'left',
+          color: options?.defaultColor
+        }
+      }
+    });
   }
 
-  const globalStyles = extractGlobalStyles(doc);
+  for (const el of elements) {
+    // 1. Botão
+    if (isButtonElement(el)) {
+      flushPendingText();
+      blocks.push(createBlockFromElement(el, 'button'));
+      continue;
+    }
 
-  // Localizar o container central de email
-  const container =
-    doc.querySelector('table[data-email-container="true"]') ||
-    doc.querySelector('table.email-container') ||
-    doc.querySelector('table[style*="max-width"]') ||
-    doc.querySelector('body > table') ||
-    doc.querySelector('table');
+    // 2. Imagem
+    if (detectBlockType(el) === 'image') {
+      flushPendingText();
+      blocks.push(createBlockFromElement(el, 'image'));
+      continue;
+    }
 
-  const sections: EmailSection[] = [];
+    // 3. Divisor
+    if (detectBlockType(el) === 'divider') {
+      flushPendingText();
+      blocks.push(createBlockFromElement(el, 'divider'));
+      continue;
+    }
 
-  // Se encontrou uma tabela de container, percorre suas linhas <tr>
-  if (container) {
-    const rows = Array.from(container.querySelectorAll(':scope > tbody > tr, :scope > tr'));
+    // 4. Espaçador
+    if (detectBlockType(el) === 'spacer') {
+      flushPendingText();
+      blocks.push(createBlockFromElement(el, 'spacer'));
+      continue;
+    }
 
-    for (let rIdx = 0; rIdx < rows.length; rIdx++) {
-      const row = rows[rIdx];
+    // 5. Tabela de dados
+    if (detectBlockType(el) === 'table') {
+      flushPendingText();
+      blocks.push(createBlockFromElement(el, 'table'));
+      continue;
+    }
 
-      const text = (row.textContent || '').trim();
-      const hasMedia = Boolean(row.querySelector('img, a, table, hr, td[style*="border-top"]'));
-      if (!text && !hasMedia) {
-        continue;
-      }
-
-      // Estilos da linha / célula da seção
-      const secTd = row.querySelector(':scope > td') || row;
-      const secStyles = parseInlineStyleString(secTd.getAttribute('style'));
-      const padInfo = parsePadding(secTd);
-      const brInfo = parseBorderRadius(secTd);
-      const bInfo = parseBorder(secTd);
-
-      const sectionBg = parseColor(secStyles['background-color']) || parseColor(secTd.getAttribute('bgcolor'));
-
-      // Verificar colunas (.email-column ou células <td> da tabela interna)
-      const columnEls = Array.from(row.querySelectorAll('.email-column'));
-      let secType: SectionType = '1-col';
-      const columns: EmailColumn[] = [];
-
-      if (columnEls.length > 1) {
-        if (columnEls.length === 2) secType = '2-col';
-        else if (columnEls.length === 3) secType = '3-col';
-        else secType = '4-col';
-
-        const defaultWidth = Math.round(100 / columnEls.length);
-
-        columnEls.forEach((cEl) => {
-          const colId = cEl.getAttribute('data-column-id') || generateUniqueId('col');
-          const colStyles = parseInlineStyleString(cEl.getAttribute('style'));
-          const colPad = parsePadding(cEl);
-          const colBg = parseColor(colStyles['background-color']);
-
-          const blockEls = Array.from(cEl.querySelectorAll(':scope > table, :scope > div, :scope > p'));
-          const blocks: EmailBlock[] = [];
-
-          if (blockEls.length > 0) {
-            blockEls.forEach((bEl) => {
-              blocks.push(createBlockFromElement(bEl));
-            });
-          } else {
-            blocks.push(createBlockFromElement(cEl, 'text'));
+    // 6. Card estilizado (.card-info, alert, etc.)
+    if (isCardLike(el)) {
+      flushPendingText();
+      const wrapperStyles = extractBlockWrapperStyles(el);
+      const cellStyles = parseInlineStyleString(el.getAttribute('style'));
+      blocks.push({
+        id: el.getAttribute('data-block-id') || generateUniqueId('blk'),
+        type: 'text',
+        content: {
+          type: 'text',
+          data: {
+            html: el.innerHTML.trim() || el.outerHTML,
+            align: (cellStyles['text-align'] as any) || options?.defaultAlign || 'left',
+            color: parseColor(cellStyles['color']) || options?.defaultColor
           }
+        },
+        styles: wrapperStyles
+      });
+      continue;
+    }
 
-          columns.push({
-            id: colId,
-            widthPercent: defaultWidth,
-            styles: {
-              backgroundColor: colBg,
-              padding: colPad.paddingTop
-            },
-            blocks
-          });
-        });
-      } else {
-        secType = '1-col';
-        const colId = generateUniqueId('col');
-        const contentTd = secTd.querySelector('table td') || secTd;
+    // 7. Texto simples (p, h1-6, ul, ol, blockquote)
+    const tag = el.tagName.toLowerCase();
+    const isSimple = ['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'blockquote'].includes(tag);
+    if (isSimple) {
+      pendingTextHtml.push(el.outerHTML);
+    } else {
+      const rawText = (el.textContent || '').trim();
+      if (rawText.length > 0) {
+        pendingTextHtml.push(el.outerHTML);
+      }
+    }
+  }
 
-        const candidateBlocks = Array.from(
-          contentTd.querySelectorAll(':scope > table, :scope > div, :scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > hr')
-        );
+  flushPendingText();
+  return blocks;
+}
 
+// ============================================================================
+// PARSERS DE SEÇÃO POR TIPO DE CONTAINER (TABELA vs SEMÂNTICO / DIV)
+// ============================================================================
+
+function parseTableContainer(container: Element, sections: EmailSection[]): void {
+  const rows = Array.from(container.querySelectorAll(':scope > tbody > tr, :scope > tr'));
+
+  for (let rIdx = 0; rIdx < rows.length; rIdx++) {
+    const row = rows[rIdx];
+
+    const text = (row.textContent || '').trim();
+    const hasMedia = Boolean(row.querySelector('img, a, table, hr, td[style*="border-top"]'));
+    if (!text && !hasMedia) {
+      continue;
+    }
+
+    // Estilos da linha / célula da seção
+    const secTd = row.querySelector(':scope > td') || row;
+    const secStyles = parseInlineStyleString(secTd.getAttribute('style'));
+    const padInfo = parsePadding(secTd);
+    const brInfo = parseBorderRadius(secTd);
+    const bInfo = parseBorder(secTd);
+
+    const sectionBg = parseColor(secStyles['background-color']) || parseColor(secStyles['background']) || parseColor(secTd.getAttribute('bgcolor'));
+
+    // Verificar colunas (.email-column ou células <td> da tabela interna)
+    const columnEls = Array.from(row.querySelectorAll('.email-column'));
+    let secType: SectionType = '1-col';
+    const columns: EmailColumn[] = [];
+
+    if (columnEls.length > 1) {
+      if (columnEls.length === 2) secType = '2-col';
+      else if (columnEls.length === 3) secType = '3-col';
+      else secType = '4-col';
+
+      const defaultWidth = Math.round(100 / columnEls.length);
+
+      columnEls.forEach((cEl) => {
+        const colId = cEl.getAttribute('data-column-id') || generateUniqueId('col');
+        const colStyles = parseInlineStyleString(cEl.getAttribute('style'));
+        const colPad = parsePadding(cEl);
+        const colBg = parseColor(colStyles['background-color']) || parseColor(colStyles['background']);
+
+        const blockEls = Array.from(cEl.querySelectorAll(':scope > table, :scope > div, :scope > p'));
         const blocks: EmailBlock[] = [];
 
-        if (candidateBlocks.length > 0) {
-          candidateBlocks.forEach((bEl) => {
+        if (blockEls.length > 0) {
+          blockEls.forEach((bEl) => {
             blocks.push(createBlockFromElement(bEl));
           });
         } else {
-          blocks.push({
-            id: generateUniqueId('blk'),
-            type: 'text',
-            content: {
-              type: 'text',
-              data: {
-                html: contentTd.innerHTML.trim() || '<p>Conteúdo do e-mail</p>',
-                align: 'left'
-              }
-            }
-          });
+          blocks.push(createBlockFromElement(cEl, 'text'));
         }
 
         columns.push({
           id: colId,
-          widthPercent: 100,
+          widthPercent: defaultWidth,
+          styles: {
+            backgroundColor: colBg,
+            padding: colPad.paddingTop
+          },
           blocks
+        });
+      });
+    } else {
+      secType = '1-col';
+      const colId = generateUniqueId('col');
+      const contentTd = secTd.querySelector('table td') || secTd;
+
+      const candidateBlocks = Array.from(
+        contentTd.querySelectorAll(':scope > table, :scope > div, :scope > p, :scope > h1, :scope > h2, :scope > h3, :scope > hr')
+      );
+
+      const blocks: EmailBlock[] = [];
+
+      if (candidateBlocks.length > 0) {
+        candidateBlocks.forEach((bEl) => {
+          blocks.push(createBlockFromElement(bEl));
+        });
+      } else {
+        blocks.push({
+          id: generateUniqueId('blk'),
+          type: 'text',
+          content: {
+            type: 'text',
+            data: {
+              html: contentTd.innerHTML.trim() || '<p>Conteúdo do e-mail</p>',
+              align: 'left'
+            }
+          }
         });
       }
 
-      sections.push({
-        id: row.getAttribute('data-section-id') || generateUniqueId('sec'),
-        type: secType,
-        styles: {
-          backgroundColor: sectionBg,
-          paddingTop: padInfo.paddingTop ?? 15,
-          paddingBottom: padInfo.paddingBottom ?? 15,
-          paddingLeft: padInfo.paddingLeft ?? 20,
-          paddingRight: padInfo.paddingRight ?? 20,
-          borderRadius: brInfo.borderRadius,
-          borderRadiusTopLeft: brInfo.borderRadiusTopLeft,
-          borderRadiusTopRight: brInfo.borderRadiusTopRight,
-          borderRadiusBottomLeft: brInfo.borderRadiusBottomLeft,
-          borderRadiusBottomRight: brInfo.borderRadiusBottomRight,
-          useCustomCorners: brInfo.useCustomCorners,
-          borderWidth: bInfo.borderWidth,
-          borderColor: bInfo.borderColor,
-          borderStyle: bInfo.borderStyle
-        },
-        columns
+      columns.push({
+        id: colId,
+        widthPercent: 100,
+        blocks
       });
     }
+
+    sections.push({
+      id: row.getAttribute('data-section-id') || generateUniqueId('sec'),
+      type: secType,
+      styles: {
+        backgroundColor: sectionBg,
+        paddingTop: padInfo.paddingTop ?? 15,
+        paddingBottom: padInfo.paddingBottom ?? 15,
+        paddingLeft: padInfo.paddingLeft ?? 20,
+        paddingRight: padInfo.paddingRight ?? 20,
+        borderRadius: brInfo.borderRadius,
+        borderRadiusTopLeft: brInfo.borderRadiusTopLeft,
+        borderRadiusTopRight: brInfo.borderRadiusTopRight,
+        borderRadiusBottomLeft: brInfo.borderRadiusBottomLeft,
+        borderRadiusBottomRight: brInfo.borderRadiusBottomRight,
+        useCustomCorners: brInfo.useCustomCorners,
+        borderWidth: bInfo.borderWidth,
+        borderColor: bInfo.borderColor,
+        borderStyle: bInfo.borderStyle
+      },
+      columns
+    });
+  }
+}
+
+function parseSemanticContainer(
+  container: Element,
+  sections: EmailSection[],
+  globalStyles: EmailDesignGlobalStyles
+): void {
+  const contBorderRadius = parseBorderRadius(container);
+
+  // 1. Procurar Header
+  const headerEl =
+    container.querySelector('.header, header, [class*="header"]') ||
+    (container.firstElementChild && isHeaderLike(container.firstElementChild) ? container.firstElementChild : null);
+
+  // 2. Procurar Footer
+  const footerEl =
+    container.querySelector('.footer, footer, [class*="footer"]') ||
+    (container.lastElementChild && container.lastElementChild !== headerEl && isFooterLike(container.lastElementChild)
+      ? container.lastElementChild
+      : null);
+
+  // 3. Procurar Content
+  const contentEl =
+    container.querySelector('.content, main, [class*="content"]') ||
+    container;
+
+  // Processar HEADER
+  if (headerEl) {
+    const hStyles = parseInlineStyleString(headerEl.getAttribute('style'));
+    const hPad = parsePadding(headerEl);
+    const hBg = parseColor(hStyles['background-color']) || parseColor(hStyles['background']) || '#0e4a5a';
+    const hColor = parseColor(hStyles['color']) || '#ffffff';
+    const hAlign = (hStyles['text-align'] || 'center') as 'left' | 'center' | 'right';
+
+    const topRadius = contBorderRadius.borderRadius || contBorderRadius.borderRadiusTopLeft || 12;
+
+    const headerChildren = Array.from(headerEl.children);
+    const headerBlocks = headerChildren.length > 0
+      ? parseElementsToBlocks(headerChildren, { defaultColor: hColor, defaultAlign: hAlign })
+      : [
+          {
+            id: generateUniqueId('blk'),
+            type: 'text' as const,
+            content: {
+              type: 'text' as const,
+              data: {
+                html: headerEl.innerHTML.trim() || '<h2 style="margin:0;">Título</h2>',
+                align: hAlign,
+                color: hColor
+              }
+            }
+          }
+        ];
+
+    sections.push({
+      id: headerEl.getAttribute('data-section-id') || generateUniqueId('sec'),
+      type: 'header',
+      styles: {
+        backgroundColor: hBg,
+        paddingTop: hPad.paddingTop ?? 24,
+        paddingBottom: hPad.paddingBottom ?? 24,
+        paddingLeft: hPad.paddingLeft ?? 24,
+        paddingRight: hPad.paddingRight ?? 24,
+        borderRadiusTopLeft: topRadius,
+        borderRadiusTopRight: topRadius,
+        borderRadiusBottomLeft: 0,
+        borderRadiusBottomRight: 0,
+        useCustomCorners: true
+      },
+      columns: [
+        {
+          id: generateUniqueId('col'),
+          widthPercent: 100,
+          blocks: headerBlocks
+        }
+      ]
+    });
   }
 
-  // Fallback se nenhuma seção foi encontrada pelas tabelas
+  // Processar CONTENT
+  if (contentEl) {
+    const cStyles = parseInlineStyleString(contentEl.getAttribute('style'));
+    const cPad = parsePadding(contentEl);
+    const cBg = parseColor(cStyles['background-color']) || parseColor(cStyles['background']) || globalStyles.contentBackgroundColor || '#ffffff';
+
+    const childrenToParse: Element[] = [];
+    Array.from(contentEl.children).forEach((child) => {
+      if (child === headerEl || child === footerEl) return;
+      if (headerEl && headerEl.contains(child)) return;
+      if (footerEl && footerEl.contains(child)) return;
+      childrenToParse.push(child);
+    });
+
+    const blocks = parseElementsToBlocks(childrenToParse, {
+      defaultColor: globalStyles.textColor || '#333333',
+      defaultAlign: 'left'
+    });
+
+    sections.push({
+      id: contentEl.getAttribute('data-section-id') || generateUniqueId('sec'),
+      type: '1-col',
+      styles: {
+        backgroundColor: cBg,
+        paddingTop: cPad.paddingTop ?? (headerEl ? 24 : 32),
+        paddingBottom: cPad.paddingBottom ?? (footerEl ? 24 : 32),
+        paddingLeft: cPad.paddingLeft ?? 24,
+        paddingRight: cPad.paddingRight ?? 24
+      },
+      columns: [
+        {
+          id: generateUniqueId('col'),
+          widthPercent: 100,
+          blocks: blocks.length > 0 ? blocks : [
+            {
+              id: generateUniqueId('blk'),
+              type: 'text',
+              content: {
+                type: 'text',
+                data: {
+                  html: contentEl.innerHTML.trim() || '<p>Conteúdo do e-mail</p>',
+                  align: 'left'
+                }
+              }
+            }
+          ]
+        }
+      ]
+    });
+  }
+
+  // Processar FOOTER
+  if (footerEl) {
+    const fStyles = parseInlineStyleString(footerEl.getAttribute('style'));
+    const fPad = parsePadding(footerEl);
+    const fBg = parseColor(fStyles['background-color']) || parseColor(fStyles['background']) || globalStyles.contentBackgroundColor || '#ffffff';
+    const fColor = parseColor(fStyles['color']) || '#64748b';
+    const fAlign = (fStyles['text-align'] || 'center') as 'left' | 'center' | 'right';
+    const fBorder = parseBorder(footerEl);
+
+    const bottomRadius = contBorderRadius.borderRadius || contBorderRadius.borderRadiusBottomLeft || 12;
+
+    sections.push({
+      id: footerEl.getAttribute('data-section-id') || generateUniqueId('sec'),
+      type: 'footer',
+      styles: {
+        backgroundColor: fBg,
+        paddingTop: fPad.paddingTop ?? 20,
+        paddingBottom: fPad.paddingBottom ?? 20,
+        paddingLeft: fPad.paddingLeft ?? 20,
+        paddingRight: fPad.paddingRight ?? 20,
+        borderRadiusTopLeft: 0,
+        borderRadiusTopRight: 0,
+        borderRadiusBottomLeft: bottomRadius,
+        borderRadiusBottomRight: bottomRadius,
+        useCustomCorners: true,
+        borderWidth: fBorder.borderWidth ?? (fStyles['border-top'] ? 1 : undefined),
+        borderColor: fBorder.borderColor ?? '#e2e8f0',
+        borderStyle: 'solid'
+      },
+      columns: [
+        {
+          id: generateUniqueId('col'),
+          widthPercent: 100,
+          blocks: [
+            {
+              id: generateUniqueId('blk'),
+              type: 'text',
+              content: {
+                type: 'text',
+                data: {
+                  html: footerEl.innerHTML.trim(),
+                  align: fAlign,
+                  color: fColor,
+                  fontSize: parsePx(fStyles['font-size']) || 12
+                }
+              }
+            }
+          ]
+        }
+      ]
+    });
+  }
+}
+
+// ============================================================================
+// PARSER RAW HTML (SEM DESIGN PRÉVIO OU TEMPLATE IMPORTADO)
+// ============================================================================
+
+export function parseRawHtmlToDesignFromDoc(doc: Document): EmailDesign {
+  inlineStylesFromHead(doc);
+  const globalStyles = extractGlobalStyles(doc);
+  const sections: EmailSection[] = [];
+
+  // Localizar container de tabela ou div
+  const tableContainer =
+    doc.querySelector('table[data-email-container="true"]') ||
+    doc.querySelector('table.email-container') ||
+    doc.querySelector('table[style*="max-width"]') ||
+    doc.querySelector('body > table');
+
+  const divContainer =
+    doc.querySelector('div.container') ||
+    doc.querySelector('div[class*="container"]') ||
+    doc.querySelector('div[style*="max-width"]') ||
+    doc.querySelector('body > div');
+
+  // CASO 1: Container de Tabela com linhas <tr>
+  if (tableContainer && tableContainer.querySelectorAll(':scope > tbody > tr, :scope > tr').length > 0) {
+    parseTableContainer(tableContainer, sections);
+  }
+  // CASO 2: Container semântico baseado em DIVs ou body
+  else if (divContainer || doc.querySelector('.header, .content, .footer, header, main, footer')) {
+    parseSemanticContainer(divContainer || doc.body, sections, globalStyles);
+  }
+
+  // Fallback se nenhuma seção foi encontrada
   if (sections.length === 0) {
     const bodyContent = doc.body ? doc.body.innerHTML.trim() : '';
     sections.push({
@@ -989,6 +1384,14 @@ export function parseRawHtmlToDesign(html: string): EmailDesign {
   };
 }
 
+export function parseRawHtmlToDesign(html: string): EmailDesign {
+  const doc = parseHtmlToDomDocument(html);
+  if (!doc) {
+    return createBlankDesign();
+  }
+  return parseRawHtmlToDesignFromDoc(doc);
+}
+
 // ============================================================================
 // RECONCILIAÇÃO BIDIRECIONAL (HTML EDITADO -> CURRENT DESIGN)
 // ============================================================================
@@ -1023,6 +1426,12 @@ function reconcileDesignWithDom(doc: Document, currentDesign: EmailDesign): Emai
     ? Array.from(container.querySelectorAll(':scope > tbody > tr, :scope > tr'))
     : [];
 
+  // Se o HTML não possui marcadores de seção e nem linhas de tabela correspondentes,
+  // foi substituído no código por um template novo ou colado. Executa parse completo!
+  if (!hasExplicitSectionIds && containerRows.length === 0) {
+    return parseRawHtmlToDesignFromDoc(doc);
+  }
+
   const updatedSections: EmailSection[] = [];
   const processedDomSectionIds = new Set<string>();
 
@@ -1046,7 +1455,7 @@ function reconcileDesignWithDom(doc: Document, currentDesign: EmailDesign): Emai
     // Atualizar Estilos da Seção
     const secTd = secEl.querySelector(':scope > td') || secEl;
     const secStyles = parseInlineStyleString(secTd.getAttribute('style'));
-    const secBg = parseColor(secStyles['background-color']) || parseColor(secTd.getAttribute('bgcolor'));
+    const secBg = parseColor(secStyles['background-color']) || parseColor(secStyles['background']) || parseColor(secTd.getAttribute('bgcolor'));
     if (secBg !== undefined) sec.styles.backgroundColor = secBg;
 
     const pad = parsePadding(secTd);
@@ -1085,7 +1494,7 @@ function reconcileDesignWithDom(doc: Document, currentDesign: EmailDesign): Emai
       if (!colEl) return;
 
       const colStyles = parseInlineStyleString(colEl.getAttribute('style'));
-      const colBg = parseColor(colStyles['background-color']);
+      const colBg = parseColor(colStyles['background-color']) || parseColor(colStyles['background']);
       if (colBg) {
         if (!col.styles) col.styles = {};
         col.styles.backgroundColor = colBg;
@@ -1238,8 +1647,11 @@ export function syncHtmlToEmailDesign(html: string, currentDesign?: EmailDesign 
       return currentDesign || createBlankDesign();
     }
 
+    // SEMPRE inlinar estilos do <head> no DOM antes de qualquer análise
+    inlineStylesFromHead(doc);
+
     if (!currentDesign || !currentDesign.sections || currentDesign.sections.length === 0) {
-      return parseRawHtmlToDesign(html);
+      return parseRawHtmlToDesignFromDoc(doc);
     }
 
     return reconcileDesignWithDom(doc, currentDesign);
