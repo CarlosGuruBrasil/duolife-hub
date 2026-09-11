@@ -1620,73 +1620,32 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
       {/* PASSO 5: PAGAMENTO */}
       {step === 5 && (
         <div className="card space-y-6">
-          <h3 className="text-lg font-bold text-primary">5. Pagamento</h3>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-gray-100 pb-4">
+            <div>
+              <h3 className="text-lg font-bold text-primary">5. Condições de Pagamento</h3>
+              <p className="text-xs text-gray-500 mt-0.5">Selecione a opção de parcelamento para a contratação.</p>
+            </div>
 
-          {/* Desconto Comercial Vigente */}
-          {descontoPercentual > 0 && (
-            <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl flex items-center justify-between">
-              <div className="flex items-center space-x-2.5">
-                <Tag className="w-4 h-4 text-emerald-700 flex-shrink-0" />
+            {descontoPercentual > 0 && (
+              <div className="flex items-center space-x-2 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl shadow-2xs">
+                <Tag className="w-3.5 h-3.5 text-emerald-700 flex-shrink-0" />
                 <span className="text-xs text-emerald-900 font-semibold">
-                  Desconto comercial de <strong>{descontoPercentual}%</strong> já aplicado na cobertura selecionada.
+                  Desconto de <strong>{descontoPercentual}%</strong> já aplicado
                 </span>
+                <button
+                  type="button"
+                  onClick={() => setIsDescontoDrawerOpen(true)}
+                  className="text-xs font-bold text-emerald-700 hover:text-emerald-950 underline ml-1 cursor-pointer"
+                >
+                  Ajustar
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsDescontoDrawerOpen(true)}
-                className="text-xs font-bold text-emerald-700 hover:text-emerald-900 underline cursor-pointer whitespace-nowrap ml-3"
-              >
-                Ajustar no Drawer
-              </button>
-            </div>
-          )}
-
-          {/* Cupom Promocional */}
-          <div className="bg-gray-50 border border-gray-200 p-5 rounded-xl space-y-4">
-            <h4 className="font-bold text-sm text-gray-900 flex items-center space-x-2">
-              <Percent className="w-4 h-4 text-primary" />
-              <span>Cupom Promocional</span>
-            </h4>
-            <div className="flex gap-3">
-              <input
-                value={cupomCode}
-                onChange={(e) => setCupomCode(e.target.value)}
-                className="form-input max-w-xs"
-                placeholder="Insira o código do cupom"
-                disabled={cupomAplicado}
-              />
-              {!cupomAplicado ? (
-                <button
-                  onClick={handleValidarCupom}
-                  className="btn btn-secondary text-sm px-4 py-2"
-                >
-                  Aplicar
-                </button>
-              ) : (
-                <button
-                  onClick={() => {
-                    setCupomAplicado(false);
-                    setCupomDesconto(0);
-                    setCupomCode('');
-                  }}
-                  className="btn btn-secondary bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 text-sm px-4 py-2"
-                >
-                  Remover
-                </button>
-              )}
-            </div>
-            {cupomError && <p className="text-xs text-rose-600 font-medium">{cupomError}</p>}
-            {cupomAplicado && (
-              <p className="text-xs text-emerald-700 font-semibold">
-                Cupom de Desconto de {cupomDesconto}% aplicado com sucesso!
-              </p>
             )}
           </div>
 
           {/* Opções de Parcelamento */}
           {planoSel && (
             <div className="space-y-4">
-              <h3 className="text-lg font-bold text-primary">Condições de Pagamento</h3>
               <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
                 {getOpcoesParcelamento(planoSel).map((op) => {
                   const isParcSelected = parcelaSel?.qtd === op.qtd;
