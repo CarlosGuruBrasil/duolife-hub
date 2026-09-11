@@ -34,10 +34,31 @@ export default function AdminEmailsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [sendingTest, setSendingTest] = useState(false);
+  const [syncingAll, setSyncingAll] = useState(false);
   const [search, setSearch] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+
+  async function handleSyncAll() {
+    setSyncingAll(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const res = await fetch('/api/admin/emails/sync', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setSuccess(data.message || `${data.synced} templates sincronizados com sucesso com o Net4Life Info!`);
+        await loadData();
+      } else {
+        setError(data.error || 'Falha ao sincronizar templates com o Net4Life Info.');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Erro de conexão ao sincronizar templates.');
+    } finally {
+      setSyncingAll(false);
+    }
+  }
 
   // Estados do Drawer do Editor
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -366,11 +387,11 @@ export default function AdminEmailsPage() {
             <div className="flex items-center gap-2.5">
               <h1 className="text-xl sm:text-2xl font-bold text-gray-900">Modelos de E-mail</h1>
               <span className="rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 text-xs font-semibold">
-                Nodemailer SMTP Ativo
+                Net4Life Info / SMTP
               </span>
             </div>
             <p className="text-sm text-gray-600 mt-0.5">
-              Gerencie templates HTML com tags dinâmicas <code className="text-primary font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{'{{variavel}}'}</code> e pré-visualização em tempo real.
+              Gerencie templates HTML integrados à API Net4Life Info com tags dinâmicas <code className="text-primary font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{'{{variavel}}'}</code> e sincronização automática.
             </p>
           </div>
         </div>
@@ -378,8 +399,19 @@ export default function AdminEmailsPage() {
         <div className="flex items-center gap-2.5">
           <button
             type="button"
+            onClick={handleSyncAll}
+            disabled={syncingAll}
+            className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-xs hover:bg-gray-50 hover:text-primary transition disabled:opacity-60 cursor-pointer"
+            title="Sincronizar todos os templates com a API de E-mail Marketing Net4Life Info"
+          >
+            <RefreshCw className={`size-4 ${syncingAll ? 'animate-spin text-primary' : 'text-gray-500'}`} />
+            <span>{syncingAll ? 'Sincronizando...' : 'Sincronizar com E-mail Marketing'}</span>
+          </button>
+
+          <button
+            type="button"
             onClick={handleOpenNew}
-            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-[#0b3b48] transition"
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-[#0b3b48] transition cursor-pointer"
           >
             <Plus className="size-4" />
             Novo Template
@@ -481,7 +513,23 @@ export default function AdminEmailsPage() {
                       <h3 className="font-bold text-base text-gray-900 group-hover:text-primary transition line-clamp-1">
                         {tpl.name}
                       </h3>
-                      <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+                        {tpl.external_id ? (
+                          <span
+                            className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1"
+                            title={`Sincronizado na API Net4Life Info: ${tpl.external_id}`}
+                          >
+                            <CheckCircle2 className="size-3 text-emerald-600" />
+                            Net4Life
+                          </span>
+                        ) : (
+                          <span
+                            className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200"
+                            title="Pendente de sincronização com o Net4Life Info"
+                          >
+                            Pendente Sync
+                          </span>
+                        )}
                         {tpl.design_json && (
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-50 text-cyan-800 border border-cyan-200">
                             Visual
@@ -499,20 +547,27 @@ export default function AdminEmailsPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1 font-mono text-[11px] bg-gray-50 border border-gray-200 text-gray-700 px-2 py-1 rounded-md w-fit max-w-full">
-                      <span className="truncate">{tpl.code}</span>
-                      <button
-                        type="button"
-                        onClick={() => copyCode(tpl.code)}
-                        className="hover:text-primary transition shrink-0 ml-1"
-                        title="Copiar código do template"
-                      >
-                        {copiedCode === tpl.code ? (
-                          <Check className="size-3 text-emerald-600" />
-                        ) : (
-                          <Copy className="size-3 text-gray-400" />
-                        )}
-                      </button>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-1 font-mono text-[11px] bg-gray-50 border border-gray-200 text-gray-700 px-2 py-1 rounded-md w-fit max-w-full">
+                        <span className="truncate">{tpl.code}</span>
+                        <button
+                          type="button"
+                          onClick={() => copyCode(tpl.code)}
+                          className="hover:text-primary transition shrink-0 ml-1"
+                          title="Copiar código do template"
+                        >
+                          {copiedCode === tpl.code ? (
+                            <Check className="size-3 text-emerald-600" />
+                          ) : (
+                            <Copy className="size-3 text-gray-400" />
+                          )}
+                        </button>
+                      </div>
+                      {tpl.external_id && (
+                        <span className="text-[10px] font-mono text-gray-500 bg-gray-50 border border-gray-200 px-1.5 py-0.5 rounded">
+                          Ext: {tpl.external_id}
+                        </span>
+                      )}
                     </div>
 
                     <div className="text-xs text-gray-600 mt-1">

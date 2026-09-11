@@ -8,6 +8,8 @@ import {
   ensureDefaultEmailTemplates,
   type EmailTemplate,
 } from '@/lib/email-service';
+import { isNet4LifeInfoEnabled } from '@/lib/system-settings';
+import { pushTemplateToNet4Life } from '@/lib/net4life-service';
 
 export async function GET() {
   const user = await verifyAuth();
@@ -21,7 +23,7 @@ export async function GET() {
     await ensureDefaultEmailTemplates();
 
     const templates = await sql<EmailTemplate[]>`
-      SELECT id, code, name, subject, body_html, body_text, variables, design_json, is_active, created_at, updated_at
+      SELECT id, code, name, subject, body_html, body_text, variables, design_json, external_id, last_synced_at, is_active, created_at, updated_at
       FROM email_templates
       ORDER BY updated_at DESC, name ASC
     `;
@@ -88,8 +90,33 @@ export async function POST(req: NextRequest) {
         ${Boolean(is_active)},
         NOW()
       )
-      RETURNING id, code, name, subject, body_html, variables, design_json, is_active, created_at, updated_at
+      RETURNING id, code, name, subject, body_html, variables, design_json, external_id, last_synced_at, is_active, created_at, updated_at
     `;
+
+    // Sincroniza automaticamente com o Net4Life Info se a integração estiver ativa
+    if (await isNet4LifeInfoEnabled()) {
+      try {
+        const syncRes = await pushTemplateToNet4Life({
+          name: created.name,
+          subject: created.subject,
+          bodyHtml: created.body_html,
+          variables: detectedVars,
+        });
+        if (syncRes.success && syncRes.externalId) {
+          const [updatedWithExt] = await sql<EmailTemplate[]>`
+            UPDATE email_templates
+            SET external_id = ${syncRes.externalId}, last_synced_at = NOW()
+            WHERE id = ${created.id}
+            RETURNING id, code, name, subject, body_html, variables, design_json, external_id, last_synced_at, is_active, created_at, updated_at
+          `;
+          if (updatedWithExt) {
+            return Response.json({ ok: true, template: updatedWithExt });
+          }
+        }
+      } catch (syncErr) {
+        logger.warn({ syncErr, templateId: created.id }, 'Falha no auto-sync do template com Net4Life Info');
+      }
+    }
 
     return Response.json({
       ok: true,

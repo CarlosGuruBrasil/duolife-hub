@@ -255,10 +255,14 @@ export async function isBrevoIntegrationEnabled(): Promise<boolean> {
  */
 export async function getNet4LifeInfoConfig(): Promise<Net4LifeInfoConfig> {
   const dbSettings = await getAllSystemSettings();
-  const apiUrl =
+  const rawApiUrl =
     dbSettings['NET4LIFE_INFO_API_URL'] ||
     process.env.NET4LIFE_INFO_API_URL ||
-    'https://net4lifeinfo.com.br/email_marketing/v1';
+    'https://api.duo24horas.com.br/email_marketing/v1';
+  // Normaliza caso o operador insira a URL da landing page net4lifeinfo.com.br
+  const apiUrl = rawApiUrl.includes('net4lifeinfo.com.br')
+    ? rawApiUrl.replace(/https?:\/\/(?:app\.|www\.)?net4lifeinfo\.com\.br(?:\/doc)?/i, 'https://api.duo24horas.com.br')
+    : rawApiUrl;
   const apiToken =
     dbSettings['NET4LIFE_INFO_API_TOKEN'] ||
     process.env.NET4LIFE_INFO_API_TOKEN ||

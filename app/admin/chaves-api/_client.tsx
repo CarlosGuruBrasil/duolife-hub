@@ -70,7 +70,7 @@ const DEFAULT_SETTINGS: ApiSettings = {
   WIX_API_KEY: '',
   WIX_SITE_ID: '',
   WIX_INTEGRATION_ENABLED: 'true',
-  NET4LIFE_INFO_API_URL: 'https://net4lifeinfo.com.br/email_marketing/v1',
+  NET4LIFE_INFO_API_URL: 'https://api.duo24horas.com.br/email_marketing/v1',
   NET4LIFE_INFO_API_TOKEN: '',
   NET4LIFE_INFO_SENDER_EMAIL: 'contato@duolife.com.br',
   NET4LIFE_INFO_SENDER_NAME: 'DuoLife Hub',
@@ -85,10 +85,44 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
   const [settings, setSettings] = useState<ApiSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testingNet4Life, setTestingNet4Life] = useState(false);
+  const [net4LifeTestResult, setNet4LifeTestResult] = useState<{ success: boolean; message: string; latencyMs?: number } | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('visao-geral');
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  async function handleTestNet4Life() {
+    setTestingNet4Life(true);
+    setNet4LifeTestResult(null);
+    try {
+      const res = await fetch('/api/admin/chaves-api/test-net4life', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiUrl: settings.NET4LIFE_INFO_API_URL,
+          apiToken: settings.NET4LIFE_INFO_API_TOKEN,
+          senderEmail: settings.NET4LIFE_INFO_SENDER_EMAIL,
+          senderName: settings.NET4LIFE_INFO_SENDER_NAME,
+          replyTo: settings.NET4LIFE_INFO_REPLY_TO,
+          smtpUser: settings.NET4LIFE_INFO_SMTP_USER,
+        }),
+      });
+      const data = await res.json();
+      setNet4LifeTestResult({
+        success: data.ok,
+        message: data.message || (data.ok ? 'Conexão realizada com sucesso!' : 'Falha na conexão.'),
+        latencyMs: data.latencyMs,
+      });
+    } catch (err: any) {
+      setNet4LifeTestResult({
+        success: false,
+        message: err?.message || 'Erro de rede ao testar conexão com o Net4Life Info.',
+      });
+    } finally {
+      setTestingNet4Life(false);
+    }
+  }
 
   useEffect(() => {
     fetchSettings();
@@ -1068,11 +1102,11 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
                   type="text"
                   value={settings.NET4LIFE_INFO_API_URL}
                   onChange={(e) => handleChange('NET4LIFE_INFO_API_URL', e.target.value)}
-                  placeholder="https://net4lifeinfo.com.br/email_marketing/v1"
+                  placeholder="https://api.duo24horas.com.br/email_marketing/v1"
                   className="form-input font-mono text-xs"
                 />
                 <p className="text-[11px] text-gray-500 mt-1">
-                  Prefixo dos endpoints da API (padrão: <code>https://net4lifeinfo.com.br/email_marketing/v1</code>).
+                  Prefixo do backend da API (padrão: <code>https://api.duo24horas.com.br/email_marketing/v1</code>). Se você inserir <code>net4lifeinfo.com.br</code>, o sistema normalizará automaticamente para o servidor oficial.
                 </p>
               </div>
 
@@ -1154,6 +1188,54 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
                 </p>
               </div>
             </div>
+
+            {/* Teste de Conexão com Net4Life Info */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-gray-50 border border-gray-200 rounded-xl">
+              <div>
+                <span className="text-xs font-bold text-gray-800 block">Diagnóstico e Teste de Conexão</span>
+                <span className="text-[11px] text-gray-500">Verifica em tempo real se o Token Bearer é aceito pela API Net4Life Info.</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleTestNet4Life}
+                disabled={testingNet4Life || !settings.NET4LIFE_INFO_API_TOKEN}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold rounded-lg border border-primary text-primary bg-white hover:bg-primary/5 transition disabled:opacity-50 shrink-0 cursor-pointer"
+              >
+                {testingNet4Life ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                    <span>Testando...</span>
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="h-3.5 w-3.5" />
+                    <span>Testar Conexão</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {net4LifeTestResult && (
+              <div
+                className={`rounded-xl border p-4 text-xs flex items-start gap-2.5 ${
+                  net4LifeTestResult.success
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                    : 'border-red-200 bg-red-50 text-red-800'
+                }`}
+              >
+                {net4LifeTestResult.success ? (
+                  <Check className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+                )}
+                <div className="flex-1">
+                  <span className="font-bold block">{net4LifeTestResult.message}</span>
+                  {net4LifeTestResult.latencyMs !== undefined && (
+                    <span className="text-[11px] opacity-80">Latência: {net4LifeTestResult.latencyMs}ms</span>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Guia Rápido de Endpoints da API Net4Life Info */}
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">

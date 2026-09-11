@@ -11,6 +11,8 @@ export interface EmailTemplate {
   body_text?: string | null;
   variables: string[];
   design_json?: any;
+  external_id?: string | null;
+  last_synced_at?: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -148,7 +150,7 @@ export async function sendTemplatedEmail({
 
   // 1. Busca o template no banco de dados
   const [template] = await sql<EmailTemplate[]>`
-    SELECT id, code, name, subject, body_html, body_text, variables, is_active, created_at, updated_at
+    SELECT id, code, name, subject, body_html, body_text, variables, external_id, last_synced_at, is_active, created_at, updated_at
     FROM email_templates
     WHERE code = ${normalizedCode} AND is_active = true
     LIMIT 1
@@ -175,12 +177,15 @@ export async function sendTemplatedEmail({
   // 3. Executa o envio via Mailer oficial
   const result = await sendMail({
     to,
+    toName,
     subject: renderedSubject,
     html: renderedHtml,
+    templateId: template.external_id,
   });
 
   const status = result.success ? (result.mock ? 'mocked' : 'sent') : 'failed';
   const errorMessage = result.error ? (result.error instanceof Error ? result.error.message : String(result.error)) : null;
+  const provider = result.provider || (result.mock ? 'mock' : 'nodemailer_smtp');
 
   // 4. Registra no log de auditoria
   try {
@@ -193,9 +198,9 @@ export async function sendTemplatedEmail({
         ${toName || null},
         ${renderedSubject},
         ${status},
-        'nodemailer_smtp',
+        ${provider},
         ${errorMessage},
-        ${sql.json({ ...metadata, variables: mergedVars })}
+        ${sql.json({ ...metadata, variables: mergedVars, externalTemplateId: template.external_id })}
       ) RETURNING id, template_code, recipient_email, recipient_name, subject, status, provider, error_message, metadata, created_at
     `;
 

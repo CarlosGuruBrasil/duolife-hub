@@ -757,7 +757,10 @@ async function runRuntimeSchemaSetup(): Promise<void> {
     )
   `;
   await sql`ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS design_json JSONB DEFAULT NULL`;
+  await sql`ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS external_id TEXT DEFAULT NULL`;
+  await sql`ALTER TABLE email_templates ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ DEFAULT NULL`;
   await sql`CREATE INDEX IF NOT EXISTS idx_email_templates_code ON email_templates (code)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_email_templates_external_id ON email_templates (external_id)`;
 
   // Logs de Disparo de E-mail
   await sql`
