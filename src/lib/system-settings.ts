@@ -41,6 +41,16 @@ export interface BrevoConfig {
   enabled: boolean;
 }
 
+export interface Net4LifeInfoConfig {
+  apiUrl: string;
+  apiToken: string;
+  senderEmail: string;
+  senderName: string;
+  replyTo: string;
+  smtpUser: string;
+  enabled: boolean;
+}
+
 /**
  * Busca todas as configurações salvas no banco de dados.
  */
@@ -239,4 +249,56 @@ export async function isBrevoIntegrationEnabled(): Promise<boolean> {
   const config = await getBrevoConfig();
   return config.enabled && !!config.apiKey;
 }
+
+/**
+ * Retorna as configurações ativas da API de E-mail Marketing Net4Life Info.
+ */
+export async function getNet4LifeInfoConfig(): Promise<Net4LifeInfoConfig> {
+  const dbSettings = await getAllSystemSettings();
+  const apiUrl =
+    dbSettings['NET4LIFE_INFO_API_URL'] ||
+    process.env.NET4LIFE_INFO_API_URL ||
+    'https://net4lifeinfo.com.br/email_marketing/v1';
+  const apiToken =
+    dbSettings['NET4LIFE_INFO_API_TOKEN'] ||
+    process.env.NET4LIFE_INFO_API_TOKEN ||
+    '';
+  const senderEmail =
+    dbSettings['NET4LIFE_INFO_SENDER_EMAIL'] ||
+    process.env.NET4LIFE_INFO_SENDER_EMAIL ||
+    'contato@duolife.com.br';
+  const senderName =
+    dbSettings['NET4LIFE_INFO_SENDER_NAME'] ||
+    process.env.NET4LIFE_INFO_SENDER_NAME ||
+    'DuoLife Hub';
+  const replyTo =
+    dbSettings['NET4LIFE_INFO_REPLY_TO'] ||
+    process.env.NET4LIFE_INFO_REPLY_TO ||
+    '';
+  const smtpUser =
+    dbSettings['NET4LIFE_INFO_SMTP_USER'] ||
+    process.env.NET4LIFE_INFO_SMTP_USER ||
+    '';
+  const rawEnabled =
+    dbSettings['NET4LIFE_INFO_ENABLED'] ||
+    process.env.NET4LIFE_INFO_ENABLED ||
+    'true';
+  const enabled = rawEnabled !== 'false';
+
+  return {
+    apiUrl,
+    apiToken,
+    senderEmail,
+    senderName,
+    replyTo,
+    smtpUser,
+    enabled,
+  };
+}
+
+export async function isNet4LifeInfoEnabled(): Promise<boolean> {
+  const config = await getNet4LifeInfoConfig();
+  return config.enabled && !!config.apiToken;
+}
+
 

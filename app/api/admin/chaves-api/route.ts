@@ -14,6 +14,7 @@ const SECRET_KEYS = new Set([
   'BREVO_WEBHOOK_SECRET',
   'EMAIL_MARKETING_API_KEY',
   'EMAIL_MARKETING_WEBHOOK_SECRET',
+  'NET4LIFE_INFO_API_TOKEN',
 ]);
 
 function maskSecret(val: string): string {
@@ -59,6 +60,14 @@ export async function GET() {
       BREVO_LIST_ID: dbSettings['BREVO_LIST_ID'] || dbSettings['EMAIL_MARKETING_LIST_ID'] || process.env.BREVO_LIST_ID || process.env.EMAIL_MARKETING_LIST_ID || '',
       BREVO_WEBHOOK_SECRET: dbSettings['BREVO_WEBHOOK_SECRET'] || dbSettings['EMAIL_MARKETING_WEBHOOK_SECRET'] || process.env.BREVO_WEBHOOK_SECRET || process.env.EMAIL_MARKETING_WEBHOOK_SECRET || '',
       BREVO_INTEGRATION_ENABLED: dbSettings['BREVO_INTEGRATION_ENABLED'] || dbSettings['EMAIL_MARKETING_ENABLED'] || process.env.BREVO_INTEGRATION_ENABLED || process.env.EMAIL_MARKETING_ENABLED || 'true',
+
+      NET4LIFE_INFO_API_URL: dbSettings['NET4LIFE_INFO_API_URL'] || process.env.NET4LIFE_INFO_API_URL || 'https://net4lifeinfo.com.br/email_marketing/v1',
+      NET4LIFE_INFO_API_TOKEN: dbSettings['NET4LIFE_INFO_API_TOKEN'] || process.env.NET4LIFE_INFO_API_TOKEN || '',
+      NET4LIFE_INFO_SENDER_EMAIL: dbSettings['NET4LIFE_INFO_SENDER_EMAIL'] || process.env.NET4LIFE_INFO_SENDER_EMAIL || 'contato@duolife.com.br',
+      NET4LIFE_INFO_SENDER_NAME: dbSettings['NET4LIFE_INFO_SENDER_NAME'] || process.env.NET4LIFE_INFO_SENDER_NAME || 'DuoLife Hub',
+      NET4LIFE_INFO_REPLY_TO: dbSettings['NET4LIFE_INFO_REPLY_TO'] || process.env.NET4LIFE_INFO_REPLY_TO || '',
+      NET4LIFE_INFO_SMTP_USER: dbSettings['NET4LIFE_INFO_SMTP_USER'] || process.env.NET4LIFE_INFO_SMTP_USER || '',
+      NET4LIFE_INFO_ENABLED: dbSettings['NET4LIFE_INFO_ENABLED'] || process.env.NET4LIFE_INFO_ENABLED || 'true',
     };
 
     // Mascara segredos para evitar information disclosure no browser

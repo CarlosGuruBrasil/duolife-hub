@@ -48,12 +48,13 @@ interface ApiSettings {
   WIX_SITE_ID: string;
   WIX_INTEGRATION_ENABLED: string;
 
-  BREVO_API_KEY: string;
-  BREVO_SENDER_EMAIL: string;
-  BREVO_SENDER_NAME: string;
-  BREVO_LIST_ID: string;
-  BREVO_WEBHOOK_SECRET: string;
-  BREVO_INTEGRATION_ENABLED: string;
+  NET4LIFE_INFO_API_URL: string;
+  NET4LIFE_INFO_API_TOKEN: string;
+  NET4LIFE_INFO_SENDER_EMAIL: string;
+  NET4LIFE_INFO_SENDER_NAME: string;
+  NET4LIFE_INFO_REPLY_TO: string;
+  NET4LIFE_INFO_SMTP_USER: string;
+  NET4LIFE_INFO_ENABLED: string;
 }
 
 const DEFAULT_SETTINGS: ApiSettings = {
@@ -69,15 +70,16 @@ const DEFAULT_SETTINGS: ApiSettings = {
   WIX_API_KEY: '',
   WIX_SITE_ID: '',
   WIX_INTEGRATION_ENABLED: 'true',
-  BREVO_API_KEY: '',
-  BREVO_SENDER_EMAIL: 'contato@duolife.com.br',
-  BREVO_SENDER_NAME: 'DuoLife Hub',
-  BREVO_LIST_ID: '',
-  BREVO_WEBHOOK_SECRET: '',
-  BREVO_INTEGRATION_ENABLED: 'true',
+  NET4LIFE_INFO_API_URL: 'https://net4lifeinfo.com.br/email_marketing/v1',
+  NET4LIFE_INFO_API_TOKEN: '',
+  NET4LIFE_INFO_SENDER_EMAIL: 'contato@duolife.com.br',
+  NET4LIFE_INFO_SENDER_NAME: 'DuoLife Hub',
+  NET4LIFE_INFO_REPLY_TO: '',
+  NET4LIFE_INFO_SMTP_USER: '',
+  NET4LIFE_INFO_ENABLED: 'true',
 };
 
-type TabType = 'visao-geral' | 'asaas' | 'zapsign' | 'wix' | 'brevo';
+type TabType = 'visao-geral' | 'asaas' | 'zapsign' | 'wix' | 'email-marketing';
 
 export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
   const [settings, setSettings] = useState<ApiSettings>(DEFAULT_SETTINGS);
@@ -167,7 +169,7 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
   const isAsaasSandbox = settings.ASAAS_ENVIRONMENT === 'sandbox';
   const isZapSignSandbox = settings.ZAPSIGN_ENVIRONMENT === 'sandbox';
   const isWixEnabled = settings.WIX_INTEGRATION_ENABLED !== 'false';
-  const isBrevoEnabled = settings.BREVO_INTEGRATION_ENABLED !== 'false';
+  const isNet4LifeInfoEnabled = settings.NET4LIFE_INFO_ENABLED !== 'false';
 
   const tabs: Array<{
     id: TabType;
@@ -211,15 +213,20 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
         : 'bg-gray-100 text-gray-600 border border-gray-200',
     },
     {
-      id: 'brevo',
-      label: 'E-mail Marketing (Brevo)',
+      id: 'email-marketing',
+      label: 'E-mail Marketing (Net4Life)',
       icon: Mail,
-      badge: isBrevoEnabled ? (settings.BREVO_API_KEY ? 'Ativo' : 'Pendente') : 'Desligado',
-      badgeColor: isBrevoEnabled && settings.BREVO_API_KEY
-        ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-        : isBrevoEnabled
-        ? 'bg-amber-50 text-amber-800 border border-amber-200'
-        : 'bg-gray-100 text-gray-600 border border-gray-200',
+      badge: isNet4LifeInfoEnabled
+        ? settings.NET4LIFE_INFO_API_TOKEN
+          ? 'Ativo'
+          : 'Pendente'
+        : 'Desligado',
+      badgeColor:
+        isNet4LifeInfoEnabled && settings.NET4LIFE_INFO_API_TOKEN
+          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+          : isNet4LifeInfoEnabled
+          ? 'bg-amber-50 text-amber-800 border border-amber-200'
+          : 'bg-gray-100 text-gray-600 border border-gray-200',
     },
   ];
 
@@ -530,7 +537,7 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
                 </div>
               </div>
 
-              {/* Brevo (E-mail Marketing) */}
+              {/* Net4Life Info (E-mail Marketing) */}
               <div className="card no-hover p-5 flex flex-col justify-between space-y-4 border-gray-200">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
@@ -538,52 +545,55 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
                       <Mail className="h-5 w-5" />
                     </div>
                     <div>
-                      <h3 className="text-sm font-bold text-gray-900">Brevo (E-mail Marketing)</h3>
-                      <p className="text-xs text-gray-500">Campanhas, automação de réguas e listas de contatos.</p>
+                      <h3 className="text-sm font-bold text-gray-900">Net4Life Info (E-mail Marketing)</h3>
+                      <p className="text-xs text-gray-500">API de alta entregabilidade, templates e gestão SMTP.</p>
                     </div>
                   </div>
                   <span
                     className={`px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider shrink-0 ${
-                      isBrevoEnabled
-                        ? settings.BREVO_API_KEY
+                      isNet4LifeInfoEnabled
+                        ? settings.NET4LIFE_INFO_API_TOKEN
                           ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                           : 'bg-amber-50 text-amber-800 border border-amber-200'
                         : 'bg-red-50 text-red-800 border border-red-200'
                     }`}
                   >
-                    {isBrevoEnabled ? (settings.BREVO_API_KEY ? 'Ativo' : 'Pendente Chave') : 'Desligado'}
+                    {isNet4LifeInfoEnabled ? (settings.NET4LIFE_INFO_API_TOKEN ? 'Ativo' : 'Pendente Token') : 'Desligado'}
                   </span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 text-xs bg-gray-50/80 p-3 rounded-xl border border-gray-200/80">
                   <div>
-                    <span className="text-gray-500 block font-medium">Chave v3:</span>
+                    <span className="text-gray-500 block font-medium">App Token:</span>
                     <span className="font-bold text-gray-800">
-                      {settings.BREVO_API_KEY ? 'Configurada' : 'Pendente'}
+                      {settings.NET4LIFE_INFO_API_TOKEN ? 'Configurado (em_...)' : 'Pendente'}
                     </span>
                   </div>
                   <div>
                     <span className="text-gray-500 block font-medium">Remetente:</span>
                     <span className="font-bold text-gray-800 truncate block">
-                      {settings.BREVO_SENDER_EMAIL || 'Pendente'}
+                      {settings.NET4LIFE_INFO_SENDER_EMAIL || 'Pendente'}
                     </span>
                   </div>
                 </div>
 
                 <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                  <Link
-                    href="/admin/emails"
+                  <a
+                    href="https://net4lifeinfo.com.br/doc"
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="text-xs font-semibold text-gray-600 hover:text-gray-900 hover:underline flex items-center gap-1"
                   >
-                    <span>Editor de E-mails</span>
-                  </Link>
+                    <span>Doc da API</span>
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
 
                   <button
                     type="button"
-                    onClick={() => setActiveTab('brevo')}
+                    onClick={() => setActiveTab('email-marketing')}
                     className="text-xs font-bold text-[#0e4a5a] hover:underline flex items-center gap-1 cursor-pointer"
                   >
-                    <span>Configurar Brevo</span>
+                    <span>Configurar Net4Life</span>
                     <ArrowRight className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -995,176 +1005,192 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
           </div>
         )}
 
-        {/* ABA 5: BREVO (E-MAIL MARKETING) */}
-        {activeTab === 'brevo' && (
+        {/* ABA 5: NET4LIFE INFO (E-MAIL MARKETING) */}
+        {activeTab === 'email-marketing' && (
           <div className="card no-hover space-y-6 border-gray-200 p-6 animate-in fade-in duration-150">
             <div className="admin-section-header">
               <div>
                 <div className="flex items-center gap-2">
                   <h2 className="admin-section-title flex items-center gap-2">
-                    <Mail className="h-5 w-5 text-[var(--primary)]" /> Brevo (E-mail Marketing & Campanhas)
+                    <Mail className="h-5 w-5 text-[var(--primary)]" /> Net4Life Info (E-mail Marketing)
                   </h2>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-cyan-50 text-[#0e4a5a] border border-cyan-200">
-                    API v3
+                    API v1
                   </span>
                 </div>
                 <p className="admin-section-copy">
-                  Parametrização oficial do Brevo (antigo Sendinblue) para automação de réguas, sincronização de contatos e campanhas de marketing.
+                  Integração oficial com a API de alta entregabilidade Net4Life Info (<code className="text-xs">net4lifeinfo.com.br</code>) para disparos transacionais, templates e contas SMTP.
                 </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => handleChange('BREVO_INTEGRATION_ENABLED', isBrevoEnabled ? 'false' : 'true')}
+                onClick={() =>
+                  handleChange('NET4LIFE_INFO_ENABLED', isNet4LifeInfoEnabled ? 'false' : 'true')
+                }
                 className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 ${
-                  isBrevoEnabled
+                  isNet4LifeInfoEnabled
                     ? 'bg-emerald-100 text-emerald-900 border border-emerald-300 hover:bg-emerald-200'
                     : 'bg-red-100 text-red-900 border border-red-300 hover:bg-red-200'
                 }`}
               >
                 <Power className="h-3.5 w-3.5" />
-                <span>{isBrevoEnabled ? 'Integração Ligada' : 'Integração Desligada'}</span>
+                <span>{isNet4LifeInfoEnabled ? 'Integração Ligada' : 'Integração Desligada'}</span>
               </button>
             </div>
 
-            {/* Banner Informativo Brevo */}
+            {/* Banner Informativo Net4Life Info */}
             <div className="rounded-xl border border-cyan-100 bg-cyan-50/50 p-4 flex items-start gap-3">
               <div className="p-2 bg-cyan-100/80 rounded-lg text-[#0e4a5a] shrink-0 mt-0.5">
                 <Info className="h-4 w-4" />
               </div>
               <div className="text-xs leading-relaxed text-gray-700">
-                <p className="font-bold text-[#0e4a5a] mb-0.5">Como obter suas credenciais no Brevo:</p>
-                Acesse sua conta no Brevo em{' '}
+                <p className="font-bold text-[#0e4a5a] mb-0.5">Autenticação e Documentação Oficial:</p>
+                As requisições para a API utilizam cabeçalho <code className="bg-white px-1.5 py-0.5 rounded border border-gray-200 font-mono text-[11px]">Authorization: Bearer em_...</code>. 
+                Conforme a documentação oficial, o token da aplicação deve começar com o prefixo <code className="bg-white px-1.5 py-0.5 rounded border border-gray-200 font-mono text-[11px]">em_</code>.
+                Consulte a documentação interativa em{' '}
                 <a
-                  href="https://app.brevo.com/settings/keys/api"
+                  href="https://net4lifeinfo.com.br/doc"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="font-bold text-[#0e4a5a] underline hover:text-[#072a33] inline-flex items-center gap-1"
                 >
-                  Configurações &gt; Chaves de API <ExternalLink className="h-3 w-3" />
-                </a>{' '}
-                e gere uma chave v3. Certifique-se de que o domínio do remetente (ex: <code>duolife.com.br</code>) esteja autenticado via DNS (DKIM e SPF) para garantir taxa máxima de entrega na caixa de entrada.
+                  net4lifeinfo.com.br/doc <ExternalLink className="h-3 w-3" />
+                </a>.
               </div>
             </div>
 
             <div className="grid md:grid-cols-2 gap-4">
-              {/* Chave de API Brevo */}
+              {/* URL Base da API */}
               <div className="md:col-span-2">
-                <span className="field-label">Chave da API Brevo (v3 API Key)</span>
+                <span className="field-label">URL Base da API (Endpoint)</span>
+                <input
+                  type="text"
+                  value={settings.NET4LIFE_INFO_API_URL}
+                  onChange={(e) => handleChange('NET4LIFE_INFO_API_URL', e.target.value)}
+                  placeholder="https://net4lifeinfo.com.br/email_marketing/v1"
+                  className="form-input font-mono text-xs"
+                />
+                <p className="text-[11px] text-gray-500 mt-1">
+                  Prefixo dos endpoints da API (padrão: <code>https://net4lifeinfo.com.br/email_marketing/v1</code>).
+                </p>
+              </div>
+
+              {/* Token da Aplicação (em_...) */}
+              <div className="md:col-span-2">
+                <span className="field-label">Token da Aplicação (App Token — deve iniciar com &quot;em_&quot;)</span>
                 <div className="relative">
                   <input
-                    type={showSecrets['BREVO_API_KEY'] ? 'text' : 'password'}
-                    value={settings.BREVO_API_KEY}
-                    onChange={(e) => handleChange('BREVO_API_KEY', e.target.value)}
-                    placeholder="xkeysib-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    type={showSecrets['NET4LIFE_INFO_API_TOKEN'] ? 'text' : 'password'}
+                    value={settings.NET4LIFE_INFO_API_TOKEN}
+                    onChange={(e) => handleChange('NET4LIFE_INFO_API_TOKEN', e.target.value)}
+                    placeholder="em_id_segredo"
                     className="form-input pr-10 font-mono text-xs"
                   />
                   <button
                     type="button"
-                    onClick={() => toggleShowSecret('BREVO_API_KEY')}
+                    onClick={() => toggleShowSecret('NET4LIFE_INFO_API_TOKEN')}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
                   >
-                    {showSecrets['BREVO_API_KEY'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    {showSecrets['NET4LIFE_INFO_API_TOKEN'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
                 <p className="text-[11px] text-gray-500 mt-1">
-                  Chave mestra de acesso às APIs REST do Brevo para criação e atualização de contatos.
+                  Chave Bearer gerada no cadastro do aplicativo. Templates, SMTP e envios ficam isolados nesta aplicação.
                 </p>
               </div>
 
               {/* Remetente E-mail */}
               <div>
-                <span className="field-label">E-mail do Remetente Padrão</span>
+                <span className="field-label">E-mail do Remetente Padrão (remetente_email)</span>
                 <input
                   type="email"
-                  value={settings.BREVO_SENDER_EMAIL}
-                  onChange={(e) => handleChange('BREVO_SENDER_EMAIL', e.target.value)}
+                  value={settings.NET4LIFE_INFO_SENDER_EMAIL}
+                  onChange={(e) => handleChange('NET4LIFE_INFO_SENDER_EMAIL', e.target.value)}
                   placeholder="ex: contato@duolife.com.br"
                   className="form-input"
                 />
-                <p className="text-[11px] text-gray-500 mt-1">Deve ser um e-mail previamente validado na sua conta Brevo.</p>
+                <p className="text-[11px] text-gray-500 mt-1">Se omitido nos disparos, utiliza o usuário da conta SMTP vinculada.</p>
               </div>
 
               {/* Remetente Nome */}
               <div>
-                <span className="field-label">Nome do Remetente Padrão</span>
+                <span className="field-label">Nome do Remetente Padrão (remetente_nome)</span>
                 <input
                   type="text"
-                  value={settings.BREVO_SENDER_NAME}
-                  onChange={(e) => handleChange('BREVO_SENDER_NAME', e.target.value)}
-                  placeholder="ex: DuoLife Hub ou Equipe DuoLife"
+                  value={settings.NET4LIFE_INFO_SENDER_NAME}
+                  onChange={(e) => handleChange('NET4LIFE_INFO_SENDER_NAME', e.target.value)}
+                  placeholder="ex: DuoLife Hub"
                   className="form-input"
                 />
-                <p className="text-[11px] text-gray-500 mt-1">Nome de exibição que aparecerá na caixa de entrada do cliente.</p>
+                <p className="text-[11px] text-gray-500 mt-1">Nome de exibição que aparecerá na caixa de entrada dos segurados.</p>
               </div>
 
-              {/* ID da Lista Principal */}
+              {/* Reply To */}
               <div>
-                <span className="field-label">ID da Lista Principal de Contatos (Brevo List ID)</span>
+                <span className="field-label">Endereço de Resposta (reply_to — Opcional)</span>
+                <input
+                  type="email"
+                  value={settings.NET4LIFE_INFO_REPLY_TO}
+                  onChange={(e) => handleChange('NET4LIFE_INFO_REPLY_TO', e.target.value)}
+                  placeholder="ex: atendimento@duolife.com.br"
+                  className="form-input"
+                />
+                <p className="text-[11px] text-gray-500 mt-1">Caixa de entrada para onde respostas diretas serão encaminhadas.</p>
+              </div>
+
+              {/* SMTP User / ID Específico */}
+              <div>
+                <span className="field-label">Conta SMTP Específica (smtp_user / smtp_id — Opcional)</span>
                 <input
                   type="text"
-                  value={settings.BREVO_LIST_ID}
-                  onChange={(e) => handleChange('BREVO_LIST_ID', e.target.value)}
-                  placeholder="ex: 2 (identificador numérico da lista no Brevo)"
+                  value={settings.NET4LIFE_INFO_SMTP_USER}
+                  onChange={(e) => handleChange('NET4LIFE_INFO_SMTP_USER', e.target.value)}
+                  placeholder="ex: disparos@duolife.com.br ou ID da conta"
                   className="form-input"
                 />
                 <p className="text-[11px] text-gray-500 mt-1">
-                  Lista para onde novos leads e clientes da DuoLife serão sincronizados automaticamente.
+                  Se informado, força o uso de uma conta SMTP específica cadastrada em <code>/appsmtp</code>.
                 </p>
-              </div>
-
-              {/* Segredo do Webhook Brevo */}
-              <div>
-                <span className="field-label">Segredo do Webhook Brevo (Opcional)</span>
-                <div className="relative">
-                  <input
-                    type={showSecrets['BREVO_WEBHOOK_SECRET'] ? 'text' : 'password'}
-                    value={settings.BREVO_WEBHOOK_SECRET}
-                    onChange={(e) => handleChange('BREVO_WEBHOOK_SECRET', e.target.value)}
-                    placeholder="Segredo para validação de eventos de entrega"
-                    className="form-input pr-10"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => toggleShowSecret('BREVO_WEBHOOK_SECRET')}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
-                  >
-                    {showSecrets['BREVO_WEBHOOK_SECRET'] ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-                <p className="text-[11px] text-gray-500 mt-1">Chave para verificação de requisições enviadas pelos webhooks do Brevo.</p>
               </div>
             </div>
 
-            {/* Box de Webhook Info Brevo */}
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2">
+            {/* Guia Rápido de Endpoints da API Net4Life Info */}
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
-                  <ShieldCheck className="h-4 w-4 text-emerald-600" /> URL do Webhook DuoLife para Cadastrar no Brevo
+                <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                  <ShieldCheck className="h-4 w-4 text-emerald-600" /> Endpoints Disponíveis na API Net4Life Info
                 </span>
-                <button
-                  type="button"
-                  onClick={() => handleCopy('https://duolife.com.br/api/webhook/brevo', 'webhook-brevo')}
-                  className="text-xs font-bold text-[#0e4a5a] hover:underline flex items-center gap-1 cursor-pointer"
+                <a
+                  href="https://net4lifeinfo.com.br/doc"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-bold text-[#0e4a5a] hover:underline flex items-center gap-1"
                 >
-                  {copiedKey === 'webhook-brevo' ? (
-                    <>
-                      <Check className="h-3.5 w-3.5 text-emerald-600" />
-                      <span className="text-emerald-700">Copiado!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="h-3.5 w-3.5" />
-                      <span>Copiar URL</span>
-                    </>
-                  )}
-                </button>
+                  <span>Abrir Documentação Completa</span>
+                  <ExternalLink className="h-3 w-3" />
+                </a>
               </div>
-              <code className="block bg-white p-2 rounded-lg border border-gray-200 text-xs font-mono text-gray-800 break-all">
-                https://duolife.com.br/api/webhook/brevo
-              </code>
-              <p className="text-[11px] text-gray-500">
-                Permite capturar eventos de <code>abertura</code>, <code>clique</code>, <code>unsubscribe</code> (opt-out) e <code>hard bounce</code> para manter sua base higienizada e compatível com LGPD.
+
+              <div className="grid sm:grid-cols-3 gap-2 text-xs">
+                <div className="bg-white p-3 rounded-lg border border-gray-200">
+                  <div className="font-mono font-bold text-emerald-700">POST /enviaremail</div>
+                  <p className="text-[11px] text-gray-500 mt-0.5">Disparo transacional e em lote via template ou HTML direto.</p>
+                </div>
+                <div className="bg-white p-3 rounded-lg border border-gray-200">
+                  <div className="font-mono font-bold text-[#0e4a5a]">GET/POST /templates</div>
+                  <p className="text-[11px] text-gray-500 mt-0.5">Consulta, criação e atualização de modelos com variáveis.</p>
+                </div>
+                <div className="bg-white p-3 rounded-lg border border-gray-200">
+                  <div className="font-mono font-bold text-cyan-700">GET/POST /appsmtp</div>
+                  <p className="text-[11px] text-gray-500 mt-0.5">Configuração do servidor SMTP e caixa de bounces da app.</p>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-gray-500 pt-1">
+                Variáveis reservadas injetadas automaticamente pelo sistema em todos os envios:{' '}
+                <code className="bg-white px-1 rounded border text-gray-800">{"{{view_in_browser}}"}</code> (versão web do e-mail com HMAC) e{' '}
+                <code className="bg-white px-1 rounded border text-gray-800">{"{{unsubscribe_link}}"}</code> (descadastro LGPD).
               </p>
             </div>
           </div>
