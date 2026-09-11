@@ -32,6 +32,15 @@ export interface WixConfigSettings {
   integrationEnabled: boolean;
 }
 
+export interface BrevoConfig {
+  apiKey: string;
+  senderEmail: string;
+  senderName: string;
+  listId: string;
+  webhookSecret: string;
+  enabled: boolean;
+}
+
 /**
  * Busca todas as configurações salvas no banco de dados.
  */
@@ -172,3 +181,62 @@ export async function isWixIntegrationEnabled(): Promise<boolean> {
   const value = await getSystemSetting('WIX_INTEGRATION_ENABLED', process.env.WIX_INTEGRATION_ENABLED || 'true');
   return value !== 'false';
 }
+
+/**
+ * Retorna as configurações ativas do Brevo (API Key, remetente, list ID e status).
+ */
+export async function getBrevoConfig(): Promise<BrevoConfig> {
+  const dbSettings = await getAllSystemSettings();
+  const apiKey =
+    dbSettings['BREVO_API_KEY'] ||
+    dbSettings['EMAIL_MARKETING_API_KEY'] ||
+    process.env.BREVO_API_KEY ||
+    process.env.EMAIL_MARKETING_API_KEY ||
+    '';
+  const senderEmail =
+    dbSettings['BREVO_SENDER_EMAIL'] ||
+    dbSettings['EMAIL_MARKETING_FROM_EMAIL'] ||
+    process.env.BREVO_SENDER_EMAIL ||
+    process.env.EMAIL_MARKETING_FROM_EMAIL ||
+    'contato@duolife.com.br';
+  const senderName =
+    dbSettings['BREVO_SENDER_NAME'] ||
+    dbSettings['EMAIL_MARKETING_FROM_NAME'] ||
+    process.env.BREVO_SENDER_NAME ||
+    process.env.EMAIL_MARKETING_FROM_NAME ||
+    'DuoLife Hub';
+  const listId =
+    dbSettings['BREVO_LIST_ID'] ||
+    dbSettings['EMAIL_MARKETING_LIST_ID'] ||
+    process.env.BREVO_LIST_ID ||
+    process.env.EMAIL_MARKETING_LIST_ID ||
+    '';
+  const webhookSecret =
+    dbSettings['BREVO_WEBHOOK_SECRET'] ||
+    dbSettings['EMAIL_MARKETING_WEBHOOK_SECRET'] ||
+    process.env.BREVO_WEBHOOK_SECRET ||
+    process.env.EMAIL_MARKETING_WEBHOOK_SECRET ||
+    '';
+  const rawEnabled =
+    dbSettings['BREVO_INTEGRATION_ENABLED'] ||
+    dbSettings['EMAIL_MARKETING_ENABLED'] ||
+    process.env.BREVO_INTEGRATION_ENABLED ||
+    process.env.EMAIL_MARKETING_ENABLED ||
+    'true';
+  const enabled = rawEnabled !== 'false';
+
+  return {
+    apiKey,
+    senderEmail,
+    senderName,
+    listId,
+    webhookSecret,
+    enabled,
+  };
+}
+
+export async function isBrevoIntegrationEnabled(): Promise<boolean> {
+  const config = await getBrevoConfig();
+  return config.enabled && !!config.apiKey;
+}
+

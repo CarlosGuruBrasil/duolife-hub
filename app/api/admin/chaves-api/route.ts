@@ -10,6 +10,10 @@ const SECRET_KEYS = new Set([
   'ZAPSIGN_API_TOKEN',
   'ZAPSIGN_WEBHOOK_SECRET',
   'WIX_API_KEY',
+  'BREVO_API_KEY',
+  'BREVO_WEBHOOK_SECRET',
+  'EMAIL_MARKETING_API_KEY',
+  'EMAIL_MARKETING_WEBHOOK_SECRET',
 ]);
 
 function maskSecret(val: string): string {
@@ -48,6 +52,13 @@ export async function GET() {
       WIX_API_KEY: dbSettings['WIX_API_KEY'] || process.env.WIX_API_KEY || process.env.WIX_AUTH_TOKEN || '',
       WIX_SITE_ID: dbSettings['WIX_SITE_ID'] || process.env.WIX_SITE_ID || process.env.WIX_SITEID || '',
       WIX_INTEGRATION_ENABLED: dbSettings['WIX_INTEGRATION_ENABLED'] || process.env.WIX_INTEGRATION_ENABLED || 'true',
+
+      BREVO_API_KEY: dbSettings['BREVO_API_KEY'] || dbSettings['EMAIL_MARKETING_API_KEY'] || process.env.BREVO_API_KEY || process.env.EMAIL_MARKETING_API_KEY || '',
+      BREVO_SENDER_EMAIL: dbSettings['BREVO_SENDER_EMAIL'] || dbSettings['EMAIL_MARKETING_FROM_EMAIL'] || process.env.BREVO_SENDER_EMAIL || process.env.EMAIL_MARKETING_FROM_EMAIL || 'contato@duolife.com.br',
+      BREVO_SENDER_NAME: dbSettings['BREVO_SENDER_NAME'] || dbSettings['EMAIL_MARKETING_FROM_NAME'] || process.env.BREVO_SENDER_NAME || process.env.EMAIL_MARKETING_FROM_NAME || 'DuoLife Hub',
+      BREVO_LIST_ID: dbSettings['BREVO_LIST_ID'] || dbSettings['EMAIL_MARKETING_LIST_ID'] || process.env.BREVO_LIST_ID || process.env.EMAIL_MARKETING_LIST_ID || '',
+      BREVO_WEBHOOK_SECRET: dbSettings['BREVO_WEBHOOK_SECRET'] || dbSettings['EMAIL_MARKETING_WEBHOOK_SECRET'] || process.env.BREVO_WEBHOOK_SECRET || process.env.EMAIL_MARKETING_WEBHOOK_SECRET || '',
+      BREVO_INTEGRATION_ENABLED: dbSettings['BREVO_INTEGRATION_ENABLED'] || dbSettings['EMAIL_MARKETING_ENABLED'] || process.env.BREVO_INTEGRATION_ENABLED || process.env.EMAIL_MARKETING_ENABLED || 'true',
     };
 
     // Mascara segredos para evitar information disclosure no browser
