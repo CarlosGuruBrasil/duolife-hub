@@ -5,6 +5,7 @@ import { verifyAuth, isInternalUser } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { PagamentosPanel } from './_pagamentos-client';
 import { GerarBoletoButton } from '../_gerar-boleto-button';
+import { EnviarFaturaEmailButton } from '@/components/cotacao/EnviarFaturaEmailButton';
 import { formatCurrency, formatDate, formatDateTime, formatAtuacao } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
 import { isDateBeforeToday } from '@/lib/business-days';
@@ -170,6 +171,17 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
             <span className="text-xs text-slate-500 font-medium block">{parcelaInfo}</span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            {(Boolean(linkBoleto) || Boolean(checkoutId) || cotacao.status === 'assinado' || cotacao.status === 'pagamento_gerado') && (
+              <EnviarFaturaEmailButton
+                cotacaoId={cotacao.id}
+                clientName={cotacao.client_name || String(clientData.nome || '')}
+                clientEmail={cotacao.client_email || String(clientData.email || '')}
+                valor={cotacao.premio_final || cotacao.premio_calculado}
+                vencimento={clientData.dataVencimento ? String(clientData.dataVencimento) : undefined}
+                hasLink={Boolean(linkBoleto)}
+                variant="outline"
+              />
+            )}
             <EditarPropostaButton
               cotacao={{
                 id: cotacao.id,
@@ -297,23 +309,34 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
 
             {checkoutId || linkBoleto ? (
               <div className="space-y-3">
-                <div className="flex items-center justify-between text-xs bg-amber-50/80 border border-amber-200/80 p-3 rounded-xl">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs bg-amber-50/80 border border-amber-200/80 p-3 rounded-xl">
                   <div>
                     <span className="font-bold text-amber-900 block">Cobrança Asaas Gerada</span>
                     <span className="text-amber-700 text-[11px] block">ID: {checkoutId || 'Asaas'}</span>
                   </div>
-                  {linkBoleto && (
-                    <a
-                      href={linkBoleto}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 !text-white text-white font-bold px-3.5 py-1.5 rounded-lg text-xs transition-colors shadow-xs"
-                    >
-                      <span>📄</span>
-                      <span className="!text-white text-white">Abrir Fatura / Pix</span>
-                      <ExternalLink size={12} className="!text-white text-white shrink-0" />
-                    </a>
-                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {linkBoleto && (
+                      <a
+                        href={linkBoleto}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 !text-white text-white font-bold px-3.5 py-1.5 rounded-lg text-xs transition-colors shadow-xs"
+                      >
+                        <span>📄</span>
+                        <span className="!text-white text-white">Abrir Fatura / Pix</span>
+                        <ExternalLink size={12} className="!text-white text-white shrink-0" />
+                      </a>
+                    )}
+                    <EnviarFaturaEmailButton
+                      cotacaoId={cotacao.id}
+                      clientName={cotacao.client_name || String(clientData.nome || '')}
+                      clientEmail={cotacao.client_email || String(clientData.email || '')}
+                      valor={cotacao.premio_final || cotacao.premio_calculado}
+                      vencimento={clientData.dataVencimento ? String(clientData.dataVencimento) : undefined}
+                      hasLink={Boolean(linkBoleto)}
+                      variant="card"
+                    />
+                  </div>
                 </div>
 
                 {clientData.dataVencimento && (
@@ -335,7 +358,18 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
                         </span>
                       </div>
                     )}
-                    <GerarBoletoButton id={cotacao.id} clientName={cotacao.client_name} variant="card" />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <GerarBoletoButton id={cotacao.id} clientName={cotacao.client_name} variant="card" />
+                      <EnviarFaturaEmailButton
+                        cotacaoId={cotacao.id}
+                        clientName={cotacao.client_name || String(clientData.nome || '')}
+                        clientEmail={cotacao.client_email || String(clientData.email || '')}
+                        valor={cotacao.premio_final || cotacao.premio_calculado}
+                        vencimento={clientData.dataVencimento ? String(clientData.dataVencimento) : undefined}
+                        hasLink={false}
+                        variant="card"
+                      />
+                    </div>
                   </div>
                 )}
               </div>
