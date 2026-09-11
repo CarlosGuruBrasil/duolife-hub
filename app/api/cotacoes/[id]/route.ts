@@ -244,6 +244,13 @@ export async function PATCH(
         tipoDePlano: targetPlano,
         qtdParcelasSolicitada: parcela,
         cupomCodigo,
+        descontoManualPercent: Number(
+          payload.descontoManualPercent ??
+          sanitizedInputClientData.descontoManualPercent ??
+          sanitizedInputClientData.descontoPercentual ??
+          currentClientData.descontoManualPercent ??
+          currentClientData.descontoPercentual
+        ) || 0,
       });
 
       if (precoCalculado) {

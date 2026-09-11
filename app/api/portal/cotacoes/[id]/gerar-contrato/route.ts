@@ -61,6 +61,7 @@ export async function POST(
       tipoDePlano: clientData.tipo || clientData.tipoDePlano || null,
       qtdParcelasSolicitada: Number(clientData.parcela) || 1,
       cupomCodigo: clientData.cupomCodigo || null,
+      descontoManualPercent: Number(clientData.descontoManualPercent ?? clientData.descontoPercentual) || 0,
     });
 
     const valorTotal = preco?.valorTotal ?? Number(cotacao.premio_final || cotacao.premio_calculado || 0);

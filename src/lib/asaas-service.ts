@@ -180,6 +180,7 @@ export async function generateAsaasPaymentForQuote(
       tipoDePlano,
       qtdParcelasSolicitada: Number(clientData.parcela) || 1,
       cupomCodigo: clientData.cupomCodigo || null,
+      descontoManualPercent: Number(clientData.descontoManualPercent ?? clientData.descontoPercentual) || 0,
     });
 
     let valorTotal = preco ? Math.round(preco.valorTotal * 100) / 100 : 0;
