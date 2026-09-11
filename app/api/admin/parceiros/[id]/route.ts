@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+import bcrypt from 'bcryptjs';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { isPlatformAdmin, verifyAdminAuth, unauthorized } from '@/lib/auth';
@@ -43,11 +45,20 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
       return Response.json({ error: 'Parceiro não encontrado' }, { status: 404 });
     }
 
+    const [user] = await sql`
+      SELECT id, name, email, role, manager_user_id, is_active, last_login_at
+      FROM partner_users
+      WHERE partner_id = ${id}
+      ORDER BY created_at ASC
+      LIMIT 1
+    `;
+
     return Response.json({
       partner: {
         ...partner,
         whiteLabel: getWhiteLabelConfig(partner.metadata),
       },
+      user: user || null,
       canManage: isPlatformAdmin(admin),
     });
   } catch (err) {
@@ -66,6 +77,11 @@ const updatePartnerSchema = z.object({
   status: z.enum(['active', 'pending', 'suspended']).optional(),
   corretora_id: z.string().trim().optional().nullable(),
   address: z.record(z.string(), z.unknown()).optional(),
+  // Credenciais de acesso ao portal integradas
+  role: z.enum(['director', 'manager', 'broker', 'partner']).optional(),
+  password: z.string().min(8, 'A senha deve ter no mínimo 8 caracteres').optional().or(z.literal('')),
+  user_is_active: z.boolean().optional(),
+  manager_user_id: z.string().trim().nullable().optional(),
 }).superRefine((data, ctx) => {
   if (data.documento) {
     const doc = somenteDigitos(data.documento);
@@ -156,7 +172,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ? { ...((current.address as Record<string, unknown>) || {}), ...data.address }
       : current.address;
 
-    const [updated] = await sql`
+    // 1. Atualiza os dados cadastrais da tabela partners
+    const [updatedPartner] = await sql`
       UPDATE partners
       SET
         razao_social = ${newRazaoSocial},
@@ -174,8 +191,52 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       RETURNING id, razao_social, nome_fantasia, person_type, cnpj, cpf, email, phone, status, corretora_id, address, updated_at
     `;
 
-    logger.info({ adminId: admin.userId, partnerId: id, changes: data }, 'admin.partner.cadastral.updated');
-    return Response.json({ ok: true, partner: updated });
+    // 2. Sincroniza a credencial de acesso em partner_users
+    let [pUser] = await sql`SELECT id, password_hash, role, is_active FROM partner_users WHERE partner_id = ${id} LIMIT 1`;
+    if (!pUser) {
+      const [byEmail] = await sql`SELECT id, password_hash, role, is_active FROM partner_users WHERE email = ${newEmail} LIMIT 1`;
+      pUser = byEmail;
+      if (pUser) {
+        await sql`UPDATE partner_users SET partner_id = ${id} WHERE id = ${pUser.id}`;
+      }
+    }
+
+    const newPasswordHash = (data.password && data.password.trim().length >= 8)
+      ? await bcrypt.hash(data.password.trim(), 10)
+      : null;
+
+    const newRole = data.role ?? pUser?.role ?? 'broker';
+    const newUserActive = data.user_is_active !== undefined ? data.user_is_active : (pUser?.is_active ?? true);
+    const newManagerId = newRole === 'director' ? null : (data.manager_user_id ?? null);
+
+    let updatedUser = null;
+    if (pUser) {
+      const [u] = await sql`
+        UPDATE partner_users
+        SET
+          name = ${newRazaoSocial},
+          email = ${newEmail},
+          role = ${newRole},
+          is_active = ${newUserActive},
+          manager_user_id = ${newManagerId},
+          password_hash = COALESCE(${newPasswordHash}, password_hash),
+          updated_at = NOW()
+        WHERE id = ${pUser.id}
+        RETURNING id, name, email, role, manager_user_id, is_active, last_login_at
+      `;
+      updatedUser = u;
+    } else {
+      const initialHash = newPasswordHash || (await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10));
+      const [u] = await sql`
+        INSERT INTO partner_users (partner_id, name, email, password_hash, role, permissions, is_active, manager_user_id, updated_at)
+        VALUES (${id}, ${newRazaoSocial}, ${newEmail}, ${initialHash}, ${newRole}, '{}'::jsonb, ${newUserActive}, ${newManagerId}, NOW())
+        RETURNING id, name, email, role, manager_user_id, is_active, last_login_at
+      `;
+      updatedUser = u;
+    }
+
+    logger.info({ adminId: admin.userId, partnerId: id, changes: data }, 'admin.partner.unified.updated');
+    return Response.json({ ok: true, partner: updatedPartner, user: updatedUser });
   } catch (err) {
     logger.error({ err, partnerId: id }, 'admin.parceiro.update.failed');
     return Response.json({ error: 'Erro interno ao atualizar parceiro' }, { status: 500 });

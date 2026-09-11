@@ -1,3 +1,5 @@
+import crypto from 'node:crypto';
+import bcrypt from 'bcryptjs';
 import { redirect } from 'next/navigation';
 import { isPlatformAdmin, verifyAdminAuth } from '@/lib/auth';
 import { ensureSchema } from '@/lib/schema';
@@ -44,6 +46,12 @@ interface CorretoraOption {
   nome_fantasia: string;
 }
 
+interface ManagerOption {
+  id: string;
+  name: string;
+  role: string;
+}
+
 export default async function PartnerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await verifyAdminAuth();
   if (!user) redirect('/login');
@@ -76,10 +84,53 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
 
   if (!partner) redirect('/admin/parceiros');
 
+  // Buscar ou auto-provisionar a credencial deste corretor/vendedor
+  let [partnerUser] = await sql<PartnerUserRow[]>`
+    SELECT id, name, email, role, manager_user_id, is_active, last_login_at, created_at
+    FROM partner_users
+    WHERE partner_id = ${id}
+    ORDER BY created_at ASC
+    LIMIT 1
+  `;
+
+  if (!partnerUser) {
+    const [existingByEmail] = await sql<PartnerUserRow[]>`
+      SELECT id, name, email, role, manager_user_id, is_active, last_login_at, created_at
+      FROM partner_users
+      WHERE email = ${partner.email.toLowerCase()}
+      LIMIT 1
+    `;
+
+    if (existingByEmail) {
+      await sql`UPDATE partner_users SET partner_id = ${id} WHERE id = ${existingByEmail.id}`;
+      partnerUser = { ...existingByEmail };
+    } else {
+      const senhaDescartada = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
+      const [created] = await sql<PartnerUserRow[]>`
+        INSERT INTO partner_users (partner_id, name, email, password_hash, role, permissions, is_active, updated_at)
+        VALUES (${id}, ${partner.razao_social}, ${partner.email.toLowerCase()}, ${senhaDescartada}, 'broker', '{}'::jsonb, true, NOW())
+        RETURNING id, name, email, role, manager_user_id, is_active, last_login_at, created_at
+      `;
+      partnerUser = created;
+    }
+  }
+
   const corretoras = await sql<CorretoraOption[]>`
     SELECT id, razao_social, nome_fantasia
     FROM corretoras
     ORDER BY nome_fantasia ASC
+  `;
+
+  // Gestores disponíveis na mesma corretora (para vincular vendedores a um gestor comercial)
+  const managers = await sql<ManagerOption[]>`
+    SELECT pu.id, pu.name, pu.role
+    FROM partner_users pu
+    JOIN partners p ON p.id = pu.partner_id
+    WHERE p.corretora_id = ${partner.corretora_id}
+      AND pu.role IN ('director', 'manager')
+      AND pu.id != ${partnerUser?.id ?? ''}
+      AND pu.is_active = true
+    ORDER BY pu.name ASC
   `;
 
   const products = await sql<ProductRow[]>`
@@ -114,28 +165,6 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
     ORDER BY pl.created_at DESC
   `;
 
-  const partnerUsers = await sql<PartnerUserRow[]>`
-    SELECT
-      pu.id,
-      pu.name,
-      pu.email,
-      pu.role,
-      pu.manager_user_id,
-      pu.is_active,
-      pu.last_login_at,
-      pu.created_at
-    FROM partner_users pu
-    WHERE pu.partner_id = ${id}
-    ORDER BY
-      CASE pu.role
-        WHEN 'director' THEN 1
-        WHEN 'manager' THEN 2
-        WHEN 'broker' THEN 3
-        ELSE 4
-      END,
-      pu.created_at ASC
-  `;
-
   return (
     <PartnerWhiteLabelClient
       partner={{
@@ -155,10 +184,11 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
         updated_at: partner.updated_at,
         whiteLabel: getWhiteLabelConfig(partner.metadata),
       }}
+      partnerUser={partnerUser}
+      managers={managers}
       corretoras={corretoras}
       products={products}
       links={links}
-      partnerUsers={partnerUsers}
       canManageConfig={isPlatformAdmin(user)}
     />
   );

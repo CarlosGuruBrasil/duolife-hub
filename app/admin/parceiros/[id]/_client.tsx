@@ -6,7 +6,6 @@ import {
   Building2,
   Palette,
   Package,
-  Users,
   Link2,
   ArrowLeft,
   CheckCircle,
@@ -16,7 +15,10 @@ import {
   Loader2,
   Copy,
   Check,
-  ExternalLink,
+  KeyRound,
+  Mail,
+  ShieldCheck,
+  UserCheck,
 } from 'lucide-react';
 import type { WhiteLabelConfig } from '@/lib/white-label';
 import { formatDateTime } from '@/lib/format';
@@ -79,16 +81,23 @@ interface CorretoraOption {
   nome_fantasia: string;
 }
 
+interface ManagerOption {
+  id: string;
+  name: string;
+  role: string;
+}
+
 interface Props {
   partner: PartnerRow;
+  partnerUser: PartnerUserRow;
+  managers: ManagerOption[];
   corretoras: CorretoraOption[];
   products: ProductRow[];
   links: LinkRow[];
-  partnerUsers: PartnerUserRow[];
   canManageConfig: boolean;
 }
 
-type TabType = 'cadastro' | 'branding' | 'produtos' | 'equipe' | 'links';
+type TabType = 'cadastro' | 'branding' | 'produtos' | 'links';
 
 const baseBrandingState = (whiteLabel: WhiteLabelConfig) => ({
   slug: whiteLabel.slug || '',
@@ -112,8 +121,8 @@ const baseBrandingState = (whiteLabel: WhiteLabelConfig) => ({
 
 const ROLE_LABEL: Record<PartnerUserRow['role'], string> = {
   director: 'Diretor',
-  manager: 'Gestor',
-  broker: 'Corretor',
+  manager: 'Gestor Comercial',
+  broker: 'Vendedor / Corretor',
   partner: 'Parceiro',
 };
 
@@ -137,17 +146,20 @@ const STATUS_CONFIG: Record<string, { label: string; badgeClass: string; icon: t
 
 export default function PartnerWhiteLabelClient({
   partner,
+  partnerUser,
+  managers,
   corretoras,
   products,
   links,
-  partnerUsers,
   canManageConfig,
 }: Props) {
-  // Aba selecionada
+  // Aba selecionada (4 abas com acesso unificado na Aba 1)
   const [activeTab, setActiveTab] = useState<TabType>('cadastro');
 
-  // Estado dos Dados Cadastrais
+  // Estado dos Dados Cadastrais & Acesso
   const [partnerState, setPartnerState] = useState(partner);
+  const [partnerUserState, setPartnerUserState] = useState(partnerUser);
+
   const [cadastroForm, setCadastroForm] = useState({
     person_type: partner.person_type || 'pj',
     razao_social: partner.razao_social || '',
@@ -164,10 +176,18 @@ export default function PartnerWhiteLabelClient({
     bairro: partner.address?.bairro || partner.address?.neighborhood || '',
     city: partner.address?.city || partner.address?.cidade || '',
     state: (partner.address?.state || partner.address?.uf || '').toUpperCase(),
+    // Acesso ao portal integrado
+    role: partnerUser.role || 'broker',
+    password: '',
+    user_is_active: partnerUser.is_active ?? true,
+    manager_user_id: partnerUser.manager_user_id || '',
   });
+
   const [savingCadastro, setSavingCadastro] = useState(false);
   const [loadingCep, setLoadingCep] = useState(false);
+  const [sendingInvite, setSendingInvite] = useState(false);
   const [cadastroFeedback, setCadastroFeedback] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
+  const [inviteFeedback, setInviteFeedback] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
 
   // Estado White-Label
   const [brandingForm, setBrandingForm] = useState(baseBrandingState(partner.whiteLabel));
@@ -185,30 +205,14 @@ export default function PartnerWhiteLabelClient({
   const [linkMessage, setLinkMessage] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
 
-  // Estado Usuários da Equipe
-  const [usersList, setUsersList] = useState(partnerUsers);
-  const [userForm, setUserForm] = useState({
-    id: '',
-    name: '',
-    email: '',
-    password: '',
-    role: 'broker' as PartnerUserRow['role'],
-    managerUserId: '',
-  });
-  const [savingUser, setSavingUser] = useState(false);
-  const [userMessage, setUserMessage] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
-
   // Estado Produtos
   const [productIds, setProductIds] = useState<string[]>(() => products.filter((p) => p.enabled).map((p) => p.id));
   const [savingProducts, setSavingProducts] = useState(false);
   const [productMessage, setProductMessage] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
 
-  const availableManagers = usersList.filter(
-    (user) => user.is_active && (user.role === 'director' || user.role === 'manager')
-  );
   const sellableProducts = products.filter((product) => product.is_active);
 
-  // Manipuladores de Cadastro
+  // Manipuladores de Cadastro & Acesso
   function setCadastroField<K extends keyof typeof cadastroForm>(field: K, value: (typeof cadastroForm)[K]) {
     setCadastroForm((current) => ({ ...current, [field]: value }));
   }
@@ -234,7 +238,7 @@ export default function PartnerWhiteLabelClient({
           }
         }
       } catch {
-        // Ignora erro de rede silenciosamente
+        // Silencioso se der erro de rede
       } finally {
         setLoadingCep(false);
       }
@@ -245,6 +249,7 @@ export default function PartnerWhiteLabelClient({
     e.preventDefault();
     setSavingCadastro(true);
     setCadastroFeedback(null);
+    setInviteFeedback(null);
 
     try {
       const res = await fetch(`/api/admin/parceiros/${partner.id}`, {
@@ -268,6 +273,10 @@ export default function PartnerWhiteLabelClient({
             city: cadastroForm.city,
             state: cadastroForm.state,
           },
+          role: cadastroForm.role,
+          password: cadastroForm.password ? cadastroForm.password.trim() : undefined,
+          user_is_active: cadastroForm.user_is_active,
+          manager_user_id: cadastroForm.manager_user_id || null,
         }),
       });
 
@@ -275,7 +284,7 @@ export default function PartnerWhiteLabelClient({
       if (!res.ok) {
         setCadastroFeedback({
           tipo: 'erro',
-          texto: data.error || (Array.isArray(data.issues) ? data.issues.join(' · ') : 'Falha ao salvar dados cadastrais.'),
+          texto: data.error || (Array.isArray(data.issues) ? data.issues.join(' · ') : 'Falha ao salvar parceiro.'),
         });
         return;
       }
@@ -294,11 +303,47 @@ export default function PartnerWhiteLabelClient({
         address: data.partner.address,
       }));
 
-      setCadastroFeedback({ tipo: 'ok', texto: 'Informações cadastrais salvas com sucesso!' });
+      if (data.user) {
+        setPartnerUserState(data.user);
+      }
+
+      setCadastroForm((prev) => ({ ...prev, password: '' }));
+      setCadastroFeedback({ tipo: 'ok', texto: 'Dados cadastrais e acesso ao portal atualizados com sucesso!' });
     } catch {
       setCadastroFeedback({ tipo: 'erro', texto: 'Erro de comunicação ao salvar parceiro.' });
     } finally {
       setSavingCadastro(false);
+    }
+  }
+
+  async function handleSendInvite() {
+    if (!partnerUserState.id) return;
+    setSendingInvite(true);
+    setInviteFeedback(null);
+
+    try {
+      const res = await fetch(`/api/admin/parceiros/${partner.id}/usuarios/convite`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: partnerUserState.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (res.ok) {
+        setInviteFeedback({
+          tipo: 'ok',
+          texto: `Convite de primeiro acesso enviado com sucesso para ${partnerUserState.email}!`,
+        });
+      } else {
+        setInviteFeedback({
+          tipo: 'erro',
+          texto: data.error || 'Não foi possível enviar o convite de acesso.',
+        });
+      }
+    } catch {
+      setInviteFeedback({ tipo: 'erro', texto: 'Erro de conexão ao enviar convite.' });
+    } finally {
+      setSendingInvite(false);
     }
   }
 
@@ -366,141 +411,6 @@ export default function PartnerWhiteLabelClient({
     }
   }
 
-  // Manipuladores de Usuários
-  function resetUserForm() {
-    setUserForm({
-      id: '',
-      name: '',
-      email: '',
-      password: '',
-      role: 'broker',
-      managerUserId: '',
-    });
-  }
-
-  function startEditUser(user: PartnerUserRow) {
-    setUserForm({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      password: '',
-      role: user.role,
-      managerUserId: user.manager_user_id || '',
-    });
-  }
-
-  function setUserField(field: keyof typeof userForm, value: string) {
-    setUserForm((current) => ({ ...current, [field]: value }));
-  }
-
-  async function savePartnerUser(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSavingUser(true);
-    setUserMessage(null);
-
-    try {
-      const res = await fetch(`/api/admin/parceiros/${partner.id}/usuarios`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: userForm.id || undefined,
-          name: userForm.name,
-          email: userForm.email,
-          password: userForm.password || undefined,
-          role: userForm.role,
-          managerUserId: userForm.managerUserId || null,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        setUserMessage({ tipo: 'erro', texto: data.error || 'Falha ao salvar usuário.' });
-        return;
-      }
-
-      if (userForm.id) {
-        setUsersList((prev) =>
-          prev.map((u) =>
-            u.id === userForm.id
-              ? {
-                  ...u,
-                  name: userForm.name,
-                  email: userForm.email,
-                  role: userForm.role,
-                  manager_user_id: userForm.managerUserId || null,
-                }
-              : u
-          )
-        );
-        setUserMessage({ tipo: 'ok', texto: 'Usuário atualizado com sucesso!' });
-      } else if (data.user) {
-        setUsersList((prev) => [...prev, data.user]);
-        setUserMessage({ tipo: 'ok', texto: 'Novo usuário cadastrado com sucesso!' });
-      } else {
-        setUserMessage({ tipo: 'ok', texto: 'Usuário salvo com sucesso!' });
-      }
-      resetUserForm();
-    } catch {
-      setUserMessage({ tipo: 'erro', texto: 'Erro de comunicação ao salvar usuário.' });
-    } finally {
-      setSavingUser(false);
-    }
-  }
-
-  async function togglePartnerUser(userId: string, isActive: boolean) {
-    setSavingUser(true);
-    setUserMessage(null);
-
-    try {
-      const res = await fetch(`/api/admin/parceiros/${partner.id}/usuarios`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId,
-          isActive: !isActive,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-
-      if (res.ok) {
-        setUsersList((prev) =>
-          prev.map((u) => (u.id === userId ? { ...u, is_active: !isActive } : u))
-        );
-        setUserMessage({ tipo: 'ok', texto: `Status do usuário alterado para ${!isActive ? 'Ativo' : 'Inativo'}.` });
-      } else {
-        setUserMessage({ tipo: 'erro', texto: data.error || 'Falha ao atualizar status do usuário.' });
-      }
-    } catch {
-      setUserMessage({ tipo: 'erro', texto: 'Erro de conexão ao alterar status.' });
-    } finally {
-      setSavingUser(false);
-    }
-  }
-
-  async function sendUserInvite(userId: string) {
-    setSavingUser(true);
-    setUserMessage(null);
-
-    try {
-      const res = await fetch(`/api/admin/parceiros/${partner.id}/usuarios/convite`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId }),
-      });
-      const data = await res.json().catch(() => ({}));
-
-      if (res.ok) {
-        setUserMessage({ tipo: 'ok', texto: 'Convite de acesso reenviado por e-mail com sucesso!' });
-      } else {
-        setUserMessage({ tipo: 'erro', texto: data.error || 'Falha ao enviar convite por e-mail.' });
-      }
-    } catch {
-      setUserMessage({ tipo: 'erro', texto: 'Erro de conexão ao enviar convite.' });
-    } finally {
-      setSavingUser(false);
-    }
-  }
-
   // Manipuladores de Links
   async function createLink(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -561,18 +471,17 @@ export default function PartnerWhiteLabelClient({
 
   const activeStatusCfg = STATUS_CONFIG[partnerState.status] || STATUS_CONFIG.pending;
   const StatusIcon = activeStatusCfg.icon;
-
   const currentCorretora = corretoras.find((c) => c.id === partnerState.corretora_id);
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Breadcrumb e Top Header */}
+      {/* Breadcrumb e Cabeçalho Principal */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between border-b border-gray-200 pb-5">
         <div>
           <div className="flex items-center gap-2 text-xs font-semibold text-gray-500 mb-1">
             <Link href="/admin/parceiros" className="hover:text-primary transition-colors flex items-center gap-1">
               <ArrowLeft className="w-3.5 h-3.5" />
-              Parceiros
+              Parceiros & Vendedores
             </Link>
             <span>/</span>
             <span className="text-gray-900 truncate max-w-xs">{partnerState.razao_social}</span>
@@ -589,7 +498,7 @@ export default function PartnerWhiteLabelClient({
             </span>
           </div>
           <p className="text-sm text-gray-500 mt-0.5">
-            {partnerState.person_type === 'pf' ? 'Pessoa Física' : 'Pessoa Jurídica'} · Documento:{' '}
+            {partnerState.person_type === 'pf' ? 'Pessoa Física (Corretor Autônomo)' : 'Pessoa Jurídica'} · Documento:{' '}
             <span className="font-medium text-gray-700">
               {maskCpfCnpj(partnerState.person_type === 'pf' ? partnerState.cpf : partnerState.cnpj) || 'Não informado'}
             </span>
@@ -603,10 +512,10 @@ export default function PartnerWhiteLabelClient({
           </p>
         </div>
 
-        {/* Resumo Rápido em Pill Cards */}
+        {/* Resumo Rápido em Cards */}
         <div className="flex flex-wrap gap-2 text-xs">
           <div className="rounded-xl border border-gray-200 bg-white px-3.5 py-2 shadow-sm">
-            <span className="text-gray-500 block text-[10px] font-semibold uppercase">E-mail</span>
+            <span className="text-gray-500 block text-[10px] font-semibold uppercase">E-mail / Login</span>
             <span className="font-bold text-gray-900 truncate max-w-[180px] block">{partnerState.email}</span>
           </div>
           <div className="rounded-xl border border-gray-200 bg-white px-3.5 py-2 shadow-sm">
@@ -614,13 +523,13 @@ export default function PartnerWhiteLabelClient({
             <span className="font-bold text-gray-900 block">{maskPhone(partnerState.phone) || '-'}</span>
           </div>
           <div className="rounded-xl border border-gray-200 bg-white px-3.5 py-2 shadow-sm">
-            <span className="text-gray-500 block text-[10px] font-semibold uppercase">Slug White-Label</span>
-            <span className="font-bold text-primary block">{brandingForm.slug || '-'}</span>
+            <span className="text-gray-500 block text-[10px] font-semibold uppercase">Função</span>
+            <span className="font-bold text-primary block">{ROLE_LABEL[cadastroForm.role]}</span>
           </div>
         </div>
       </div>
 
-      {/* Navegação por Abas */}
+      {/* Navegação por 4 Abas com Acesso Unificado na Aba 1 */}
       <div className="flex overflow-x-auto no-scrollbar border-b border-gray-200 gap-2">
         <button
           type="button"
@@ -632,7 +541,7 @@ export default function PartnerWhiteLabelClient({
           }`}
         >
           <Building2 className="w-4 h-4" />
-          Dados Cadastrais
+          Dados Cadastrais & Acesso
         </button>
 
         <button
@@ -666,22 +575,6 @@ export default function PartnerWhiteLabelClient({
 
         <button
           type="button"
-          onClick={() => setActiveTab('equipe')}
-          className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
-            activeTab === 'equipe'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-gray-500 hover:text-gray-900 hover:border-gray-300'
-          }`}
-        >
-          <Users className="w-4 h-4" />
-          Equipe & Acessos
-          <span className="ml-1 rounded-full bg-gray-100 text-gray-700 px-2 py-0.5 text-xs font-bold">
-            {usersList.length}
-          </span>
-        </button>
-
-        <button
-          type="button"
           onClick={() => setActiveTab('links')}
           className={`flex items-center gap-2 px-4 py-3 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap ${
             activeTab === 'links'
@@ -697,14 +590,14 @@ export default function PartnerWhiteLabelClient({
         </button>
       </div>
 
-      {/* Conteúdo da Aba 1: Dados Cadastrais */}
+      {/* Conteúdo da Aba 1: Dados Cadastrais & Acesso ao Portal */}
       {activeTab === 'cadastro' && (
-        <div className="card space-y-6">
+        <div className="card space-y-7">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-gray-100 pb-4">
             <div>
-              <h2 className="text-lg font-black text-gray-900">Informações Cadastrais do Parceiro</h2>
+              <h2 className="text-lg font-black text-gray-900">Cadastro e Credenciais do Vendedor/Gestor</h2>
               <p className="text-sm text-gray-500 mt-0.5">
-                Altere os dados fiscais, operacionais, contato e endereço comercial do parceiro.
+                Altere os dados de identificação, contato, endereço e gerencie o login de acesso ao portal em um só lugar.
               </p>
             </div>
             {!canManageConfig && (
@@ -714,10 +607,10 @@ export default function PartnerWhiteLabelClient({
             )}
           </div>
 
-          <form onSubmit={saveCadastro} className="space-y-6">
-            {/* Bloco 1: Identificação e Documentos */}
+          <form onSubmit={saveCadastro} className="space-y-7">
+            {/* Bloco 1: Identificação Principal */}
             <div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">1. Identificação Principal</h3>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">1. Identificação</h3>
               <div className="grid gap-4 md:grid-cols-3">
                 <label className="block">
                   <span className="field-label">Tipo de Pessoa</span>
@@ -749,7 +642,7 @@ export default function PartnerWhiteLabelClient({
                 </label>
 
                 <label className="block">
-                  <span className="field-label">Nome Fantasia</span>
+                  <span className="field-label">Nome Fantasia / Apelido Comercial</span>
                   <input
                     className="form-input"
                     value={cadastroForm.nome_fantasia}
@@ -781,7 +674,7 @@ export default function PartnerWhiteLabelClient({
                     disabled={!canManageConfig}
                     onChange={(e) => setCadastroField('status', e.target.value)}
                   >
-                    <option value="active">Ativo (Habilitado para cotações e acessos)</option>
+                    <option value="active">Ativo (Habilitado para vendas)</option>
                     <option value="pending">Pendente (Aguardando aprovação)</option>
                     <option value="suspended">Suspenso (Bloqueado temporariamente)</option>
                   </select>
@@ -789,12 +682,12 @@ export default function PartnerWhiteLabelClient({
               </div>
             </div>
 
-            {/* Bloco 2: Contato & Corretora Mãe */}
+            {/* Bloco 2: Contato & Vínculo com a Corretora Mãe */}
             <div className="border-t border-gray-100 pt-5">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">2. Contato & Vínculo</h3>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3">2. Contato & Corretora Mãe</h3>
               <div className="grid gap-4 md:grid-cols-3">
                 <label className="block">
-                  <span className="field-label">E-mail Operacional *</span>
+                  <span className="field-label">E-mail Comercial (Login de Acesso) *</span>
                   <input
                     type="email"
                     className="form-input"
@@ -803,6 +696,9 @@ export default function PartnerWhiteLabelClient({
                     onChange={(e) => setCadastroField('email', e.target.value)}
                     required
                   />
+                  <span className="text-[11px] text-gray-400 mt-1 block">
+                    Este e-mail é utilizado para login no portal.
+                  </span>
                 </label>
 
                 <label className="block">
@@ -841,7 +737,7 @@ export default function PartnerWhiteLabelClient({
                 {loadingCep && (
                   <span className="text-xs font-semibold text-primary flex items-center gap-1">
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    Consultando CEP...
+                    Consultando CEP no ViaCEP...
                   </span>
                 )}
               </div>
@@ -928,7 +824,138 @@ export default function PartnerWhiteLabelClient({
               </div>
             </div>
 
-            {/* Feedback & Botão Salvar */}
+            {/* Bloco 4: Acesso ao Portal (Vendedor / Gestor) */}
+            <div className="border-t border-gray-100 pt-5">
+              <div className="rounded-2xl border border-gray-200 bg-gray-50/60 p-5 space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-gray-200/80 pb-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <KeyRound className="w-4 h-4 text-primary" />
+                      <h3 className="text-sm font-bold text-gray-900">Credenciais de Acesso ao Portal</h3>
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border ${
+                          cadastroForm.user_is_active
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : 'bg-gray-100 text-gray-600 border-gray-200'
+                        }`}
+                      >
+                        {cadastroForm.user_is_active ? 'Login Ativo' : 'Login Inativo'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Último acesso ao portal:{' '}
+                      <span className="font-medium text-gray-700">
+                        {partnerUserState.last_login_at
+                          ? formatDateTime(partnerUserState.last_login_at)
+                          : 'Nunca acessou o portal'}
+                      </span>
+                    </p>
+                  </div>
+
+                  {canManageConfig && (
+                    <button
+                      type="button"
+                      disabled={sendingInvite || !cadastroForm.user_is_active}
+                      onClick={handleSendInvite}
+                      className="btn-outline text-xs px-3 py-2 flex items-center gap-1.5 shadow-sm bg-white"
+                    >
+                      {sendingInvite ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          Enviando...
+                        </>
+                      ) : (
+                        <>
+                          <Mail className="w-3.5 h-3.5 text-primary" />
+                          Enviar Convite por E-mail
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+
+                {inviteFeedback && (
+                  <div
+                    className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
+                      inviteFeedback.tipo === 'ok'
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : 'bg-rose-50 text-rose-800 border-rose-200'
+                    }`}
+                  >
+                    {inviteFeedback.tipo === 'ok' ? (
+                      <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+                    ) : (
+                      <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    )}
+                    <span>{inviteFeedback.texto}</span>
+                  </div>
+                )}
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <label className="block">
+                    <span className="field-label">Papel na Corretora</span>
+                    <select
+                      className="form-input bg-white"
+                      value={cadastroForm.role}
+                      disabled={!canManageConfig}
+                      onChange={(e) =>
+                        setCadastroField('role', e.target.value as PartnerUserRow['role'])
+                      }
+                    >
+                      <option value="broker">Vendedor / Corretor (Cotações & Vendas)</option>
+                      <option value="manager">Gestor Comercial (Supervisão da Carteira)</option>
+                      <option value="director">Diretor Geral da Operação</option>
+                      <option value="partner">Parceiro (Somente Leitura)</option>
+                    </select>
+                  </label>
+
+                  <label className="block">
+                    <span className="field-label">Gestor Responsável na Corretora</span>
+                    <select
+                      className="form-input bg-white"
+                      value={cadastroForm.manager_user_id}
+                      disabled={!canManageConfig || cadastroForm.role === 'director' || cadastroForm.role === 'manager'}
+                      onChange={(e) => setCadastroField('manager_user_id', e.target.value)}
+                    >
+                      <option value="">Sem vínculo com gestor (Direto à diretoria)</option>
+                      {managers.map((mgr) => (
+                        <option key={mgr.id} value={mgr.id}>
+                          {mgr.name} · {ROLE_LABEL[mgr.role as PartnerUserRow['role']] || mgr.role}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="block">
+                    <span className="field-label">Definir / Trocar Senha</span>
+                    <input
+                      type="password"
+                      minLength={8}
+                      className="form-input bg-white"
+                      value={cadastroForm.password}
+                      disabled={!canManageConfig}
+                      onChange={(e) => setCadastroField('password', e.target.value)}
+                      placeholder="Deixe vazio para não alterar"
+                    />
+                  </label>
+                </div>
+
+                <div className="flex items-center gap-3 pt-1">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={cadastroForm.user_is_active}
+                      disabled={!canManageConfig}
+                      onChange={(e) => setCadastroField('user_is_active', e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                    />
+                    Permitir que este vendedor/gestor acesse o portal com login e senha
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Feedback & Botão Salvar Geral */}
             {cadastroFeedback && (
               <div
                 className={`p-4 rounded-xl border text-sm flex items-center gap-2 ${
@@ -947,11 +974,11 @@ export default function PartnerWhiteLabelClient({
             )}
 
             {canManageConfig && (
-              <div className="flex justify-end pt-2 border-t border-gray-100">
+              <div className="flex justify-end pt-3 border-t border-gray-100">
                 <button
                   type="submit"
                   disabled={savingCadastro}
-                  className="btn-primary px-6 py-2.5 flex items-center gap-2"
+                  className="btn-primary px-7 py-3 flex items-center gap-2 text-sm font-bold shadow-sm"
                 >
                   {savingCadastro ? (
                     <>
@@ -961,7 +988,7 @@ export default function PartnerWhiteLabelClient({
                   ) : (
                     <>
                       <Save className="w-4 h-4" />
-                      Salvar Dados Cadastrais
+                      Salvar Dados e Acesso
                     </>
                   )}
                 </button>
@@ -979,7 +1006,7 @@ export default function PartnerWhiteLabelClient({
               <div>
                 <h2 className="text-lg font-black text-gray-900">White-Label & Identidade Visual</h2>
                 <p className="text-sm text-gray-500 mt-0.5">
-                  Personalize a interface, cores, domínios e textos institucionais exibidos para os clientes deste parceiro.
+                  Personalize a interface, cores, domínios e textos institucionais exibidos para os clientes deste vendedor/gestor.
                 </p>
               </div>
 
@@ -1220,8 +1247,8 @@ export default function PartnerWhiteLabelClient({
             <div>
               <h2 className="text-lg font-black text-gray-900">Produtos Habilitados</h2>
               <p className="mt-0.5 text-sm text-gray-500">
-                Selecione os produtos que esta operação tem permissão para vender e cotar. Produtos desmarcados não aparecem
-                na tela de nova cotação dos corretores.
+                Selecione os produtos que este corretor/vendedor tem permissão para cotar e emitir. Produtos desmarcados não aparecem
+                na tela de nova cotação.
               </p>
             </div>
             <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-gray-100 text-gray-700">
@@ -1333,228 +1360,7 @@ export default function PartnerWhiteLabelClient({
         </div>
       )}
 
-      {/* Conteúdo da Aba 4: Equipe & Níveis de Acesso */}
-      {activeTab === 'equipe' && (
-        <div className="card space-y-6">
-          <div>
-            <h2 className="text-lg font-black text-gray-900">Equipe e Níveis de Acesso</h2>
-            <p className="mt-0.5 text-sm text-gray-500">
-              Diretores visualizam toda a produção do parceiro. Gestores acompanham sua carteira e os corretores vinculados.
-              Corretores e Parceiros acessam apenas suas próprias cotações.
-            </p>
-          </div>
-
-          {/* Formulário de Criação/Edição de Usuário */}
-          <form onSubmit={savePartnerUser} className="rounded-2xl border border-gray-200 bg-gray-50/50 p-5 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-gray-900">
-                {userForm.id ? 'Editar Usuário da Equipe' : 'Cadastrar Novo Usuário'}
-              </h3>
-              {userForm.id && (
-                <button
-                  type="button"
-                  onClick={resetUserForm}
-                  className="text-xs font-semibold text-gray-500 hover:text-gray-900 underline"
-                >
-                  Cancelar edição
-                </button>
-              )}
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-3">
-              <label className="block">
-                <span className="field-label">Nome Completo *</span>
-                <input
-                  className="form-input bg-white"
-                  value={userForm.name}
-                  onChange={(e) => setUserField('name', e.target.value)}
-                  required
-                />
-              </label>
-
-              <label className="block">
-                <span className="field-label">E-mail de Acesso *</span>
-                <input
-                  type="email"
-                  className="form-input bg-white"
-                  value={userForm.email}
-                  onChange={(e) => setUserField('email', e.target.value)}
-                  required
-                />
-              </label>
-
-              <label className="block">
-                <span className="field-label">Senha {userForm.id ? '(opcional na edição)' : '*'}</span>
-                <input
-                  type="password"
-                  minLength={userForm.id ? 0 : 8}
-                  className="form-input bg-white"
-                  value={userForm.password}
-                  onChange={(e) => setUserField('password', e.target.value)}
-                  placeholder={userForm.id ? 'Deixe vazio para manter' : 'Mínimo 8 caracteres'}
-                  required={!userForm.id}
-                />
-              </label>
-
-              <label className="block">
-                <span className="field-label">Papel / Função</span>
-                <select
-                  className="form-input bg-white"
-                  value={userForm.role}
-                  onChange={(e) => setUserField('role', e.target.value as PartnerUserRow['role'])}
-                >
-                  <option value="director">Diretor (Acesso Total à Operação)</option>
-                  <option value="manager">Gestor (Acesso a Equipe de Corretores)</option>
-                  <option value="broker">Corretor (Vendas & Cotações)</option>
-                  <option value="partner">Parceiro (Visualizador)</option>
-                </select>
-              </label>
-
-              <label className="block md:col-span-2">
-                <span className="field-label">Gestor Responsável</span>
-                <select
-                  className="form-input bg-white"
-                  value={userForm.managerUserId}
-                  onChange={(e) => setUserField('managerUserId', e.target.value)}
-                  disabled={userForm.role === 'director'}
-                >
-                  <option value="">Sem vínculo hierárquico (Direto à diretoria)</option>
-                  {availableManagers
-                    .filter((u) => u.id !== userForm.id)
-                    .map((mgr) => (
-                      <option key={mgr.id} value={mgr.id}>
-                        {mgr.name} · {ROLE_LABEL[mgr.role]} ({mgr.email})
-                      </option>
-                    ))}
-                </select>
-              </label>
-            </div>
-
-            {userMessage && (
-              <div
-                className={`p-3 rounded-xl border text-sm flex items-center gap-2 ${
-                  userMessage.tipo === 'ok'
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                    : 'bg-rose-50 text-rose-800 border-rose-200'
-                }`}
-              >
-                {userMessage.tipo === 'ok' ? (
-                  <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-                ) : (
-                  <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                )}
-                <span>{userMessage.texto}</span>
-              </div>
-            )}
-
-            <div className="flex justify-end gap-2 pt-1">
-              <button
-                type="submit"
-                disabled={savingUser}
-                className="btn-primary px-6 py-2.5 flex items-center gap-2"
-              >
-                {savingUser ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Salvando usuário...
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-4 h-4" />
-                    {userForm.id ? 'Salvar Alterações' : 'Adicionar Usuário'}
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
-
-          {/* Tabela de Membros da Equipe */}
-          <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
-            <table className="w-full min-w-[760px] text-left text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-500 uppercase tracking-wider">
-                <tr>
-                  <th className="px-5 py-3">Nome & E-mail</th>
-                  <th className="px-5 py-3">Papel</th>
-                  <th className="px-5 py-3">Gestor</th>
-                  <th className="px-5 py-3">Status</th>
-                  <th className="px-5 py-3">Último Acesso</th>
-                  <th className="px-5 py-3 text-right">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {usersList.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-5 py-10 text-center text-gray-400">
-                      Nenhum usuário cadastrado para este parceiro.
-                    </td>
-                  </tr>
-                ) : (
-                  usersList.map((teamUser) => {
-                    const manager = usersList.find((item) => item.id === teamUser.manager_user_id);
-                    return (
-                      <tr key={teamUser.id} className="hover:bg-gray-50/50 transition-colors">
-                        <td className="px-5 py-3.5">
-                          <div className="font-bold text-gray-900">{teamUser.name}</div>
-                          <div className="text-xs text-gray-500">{teamUser.email}</div>
-                        </td>
-                        <td className="px-5 py-3.5">
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-gray-100 text-gray-800">
-                            {ROLE_LABEL[teamUser.role]}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5 text-xs text-gray-600">{manager ? manager.name : '-'}</td>
-                        <td className="px-5 py-3.5">
-                          <span
-                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold border ${
-                              teamUser.is_active
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : 'bg-gray-100 text-gray-500 border-gray-200'
-                            }`}
-                          >
-                            {teamUser.is_active ? 'Ativo' : 'Inativo'}
-                          </span>
-                        </td>
-                        <td className="px-5 py-3.5 text-xs text-gray-500">
-                          {teamUser.last_login_at ? formatDateTime(teamUser.last_login_at) : 'Nunca acessou'}
-                        </td>
-                        <td className="px-5 py-3.5 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => startEditUser(teamUser)}
-                              className="btn-outline text-xs px-2.5 py-1 min-h-0"
-                            >
-                              Editar
-                            </button>
-                            {teamUser.is_active && (
-                              <button
-                                type="button"
-                                onClick={() => sendUserInvite(teamUser.id)}
-                                className="btn-outline text-xs px-2.5 py-1 min-h-0"
-                              >
-                                Convite
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => togglePartnerUser(teamUser.id, teamUser.is_active)}
-                              className="btn-outline text-xs px-2.5 py-1 min-h-0"
-                            >
-                              {teamUser.is_active ? 'Desativar' : 'Ativar'}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {/* Conteúdo da Aba 5: Links de Venda */}
+      {/* Conteúdo da Aba 4: Links de Venda */}
       {activeTab === 'links' && (
         <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
           {/* Formulário de Geração */}
@@ -1562,7 +1368,7 @@ export default function PartnerWhiteLabelClient({
             <div>
               <h2 className="text-lg font-black text-gray-900">Gerar Link de Venda Pública</h2>
               <p className="text-sm text-gray-500 mt-0.5">
-                Crie links compartilháveis para clientes contratarem diretamente ou para vendas internas.
+                Crie links compartilháveis para clientes contratarem diretamente com a referência deste corretor/vendedor.
               </p>
             </div>
 
@@ -1598,8 +1404,7 @@ export default function PartnerWhiteLabelClient({
                 <select
                   className="form-input"
                   value={linkFlowType}
-                  onChange={(e) => setLinkFlowType(e.target.value as 'external' | 'internal')}
-                >
+                  onChange={(e) => setLinkFlowType(e.target.value as 'external' | 'internal')}>
                   <option value="external">Venda externa (Autoatendimento do cliente)</option>
                   <option value="internal">Venda interna (Corretor assistido)</option>
                 </select>
@@ -1687,7 +1492,7 @@ export default function PartnerWhiteLabelClient({
           <div className="card space-y-4">
             <div>
               <h2 className="text-lg font-black text-gray-900">Links Existentes</h2>
-              <p className="text-xs text-gray-500 mt-0.5">Histórico de tokens gerados para este parceiro.</p>
+              <p className="text-xs text-gray-500 mt-0.5">Histórico de links gerados para este vendedor.</p>
             </div>
 
             <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
