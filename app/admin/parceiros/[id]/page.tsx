@@ -38,6 +38,12 @@ interface PartnerUserRow {
   created_at: string;
 }
 
+interface CorretoraOption {
+  id: string;
+  razao_social: string;
+  nome_fantasia: string;
+}
+
 export default async function PartnerDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const user = await verifyAdminAuth();
   if (!user) redirect('/login');
@@ -46,13 +52,35 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
   await ensureSchema();
 
   const [partner] = await sql`
-    SELECT id, razao_social, nome_fantasia, email, phone, status, metadata, created_at
-    FROM partners
-    WHERE id = ${id}
+    SELECT
+      p.id,
+      p.razao_social,
+      p.nome_fantasia,
+      p.cnpj,
+      p.cpf,
+      p.person_type,
+      p.email,
+      p.phone,
+      p.address,
+      p.status,
+      p.corretora_id,
+      c.nome_fantasia AS corretora_nome,
+      p.metadata,
+      p.created_at,
+      p.updated_at
+    FROM partners p
+    LEFT JOIN corretoras c ON c.id = p.corretora_id
+    WHERE p.id = ${id}
     LIMIT 1
   `;
 
   if (!partner) redirect('/admin/parceiros');
+
+  const corretoras = await sql<CorretoraOption[]>`
+    SELECT id, razao_social, nome_fantasia
+    FROM corretoras
+    ORDER BY nome_fantasia ASC
+  `;
 
   const products = await sql<ProductRow[]>`
     SELECT
@@ -114,12 +142,20 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
         id: partner.id,
         razao_social: partner.razao_social,
         nome_fantasia: partner.nome_fantasia,
+        cnpj: partner.cnpj,
+        cpf: partner.cpf,
+        person_type: partner.person_type || 'pj',
         email: partner.email,
         phone: partner.phone,
+        address: partner.address || {},
         status: partner.status,
+        corretora_id: partner.corretora_id,
+        corretora_nome: partner.corretora_nome,
         created_at: partner.created_at,
+        updated_at: partner.updated_at,
         whiteLabel: getWhiteLabelConfig(partner.metadata),
       }}
+      corretoras={corretoras}
       products={products}
       links={links}
       partnerUsers={partnerUsers}
