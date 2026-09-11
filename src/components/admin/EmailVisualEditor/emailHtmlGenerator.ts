@@ -60,7 +60,7 @@ export function generateEmailHtml(design: EmailDesign): string {
         <tr>
         <td align="center" valign="top" width="${contentWidth}">
         <![endif]-->
-        <table role="presentation" class="email-container" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: ${contentWidth}px; background-color: ${bgContent}; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+        <table role="presentation" class="email-container" data-email-container="true" border="0" cellpadding="0" cellspacing="0" width="100%" style="max-width: ${contentWidth}px; background-color: ${bgContent}; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
           ${renderedSections}
         </table>
         <!--[if (gte mso 9)|(IE)]>
@@ -124,7 +124,7 @@ function renderSection(
     const colBlocks = col.blocks.map((b) => renderBlock(b, fontFamily, defaultTextColor, linkColor)).join('\n');
     columnsHtml = `
       <tr>
-        <td style="${colBlocks ? '' : 'padding: 10px;'} font-family: ${fontFamily};">
+        <td data-col-id="${col.id}" style="${colBlocks ? '' : 'padding: 10px;'} font-family: ${fontFamily};">
           ${colBlocks}
         </td>
       </tr>`;
@@ -140,7 +140,7 @@ function renderSection(
       return `<!--[if (gte mso 9)|(IE)]>
         <td align="left" valign="${vAlign}" width="${colWidthPx}" style="${colPadding}">
         <![endif]-->
-        <div class="email-column" style="display: inline-block; width: 100%; max-width: ${colWidthPx}px; vertical-align: ${vAlign}; box-sizing: border-box;">
+        <div class="email-column" data-col-id="${col.id}" style="display: inline-block; width: 100%; max-width: ${colWidthPx}px; vertical-align: ${vAlign}; box-sizing: border-box;">
           <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="${colBg}">
             <tr>
               <td style="${colPadding} font-family: ${fontFamily};" class="email-column-padding">
@@ -172,7 +172,7 @@ function renderSection(
 
   return `
     <!-- Seção: ${section.type} -->
-    <tr>
+    <tr data-section-id="${section.id}" data-section-type="${section.type}">
       <td align="center" valign="top" style="${bg} padding: ${pt}px ${pr}px ${pb}px ${pl}px; ${borderRadius} ${border}">
         <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
           ${columnsHtml}
@@ -202,9 +202,9 @@ function renderBlock(
       const lineHeight = data.lineHeight ? `${data.lineHeight}` : '1.5';
 
       return `
-        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-top: ${mt}px; margin-bottom: ${mb}px; ${blockBg} ${blockPad}">
+        <table role="presentation" data-block-id="${block.id}" data-block-type="${content.type}" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-top: ${mt}px; margin-bottom: ${mb}px; ${blockBg} ${blockPad}">
           <tr>
-            <td align="${align}" style="font-family: ${fontFamily}; font-size: ${fontSize}; line-height: ${lineHeight}; color: ${color}; text-align: ${align}; word-break: break-word;">
+            <td align="${align}" data-text-cell="true" style="font-family: ${fontFamily}; font-size: ${fontSize}; line-height: ${lineHeight}; color: ${color}; text-align: ${align}; word-break: break-word;">
               ${data.html}
             </td>
           </tr>
@@ -225,14 +225,14 @@ function renderBlock(
       const text = data.text || 'Clique Aqui';
 
       return `
-        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-top: ${mt}px; margin-bottom: ${mb}px; ${blockBg} ${blockPad}">
+        <table role="presentation" data-block-id="${block.id}" data-block-type="${content.type}" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-top: ${mt}px; margin-bottom: ${mb}px; ${blockBg} ${blockPad}">
           <tr>
             <td align="${align}">
               <!-- Bulletproof Button -->
               <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="${fullWidth ? 'width: 100%;' : ''}">
                 <tr>
-                  <td align="center" bgcolor="${btnBg}" style="${radiusCss} background-color: ${btnBg};">
-                    <a href="${url}" target="_blank" style="font-family: ${fontFamily}; font-size: ${fontSize}; font-weight: 600; color: ${btnColor}; text-decoration: none; display: block; padding: ${padY}px ${padX}px; ${radiusCss} background-color: ${btnBg}; border: 1px solid ${btnBg};">
+                  <td align="center" bgcolor="${btnBg}" data-button-cell="true" style="${radiusCss} background-color: ${btnBg};">
+                    <a href="${url}" target="_blank" data-button-link="true" style="font-family: ${fontFamily}; font-size: ${fontSize}; font-weight: 600; color: ${btnColor}; text-decoration: none; display: block; padding: ${padY}px ${padX}px; ${radiusCss} background-color: ${btnBg}; border: 1px solid ${btnBg};">
                       ${text}
                     </a>
                   </td>
@@ -252,10 +252,10 @@ function renderBlock(
       const widthVal = data.width ? (typeof data.width === 'number' ? `${data.width}px` : data.width) : '100%';
       const radiusCss = getBorderRadiusCss(data);
 
-      const imgTag = `<img src="${src}" alt="${alt}" style="display: block; max-width: 100%; width: ${widthVal}; height: auto; border: 0; outline: none; text-decoration: none; ${radiusCss}" class="mobile-full-width" />`;
+      const imgTag = `<img src="${src}" alt="${alt}" data-image-el="true" style="display: block; max-width: 100%; width: ${widthVal}; height: auto; border: 0; outline: none; text-decoration: none; ${radiusCss}" class="mobile-full-width" />`;
 
       return `
-        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-top: ${mt}px; margin-bottom: ${mb}px; ${blockBg} ${blockPad}">
+        <table role="presentation" data-block-id="${block.id}" data-block-type="${content.type}" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-top: ${mt}px; margin-bottom: ${mb}px; ${blockBg} ${blockPad}">
           <tr>
             <td align="${align}">
               ${url ? `<a href="${url}" target="_blank" style="text-decoration: none; display: inline-block;">${imgTag}</a>` : imgTag}
@@ -272,12 +272,12 @@ function renderBlock(
       const padY = data.paddingY ?? 10;
 
       return `
-        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-top: ${mt}px; margin-bottom: ${mb}px; ${blockBg}">
+        <table role="presentation" data-block-id="${block.id}" data-block-type="${content.type}" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-top: ${mt}px; margin-bottom: ${mb}px; ${blockBg}">
           <tr>
             <td style="padding: ${padY}px 0;">
               <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%">
                 <tr>
-                  <td height="${height}" style="border-top: ${height}px ${style} ${color}; font-size: 1px; line-height: 1px;">&nbsp;</td>
+                  <td height="${height}" data-divider-line="true" style="border-top: ${height}px ${style} ${color}; font-size: 1px; line-height: 1px;">&nbsp;</td>
                 </tr>
               </table>
             </td>
@@ -290,9 +290,9 @@ function renderBlock(
       const height = data.height || 20;
 
       return `
-        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="${blockBg}">
+        <table role="presentation" data-block-id="${block.id}" data-block-type="${content.type}" border="0" cellpadding="0" cellspacing="0" width="100%" style="${blockBg}">
           <tr>
-            <td height="${height}" style="font-size: 1px; line-height: ${height}px; height: ${height}px;">&nbsp;</td>
+            <td height="${height}" data-spacer-cell="true" style="font-size: 1px; line-height: ${height}px; height: ${height}px;">&nbsp;</td>
           </tr>
         </table>`;
     }
@@ -329,7 +329,7 @@ function renderBlock(
         .join('');
 
       return `
-        <table role="presentation" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-top: ${mt}px; margin-bottom: ${mb}px; border: 1px solid ${borderColor}; border-collapse: collapse; ${blockBg}">
+        <table role="presentation" data-block-id="${block.id}" data-block-type="${content.type}" data-table-el="true" border="0" cellpadding="0" cellspacing="0" width="100%" style="margin-top: ${mt}px; margin-bottom: ${mb}px; border: 1px solid ${borderColor}; border-collapse: collapse; ${blockBg}">
           <thead>
             <tr>${ths}</tr>
           </thead>
@@ -342,7 +342,7 @@ function renderBlock(
     case 'html': {
       const data = content.data;
       return `
-        <div style="margin-top: ${mt}px; margin-bottom: ${mb}px; ${blockBg} ${blockPad}">
+        <div data-block-id="${block.id}" data-block-type="${content.type}" data-html-block="true" style="margin-top: ${mt}px; margin-bottom: ${mb}px; ${blockBg} ${blockPad}">
           ${data.rawHtml || ''}
         </div>`;
     }

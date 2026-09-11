@@ -53,6 +53,7 @@ import {
   HtmlBlockContent
 } from './types';
 import { generateEmailHtml } from './emailHtmlGenerator';
+import { syncHtmlToEmailDesign } from './emailHtmlParser';
 import { createBlankDesign, STARTER_TEMPLATES } from './defaultTemplates';
 import styles from './EmailVisualEditor.module.css';
 
@@ -369,12 +370,41 @@ export function EmailVisualEditor({
         console.warn('Erro ao parsear initialDesignJson:', e);
       }
     }
+    if (initialHtml) {
+      try {
+        return syncHtmlToEmailDesign(initialHtml);
+      } catch (e) {
+        console.warn('Erro ao sincronizar initialHtml no carregamento inicial:', e);
+      }
+    }
     return createBlankDesign();
   });
 
   // Histórico para Desfazer (Undo)
   const [history, setHistory] = useState<EmailDesign[]>([]);
   const isInternalUpdate = useRef(false);
+
+  // Sincronização reativa quando initialDesignJson mudar no componente pai
+  useEffect(() => {
+    if (isInternalUpdate.current) {
+      isInternalUpdate.current = false;
+      return;
+    }
+    if (!initialDesignJson) return;
+    try {
+      const parsed = JSON.parse(initialDesignJson);
+      if (parsed && parsed.sections) {
+        setDesign((current) => {
+          if (JSON.stringify(parsed) !== JSON.stringify(current)) {
+            return parsed;
+          }
+          return current;
+        });
+      }
+    } catch (e) {
+      console.warn('Erro ao sincronizar initialDesignJson:', e);
+    }
+  }, [initialDesignJson]);
 
   // Elemento / Seção selecionada
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
@@ -397,6 +427,7 @@ export function EmailVisualEditor({
     setDesign(newDesign);
     const html = generateEmailHtml(newDesign);
     const jsonStr = JSON.stringify(newDesign);
+    isInternalUpdate.current = true;
     onChange(html, jsonStr);
   };
 
@@ -406,14 +437,10 @@ export function EmailVisualEditor({
     setHistory((prev) => prev.slice(0, -1));
     setDesign(previous);
     const html = generateEmailHtml(previous);
-    onChange(html, JSON.stringify(previous));
+    const jsonStr = JSON.stringify(previous);
+    isInternalUpdate.current = true;
+    onChange(html, jsonStr);
   };
-
-  // Inicializar emissão no primeiro render
-  useEffect(() => {
-    const html = generateEmailHtml(design);
-    onChange(html, JSON.stringify(design));
-  }, []);
 
   // --- SELEÇÃO ---
   const handleSelectSection = (e: React.MouseEvent, secId: string) => {
@@ -1389,17 +1416,80 @@ export function EmailVisualEditor({
                   </div>
                 </div>
 
-                {/* TEXTO (Editor Clássico Rico WYSIWYG) */}
+                {/* TEXTO (Editor Clássico Rico WYSIWYG + Controles Rápidos de Estilo) */}
                 {currentSelectedBlock.type === 'text' && (
-                  <div className={styles.formGroup}>
-                    <label className={styles.formLabel}>Editor de Texto Clássico</label>
-                    <RichTextEditorControl
-                      initialHtml={(currentSelectedBlock.content.data as TextBlockContent).html || ''}
-                      onChange={(newHtml) => updateSelectedBlockData('html', newHtml)}
-                      defaultColor={(currentSelectedBlock.content.data as TextBlockContent).color || design.globalStyles.textColor}
-                      defaultFontFamily={design.globalStyles.fontFamily}
-                    />
-                  </div>
+                  <>
+                    <div className={styles.formGroup}>
+                      <label className={styles.formLabel}>Cor do Texto</label>
+                      <div className={styles.colorPickerRow}>
+                        <input
+                          type="color"
+                          className={styles.colorInput}
+                          value={(currentSelectedBlock.content.data as TextBlockContent).color || design.globalStyles.textColor || '#1e293b'}
+                          onChange={(e) => updateSelectedBlockData('color', e.target.value)}
+                        />
+                        <input
+                          type="text"
+                          className={styles.formInput}
+                          value={(currentSelectedBlock.content.data as TextBlockContent).color || design.globalStyles.textColor || '#1e293b'}
+                          onChange={(e) => updateSelectedBlockData('color', e.target.value)}
+                          placeholder="#1e293b"
+                        />
+                      </div>
+                    </div>
+
+                    <div className={styles.formGroup}>
+                      <label className={styles.formLabel}>Tamanho da Fonte</label>
+                      <div className={styles.rangeRow}>
+                        <input
+                          type="range"
+                          min={12}
+                          max={36}
+                          step={1}
+                          className={styles.rangeInput}
+                          value={(currentSelectedBlock.content.data as TextBlockContent).fontSize ?? 15}
+                          onChange={(e) => updateSelectedBlockData('fontSize', parseInt(e.target.value))}
+                        />
+                        <span className={styles.rangeVal}>
+                          {(currentSelectedBlock.content.data as TextBlockContent).fontSize ?? 15}px
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className={styles.formGroup}>
+                      <label className={styles.formLabel}>Alinhamento do Texto</label>
+                      <div className={styles.segmentedControl}>
+                        {(['left', 'center', 'right', 'justify'] as const).map((align) => (
+                          <button
+                            key={align}
+                            type="button"
+                            className={`${styles.segmentedBtn} ${
+                              ((currentSelectedBlock!.content.data as TextBlockContent).align || 'left') === align
+                                ? styles.active
+                                : ''
+                            }`}
+                            onClick={() => updateSelectedBlockData('align', align)}
+                            title={`Alinhamento ${align}`}
+                          >
+                            {align === 'left' && <AlignLeft size={13} />}
+                            {align === 'center' && <AlignCenter size={13} />}
+                            {align === 'right' && <AlignRight size={13} />}
+                            {align === 'justify' && <AlignJustify size={13} />}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className={styles.formGroup}>
+                      <label className={styles.formLabel}>Editor de Texto Clássico</label>
+                      <RichTextEditorControl
+                        initialHtml={(currentSelectedBlock.content.data as TextBlockContent).html || ''}
+                        onChange={(newHtml) => updateSelectedBlockData('html', newHtml)}
+                        defaultColor={(currentSelectedBlock.content.data as TextBlockContent).color || design.globalStyles.textColor}
+                        defaultFontFamily={design.globalStyles.fontFamily}
+                      />
+                    </div>
+                  </>
                 )}
 
                 {/* BOTÃO */}

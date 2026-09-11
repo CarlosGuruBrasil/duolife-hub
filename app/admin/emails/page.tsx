@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import type { EmailTemplate, EmailDispatchLog } from '@/lib/email-service';
 import { EmailVisualEditor } from '@/components/admin/EmailVisualEditor/EmailVisualEditor';
+import { syncHtmlToEmailDesign } from '@/components/admin/EmailVisualEditor/emailHtmlParser';
 
 export default function AdminEmailsPage() {
   const [activeTab, setActiveTab] = useState<'templates' | 'logs'>('templates');
@@ -153,9 +154,7 @@ export default function AdminEmailsPage() {
     setFormCode('');
     setFormSubject('');
     setFormIsActive(true);
-    setFormDesignJson(null);
-    setEditorMode('visual');
-    setFormHtml(`<!DOCTYPE html>
+    const defaultHtml = `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
@@ -182,7 +181,15 @@ export default function AdminEmailsPage() {
     </div>
   </div>
 </body>
-</html>`);
+</html>`;
+    setFormHtml(defaultHtml);
+    try {
+      const initialDesign = syncHtmlToEmailDesign(defaultHtml);
+      setFormDesignJson(JSON.stringify(initialDesign));
+    } catch {
+      setFormDesignJson(null);
+    }
+    setEditorMode('visual');
     setIsEditorOpen(true);
     setError(null);
     setSuccess(null);
@@ -203,13 +210,38 @@ export default function AdminEmailsPage() {
       setFormDesignJson(jsonStr);
       setEditorMode('visual');
     } else {
-      setFormDesignJson(null);
-      setEditorMode('code');
+      try {
+        const reconciled = syncHtmlToEmailDesign(template.body_html);
+        setFormDesignJson(JSON.stringify(reconciled));
+        setEditorMode('visual');
+      } catch {
+        setFormDesignJson(null);
+        setEditorMode('code');
+      }
     }
 
     setIsEditorOpen(true);
     setError(null);
     setSuccess(null);
+  }
+
+  function handleSwitchEditorMode(mode: 'visual' | 'code') {
+    if (mode === 'visual') {
+      let currentDesignObj: any = null;
+      if (formDesignJson) {
+        try {
+          currentDesignObj = JSON.parse(formDesignJson);
+        } catch (e) {
+          console.warn('[AdminEmailsPage] Erro ao parsear formDesignJson existente:', e);
+        }
+      }
+      const reconciled = syncHtmlToEmailDesign(formHtml, currentDesignObj);
+      setFormDesignJson(JSON.stringify(reconciled));
+      setEditorMode('visual');
+    } else {
+      // Se for alternar para 'code', formHtml já contém a versão gerada pelo visual
+      setEditorMode('code');
+    }
   }
 
   function handleInsertVariable(varTag: string) {
@@ -651,7 +683,7 @@ export default function AdminEmailsPage() {
                 <div className="flex bg-gray-100 p-1 rounded-xl border border-gray-200">
                   <button
                     type="button"
-                    onClick={() => setEditorMode('visual')}
+                    onClick={() => handleSwitchEditorMode('visual')}
                     className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition ${
                       editorMode === 'visual'
                         ? 'bg-white text-primary shadow-xs'
@@ -663,7 +695,7 @@ export default function AdminEmailsPage() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => setEditorMode('code')}
+                    onClick={() => handleSwitchEditorMode('code')}
                     className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg transition ${
                       editorMode === 'code'
                         ? 'bg-white text-primary shadow-xs'
@@ -723,20 +755,22 @@ export default function AdminEmailsPage() {
               </div>
             </div>
 
-            {/* Corpo do Editor: Alternável entre Visual e Código */}
-            {editorMode === 'visual' ? (
-              <div className="flex-1 overflow-hidden min-h-0 bg-white">
-                <EmailVisualEditor
-                  initialDesignJson={formDesignJson}
-                  initialHtml={formHtml}
-                  onChange={(html, json) => {
-                    setFormHtml(html);
-                    setFormDesignJson(json);
-                  }}
-                />
-              </div>
-            ) : (
-              <form onSubmit={handleSaveTemplate} className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
+            {/* Corpo do Editor: Preservando ambos no DOM com classes CSS */}
+            <div className={editorMode === 'visual' ? 'flex-1 overflow-hidden min-h-0 bg-white flex flex-col' : 'hidden'}>
+              <EmailVisualEditor
+                initialDesignJson={formDesignJson}
+                initialHtml={formHtml}
+                onChange={(html, json) => {
+                  setFormHtml(html);
+                  setFormDesignJson(json);
+                }}
+              />
+            </div>
+
+            <form
+              onSubmit={handleSaveTemplate}
+              className={editorMode === 'code' ? 'flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0' : 'hidden'}
+            >
                 {/* Lado Esquerdo: Editor de Código e Variáveis */}
                 <div className="w-full lg:w-1/2 p-6 flex flex-col gap-4 overflow-y-auto border-r border-gray-200 bg-white">
                   {/* Toolbar de Chips de Variáveis */}
@@ -839,7 +873,6 @@ export default function AdminEmailsPage() {
                   </div>
                 </div>
               </form>
-            )}
 
             {/* Footer do Drawer */}
             <footer className="px-6 py-4 border-t border-gray-200 bg-white flex justify-end gap-3 shrink-0">
