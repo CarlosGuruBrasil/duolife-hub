@@ -246,6 +246,7 @@ export async function POST(req: NextRequest) {
       tipoDePlano: (clientDataInput.tipo as string) || (clientDataInput.tipoDePlano as string) || null,
       qtdParcelasSolicitada: Number(clientDataInput.parcela) || 1,
       cupomCodigo: clientDataInput.cupomCodigo as string | null | undefined,
+      descontoManualPercent: Number(clientDataInput.descontoManualPercent) || 0,
     });
 
     if (!preco) {
@@ -255,6 +256,10 @@ export async function POST(req: NextRequest) {
     const clientDataFinal = {
       ...clientDataInput,
       valor: preco.valorTotal,
+      valorOriginal: preco.valorOriginal,
+      valorDesconto: preco.valorDesconto,
+      descontoPercentual: preco.descontoPercentual,
+      descontoManualPercent: Number(clientDataInput.descontoManualPercent) || 0,
       valorParcela: preco.valorParcela,
       parcela: preco.qtdParcelas,
     };

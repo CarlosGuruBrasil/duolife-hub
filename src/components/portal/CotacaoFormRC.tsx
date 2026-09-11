@@ -16,12 +16,16 @@ import {
   AlertCircle,
   ExternalLink,
   Download,
-  Loader2
+  Loader2,
+  Tag,
+  SlidersHorizontal,
+  X
 } from 'lucide-react';
 import { parseAtuacaoList } from '@/lib/atuacao';
 import ClienteSearchSelector, { type ClienteBuscaResult, type RenewalData } from '@/components/portal/ClienteSearchSelector';
+import DescontoDrawer from '@/components/portal/DescontoDrawer';
 
-interface Plano {
+export interface Plano {
   tipoDePlano: string;
   nomeExibido: string;
   cobertura: string;
@@ -221,6 +225,11 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
   const [cupomAplicado, setCupomAplicado] = useState(false);
   const [cupomError, setCupomError] = useState('');
 
+  // Desconto Comercial (Passo 1: Cobertura) com teto estrito de 40%
+  const [descontoPercentual, setDescontoPercentual] = useState<number>(0);
+  const [isDescontoDrawerOpen, setIsDescontoDrawerOpen] = useState<boolean>(false);
+  const [commissionRate, setCommissionRate] = useState<number>(20);
+
   // Status de Processos
   const [loading, setLoading] = useState(false);
   const [loadingPlanos, setLoadingPlanos] = useState(true);
@@ -257,11 +266,15 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
   async function loadPlanos() {
     setLoadingPlanos(true);
     try {
-      const res = await fetch('/api/portal/planos', {
+      const partnerQuery = adminSelectedPartnerId ? `?partnerId=${encodeURIComponent(adminSelectedPartnerId)}` : '';
+      const res = await fetch(`/api/portal/planos${partnerQuery}`, {
         headers: getHeaders()
       });
       const data = await res.json();
       if (data.ok && Array.isArray(data.planos) && data.planos.length > 0) {
+        if (data.commissionRate != null) {
+          setCommissionRate(Number(data.commissionRate) || 20);
+        }
         const planosCorrigidos = (data.planos as Plano[]).map((p) => ({
           ...p,
           nomeExibido: p.nomeExibido?.replace('Millhões', 'Milhões'),
@@ -426,6 +439,11 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
             setCupomCode(cd.cupomCodigo);
             setCupomAplicado(true);
             setCupomDesconto(Number(cd.cupomDesconto) || 0);
+          }
+
+          if (cd.descontoManualPercent != null || cd.descontoPercentual != null) {
+            const desc = Number(cd.descontoManualPercent ?? cd.descontoPercentual) || 0;
+            setDescontoPercentual(Math.min(40, Math.max(0, desc)));
           }
 
           if (cd.tipo) {
@@ -595,20 +613,21 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
   // Calcula parcelamento
   function getOpcoesParcelamento(plano: Plano) {
     const valorOriginal = parseMoneyToNumber(plano.parcela);
-    const fatorDesconto = 1 - cupomDesconto / 100;
-    const valorComDesconto = valorOriginal * fatorDesconto;
+    const descontoTotal = Math.max(descontoPercentual, cupomDesconto);
+    const fatorDesconto = 1 - (descontoTotal / 100);
+    const valorComDesconto = Math.round(valorOriginal * fatorDesconto * 100) / 100;
 
-    const parseParcela = (parcStr?: string, defaultVal = 0) => {
+    const parseParcela = (parcStr?: string) => {
       if (!parcStr) return 0;
-      return parseMoneyToNumber(parcStr) * fatorDesconto;
+      return Math.round(parseMoneyToNumber(parcStr) * fatorDesconto * 100) / 100;
     };
 
     const opcoes = [
       { qtd: 1, valor: valorComDesconto },
-      { qtd: 2, valor: parseParcela(plano.parcela2X) || (valorComDesconto / 2) },
-      { qtd: 3, valor: parseParcela(plano.parcela3X) || (valorComDesconto / 3) },
-      { qtd: 4, valor: parseParcela(plano.parcela4X) || (valorComDesconto / 4) },
-      { qtd: 6, valor: parseParcela(plano.parcela6X) || (valorComDesconto / 6) }
+      { qtd: 2, valor: parseParcela(plano.parcela2X) || Math.round((valorComDesconto / 2) * 100) / 100 },
+      { qtd: 3, valor: parseParcela(plano.parcela3X) || Math.round((valorComDesconto / 3) * 100) / 100 },
+      { qtd: 4, valor: parseParcela(plano.parcela4X) || Math.round((valorComDesconto / 4) * 100) / 100 },
+      { qtd: 6, valor: parseParcela(plano.parcela6X) || Math.round((valorComDesconto / 6) * 100) / 100 }
     ];
 
     // Se o plano for 100k, a Kovr só permite 1x (à vista)
@@ -692,7 +711,8 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
     setSuccess('');
 
     try {
-      const valorTotal = parseMoneyToNumber(planoSel.parcela) * (1 - cupomDesconto / 100);
+      const maiorDesconto = Math.max(descontoPercentual, cupomDesconto);
+      const valorTotal = Math.round(parseMoneyToNumber(planoSel.parcela) * (1 - maiorDesconto / 100) * 100) / 100;
       const valorParcela = parcelaSel.valor;
 
       const formatDateForWix = (dateStr: string) => {
@@ -723,6 +743,8 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
         valor: valorTotal,
         valorParcela: valorParcela,
         parcela: parcelaSel.qtd,
+        descontoManualPercent: descontoPercentual,
+        descontoPercentual: maiorDesconto,
         cupomCodigo: cupomAplicado ? cupomCode : null,
         cupomDesconto: cupomDesconto,
         valorCobertura: planoSel.cobertura,
@@ -1116,7 +1138,51 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
       {/* PASSO 1: COBERTURA */}
       {step === 1 && (
         <div className="card space-y-6">
-          <h3 className="text-lg font-bold text-primary">1. Seleção de Plano e Cobertura</h3>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-gray-100 pb-4">
+            <div>
+              <h3 className="text-lg font-bold text-primary">1. Seleção de Plano e Cobertura</h3>
+              <p className="text-xs text-gray-500 mt-0.5">Selecione o limite de indenização e personalize eventuais descontos comerciais.</p>
+            </div>
+
+            <div className="flex items-center space-x-2">
+              {descontoPercentual > 0 ? (
+                <div className="flex items-center space-x-1.5 bg-emerald-50 border border-emerald-200 pl-3 pr-1.5 py-1.5 rounded-xl shadow-2xs">
+                  <span className="text-xs font-bold text-emerald-800 flex items-center space-x-1.5">
+                    <Tag className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>{descontoPercentual}% OFF aplicado</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsDescontoDrawerOpen(true)}
+                    className="p-1 rounded-lg text-emerald-700 hover:bg-emerald-100 transition-colors"
+                    title="Ajustar desconto e ver comissão"
+                  >
+                    <SlidersHorizontal className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDescontoPercentual(0);
+                      setParcelaSel(null);
+                    }}
+                    className="p-1 rounded-lg text-gray-400 hover:text-rose-600 transition-colors"
+                    title="Remover desconto"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsDescontoDrawerOpen(true)}
+                  className="btn btn-secondary text-xs px-3.5 py-2 flex items-center space-x-2 border-emerald-300 text-emerald-800 hover:bg-emerald-50 bg-emerald-50/40 transition-colors cursor-pointer"
+                >
+                  <Tag className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Aplicar Desconto (Até 40%)</span>
+                </button>
+              )}
+            </div>
+          </div>
           
           {loadingPlanos ? (
             <div className="py-12 text-center text-gray-500 flex flex-col items-center justify-center space-y-3">
@@ -1138,6 +1204,10 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
             <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
               {planos.map((plano) => {
                 const isSelected = planoSel?.tipoDePlano === plano.tipoDePlano;
+                const vOriginal = parseMoneyToNumber(plano.parcela);
+                const vDescontado = Math.round(vOriginal * (1 - (descontoPercentual / 100)) * 100) / 100;
+                const vDescontadoFormatado = vDescontado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
                 return (
                   <div
                     key={plano.tipoDePlano}
@@ -1152,7 +1222,14 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
                     }`}
                   >
                     <div>
-                      <h4 className="font-bold text-base text-gray-900">{plano.nomeExibido}</h4>
+                      <div className="flex justify-between items-start">
+                        <h4 className="font-bold text-base text-gray-900">{plano.nomeExibido}</h4>
+                        {descontoPercentual > 0 && (
+                          <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 tracking-tight">
+                            -{descontoPercentual}%
+                          </span>
+                        )}
+                      </div>
                       <div className="mt-2 text-2xl font-black text-emerald-600">{plano.cobertura}</div>
                       <div className="text-xs font-medium text-gray-500 mt-1 uppercase tracking-wide">Limite Máximo</div>
                     </div>
@@ -1164,8 +1241,25 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
                       </div>
                       <div className="flex justify-between items-center">
                         <span className="text-gray-500 text-xs font-medium">Valor à vista</span>
-                        <span className="font-bold text-emerald-600">{plano.parcela}</span>
+                        {descontoPercentual > 0 ? (
+                          <div className="text-right flex items-baseline justify-end">
+                            <span className="line-through text-gray-400 text-xs font-medium mr-2">
+                              {plano.parcela}
+                            </span>
+                            <span className="font-black text-emerald-600 text-base">
+                              {vDescontadoFormatado}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="font-bold text-emerald-600">{plano.parcela}</span>
+                        )}
                       </div>
+
+                      {plano.tipoDePlano !== '100k' && descontoPercentual > 0 && (
+                        <div className="text-[11px] text-gray-500 text-right font-medium">
+                          ou até 6x de aprox. {(vDescontado / 6).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -1173,11 +1267,31 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
             </div>
           )}
 
-          <div className="flex justify-end pt-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pt-4 border-t border-gray-100">
+            <div>
+              {descontoPercentual > 0 ? (
+                <div className="flex items-center space-x-2 text-xs text-emerald-800 bg-emerald-50 px-3 py-1.5 rounded-lg border border-emerald-200">
+                  <Percent className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Desconto de <strong>{descontoPercentual}%</strong> ativo em todos os planos.</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsDescontoDrawerOpen(true)}
+                    className="underline font-bold hover:text-emerald-950 ml-1 cursor-pointer"
+                  >
+                    Simular Comissão
+                  </button>
+                </div>
+              ) : (
+                <span className="text-xs text-gray-500">
+                  Dica: você pode conceder até 40% de desconto comercial nesta proposta.
+                </span>
+              )}
+            </div>
+
             <button
               onClick={handleNext}
               disabled={!planoSel}
-              className="btn btn-primary flex items-center space-x-2"
+              className="btn btn-primary flex items-center justify-center space-x-2"
             >
               <span>Avançar</span>
               <ChevronRight className="w-4 h-4" />
@@ -1508,6 +1622,25 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
         <div className="card space-y-6">
           <h3 className="text-lg font-bold text-primary">5. Pagamento</h3>
 
+          {/* Desconto Comercial Vigente */}
+          {descontoPercentual > 0 && (
+            <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                <Tag className="w-4 h-4 text-emerald-700 flex-shrink-0" />
+                <span className="text-xs text-emerald-900 font-semibold">
+                  Desconto comercial de <strong>{descontoPercentual}%</strong> já aplicado na cobertura selecionada.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDescontoDrawerOpen(true)}
+                className="text-xs font-bold text-emerald-700 hover:text-emerald-900 underline cursor-pointer whitespace-nowrap ml-3"
+              >
+                Ajustar no Drawer
+              </button>
+            </div>
+          )}
+
           {/* Cupom Promocional */}
           <div className="bg-gray-50 border border-gray-200 p-5 rounded-xl space-y-4">
             <h4 className="font-bold text-sm text-gray-900 flex items-center space-x-2">
@@ -1750,6 +1883,24 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
           )}
         </div>
       )}
+
+      {/* Drawer Slide-over de Desconto e Demonstrativo de Comissão */}
+      <DescontoDrawer
+        isOpen={isDescontoDrawerOpen}
+        onClose={() => setIsDescontoDrawerOpen(false)}
+        descontoPercentual={descontoPercentual}
+        onChangeDesconto={(val) => {
+          setDescontoPercentual(val);
+          setParcelaSel(null);
+        }}
+        planoSel={planoSel}
+        planos={planos}
+        onSelectPlano={(p) => {
+          setPlanoSel(p);
+          setParcelaSel(null);
+        }}
+        commissionRate={commissionRate}
+      />
     </div>
   );
 }

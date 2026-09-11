@@ -62,27 +62,39 @@ async function getCupomDescontoValido(cupomCodigo?: string | null): Promise<numb
 const PARCELA_FIELD: Record<number, string> = { 2: 'parcela2X', 3: 'parcela3X', 4: 'parcela4X', 6: 'parcela6X' };
 
 export interface PrecoCalculado {
+  valorOriginal: number;
+  descontoPercentual: number;
+  valorDesconto: number;
   valorTotal: number;
   valorParcela: number;
   qtdParcelas: number;
 }
 
-// Recalcula o preço inteiramente a partir da tabela canônica de planos (Wix) e do cupom real —
+// Recalcula o preço inteiramente a partir da tabela canônica de planos (Wix) e do cupom real / desconto manual —
 // nunca a partir de clientData.valor/valorParcela, que vêm do cliente e são forjáveis.
 export async function calcularPrecoServidor(params: {
   tipoDePlano: string | null | undefined;
   qtdParcelasSolicitada: number;
   cupomCodigo?: string | null;
+  descontoManualPercent?: number | null;
 }): Promise<PrecoCalculado | null> {
   if (!params.tipoDePlano) return null;
 
   const plano = await getPlano(params.tipoDePlano);
   if (!plano) return null;
 
-  const desconto = await getCupomDescontoValido(params.cupomCodigo);
-  const fatorDesconto = 1 - desconto / 100;
+  // Desconto manual limitado a no máximo 40%
+  const descontoManual = Math.min(40, Math.max(0, Number(params.descontoManualPercent || 0)));
+
+  // Desconto de cupom (se fornecido)
+  const descontoCupom = await getCupomDescontoValido(params.cupomCodigo);
+
+  // Aplica o maior desconto válido
+  const descontoFinal = Math.max(descontoManual, descontoCupom);
+  const fatorDesconto = 1 - (descontoFinal / 100);
   const valorOriginal = parseMoneyToNumber(plano.parcela);
-  const valorTotal = valorOriginal * fatorDesconto;
+  const valorTotal = Math.round(valorOriginal * fatorDesconto * 100) / 100;
+  const valorDesconto = Math.round((valorOriginal - valorTotal) * 100) / 100;
 
   // Plano 100k só permite pagamento à vista (mesma regra do formulário).
   const permiteParcelamento = plano.tipoDePlano !== '100k';
@@ -94,8 +106,17 @@ export async function calcularPrecoServidor(params: {
   if (qtdParcelas > 1) {
     const field = PARCELA_FIELD[qtdParcelas];
     const raw = plano[field];
-    valorParcela = raw ? parseMoneyToNumber(raw) * fatorDesconto : valorTotal / qtdParcelas;
+    valorParcela = raw
+      ? Math.round(parseMoneyToNumber(raw) * fatorDesconto * 100) / 100
+      : Math.round((valorTotal / qtdParcelas) * 100) / 100;
   }
 
-  return { valorTotal, valorParcela, qtdParcelas };
+  return {
+    valorOriginal,
+    descontoPercentual: descontoFinal,
+    valorDesconto,
+    valorTotal,
+    valorParcela,
+    qtdParcelas
+  };
 }
