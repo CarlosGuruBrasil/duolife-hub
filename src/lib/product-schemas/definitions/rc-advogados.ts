@@ -1,0 +1,141 @@
+import { RamoConfig } from '../types';
+
+/**
+ * Configuração declarativa do Seguro de Responsabilidade Civil Profissional para
+ * Advogados e Escritórios de Advocacia.
+ */
+export const rcAdvogadosConfig: RamoConfig = {
+  ramoId: 'rc-advogados',
+  name: 'RC Advogados & Escritórios de Advocacia',
+  shortName: 'RC Advogados',
+  category: 'responsabilidade_civil',
+  flowKeys: ['rc_advogados_v1', 'rc_professional_v1'],
+  pricingStrategy: 'rc_wix_planos_v1',
+  policyPrefix: 'DL-RC-ADV',
+  targetAudience: 'Advogados autônomos, associados e sociedades de advogados com inscrição ativa na OAB.',
+  
+  registroProfissional: {
+    key: 'oab',
+    label: 'Inscrição OAB',
+    placeholder: 'Número da OAB + UF (Ex: 123456/SP)',
+    ufKey: 'oabUf',
+    required: true,
+    hasRqe: false,
+  },
+
+  especialidadesLabel: 'Áreas de Atuação Jurídica',
+  especialidades: [
+    { key: 'civil', label: 'Civil', description: 'Direito Civil, Família, Sucessões e Contratos' },
+    { key: 'propriedadeIndustrial', label: 'Propriedade Industrial', description: 'Marcas, Patentes e Propriedade Intelectual' },
+    { key: 'bancarioFinanceiro', label: 'Bancário/Financeiro', description: 'Direito Bancário e Mercado Financeiro' },
+    { key: 'criminal', label: 'Criminal', description: 'Direito Penal e Processo Penal' },
+    { key: 'tributaria', label: 'Tributária', description: 'Direito Tributário e Consultoria Fiscal' },
+    { key: 'previdenciario', label: 'Previdenciário', description: 'Regimes Geral e Próprio de Previdência' },
+    { key: 'direitoInternacional', label: 'Direito Internacional', description: 'Direito Internacional Público e Privado' },
+    { key: 'fusoesAquisicoes', label: 'Fusões & Aquisições', description: 'M&A e Reestruturações Societárias de Grande Porte' },
+    { key: 'direitoEmpresarial', label: 'Direito Empresarial', description: 'Direito Comercial e Contratos Empresariais' },
+    { key: 'trabalhista', label: 'Trabalhista', description: 'Contencioso e Consultivo Trabalhista' },
+    { key: 'societario', label: 'Societário', description: 'Direito Societário, Governança e Acordo de Acionistas' },
+    { key: 'outros', label: 'Outros', description: 'Demais áreas do direito não listadas acima' },
+  ],
+
+  faturamentoLabel: 'Faturamento Bruto Anual de Honorários Advocatícios',
+  hasFaturamento: true,
+  hasPpe: true,
+  requiresUnderwriting: true,
+
+  questionarioRisco: [
+    {
+      id: 'propostaRecusada',
+      question: 'Já teve proposta de seguro recusada, cancelada ou com recusa de renovação?',
+      detailKey: 'propostaDetalhe',
+      detailLabel: 'Descreva a seguradora, data e motivo da recusa/cancelamento',
+      requiredOnAffirmative: true,
+    },
+    {
+      id: 'reclamacaoProfissional',
+      question: 'Já houve alguma reclamação, queixa, notificação ou ação judicial de terceiros alegando falha/dano profissional ou perda de prazos nos últimos 5 anos?',
+      detailKey: 'reclamacaoDetalhe',
+      detailLabel: 'Descreva os fatos, valores reclamados, perda de prazo e status processual',
+      requiredOnAffirmative: true,
+    },
+    {
+      id: 'investigacaoAutoridade',
+      question: 'Responde ou já respondeu a algum processo ético, disciplinar (como OAB / TED) ou administrativo nos últimos 5 anos?',
+      detailKey: 'investigacaoDetalhe',
+      detailLabel: 'Informe a seccional da OAB, número do processo ético e situação atual',
+      requiredOnAffirmative: true,
+    },
+    {
+      id: 'fatoTerceiros',
+      question: 'Tem conhecimento de algum fato, ato, omissão, perda de prazo processual, queixa pendente ou circunstância que possa motivar reclamação judicial no futuro?',
+      detailKey: 'fatoDetalhe',
+      detailLabel: 'Descreva minuciosamente a circunstância e eventuais prejuízos a clientes',
+      requiredOnAffirmative: true,
+    },
+    {
+      id: 'pagouReclamacao',
+      question: 'Já realizou algum pagamento de indenização com recursos próprios por falhas ou omissões profissionais nos últimos 5 anos?',
+      detailKey: 'pagouDetalhe',
+      detailLabel: 'Informe datas, valores indenizados e acordos homologados',
+      requiredOnAffirmative: true,
+    },
+  ],
+
+  planos: [
+    {
+      tipoDePlano: '100k',
+      nomeExibido: 'Plano 100 Mil',
+      cobertura: 'R$ 100.000,00',
+      franquia: 'R$ 1.000,00',
+      ordem: 1,
+      parcela: 'R$ 680,00',
+      valorPagoKovr: 450,
+      maxParcelas: 1,
+    },
+    {
+      tipoDePlano: '200k',
+      nomeExibido: 'Plano 200 Mil',
+      cobertura: 'R$ 200.000,00',
+      franquia: 'R$ 2.000,00',
+      ordem: 2,
+      parcela: 'R$ 1.200,00',
+      parcela2X: 'R$ 600,00',
+      parcela3X: 'R$ 400,00',
+      parcela4X: 'R$ 300,00',
+      parcela6X: 'R$ 200,00',
+      valorPagoKovr: 800,
+      maxParcelas: 6,
+    },
+    {
+      tipoDePlano: '300k',
+      nomeExibido: 'Plano 300 Mil',
+      cobertura: 'R$ 300.000,00',
+      franquia: 'R$ 3.000,00',
+      ordem: 3,
+      parcela: 'R$ 1.650,00',
+      parcela2X: 'R$ 825,00',
+      parcela3X: 'R$ 550,00',
+      parcela4X: 'R$ 412,50',
+      parcela6X: 'R$ 275,00',
+      valorPagoKovr: 1100,
+      maxParcelas: 6,
+    },
+    {
+      tipoDePlano: '500k',
+      nomeExibido: 'Plano 500 Mil',
+      cobertura: 'R$ 500.000,00',
+      franquia: 'R$ 5.000,00',
+      ordem: 4,
+      parcela: 'R$ 2.450,00',
+      parcela2X: 'R$ 1.225,00',
+      parcela3X: 'R$ 816,67',
+      parcela4X: 'R$ 612,50',
+      parcela6X: 'R$ 408,33',
+      valorPagoKovr: 1600,
+      maxParcelas: 6,
+    },
+  ],
+
+  templateZapSignKey: 'rc_advogados_contrato_v1',
+};

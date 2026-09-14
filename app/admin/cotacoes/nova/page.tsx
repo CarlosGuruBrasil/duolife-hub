@@ -15,24 +15,54 @@ interface PartnerOption {
 function AdminNovaCotacaoContent() {
   const searchParams = useSearchParams();
   const cotacaoId = searchParams.get('cotacaoId') || undefined;
+  const paramProductId = searchParams.get('productId') || searchParams.get('product') || undefined;
 
   const [partners, setPartners] = useState<PartnerOption[]>([]);
   const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null);
+  const [selectedProductId, setSelectedProductId] = useState<string | undefined>(paramProductId);
+  const [productName, setProductName] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function init() {
       try {
         let partnerIdFromCotacao: string | null = null;
+        let foundProductName = '';
+
         if (cotacaoId) {
           try {
             const resCot = await fetch(`/api/cotacoes/${cotacaoId}`);
             const dataCot = await resCot.json();
-            if (dataCot.ok && dataCot.cotacao?.partner_id) {
-              partnerIdFromCotacao = dataCot.cotacao.partner_id;
+            if (dataCot.ok && dataCot.cotacao) {
+              if (dataCot.cotacao.partner_id) {
+                partnerIdFromCotacao = dataCot.cotacao.partner_id;
+              }
+              if (dataCot.cotacao.product_id) {
+                setSelectedProductId(dataCot.cotacao.product_id);
+              }
+              if (dataCot.cotacao.product_name) {
+                foundProductName = dataCot.cotacao.product_name;
+                setProductName(dataCot.cotacao.product_name);
+              }
             }
           } catch (e) {
             console.error('Erro ao buscar cotação inicial:', e);
+          }
+        }
+
+        const effectiveProductId = paramProductId || 'prod-rc-001';
+        if (!foundProductName) {
+          try {
+            const resProd = await fetch('/api/portal/produtos');
+            const dataProd = await resProd.json();
+            if (dataProd.ok && Array.isArray(dataProd.produtos)) {
+              const found = dataProd.produtos.find((p: any) => p.id === effectiveProductId);
+              if (found?.name) {
+                setProductName(found.name);
+              }
+            }
+          } catch {
+            // ignore
           }
         }
 
@@ -52,7 +82,7 @@ function AdminNovaCotacaoContent() {
       }
     }
     init();
-  }, [cotacaoId]);
+  }, [cotacaoId, paramProductId]);
 
   if (loading) {
     return <div className="p-8 text-center text-slate-500">Carregando dados...</div>;
@@ -66,7 +96,9 @@ function AdminNovaCotacaoContent() {
             ← Voltar para cotações
           </Link>
           <h1 className="text-2xl font-bold mt-3" style={{ color: 'var(--primary-dark)' }}>
-            {cotacaoId ? 'Continuar Cotação' : 'Iniciar Nova Cotação'}
+            {cotacaoId
+              ? `Continuar Cotação${productName ? ` — ${productName}` : ''}`
+              : `Nova Proposta / Cotação${productName ? ` — ${productName}` : ''}`}
           </h1>
           <p className="text-gray-500 mt-1">
             Como administrador, você pode iniciar ou dar continuidade a uma cotação em nome de qualquer corretor parceiro, ou registrar como Venda Direta DuoLife.
@@ -114,7 +146,9 @@ function AdminNovaCotacaoContent() {
             ← Trocar parceiro
           </button>
           <h1 className="text-2xl font-bold" style={{ color: 'var(--primary-dark)' }}>
-            {cotacaoId ? 'Continuar Cotação / Proposta RC ADV' : 'Nova Proposta / Venda RC ADV'}
+            {cotacaoId
+              ? `Continuar Cotação / Proposta${productName ? ` — ${productName}` : ''}`
+              : `Nova Proposta / Cotação${productName ? ` — ${productName}` : ''}`}
           </h1>
           <p className="text-gray-500 mt-1">
             Simulando como: <strong className="text-gray-800">{selectedPartner?.nome_fantasia || selectedPartner?.razao_social}</strong>
@@ -123,7 +157,11 @@ function AdminNovaCotacaoContent() {
       </div>
 
       <div className="bg-white p-6 rounded-xl shadow mb-8">
-        <CotacaoFormRC adminSelectedPartnerId={selectedPartnerId} initialCotacaoId={cotacaoId} />
+        <CotacaoFormRC
+          adminSelectedPartnerId={selectedPartnerId}
+          initialCotacaoId={cotacaoId}
+          productId={selectedProductId}
+        />
       </div>
     </div>
   );

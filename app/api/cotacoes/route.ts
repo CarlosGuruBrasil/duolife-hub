@@ -6,6 +6,7 @@ import { sql } from '@/lib/pg';
 import { ensureSchema, seedInitialData } from '@/lib/schema';
 import { upsertInsuranceClient } from '@/lib/insurance-ops';
 import { calcularPrecoServidor } from '@/lib/pricing';
+import { getRamoConfig, buildRamoZodSchema } from '@/lib/product-schemas';
 
 const cotacaoSchema = z.object({
   id: z.string().trim().optional(),
@@ -194,12 +195,12 @@ export async function POST(req: NextRequest) {
 
     const [product] = publicToken
       ? await sql`
-          SELECT id, flow_key, pricing_strategy
+          SELECT id, flow_key, pricing_strategy, code, category
           FROM products
           WHERE id = ${requestedProductId} AND is_active = true AND is_quoteable = true
         `
       : await sql`
-          SELECT p.id, p.flow_key, p.pricing_strategy
+          SELECT p.id, p.flow_key, p.pricing_strategy, p.code, p.category
           FROM products p
           WHERE p.id = ${requestedProductId}
             AND p.is_active = true
@@ -218,7 +219,14 @@ export async function POST(req: NextRequest) {
     if (!product) {
       return Response.json({ error: 'Produto indisponível para esta operação' }, { status: 403 });
     }
-    if (product.flow_key !== 'rc_professional_v1' || product.pricing_strategy !== 'rc_wix_planos_v1') {
+
+    const ramoConfig = getRamoConfig({
+      flowKey: product.flow_key,
+      code: product.code,
+      category: product.category,
+    });
+
+    if (!ramoConfig) {
       return Response.json({ error: 'O fluxo deste produto ainda não está disponível' }, { status: 422 });
     }
 
@@ -234,25 +242,64 @@ export async function POST(req: NextRequest) {
       uf: String(clientDataInput.uf || '').toUpperCase(),
     } : undefined;
 
+    // Constrói metadata com o conselho profissional adequado ao ramo (ex: crm, oab, cro, etc.)
+    const clientMetadata: Record<string, any> = {
+      source: publicToken ? 'public_link' : 'portal',
+      partnerId: targetPartnerId,
+      ramoId: ramoConfig.ramoId,
+      ...(clientDataInput.dataAtividade ? { dataAtividade: clientDataInput.dataAtividade } : {}),
+      ...(addressFromInput ? { address: addressFromInput } : {}),
+    };
+
+    if (ramoConfig.registroProfissional) {
+      const regKey = ramoConfig.registroProfissional.key;
+      const regUfKey = ramoConfig.registroProfissional.ufKey;
+      const regVal = clientDataInput[regKey] || clientDataInput.registroProfissionalNumero;
+      const regUfVal = (regUfKey ? clientDataInput[regUfKey] : null) || clientDataInput.registroProfissionalUf;
+
+      if (regVal) clientMetadata[regKey] = regVal;
+      if (regUfKey && regUfVal) clientMetadata[regUfKey] = regUfVal;
+    }
+
+    // Preserva OAB retrocompatível caso preenchido
+    if (clientDataInput.oab && !clientMetadata.oab) {
+      clientMetadata.oab = clientDataInput.oab;
+    }
+
     const client = await upsertInsuranceClient({
       documentNumber: data.clientCpfCnpj,
       fullName: data.clientName,
       email: data.clientEmail || null,
       phone: data.clientPhone || null,
       birthDate: typeof clientDataInput.dataNascto === 'string' ? clientDataInput.dataNascto : null,
-      metadata: {
-        source: publicToken ? 'public_link' : 'portal',
-        partnerId: targetPartnerId,
-        ...(clientDataInput.oab ? { oab: clientDataInput.oab } : {}),
-        ...(clientDataInput.dataAtividade ? { dataAtividade: clientDataInput.dataAtividade } : {}),
-        ...(addressFromInput ? { address: addressFromInput } : {}),
-      },
+      metadata: clientMetadata,
     });
+
+    // Inicializa validador de integridade do ramo (buildRamoZodSchema)
+    const ramoSchema = buildRamoZodSchema(ramoConfig);
+    if (clientDataInput.logradouro && clientDataInput.tipoDePlano) {
+      const validationData = {
+        ...clientDataInput,
+        nome: data.clientName || clientDataInput.nome,
+        cpfCnpj: data.clientCpfCnpj || clientDataInput.cpfCnpj,
+        email: data.clientEmail || clientDataInput.email,
+        celular: data.clientPhone || clientDataInput.celular,
+        tipoDePlano: clientDataInput.tipoDePlano || clientDataInput.tipo,
+        qtdParcelas: Number(clientDataInput.parcela) || 1,
+      };
+      const parseResult = ramoSchema.safeParse(validationData);
+      if (!parseResult.success) {
+        logger.warn({ issues: parseResult.error.issues, ramoId: ramoConfig.ramoId }, 'cotacoes.ramo_schema.validation_warning');
+      }
+    }
+
     const preco = await calcularPrecoServidor({
       tipoDePlano: (clientDataInput.tipo as string) || (clientDataInput.tipoDePlano as string) || null,
       qtdParcelasSolicitada: Number(clientDataInput.parcela) || 1,
       cupomCodigo: clientDataInput.cupomCodigo as string | null | undefined,
       descontoManualPercent: Number(clientDataInput.descontoManualPercent) || 0,
+      flowKey: product.flow_key,
+      productId: product.id,
     });
 
     if (!preco) {
