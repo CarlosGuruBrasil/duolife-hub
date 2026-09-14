@@ -58,7 +58,24 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
   await ensureSchema();
   const { id } = await params;
 
-  const [cotacao] = access.visibleUserIds === null
+  const isCorretora = Boolean(access.isCorretoraUser && access.corretoraId);
+
+  const [cotacao] = isCorretora
+    ? await sql`
+        SELECT
+          c.id, c.client_id, c.client_name, c.client_cpf_cnpj, c.client_email, c.client_phone,
+          c.status, c.importancia_segurada, c.premio_final, c.premio_calculado, c.client_data, c.created_at,
+          c.notes, c.product_id,
+          p.name AS product_name,
+          part.nome_fantasia AS partner_name
+        FROM cotacoes c
+        JOIN products p ON p.id = c.product_id
+        JOIN partners part ON part.id = c.partner_id
+        WHERE c.id = ${id}
+          AND c.corretora_id = ${access.corretoraId}
+        LIMIT 1
+      `
+    : access.visibleUserIds === null
     ? await sql`
         SELECT
           c.id, c.client_id, c.client_name, c.client_cpf_cnpj, c.client_email, c.client_phone,

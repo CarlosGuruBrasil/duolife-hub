@@ -19,6 +19,7 @@ import {
   Mail,
   FileText,
   User,
+  UserPlus,
   ShieldCheck,
   HelpCircle,
   Copy,
@@ -79,10 +80,13 @@ export default function WixComparisonClient({ initialData }: Props) {
   const [data, setData] = useState<WixComparisonResult>(initialData);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncingNew, setSyncingNew] = useState(false);
   const [syncResult, setSyncResult] = useState<{
     clientSync: WixSyncResult;
     salesSync?: WixSalesSyncResult;
     divergentCount?: number;
+    mode?: 'all' | 'only_new';
+    message?: string;
   } | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | MatchStatus>('all');
@@ -131,6 +135,55 @@ export default function WixComparisonClient({ initialData }: Props) {
     }
   }
 
+  async function handleImportOnlyNew() {
+    if (data.summary.onlyWix === 0) {
+      window.alert('Não há novos clientes no Wix para importar. Todos os registros já constam no banco local.');
+      return;
+    }
+
+    const confirmMsg =
+      `Deseja importar apenas o que NÃO tem no nosso banco de dados (${data.summary.onlyWix} registro(s) "Só no Wix")?\n\n` +
+      `✓ NOVOS CLIENTES: cadastros, cotações, apólices e parcelas serão importados para o banco de dados local.\n` +
+      `✕ DIVERGÊNCIAS: serão 100% ignoradas (nenhum cadastro ou compra com divergência será alterado).\n` +
+      `✕ CLIENTES EXISTENTES: permanecerão 100% intactos.\n\n` +
+      `Deseja prosseguir com a importação apenas dos novos?`;
+
+    if (!window.confirm(confirmMsg)) {
+      return;
+    }
+
+    setSyncingNew(true);
+    setRefreshError(null);
+    setSyncResult(null);
+
+    try {
+      const res = await fetch('/api/admin/comparativo-wix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'only_new' }),
+      });
+      const json = await res.json();
+      if (json.ok && json.sync) {
+        setSyncResult({
+          clientSync: json.sync,
+          salesSync: json.salesSync,
+          divergentCount: json.divergentCount,
+          mode: 'only_new',
+          message: json.message,
+        });
+        if (json.data) {
+          setData(json.data);
+        }
+      } else {
+        setRefreshError(json.error || 'Falha ao importar novos registros do Wix.');
+      }
+    } catch (err) {
+      setRefreshError('Erro de conexão durante a importação de novos clientes do Wix.');
+    } finally {
+      setSyncingNew(false);
+    }
+  }
+
   async function handleSyncWix() {
     const confirmMsg =
       'Deseja iniciar a sincronização com o Wix?\n\n' +
@@ -149,6 +202,8 @@ export default function WixComparisonClient({ initialData }: Props) {
     try {
       const res = await fetch('/api/admin/comparativo-wix', {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'all' }),
       });
       const json = await res.json();
       if (json.ok && json.sync) {
@@ -156,6 +211,7 @@ export default function WixComparisonClient({ initialData }: Props) {
           clientSync: json.sync,
           salesSync: json.salesSync,
           divergentCount: json.divergentCount,
+          mode: 'all',
         });
         if (json.data) {
           setData(json.data);
@@ -270,8 +326,26 @@ export default function WixComparisonClient({ initialData }: Props) {
 
           <div className="flex flex-wrap items-center gap-3 shrink-0">
             <button
+              onClick={handleImportOnlyNew}
+              disabled={syncingNew || syncing || loading || summary.onlyWix === 0}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-sm shadow-sm transition-all disabled:opacity-50"
+              title="Importa apenas os clientes e compras presentes no Wix que NÃO existem no banco local. Divergências e clientes já existentes são 100% ignorados."
+            >
+              {syncingNew ? (
+                <RefreshCw className="w-4 h-4 text-white animate-spin" />
+              ) : (
+                <UserPlus className="w-4 h-4 text-white" />
+              )}
+              <span>
+                {syncingNew
+                  ? 'Importando Novos...'
+                  : `Importar Apenas Novos (${summary.onlyWix})`}
+              </span>
+            </button>
+
+            <button
               onClick={handleSyncWix}
-              disabled={syncing || loading}
+              disabled={syncing || syncingNew || loading}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-sm transition-all disabled:opacity-50"
               title="Sincroniza novos cadastros e compras/parcelas de clientes idênticos. Mantém clientes divergentes intactos para sua decisão."
             >
@@ -281,7 +355,7 @@ export default function WixComparisonClient({ initialData }: Props) {
 
             <button
               onClick={handleRefresh}
-              disabled={loading || syncing}
+              disabled={loading || syncing || syncingNew}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#0e4a5a] hover:bg-[#0b3a47] text-white font-semibold text-sm shadow-sm transition-all disabled:opacity-50"
             >
               <RefreshCw className={`w-4 h-4 text-[#00d4e0] ${loading ? 'animate-spin' : ''}`} />
@@ -294,7 +368,7 @@ export default function WixComparisonClient({ initialData }: Props) {
                 setTruncateError(null);
                 setTruncateModalOpen(true);
               }}
-              disabled={loading || syncing || truncating}
+              disabled={loading || syncing || syncingNew || truncating}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 font-bold text-sm shadow-2xs transition-all disabled:opacity-50"
               title="Abre o assistente seguro para truncar as tabelas locais de clientes, cotações e vendas."
             >
@@ -353,25 +427,50 @@ export default function WixComparisonClient({ initialData }: Props) {
 
         {/* Banner de Resultado da Sincronização */}
         {syncResult && (
-          <div className="mt-6 p-5 rounded-2xl bg-emerald-50 border border-emerald-200 animate-in fade-in duration-200">
+          <div
+            className={`mt-6 p-5 rounded-2xl border animate-in fade-in duration-200 ${
+              syncResult.mode === 'only_new'
+                ? 'bg-purple-50 border-purple-200'
+                : 'bg-emerald-50 border-emerald-200'
+            }`}
+          >
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center text-emerald-700 shrink-0 mt-0.5">
+                <div
+                  className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
+                    syncResult.mode === 'only_new'
+                      ? 'bg-purple-100 text-purple-700'
+                      : 'bg-emerald-100 text-emerald-700'
+                  }`}
+                >
                   <CheckCircle2 className="w-6 h-6" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-emerald-900">
-                    Sincronização com o Wix Concluída com Sucesso!
+                  <h4
+                    className={`text-sm font-bold ${
+                      syncResult.mode === 'only_new' ? 'text-purple-900' : 'text-emerald-900'
+                    }`}
+                  >
+                    {syncResult.mode === 'only_new'
+                      ? 'Importação de Novos Clientes (Só no Wix) Concluída!'
+                      : 'Sincronização com o Wix Concluída com Sucesso!'}
                   </h4>
-                  <div className="text-xs text-emerald-800 mt-1 space-y-1">
+                  <div
+                    className={`text-xs mt-1 space-y-1 ${
+                      syncResult.mode === 'only_new' ? 'text-purple-800' : 'text-emerald-800'
+                    }`}
+                  >
                     <p>
-                      <strong>Cadastros:</strong> {syncResult.clientSync.importedCount} novos clientes importados •{' '}
-                      {syncResult.clientSync.updatedCount} clientes existentes atualizados com data real do Wix •{' '}
-                      {syncResult.clientSync.unchangedCount} sem alteração cadastral ({((syncResult.clientSync.durationMs || 0) / 1000).toFixed(2)}s).
+                      <strong>Novos Cadastros:</strong> {syncResult.clientSync.importedCount} clientes importados para o banco local ({((syncResult.clientSync.durationMs || 0) / 1000).toFixed(2)}s).
+                      {syncResult.mode === 'only_new' ? (
+                        <span> • Clientes existentes mantidos 100% inalterados.</span>
+                      ) : (
+                        <span> • {syncResult.clientSync.updatedCount} clientes existentes atualizados • {syncResult.clientSync.unchangedCount} sem alteração cadastral.</span>
+                      )}
                     </p>
                     {syncResult.salesSync && (
                       <p>
-                        <strong>Compras (Clientes Iguais):</strong>{' '}
+                        <strong>Compras/Apólices dos Novos:</strong>{' '}
                         {syncResult.salesSync.salesCreated} novas apólices emitidas •{' '}
                         {syncResult.salesSync.quotesCreated + syncResult.salesSync.quotesUpdated} propostas/cotações geradas com ordens de pagamento e parcelas •{' '}
                         Total de <strong>R$ {syncResult.salesSync.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong> em prêmio.
@@ -380,7 +479,7 @@ export default function WixComparisonClient({ initialData }: Props) {
                     {syncResult.divergentCount !== undefined && syncResult.divergentCount > 0 && (
                       <p className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-100/80 border border-amber-300 text-amber-900 font-semibold mt-1">
                         <AlertTriangle className="w-3.5 h-3.5 text-amber-700 shrink-0" />
-                        {syncResult.divergentCount} cliente(s) com divergências cadastrais mantidos intactos — compras retidas aguardando sua decisão.
+                        {syncResult.divergentCount} cliente(s) com divergências cadastrais foram totalmente ignorados conforme solicitado.
                       </p>
                     )}
                   </div>
@@ -388,7 +487,11 @@ export default function WixComparisonClient({ initialData }: Props) {
               </div>
               <button
                 onClick={() => setSyncResult(null)}
-                className="text-emerald-700 hover:text-emerald-900 text-xs font-semibold p-1"
+                className={`p-1 text-xs font-semibold ${
+                  syncResult.mode === 'only_new'
+                    ? 'text-purple-700 hover:text-purple-900'
+                    : 'text-emerald-700 hover:text-emerald-900'
+                }`}
               >
                 <X className="w-4 h-4" />
               </button>
@@ -488,13 +591,26 @@ export default function WixComparisonClient({ initialData }: Props) {
         </div>
 
         {/* Apenas Wix */}
-        <div className="bg-white p-4 rounded-2xl border border-gray-200/80 shadow-2xs">
-          <div className="flex items-center gap-2 text-purple-800 text-xs font-semibold uppercase tracking-wider">
-            <Globe className="w-4 h-4 text-purple-600" />
-            <span>Só no Wix</span>
+        <div className="bg-white p-4 rounded-2xl border border-gray-200/80 shadow-2xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-purple-800 text-xs font-semibold uppercase tracking-wider">
+              <Globe className="w-4 h-4 text-purple-600" />
+              <span>Só no Wix</span>
+            </div>
+            <div className="mt-2 text-2xl font-extrabold text-purple-700">{summary.onlyWix}</div>
+            <div className="text-[11px] text-purple-800/80 mt-0.5">Não importados</div>
           </div>
-          <div className="mt-2 text-2xl font-extrabold text-purple-700">{summary.onlyWix}</div>
-          <div className="text-[11px] text-purple-800/80 mt-0.5">Não importados</div>
+          {summary.onlyWix > 0 && (
+            <button
+              onClick={handleImportOnlyNew}
+              disabled={syncingNew || syncing || loading}
+              className="mt-3 inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-bold border border-purple-200 transition-all disabled:opacity-50 cursor-pointer"
+              title="Importar apenas os clientes deste grupo (Só no Wix), ignorando divergências"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>Importar estes {summary.onlyWix}</span>
+            </button>
+          )}
         </div>
       </div>
 

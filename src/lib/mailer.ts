@@ -108,3 +108,6 @@ export async function sendMail({
     error: errorMsg,
   };
 }
+
+export const sendEmail = sendMail;
+

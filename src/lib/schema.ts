@@ -167,6 +167,36 @@ async function runRuntimeSchemaSetup(): Promise<void> {
       updated_at    = NOW()
   `;
 
+  // Seed do Usuário Administrador da Corretora NET4Life
+  const net4lifeSenhaPadrao = await bcrypt.hash('net4life@2026', 10);
+  await sql`
+    INSERT INTO corretora_users (
+      id,
+      corretora_id,
+      name,
+      email,
+      password_hash,
+      role,
+      permissions,
+      is_active
+    )
+    VALUES (
+      'user_corretora_net4life_001',
+      'corretora_net4life_001',
+      'Diretoria NET4Life',
+      'contato@net4life.com.br',
+      ${net4lifeSenhaPadrao},
+      'corretora_admin',
+      '{"admin": true, "manage_team": true, "view_all_sales": true}'::jsonb,
+      true
+    )
+    ON CONFLICT (email) DO UPDATE SET
+      corretora_id = EXCLUDED.corretora_id,
+      role = EXCLUDED.role,
+      is_active = true,
+      updated_at = NOW()
+  `;
+
   // Parceiros (corretores/canais vinculados a uma corretora)
   await sql`
     CREATE TABLE IF NOT EXISTS partners (

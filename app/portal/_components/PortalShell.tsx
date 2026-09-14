@@ -11,6 +11,7 @@ import {
   LogOut,
   UserRound,
   Users,
+  UserCheck,
   WalletCards,
   ChevronDown,
   Sparkles,
@@ -19,20 +20,12 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import type { AuthUser } from '@/lib/auth';
+import { roleIsCorretora } from '@/lib/roles';
 
 interface PortalShellProps {
   children: React.ReactNode;
   user?: AuthUser | null;
 }
-
-const nav = [
-  { href: '/portal', label: 'Dashboard', icon: BarChart3 },
-  { href: '/portal/cotacoes', label: 'Cotações', icon: ClipboardList },
-  { href: '/portal/clientes', label: 'Clientes', icon: Users },
-  { href: '/portal/vendas', label: 'Vendas', icon: FileText },
-  { href: '/portal/comissoes', label: 'Comissões', icon: WalletCards },
-  { href: '/portal/perfil', label: 'Perfil', icon: UserRound },
-];
 
 export default function PortalShell({ children, user }: PortalShellProps) {
   const pathname = usePathname();
@@ -40,6 +33,20 @@ export default function PortalShell({ children, user }: PortalShellProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const isCorretoraOrManager = user
+    ? (roleIsCorretora(user.role) || user.partnerRole === 'director' || user.partnerRole === 'manager')
+    : false;
+
+  const nav = [
+    { href: '/portal', label: 'Dashboard', icon: BarChart3 },
+    { href: '/portal/cotacoes', label: 'Cotações', icon: ClipboardList },
+    { href: '/portal/clientes', label: 'Clientes', icon: Users },
+    { href: '/portal/vendas', label: 'Vendas', icon: FileText },
+    { href: '/portal/comissoes', label: 'Comissões', icon: WalletCards },
+    ...(isCorretoraOrManager ? [{ href: '/portal/equipe', label: 'Minha Equipe', icon: UserCheck }] : []),
+    { href: '/portal/perfil', label: 'Perfil', icon: UserRound },
+  ];
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -123,7 +130,11 @@ export default function PortalShell({ children, user }: PortalShellProps) {
               </div>
               <div className="hidden text-left sm:block">
                 <div className="text-xs font-bold leading-tight text-gray-900">{user.name}</div>
-                <div className="text-[10px] font-medium leading-none text-gray-500">Parceiro DuoLife</div>
+                <div className="text-[10px] font-medium leading-none text-gray-500 truncate max-w-[140px]">
+                  {roleIsCorretora(user.role)
+                    ? (user.corretoraNome || 'Gestão da Corretora')
+                    : (user.corretoraNome || 'Parceiro DuoLife')}
+                </div>
               </div>
               <ChevronDown className={`h-3.5 w-3.5 text-gray-400 transition-transform duration-200 ${profileDropdownOpen ? 'rotate-180' : ''}`} />
             </button>
@@ -140,11 +151,25 @@ export default function PortalShell({ children, user }: PortalShellProps) {
                 <p className="text-xs font-bold text-gray-900 truncate">{user.name}</p>
                 <p className="text-[11px] text-gray-500 truncate">{user.email}</p>
                 <span className="mt-1.5 inline-block rounded-full bg-cyan-50 px-2 py-0.5 text-[10px] font-bold text-[#0e4a5a] border border-cyan-200">
-                  Parceiro DuoLife
+                  {roleIsCorretora(user.role)
+                    ? `Corretora: ${user.corretoraNome || 'Gestão'}`
+                    : user.corretoraNome
+                    ? `${user.corretoraNome}`
+                    : 'Parceiro DuoLife'}
                 </span>
               </div>
 
               <div className="py-1">
+                {isCorretoraOrManager && (
+                  <Link
+                    href="/portal/equipe"
+                    onClick={() => setProfileDropdownOpen(false)}
+                    className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900"
+                  >
+                    <UserCheck className="h-4 w-4 text-emerald-600" />
+                    <span>Minha Equipe</span>
+                  </Link>
+                )}
                 <Link
                   href="/portal/perfil"
                   onClick={() => setProfileDropdownOpen(false)}

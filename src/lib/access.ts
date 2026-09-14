@@ -10,6 +10,17 @@ export async function getAccessibleQuoteById(quoteId: string, user: AuthUser) {
   const access = await getPartnerAccessContext(user);
   if (!access) return null;
 
+  if (access.isCorretoraUser && access.corretoraId) {
+    const rows = await sql`
+      SELECT *
+      FROM cotacoes
+      WHERE id = ${quoteId}
+        AND corretora_id = ${access.corretoraId}
+      LIMIT 1
+    `;
+    return rows[0] ?? null;
+  }
+
   if (access.visibleUserIds === null) {
     const rows = await sql`
       SELECT *

@@ -962,10 +962,14 @@ function parseBirthDate(val: unknown): string | null {
   return null;
 }
 
-export async function syncWixClientsToLocalDb(options?: {
+export interface WixSyncOptions {
   excludeDocuments?: string[];
   onlyDocuments?: string[];
-}): Promise<WixSyncResult> {
+  onlyWixIds?: string[];
+  onlyNew?: boolean;
+}
+
+export async function syncWixClientsToLocalDb(options?: WixSyncOptions): Promise<WixSyncResult> {
   await ensureSchema();
   const startTime = Date.now();
 
@@ -995,9 +999,13 @@ export async function syncWixClientsToLocalDb(options?: {
 
   const excludedSet = new Set((options?.excludeDocuments || []).map((d) => normalizeDigits(d)));
   const onlySet = options?.onlyDocuments ? new Set(options.onlyDocuments.map((d) => normalizeDigits(d))) : null;
+  const onlyWixIdSet = options?.onlyWixIds ? new Set(options.onlyWixIds) : null;
 
   for (const wix of wixItems) {
     try {
+      if (onlyWixIdSet && !onlyWixIdSet.has(wix.id)) {
+        continue;
+      }
       const raw = wix.rawData || {};
       const documentNumber =
         wix.documentNumber ||
@@ -1156,6 +1164,17 @@ export async function syncWixClientsToLocalDb(options?: {
       };
 
       if (existingClient) {
+        if (options?.onlyNew) {
+          unchangedCount += 1;
+          details.push({
+            wixId: wix.id,
+            documentNumber: existingClient.document_number,
+            name: name || existingClient.full_name,
+            action: 'unchanged',
+          });
+          continue;
+        }
+
         // 2. ATUALIZAR CLIENTE EXISTENTE (Wix considerado mais atualizado)
         const changes: string[] = [];
 
@@ -1212,39 +1231,67 @@ export async function syncWixClientsToLocalDb(options?: {
         const docNum = documentNumber || `WIX-${wix.id}`;
         const docType = docNum.length > 11 ? 'cnpj' : 'cpf';
 
-        await sql`
-          INSERT INTO insurance_clients (
-            document_number,
-            document_type,
-            full_name,
-            email,
-            phone,
-            birth_date,
-            metadata,
-            created_at,
-            updated_at
-          )
-          VALUES (
-            ${docNum},
-            ${docType},
-            ${name || 'Cliente Wix ' + wix.id},
-            ${email || null}::text,
-            ${phone || null}::text,
-            ${birthDate || null}::date,
-            ${JSON.stringify(metadataPayload)}::jsonb,
-            ${wixCreatedAt},
-            NOW()
-          )
-          ON CONFLICT (document_number)
-          DO UPDATE SET
-            full_name = EXCLUDED.full_name,
-            email = COALESCE(EXCLUDED.email, insurance_clients.email),
-            phone = COALESCE(EXCLUDED.phone, insurance_clients.phone),
-            birth_date = COALESCE(EXCLUDED.birth_date, insurance_clients.birth_date),
-            created_at = ${wixCreatedAt},
-            metadata = insurance_clients.metadata || EXCLUDED.metadata,
-            updated_at = NOW()
-        `;
+        if (options?.onlyNew) {
+          await sql`
+            INSERT INTO insurance_clients (
+              document_number,
+              document_type,
+              full_name,
+              email,
+              phone,
+              birth_date,
+              metadata,
+              created_at,
+              updated_at
+            )
+            VALUES (
+              ${docNum},
+              ${docType},
+              ${name || 'Cliente Wix ' + wix.id},
+              ${email || null}::text,
+              ${phone || null}::text,
+              ${birthDate || null}::date,
+              ${JSON.stringify(metadataPayload)}::jsonb,
+              ${wixCreatedAt},
+              NOW()
+            )
+            ON CONFLICT (document_number) DO NOTHING
+          `;
+        } else {
+          await sql`
+            INSERT INTO insurance_clients (
+              document_number,
+              document_type,
+              full_name,
+              email,
+              phone,
+              birth_date,
+              metadata,
+              created_at,
+              updated_at
+            )
+            VALUES (
+              ${docNum},
+              ${docType},
+              ${name || 'Cliente Wix ' + wix.id},
+              ${email || null}::text,
+              ${phone || null}::text,
+              ${birthDate || null}::date,
+              ${JSON.stringify(metadataPayload)}::jsonb,
+              ${wixCreatedAt},
+              NOW()
+            )
+            ON CONFLICT (document_number)
+            DO UPDATE SET
+              full_name = EXCLUDED.full_name,
+              email = COALESCE(EXCLUDED.email, insurance_clients.email),
+              phone = COALESCE(EXCLUDED.phone, insurance_clients.phone),
+              birth_date = COALESCE(EXCLUDED.birth_date, insurance_clients.birth_date),
+              created_at = ${wixCreatedAt},
+              metadata = insurance_clients.metadata || EXCLUDED.metadata,
+              updated_at = NOW()
+          `;
+        }
 
         importedCount += 1;
         details.push({
@@ -1272,20 +1319,22 @@ export async function syncWixClientsToLocalDb(options?: {
       }
 
       if (existingLead) {
-        await sql`
-          UPDATE leads
-          SET
-            nome = COALESCE(${name || null}::text, nome),
-            email = COALESCE(${email || null}::text, email),
-            telefone = COALESCE(${phone || null}::text, telefone),
-            status = COALESCE(${status || null}::text, status),
-            status_cliente = COALESCE(${statusCliente || null}::text, status_cliente),
-            raw = ${JSON.stringify({ sourceCollection: 'Import1', wix: raw })}::jsonb,
-            ${rawDateStr ? sql`data_cadastro = ${wixCreatedAt},` : sql``}
-            synced_at = NOW(),
-            data_atualizacao = NOW()
-          WHERE id = ${existingLead.id}
-        `;
+        if (!options?.onlyNew) {
+          await sql`
+            UPDATE leads
+            SET
+              nome = COALESCE(${name || null}::text, nome),
+              email = COALESCE(${email || null}::text, email),
+              telefone = COALESCE(${phone || null}::text, telefone),
+              status = COALESCE(${status || null}::text, status),
+              status_cliente = COALESCE(${statusCliente || null}::text, status_cliente),
+              raw = ${JSON.stringify({ sourceCollection: 'Import1', wix: raw })}::jsonb,
+              ${rawDateStr ? sql`data_cadastro = ${wixCreatedAt},` : sql``}
+              synced_at = NOW(),
+              data_atualizacao = NOW()
+            WHERE id = ${existingLead.id}
+          `;
+        }
       } else {
         await sql`
           INSERT INTO leads (

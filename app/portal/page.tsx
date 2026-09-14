@@ -14,18 +14,28 @@ export default async function PortalDashboard() {
   if (!access) redirect('/login');
   await ensureSchema();
 
-  // KPIs do parceiro e link ativo de vendas
+  const isCorretora = Boolean(access.isCorretoraUser && access.corretoraId);
+
+  // KPIs do parceiro/corretora e link ativo de vendas
   const [
     cotacoesCountResult,
     vendasCountResult,
     comissoesCountResult,
     saleLink,
   ] = await Promise.all([
-    access.visibleUserIds === null
+    isCorretora
+      ? sql`SELECT COUNT(*) as total FROM cotacoes WHERE corretora_id = ${access.corretoraId}`
+      : access.visibleUserIds === null
       ? sql`SELECT COUNT(*) as total FROM cotacoes WHERE partner_id = ${access.partnerId}`
       : sql`SELECT COUNT(*) as total FROM cotacoes WHERE partner_id = ${access.partnerId} AND (partner_user_id IN ${sql(access.visibleUserIds)} OR partner_user_id IS NULL)`,
 
-    access.visibleUserIds === null
+    isCorretora
+      ? sql`
+          SELECT COUNT(*) as total, COALESCE(SUM(s.premio_total), 0) as volume
+          FROM sales s
+          WHERE s.corretora_id = ${access.corretoraId} AND s.status = 'ativa'
+        `
+      : access.visibleUserIds === null
       ? sql`
           SELECT COUNT(*) as total, COALESCE(SUM(s.premio_total), 0) as volume
           FROM sales s
@@ -40,7 +50,13 @@ export default async function PortalDashboard() {
             AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
         `,
 
-    access.visibleUserIds === null
+    isCorretora
+      ? sql`
+          SELECT COALESCE(SUM(amount), 0) as pendente
+          FROM commissions
+          WHERE corretora_id = ${access.corretoraId} AND status = 'pendente'
+        `
+      : access.visibleUserIds === null
       ? sql`
           SELECT COALESCE(SUM(amount), 0) as pendente
           FROM commissions
@@ -56,7 +72,7 @@ export default async function PortalDashboard() {
             AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
         `,
 
-    getOrCreatePartnerSaleLink(access.partnerId),
+    access.partnerId ? getOrCreatePartnerSaleLink(access.partnerId) : Promise.resolve(null),
   ]);
 
   const [cotacoesCount] = cotacoesCountResult;
@@ -64,9 +80,9 @@ export default async function PortalDashboard() {
   const [comissoesCount] = comissoesCountResult;
 
   const kpis = [
-    { label: 'Cotações realizadas', value: cotacoesCount.total, icon: ClipboardList, href: '/portal/cotacoes' },
-    { label: 'Apólices ativas', value: vendasCount.total, icon: FileText, href: '/portal/vendas' },
-    { label: 'Volume em prêmios', value: `R$ ${Number(vendasCount.volume).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, icon: DollarSign, href: '/portal/vendas' },
+    { label: isCorretora ? 'Cotações da Corretora' : 'Cotações realizadas', value: cotacoesCount.total, icon: ClipboardList, href: '/portal/cotacoes' },
+    { label: isCorretora ? 'Apólices da Corretora' : 'Apólices ativas', value: vendasCount.total, icon: FileText, href: '/portal/vendas' },
+    { label: isCorretora ? 'Volume Total da Equipe' : 'Volume em prêmios', value: `R$ ${Number(vendasCount.volume).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, icon: DollarSign, href: '/portal/vendas' },
     { label: 'Comissões pendentes', value: `R$ ${Number(comissoesCount.pendente).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, icon: WalletCards, href: '/portal/comissoes' },
   ];
 
@@ -75,19 +91,52 @@ export default async function PortalDashboard() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-2xl font-black" style={{ color: 'var(--primary)' }}>Bom dia, {user.name.split(' ')[0]}.</h1>
-          <p className="text-gray-500 text-sm mt-1">Aqui está um resumo da sua conta.</p>
+          <p className="text-gray-500 text-sm mt-1">
+            {isCorretora
+              ? `Gestão da Corretora ${user.corretoraNome ? `(${user.corretoraNome})` : ''} · Visão consolidada da sua equipe.`
+              : 'Aqui está um resumo da sua conta.'}
+          </p>
         </div>
-        <Link href="/portal/cotacoes/nova" className="btn-primary">
-          <Plus size={16} /> Nova Cotação
-        </Link>
+        <div className="flex items-center gap-3">
+          {isCorretora && (
+            <Link href="/portal/equipe" className="btn-outline text-xs py-2">
+              Gerenciar Equipe
+            </Link>
+          )}
+          <Link href="/portal/cotacoes/nova" className="btn-primary">
+            <Plus size={16} /> Nova Cotação
+          </Link>
+        </div>
       </div>
 
-      {/* Card de Link de Vendas Online */}
-      <PartnerSaleLinkCard
-        directUrl={saleLink.directUrl}
-        refUrl={saleLink.refUrl}
-        partnerCode={saleLink.code}
-      />
+      {/* Card de Link de Vendas Online ou Banner da Corretora */}
+      {saleLink ? (
+        <PartnerSaleLinkCard
+          directUrl={saleLink.directUrl}
+          refUrl={saleLink.refUrl}
+          partnerCode={saleLink.code}
+        />
+      ) : isCorretora ? (
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs">
+          <div>
+            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+              Painel de Gestão da Corretora
+            </span>
+            <h3 className="text-lg font-bold text-gray-900 mt-1">
+              Acompanhe a produção de toda a sua equipe comercial
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Você pode cadastrar novos corretores, atribuir gestores e gerenciar o acesso da sua corretora em um só lugar.
+            </p>
+          </div>
+          <Link
+            href="/portal/equipe"
+            className="btn-accent text-xs whitespace-nowrap px-4 py-2 font-bold"
+          >
+            Ver Minha Equipe
+          </Link>
+        </div>
+      ) : null}
 
       {/* KPIs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

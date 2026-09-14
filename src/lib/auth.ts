@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers';
-import { INTERNAL_ROLES, roleIsDev, roleIsInternal, roleIsPlatformAdmin, type UserRole } from './roles';
+import { INTERNAL_ROLES, CORRETORA_ROLES, roleIsDev, roleIsInternal, roleIsPlatformAdmin, roleIsCorretora, type UserRole } from './roles';
 import jwt from 'jsonwebtoken';
 import { sql } from './pg';
 import { getJwtSecret } from './secrets';
@@ -8,22 +8,26 @@ export type { UserRole } from './roles';
 
 export type PartnerRole = 'director' | 'manager' | 'broker' | 'partner';
 
-export { INTERNAL_ROLES, INTERNAL_ROLE_LABEL } from './roles';
+export { INTERNAL_ROLES, INTERNAL_ROLE_LABEL, CORRETORA_ROLES, CORRETORA_ROLE_LABEL, roleIsCorretora } from './roles';
 
 export interface AuthUser {
-  userId:      string;
-  partnerId:   string | null; // null = usuário interno DuoLife
-  name:        string;
-  email:       string;
-  role:        UserRole;
-  partnerRole?: PartnerRole | null;
+  userId:         string;
+  partnerId:      string | null; // null = usuário interno DuoLife ou gestor de corretora
+  corretoraId?:   string | null;
+  corretoraNome?: string | null;
+  name:           string;
+  email:          string;
+  role:           UserRole;
+  partnerRole?:   PartnerRole | null;
   managerUserId?: string | null;
-  permissions: Record<string, boolean>;
+  permissions:    Record<string, boolean>;
 }
 
 export interface PartnerAccessContext {
-  partnerId: string;
-  role: PartnerRole;
+  partnerId: string | null;
+  corretoraId: string | null;
+  isCorretoraUser: boolean;
+  role: PartnerRole | UserRole;
   visibleUserIds: string[] | null;
 }
 
@@ -67,7 +71,8 @@ function isAuthUser(value: unknown): value is AuthUser {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Partial<AuthUser>;
   return typeof candidate.userId === 'string'
-    && (typeof candidate.partnerId === 'string' || candidate.partnerId === null)
+    && (typeof candidate.partnerId === 'string' || candidate.partnerId === null || candidate.partnerId === undefined)
+    && (typeof candidate.corretoraId === 'string' || candidate.corretoraId === null || candidate.corretoraId === undefined)
     && typeof candidate.name === 'string'
     && typeof candidate.email === 'string'
     && typeof candidate.role === 'string'
@@ -96,6 +101,8 @@ export async function verifyAuth(): Promise<AuthUser | null> {
       return {
         userId: admin.id,
         partnerId: null,
+        corretoraId: null,
+        corretoraNome: null,
         name: admin.name,
         email: admin.email,
         role: admin.role as UserRole,
@@ -105,10 +112,39 @@ export async function verifyAuth(): Promise<AuthUser | null> {
       };
     }
 
+    if (roleIsCorretora(decoded.role)) {
+      const [corretoraUser] = await sql`
+        SELECT cu.id, cu.corretora_id, cu.name, cu.email, cu.role, cu.permissions,
+               c.nome_fantasia as corretora_nome
+        FROM corretora_users cu
+        JOIN corretoras c ON c.id = cu.corretora_id
+        WHERE cu.id = ${decoded.userId}
+          AND cu.is_active = true
+          AND c.status = 'active'
+      `;
+
+      if (!corretoraUser) return null;
+
+      return {
+        userId: corretoraUser.id,
+        partnerId: null,
+        corretoraId: corretoraUser.corretora_id,
+        corretoraNome: corretoraUser.corretora_nome,
+        name: corretoraUser.name,
+        email: corretoraUser.email,
+        role: corretoraUser.role as UserRole,
+        partnerRole: null,
+        managerUserId: null,
+        permissions: normalizePermissions(corretoraUser.permissions),
+      };
+    }
+
     const [partnerUser] = await sql`
-      SELECT pu.id, pu.name, pu.email, pu.role, pu.permissions, pu.partner_id, pu.manager_user_id
+      SELECT pu.id, pu.name, pu.email, pu.role, pu.permissions, pu.partner_id, pu.manager_user_id,
+             p.corretora_id, c.nome_fantasia as corretora_nome
       FROM partner_users pu
       JOIN partners p ON p.id = pu.partner_id
+      LEFT JOIN corretoras c ON c.id = p.corretora_id
       WHERE pu.id = ${decoded.userId}
         AND pu.is_active = true
         AND p.status = 'active'
@@ -119,6 +155,8 @@ export async function verifyAuth(): Promise<AuthUser | null> {
     return {
       userId: partnerUser.id,
       partnerId: partnerUser.partner_id,
+      corretoraId: partnerUser.corretora_id || null,
+      corretoraNome: partnerUser.corretora_nome || null,
       name: partnerUser.name,
       email: partnerUser.email,
       role: toPartnerUserRole(normalizePartnerRole(partnerUser.role)),
@@ -140,7 +178,7 @@ export async function verifyAdminAuth(): Promise<AuthUser | null> {
 export async function verifyPartnerAuth(): Promise<AuthUser | null> {
   const user = await verifyAuth();
   if (!user) return null;
-  if (user.partnerId && user.role.startsWith('partner_')) return user;
+  if ((user.partnerId && user.role.startsWith('partner_')) || roleIsCorretora(user.role)) return user;
   return null;
 }
 
@@ -163,15 +201,33 @@ export function isPlatformAdmin(user: AuthUser): boolean {
 }
 
 export function canManageOwnCompany(user: AuthUser): boolean {
-  return user.partnerRole === 'director';
+  return roleIsCorretora(user.role) || user.partnerRole === 'director';
+}
+
+export function canManageTeam(user: AuthUser): boolean {
+  return roleIsCorretora(user.role) || user.partnerRole === 'director' || user.partnerRole === 'manager';
 }
 
 export async function getPartnerAccessContext(user: AuthUser): Promise<PartnerAccessContext | null> {
+  if (roleIsCorretora(user.role)) {
+    return {
+      partnerId: null,
+      corretoraId: user.corretoraId || null,
+      isCorretoraUser: true,
+      role: user.role,
+      visibleUserIds: null,
+    };
+  }
+
   if (!user.partnerId || !user.partnerRole) return null;
+
+  const corretoraId = user.corretoraId || null;
 
   if (user.partnerRole === 'director') {
     return {
       partnerId: user.partnerId,
+      corretoraId,
+      isCorretoraUser: false,
       role: user.partnerRole,
       visibleUserIds: null,
     };
@@ -197,6 +253,8 @@ export async function getPartnerAccessContext(user: AuthUser): Promise<PartnerAc
 
     return {
       partnerId: user.partnerId,
+      corretoraId,
+      isCorretoraUser: false,
       role: user.partnerRole,
       visibleUserIds: rows.map((row) => row.id),
     };
@@ -204,6 +262,8 @@ export async function getPartnerAccessContext(user: AuthUser): Promise<PartnerAc
 
   return {
     partnerId: user.partnerId,
+    corretoraId,
+    isCorretoraUser: false,
     role: user.partnerRole,
     visibleUserIds: [user.userId],
   };

@@ -53,7 +53,22 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
   await ensureSchema();
   const { id } = await params;
 
-  const [client] = access.visibleUserIds === null
+  const isCorretora = Boolean(access.isCorretoraUser && access.corretoraId);
+
+  const [client] = isCorretora
+    ? await sql`
+        SELECT id, full_name, document_number, email, phone, birth_date, metadata
+        FROM insurance_clients
+        WHERE id = ${id}
+          AND EXISTS (
+            SELECT 1
+            FROM cotacoes c
+            WHERE c.client_id = insurance_clients.id
+              AND c.corretora_id = ${access.corretoraId}
+          )
+        LIMIT 1
+      `
+    : access.visibleUserIds === null
     ? await sql`
         SELECT id, full_name, document_number, email, phone, birth_date, metadata
         FROM insurance_clients
@@ -82,7 +97,35 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
 
   if (!client) notFound();
 
-  const quotes = access.visibleUserIds === null
+  const quotes = isCorretora
+    ? await sql`
+        SELECT
+          c.id,
+          c.status,
+          c.created_at,
+          c.premio_final,
+          c.importancia_segurada,
+          c.client_name,
+          c.client_cpf_cnpj,
+          c.client_email,
+          c.client_phone,
+          c.client_data,
+          c.notes,
+          p.name AS product_name,
+          po.status AS payment_status,
+          po.installment_count,
+          po.paid_installments,
+          sd.status AS signature_status,
+          sd.signed_file_url
+        FROM cotacoes c
+        JOIN products p ON p.id = c.product_id
+        LEFT JOIN payment_orders po ON po.cotacao_id = c.id
+        LEFT JOIN signature_documents sd ON sd.cotacao_id = c.id
+        WHERE c.client_id = ${id}
+          AND c.corretora_id = ${access.corretoraId}
+        ORDER BY c.created_at DESC
+      `
+    : access.visibleUserIds === null
     ? await sql`
         SELECT
           c.id,
@@ -139,7 +182,27 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
         ORDER BY c.created_at DESC
       `;
 
-  const installments = access.visibleUserIds === null
+  const installments = isCorretora
+    ? await sql`
+        SELECT
+          pi.id,
+          pi.cotacao_id,
+          pi.installment_number,
+          pi.status,
+          pi.amount,
+          pi.due_date,
+          pi.paid_at,
+          pi.bank_slip_url,
+          pi.invoice_url,
+          p.name AS product_name
+        FROM payment_installments pi
+        JOIN cotacoes c ON c.id = pi.cotacao_id
+        JOIN products p ON p.id = c.product_id
+        WHERE pi.client_id = ${id}
+          AND c.corretora_id = ${access.corretoraId}
+        ORDER BY pi.due_date ASC NULLS LAST, pi.installment_number ASC
+      `
+    : access.visibleUserIds === null
     ? await sql`
         SELECT
           pi.id,

@@ -8,7 +8,7 @@ import { ensureSchema } from '@/lib/schema';
 interface VendaRow {
   id: string;
   policy_number: string | null;
-  premio_total: string | null;
+  premio_total: string;
   commission_rate: string | null;
   commission_amount: string | null;
   status: string;
@@ -17,7 +17,8 @@ interface VendaRow {
   product_id: string;
   product_name: string;
   client_name: string;
-  client_cpf_cnpj: string;
+  client_cpf_cnpj: string | null;
+  partner_name?: string | null;
 }
 
 const statusLabel: Record<string, string> = {
@@ -28,8 +29,9 @@ const statusLabel: Record<string, string> = {
 };
 
 function formatCurrency(value: string | number | null) {
-  if (value === null) return '-';
-  return Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  if (value === null || value === undefined) return '-';
+  const num = typeof value === 'string' ? parseFloat(value) : value;
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num);
 }
 
 function formatDate(value: string) {
@@ -44,7 +46,33 @@ export default async function VendasPage() {
 
   await ensureSchema();
 
-  const vendas = access.visibleUserIds === null
+  const isCorretora = Boolean(access.isCorretoraUser && access.corretoraId);
+
+  const vendas = isCorretora
+    ? await sql<VendaRow[]>`
+        SELECT
+          s.id,
+          s.policy_number,
+          s.premio_total,
+          s.commission_rate,
+          s.commission_amount,
+          s.status,
+          s.issue_date,
+          s.expiry_date,
+          s.product_id,
+          p.name AS product_name,
+          c.client_name,
+          c.client_cpf_cnpj,
+          pt.razao_social AS partner_name
+        FROM sales s
+        JOIN products p ON p.id = s.product_id
+        JOIN cotacoes c ON c.id = s.cotacao_id
+        LEFT JOIN partners pt ON pt.id = s.partner_id
+        WHERE s.corretora_id = ${access.corretoraId}
+        ORDER BY s.issue_date DESC, s.created_at DESC
+        LIMIT 150
+      `
+    : access.visibleUserIds === null
     ? await sql<VendaRow[]>`
         SELECT
           s.id,
@@ -89,19 +117,30 @@ export default async function VendasPage() {
         LIMIT 100
       `;
 
-  const totalPremios = vendas.reduce((sum, venda) => sum + Number(venda.premio_total || 0), 0);
-  const totalComissoes = vendas.reduce((sum, venda) => sum + Number(venda.commission_amount || 0), 0);
+  const totalPremios = vendas.reduce((acc, v) => acc + parseFloat(v.premio_total || '0'), 0);
+  const totalComissoes = vendas.reduce((acc, v) => acc + parseFloat(v.commission_amount || '0'), 0);
 
   return (
     <div>
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="page-title">Vendas</h1>
-          <p className="muted mt-1 text-sm">Apólices emitidas e volume gerado pela sua corretora.</p>
+          <p className="muted mt-1 text-sm">
+            {isCorretora
+              ? 'Apólices emitidas e volume gerado por toda a equipe da sua corretora.'
+              : 'Apólices emitidas e volume gerado pela sua carteira.'}
+          </p>
         </div>
-        <Link href="/portal/cotacoes/nova" className="btn-primary">
-          <Plus size={16} /> Nova Cotação
-        </Link>
+        <div className="flex items-center gap-3">
+          {isCorretora && (
+            <Link href="/portal/equipe" className="btn-outline text-xs py-2">
+              Ver Vendedores
+            </Link>
+          )}
+          <Link href="/portal/cotacoes/nova" className="btn-primary">
+            <Plus size={16} /> Nova Cotação
+          </Link>
+        </div>
       </div>
 
       <div className="mb-6 grid gap-4 md:grid-cols-3">
@@ -133,6 +172,7 @@ export default async function VendasPage() {
               <thead className="table-head">
                 <tr>
                   <th className="px-5 py-3 font-semibold">Cliente</th>
+                  {isCorretora && <th className="px-5 py-3 font-semibold">Corretor</th>}
                   <th className="px-5 py-3 font-semibold">Apólice</th>
                   <th className="px-5 py-3 font-semibold">Produto</th>
                   <th className="px-5 py-3 font-semibold">Prêmio</th>
@@ -155,6 +195,11 @@ export default async function VendasPage() {
                       <td className="px-5 py-4 font-semibold" style={{ color: 'var(--primary)' }}>
                         {venda.client_name}
                       </td>
+                      {isCorretora && (
+                        <td className="px-5 py-4 text-xs font-semibold text-gray-700">
+                          {venda.partner_name || 'Corretora'}
+                        </td>
+                      )}
                       <td className="px-5 py-4 text-gray-600">{venda.policy_number || '-'}</td>
                       <td className="px-5 py-4 text-gray-600">{venda.product_name}</td>
                       <td className="px-5 py-4 text-gray-600">{formatCurrency(venda.premio_total)}</td>

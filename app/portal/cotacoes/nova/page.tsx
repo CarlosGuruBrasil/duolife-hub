@@ -29,7 +29,20 @@ export default async function NovaCotacaoPage({
   }>;
 }) {
   const user = await verifyPartnerAuth();
-  if (!user?.partnerId) redirect('/login');
+  if (!user) redirect('/login');
+
+  let effectivePartnerId = user.partnerId;
+  if (!effectivePartnerId && user.corretoraId) {
+    const [p] = await sql`
+      SELECT id FROM partners
+      WHERE corretora_id = ${user.corretoraId} AND status = 'active'
+      ORDER BY created_at ASC
+      LIMIT 1
+    `;
+    effectivePartnerId = p?.id || null;
+  }
+
+  if (!effectivePartnerId) redirect('/portal');
   const { product: paramProductId, cotacaoId, cpf, clientCpfCnpj, renovacao } = await searchParams;
 
   const targetCpf = cpf || clientCpfCnpj;
@@ -37,9 +50,10 @@ export default async function NovaCotacaoPage({
 
   let productId = paramProductId;
   if (cotacaoId && !productId) {
+    const userCorretoraId = user.corretoraId || null;
     const [c] = await sql`
       SELECT product_id FROM cotacoes
-      WHERE id = ${cotacaoId} AND partner_id = ${user.partnerId}
+      WHERE id = ${cotacaoId} AND (partner_id = ${effectivePartnerId} OR (corretora_id IS NOT NULL AND corretora_id = ${userCorretoraId}))
       LIMIT 1
     `;
     if (c?.product_id) {
@@ -56,7 +70,7 @@ export default async function NovaCotacaoPage({
   const products = await sql<Product[]>`
     SELECT p.id, p.name, p.description, p.product_type, p.flow_key, p.code, p.is_quoteable
     FROM products p JOIN partner_product_availability ppa ON ppa.product_id = p.id
-    WHERE ppa.partner_id = ${user.partnerId} AND ppa.is_active = true AND p.is_active = true
+    WHERE ppa.partner_id = ${effectivePartnerId} AND ppa.is_active = true AND p.is_active = true
     ORDER BY p.name
   `;
 

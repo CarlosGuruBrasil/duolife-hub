@@ -16,6 +16,7 @@ interface CotacaoRow {
   created_at: string;
   product_id: string;
   product_name: string;
+  partner_name?: string | null;
 }
 
 const statusLabel: Record<string, string> = {
@@ -36,7 +37,29 @@ export default async function CotacoesPage() {
   await ensureSchema();
   await seedInitialData();
 
-  const cotacoes = access.visibleUserIds === null
+  const isCorretora = Boolean(access.isCorretoraUser && access.corretoraId);
+
+  const cotacoes = isCorretora
+    ? await sql<CotacaoRow[]>`
+        SELECT
+          c.id,
+          c.client_name,
+          c.client_cpf_cnpj,
+          c.importancia_segurada,
+          c.premio_final,
+          c.status,
+          c.created_at,
+          c.product_id,
+          p.name AS product_name,
+          pt.razao_social AS partner_name
+        FROM cotacoes c
+        JOIN products p ON p.id = c.product_id
+        LEFT JOIN partners pt ON pt.id = c.partner_id
+        WHERE c.corretora_id = ${access.corretoraId}
+        ORDER BY c.created_at DESC
+        LIMIT 150
+      `
+    : access.visibleUserIds === null
     ? await sql<CotacaoRow[]>`
         SELECT
           c.id,
@@ -78,11 +101,22 @@ export default async function CotacoesPage() {
       <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="page-title">Cotações</h1>
-          <p className="muted mt-1 text-sm">Acompanhe os rascunhos e propostas dos seus produtos e serviços.</p>
+          <p className="muted mt-1 text-sm">
+            {isCorretora
+              ? `Acompanhe as propostas e rascunhos de todos os vendedores da sua corretora.`
+              : 'Acompanhe os rascunhos e propostas dos seus produtos e serviços.'}
+          </p>
         </div>
-        <Link href="/portal/cotacoes/nova" className="btn-primary">
-          <Plus size={16} /> Nova Cotação
-        </Link>
+        <div className="flex items-center gap-3">
+          {isCorretora && (
+            <Link href="/portal/equipe" className="btn-outline text-xs py-2">
+              Ver Vendedores
+            </Link>
+          )}
+          <Link href="/portal/cotacoes/nova" className="btn-primary">
+            <Plus size={16} /> Nova Cotação
+          </Link>
+        </div>
       </div>
 
       <div className="card overflow-hidden p-0">
@@ -102,6 +136,7 @@ export default async function CotacoesPage() {
               <thead className="table-head">
                 <tr>
                   <th className="px-5 py-3 font-semibold">Cliente</th>
+                  {isCorretora && <th className="px-5 py-3 font-semibold">Corretor</th>}
                   <th className="px-5 py-3 font-semibold">Produto</th>
                   <th className="px-5 py-3 font-semibold">Importância</th>
                   <th className="px-5 py-3 font-semibold">Prêmio</th>
@@ -119,6 +154,11 @@ export default async function CotacoesPage() {
                       </Link>
                       <div className="text-xs text-gray-500">{cotacao.client_cpf_cnpj}</div>
                     </td>
+                    {isCorretora && (
+                      <td className="px-5 py-4 text-xs font-semibold text-gray-700">
+                        {cotacao.partner_name || 'Corretora'}
+                      </td>
+                    )}
                     <td className="px-5 py-4 text-gray-600">{cotacao.product_name}</td>
                     <td className="px-5 py-4 text-gray-600">{formatCurrency(cotacao.importancia_segurada)}</td>
                     <td className="px-5 py-4 text-gray-600">{formatCurrency(cotacao.premio_final)}</td>

@@ -28,9 +28,10 @@ export async function proxy(req: NextRequest) {
       const { payload } = await jwtVerify(token, JWT_SECRET, { algorithms: ['HS256'] });
       const role = String(payload.role || '');
       const isPartner = !!payload.partnerId || role.startsWith('partner_');
+      const isCorretora = role.startsWith('corretora_') || !!payload.corretoraId;
       const isAdmin = role.startsWith('duolife_');
 
-      if (!isPartner && !isAdmin) {
+      if (!isPartner && !isAdmin && !isCorretora) {
         return isApi
           ? NextResponse.json({ error: 'Acesso negado: perfil inválido' }, { status: 403 })
           : redirectToPath(req, '/login');

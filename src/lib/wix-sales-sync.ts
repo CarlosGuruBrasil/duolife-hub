@@ -17,6 +17,8 @@ import { mapSeguradoFromWixRaw } from './csv-row-mapper';
 export interface WixSalesSyncOptions {
   onlyForDocuments?: string[];
   excludeDocuments?: string[];
+  onlyWixIds?: string[];
+  onlyNew?: boolean;
 }
 
 export interface WixSalesSyncResult {
@@ -382,9 +384,13 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
 
   const excludedSet = new Set((options?.excludeDocuments || []).map((d) => normalizeDigits(d)));
   const onlySet = options?.onlyForDocuments ? new Set(options.onlyForDocuments.map((d) => normalizeDigits(d))) : null;
+  const onlyWixIdSet = options?.onlyWixIds ? new Set(options.onlyWixIds) : null;
 
   for (const wix of wixItems) {
     try {
+      if (onlyWixIdSet && !onlyWixIdSet.has(wix.id)) {
+        continue;
+      }
       const raw = wix.rawData || {};
       const documentNumber =
         wix.documentNumber ||
@@ -578,23 +584,25 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
         `;
         clientId = createdClient.id;
       } else {
-        // Atualiza cliente existente preservando a data de cadastro original do Wix
-        await sql`
-          UPDATE insurance_clients
-          SET
-            full_name = COALESCE(${clientName || null}::text, full_name),
-            email = COALESCE(${email || null}::text, email),
-            phone = COALESCE(${phoneFinal || null}::text, phone),
-            birth_date = COALESCE(${segurado.dataNascto}::date, birth_date),
-            ${rawDateStr ? sql`created_at = ${clientCreatedAt},` : sql``}
-            metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify(clientMetaPayload)}::jsonb,
-            updated_at = NOW()
-          WHERE id = ${clientId}
-        `;
+        if (!options?.onlyNew) {
+          // Atualiza cliente existente preservando a data de cadastro original do Wix
+          await sql`
+            UPDATE insurance_clients
+            SET
+              full_name = COALESCE(${clientName || null}::text, full_name),
+              email = COALESCE(${email || null}::text, email),
+              phone = COALESCE(${phoneFinal || null}::text, phone),
+              birth_date = COALESCE(${segurado.dataNascto}::date, birth_date),
+              ${rawDateStr ? sql`created_at = ${clientCreatedAt},` : sql``}
+              metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify(clientMetaPayload)}::jsonb,
+              updated_at = NOW()
+            WHERE id = ${clientId}
+          `;
+        }
       }
 
       // Atualiza data_cadastro em leads para refletir a data real do Wix
-      if (documentNumber && rawDateStr) {
+      if (!options?.onlyNew && documentNumber && rawDateStr) {
         await sql`
           UPDATE leads
           SET data_cadastro = ${clientCreatedAt}
@@ -712,28 +720,30 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
 
       if (existingCotacao) {
         cotacaoId = existingCotacao.id;
-        await sql`
-          UPDATE cotacoes
-          SET
-            client_id = ${clientId},
-            partner_id = ${partnerId},
-            corretora_id = ${corretoraId},
-            product_id = ${defaultProductId},
-            client_name = ${clientName},
-            client_cpf_cnpj = ${documentNumber},
-            client_email = ${email},
-            client_phone = ${phoneFinal},
-            client_data = COALESCE(client_data, '{}'::jsonb) || ${JSON.stringify(quoteClientData)}::jsonb,
-            importancia_segurada = ${coverageFinal},
-            premio_calculado = ${revenue},
-            premio_final = ${revenue},
-            status = ${cotacaoStatus},
-            metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify({ source: 'wix', wixId: wix.id, wix: raw })}::jsonb,
-            created_at = ${wixDate},
-            updated_at = NOW()
-          WHERE id = ${cotacaoId}
-        `;
-        quotesUpdated++;
+        if (!options?.onlyNew) {
+          await sql`
+            UPDATE cotacoes
+            SET
+              client_id = ${clientId},
+              partner_id = ${partnerId},
+              corretora_id = ${corretoraId},
+              product_id = ${defaultProductId},
+              client_name = ${clientName},
+              client_cpf_cnpj = ${documentNumber},
+              client_email = ${email},
+              client_phone = ${phoneFinal},
+              client_data = COALESCE(client_data, '{}'::jsonb) || ${JSON.stringify(quoteClientData)}::jsonb,
+              importancia_segurada = ${coverageFinal},
+              premio_calculado = ${revenue},
+              premio_final = ${revenue},
+              status = ${cotacaoStatus},
+              metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify({ source: 'wix', wixId: wix.id, wix: raw })}::jsonb,
+              created_at = ${wixDate},
+              updated_at = NOW()
+            WHERE id = ${cotacaoId}
+          `;
+          quotesUpdated++;
+        }
       } else {
         const [newCotacao] = await sql<Array<{ id: string }>>`
           INSERT INTO cotacoes (
@@ -801,34 +811,36 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
 
         if (existingSale) {
           saleId = existingSale.id;
-          await sql`
-            UPDATE sales
-            SET
-              client_id = ${clientId},
-              partner_id = ${partnerId},
-              corretora_id = ${corretoraId},
-              product_id = ${defaultProductId},
-              importancia_segurada = ${coverageFinal},
-              premio_total = ${revenue},
-              commission_rate = ${commissionRate},
-              commission_amount = ${commissionAmount},
-              status = 'ativa',
-              issue_date = ${vigenciaInicioIso}::date,
-              expiry_date = ${vigenciaFimIso}::date,
-              metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify({ source: 'wix', wixId: wix.id })}::jsonb,
-              created_at = ${wixDate},
-              updated_at = NOW()
-            WHERE id = ${saleId}
-          `;
-          salesUpdated++;
-          details.push({
-            wixId: wix.id,
-            clientName,
-            documentNumber,
-            action: 'sale_updated',
-            status: 'ativa',
-            revenue,
-          });
+          if (!options?.onlyNew) {
+            await sql`
+              UPDATE sales
+              SET
+                client_id = ${clientId},
+                partner_id = ${partnerId},
+                corretora_id = ${corretoraId},
+                product_id = ${defaultProductId},
+                importancia_segurada = ${coverageFinal},
+                premio_total = ${revenue},
+                commission_rate = ${commissionRate},
+                commission_amount = ${commissionAmount},
+                status = 'ativa',
+                issue_date = ${vigenciaInicioIso}::date,
+                expiry_date = ${vigenciaFimIso}::date,
+                metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify({ source: 'wix', wixId: wix.id })}::jsonb,
+                created_at = ${wixDate},
+                updated_at = NOW()
+              WHERE id = ${saleId}
+            `;
+            salesUpdated++;
+            details.push({
+              wixId: wix.id,
+              clientName,
+              documentNumber,
+              action: 'sale_updated',
+              status: 'ativa',
+              revenue,
+            });
+          }
         } else {
           const [newSale] = await sql<Array<{ id: string }>>`
             INSERT INTO sales (

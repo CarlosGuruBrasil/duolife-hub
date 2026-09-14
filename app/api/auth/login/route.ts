@@ -67,12 +67,58 @@ export async function POST(req: NextRequest) {
       return Response.json({ ok: true, user: { ...payload } });
     }
 
+    // Tenta usuário de Corretora
+    const [corretoraUser] = await sql`
+      SELECT cu.id, cu.corretora_id, cu.name, cu.email, cu.password_hash, cu.role, cu.permissions,
+             c.status as corretora_status, c.nome_fantasia as corretora_nome
+      FROM corretora_users cu
+      JOIN corretoras c ON c.id = cu.corretora_id
+      WHERE cu.email = ${email.toLowerCase()} AND cu.is_active = true
+    `;
+
+    if (corretoraUser) {
+      if (corretoraUser.corretora_status !== 'active') {
+        return Response.json({ error: 'Corretora não está ativa. Entre em contato com a DuoLife.' }, { status: 403 });
+      }
+
+      const valid = await bcrypt.compare(password, corretoraUser.password_hash);
+      if (!valid) return Response.json({ error: 'E-mail ou senha inválidos' }, { status: 401 });
+
+      await sql`UPDATE corretora_users SET last_login_at = NOW() WHERE id = ${corretoraUser.id}`;
+
+      const payload: AuthUser = {
+        userId: corretoraUser.id,
+        partnerId: null,
+        corretoraId: corretoraUser.corretora_id,
+        corretoraNome: corretoraUser.corretora_nome,
+        name: corretoraUser.name,
+        email: corretoraUser.email,
+        role: corretoraUser.role as AuthUser['role'],
+        partnerRole: null,
+        managerUserId: null,
+        permissions: normalizePermissions(corretoraUser.permissions),
+      };
+      const token = jwt.sign(payload, getJwtSecret(), { algorithm: 'HS256', expiresIn: '8h' });
+      const refreshRaw = await createRefreshToken(corretoraUser.id);
+      const cookieStore = await cookies();
+      const isProduction = process.env.NODE_ENV === 'production';
+      cookieStore.set('duolife_token', token, {
+        httpOnly: true, secure: isProduction, sameSite: 'lax', maxAge: 60 * 60 * 8, path: '/',
+      });
+      cookieStore.set('duolife_refresh', refreshRaw, {
+        httpOnly: true, secure: isProduction, sameSite: 'lax',
+        maxAge: Number(process.env.REFRESH_TOKEN_EXPIRES_DAYS ?? 30) * 86_400, path: '/api/auth',
+      });
+      return Response.json({ ok: true, user: { ...payload } });
+    }
+
     // Tenta usuário de parceiro
     const [user] = await sql`
       SELECT pu.id, pu.name, pu.email, pu.password_hash, pu.role, pu.permissions, pu.partner_id, pu.manager_user_id,
-             p.status as partner_status
+             p.status as partner_status, p.corretora_id, c.nome_fantasia as corretora_nome
       FROM partner_users pu
       JOIN partners p ON p.id = pu.partner_id
+      LEFT JOIN corretoras c ON c.id = p.corretora_id
       WHERE pu.email = ${email.toLowerCase()} AND pu.is_active = true
     `;
 
@@ -90,6 +136,8 @@ export async function POST(req: NextRequest) {
     const payload: AuthUser = {
       userId: user.id,
       partnerId: user.partner_id,
+      corretoraId: user.corretora_id || null,
+      corretoraNome: user.corretora_nome || null,
       name: user.name,
       email: user.email,
       role: toPartnerUserRole(normalizePartnerRole(user.role)),
