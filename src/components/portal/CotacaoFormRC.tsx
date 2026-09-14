@@ -208,9 +208,18 @@ interface CotacaoFormRCProps {
   publicToken?: string;
   productId?: string;
   initialCotacaoId?: string;
+  initialCpf?: string;
+  initialRenovacao?: boolean;
 }
 
-export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, productId, initialCotacaoId }: CotacaoFormRCProps) {
+export default function CotacaoFormRC({
+  adminSelectedPartnerId,
+  publicToken,
+  productId,
+  initialCotacaoId,
+  initialCpf,
+  initialRenovacao,
+}: CotacaoFormRCProps) {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<FormState>(initialForm);
@@ -947,6 +956,8 @@ export default function CotacaoFormRC({ adminSelectedPartnerId, publicToken, pro
             publicToken={publicToken}
             selectedCliente={selectedCliente}
             isRenovacaoAtiva={isRenovacaoAtiva}
+            initialCpf={initialCpf}
+            autoApplyRenewal={initialRenovacao}
             onSelectCliente={handleSelectCliente}
             onApplyRenewal={handleApplyRenewal}
             onClearSelection={handleClearClienteSelection}

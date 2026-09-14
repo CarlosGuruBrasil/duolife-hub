@@ -476,6 +476,221 @@ export async function ensureDefaultEmailTemplates(): Promise<void> {
 </html>`,
       variables: ['nome', 'link_reset', 'tempo_expiracao'],
     },
+    {
+      code: 'alerta_renovacao_corretor',
+      name: 'Alerta de Renovação — Corretor Responsável',
+      subject: '[Renovação {{janela_label}}] Apólice de {{cliente_nome}} vence em {{dias_restantes}} dias',
+      body_html: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f7faf9; color: #1e293b; margin: 0; padding: 24px; }
+    .container { max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+    .header { background: #0e4a5a; color: #ffffff; padding: 24px; text-align: center; }
+    .content { padding: 32px 24px; line-height: 1.6; }
+    .badge { display: inline-block; background: #fef3c7; color: #92400e; border: 1px solid #fde68a; border-radius: 6px; padding: 6px 14px; font-weight: bold; font-size: 13px; margin-bottom: 16px; }
+    .card-info { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px; margin: 20px 0; }
+    .btn-container { text-align: center; margin: 28px 0; }
+    .btn { display: inline-block; background-color: #00d4e0; color: #072a33; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; }
+    .footer { font-size: 12px; color: #64748b; text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2 style="margin:0; font-size: 20px;">DuoLife Hub &bull; Régua de Renovação</h2>
+    </div>
+    <div class="content">
+      <div style="text-align: center;">
+        <span class="badge">Aviso de Expiração: {{janela_label}}</span>
+      </div>
+      <h3 style="color: #0e4a5a; margin-top: 0;">Olá, {{nome|Corretor}}!</h3>
+      <p>A apólice de seguro do seu cliente <strong>{{cliente_nome}}</strong> está próxima do término de vigência.</p>
+      
+      <div class="card-info">
+        <p style="margin: 4px 0;"><strong>Segurado:</strong> {{cliente_nome}}</p>
+        <p style="margin: 4px 0;"><strong>CPF/CNPJ:</strong> {{cliente_documento}}</p>
+        <p style="margin: 4px 0;"><strong>Contato:</strong> {{cliente_telefone|Não informado}} &bull; {{cliente_email|Não informado}}</p>
+        <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 12px 0;">
+        <p style="margin: 4px 0;"><strong>Apólice Atual:</strong> {{apolice_numero}}</p>
+        <p style="margin: 4px 0;"><strong>Produto:</strong> {{produto_nome|Seguro RC Profissional}}</p>
+        <p style="margin: 4px 0;"><strong>Cobertura Atual:</strong> R$ {{cobertura}}</p>
+        <p style="margin: 4px 0;"><strong>Vencimento da Vigência:</strong> <span style="color: #b91c1c; font-weight: bold;">{{data_expiracao}} (em {{dias_restantes}} dias)</span></p>
+      </div>
+
+      <p>Para garantir a <strong>manutenção da retroatividade de coberturas</strong> e a retenção do segurado na sua carteira, inicie o processo de renovação antecipadamente com 1 clique:</p>
+
+      <div class="btn-container">
+        <a href="{{link_renovacao}}" class="btn" target="_blank">Iniciar Renovação no Portal</a>
+      </div>
+
+      <p style="font-size: 13px; color: #64748b;">Ao clicar no botão acima, o formulário de cotação já será aberto com os dados cadastrais e o histórico da apólice anterior pré-carregados para sua conferência e envio.</p>
+    </div>
+    <div class="footer">
+      DuoLife Seguros & Benefícios &bull; Disparado em {{-data-}} às {{-hora-}}
+    </div>
+  </div>
+</body>
+</html>`,
+      variables: ['nome', 'cliente_nome', 'cliente_documento', 'cliente_telefone', 'cliente_email', 'apolice_numero', 'produto_nome', 'cobertura', 'data_expiracao', 'dias_restantes', 'janela_label', 'link_renovacao'],
+    },
+    {
+      code: 'alerta_fatura_a_vencer_corretor',
+      name: 'Alerta de Fatura Asaas a Vencer — Corretor',
+      subject: '[Fatura a Vencer] Parcela {{parcela_info}} de {{cliente_nome}} vence em {{dias_vencimento}} dias',
+      body_html: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f7faf9; color: #1e293b; margin: 0; padding: 24px; }
+    .container { max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+    .header { background: #0e4a5a; color: #ffffff; padding: 22px; text-align: center; }
+    .content { padding: 30px 24px; line-height: 1.6; }
+    .card-info { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px; margin: 20px 0; }
+    .btn { display: inline-block; background: #00d4e0; color: #072a33; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; }
+    .footer { font-size: 12px; color: #64748b; text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2 style="margin:0; font-size: 20px;">DuoLife Hub &bull; Alerta Preventivo de Cobrança</h2>
+    </div>
+    <div class="content">
+      <h3 style="color: #0e4a5a; margin-top: 0;">Olá, {{nome|Corretor}}!</h3>
+      <p>Identificamos uma parcela do seu segurado com vencimento próximo nos próximos <strong>{{dias_vencimento}} dias</strong>.</p>
+      
+      <div class="card-info">
+        <p style="margin: 4px 0;"><strong>Segurado:</strong> {{cliente_nome}} (CPF/CNPJ: {{cliente_documento}})</p>
+        <p style="margin: 4px 0;"><strong>Contato:</strong> {{cliente_telefone|Não informado}}</p>
+        <p style="margin: 4px 0;"><strong>Apólice / Proposta:</strong> {{apolice_numero|#}}{{cotacao_id}}</p>
+        <p style="margin: 4px 0;"><strong>Parcela:</strong> {{parcela_info}}</p>
+        <p style="margin: 4px 0;"><strong>Valor:</strong> R$ {{valor_parcela}}</p>
+        <p style="margin: 4px 0;"><strong>Data de Vencimento:</strong> <strong>{{data_vencimento}}</strong></p>
+      </div>
+
+      <p>Caso o cliente precise de uma 2ª via ou link direto da fatura com PIX e Boleto, você pode repassar o link oficial abaixo:</p>
+
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="{{link_fatura}}" class="btn" target="_blank">Acessar Fatura Asaas do Cliente</a>
+      </div>
+    </div>
+    <div class="footer">
+      DuoLife Hub &bull; {{-ano-}}
+    </div>
+  </div>
+</body>
+</html>`,
+      variables: ['nome', 'cliente_nome', 'cliente_documento', 'cliente_telefone', 'apolice_numero', 'cotacao_id', 'parcela_info', 'valor_parcela', 'data_vencimento', 'dias_vencimento', 'link_fatura'],
+    },
+    {
+      code: 'alerta_inadimplencia_corretor',
+      name: 'Alerta de Inadimplência Asaas — Corretor Responsável',
+      subject: '[Atenção: Inadimplência] Parcela {{parcela_info}} de {{cliente_nome}} está vencida há {{dias_atraso}} dias',
+      body_html: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f7faf9; color: #1e293b; margin: 0; padding: 24px; }
+    .container { max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #fecaca; border-radius: 12px; overflow: hidden; }
+    .header { background: #b91c1c; color: #ffffff; padding: 22px; text-align: center; }
+    .content { padding: 30px 24px; line-height: 1.6; }
+    .warning-box { background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin-bottom: 20px; color: #991b1b; font-size: 14px; }
+    .card-info { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px; margin: 20px 0; }
+    .btn { display: inline-block; background: #b91c1c; color: #ffffff; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; }
+    .footer { font-size: 12px; color: #64748b; text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2 style="margin:0; font-size: 20px;">Atenção: Parcela em Atraso (Risco de Cancelamento)</h2>
+    </div>
+    <div class="content">
+      <h3 style="color: #b91c1c; margin-top: 0;">Olá, {{nome|Corretor}}!</h3>
+      
+      <div class="warning-box">
+        <strong>Importante:</strong> A parcela do seu segurado abaixo consta como não liquidada após a data limite. A falta de pagamento pode acarretar a suspensão ou cancelamento da apólice pela seguradora.
+      </div>
+
+      <div class="card-info">
+        <p style="margin: 4px 0;"><strong>Segurado:</strong> {{cliente_nome}} (CPF/CNPJ: {{cliente_documento}})</p>
+        <p style="margin: 4px 0;"><strong>Telefone:</strong> {{cliente_telefone|Não informado}}</p>
+        <p style="margin: 4px 0;"><strong>E-mail:</strong> {{cliente_email|Não informado}}</p>
+        <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 12px 0;">
+        <p style="margin: 4px 0;"><strong>Apólice:</strong> {{apolice_numero|#}}{{cotacao_id}}</p>
+        <p style="margin: 4px 0;"><strong>Parcela:</strong> {{parcela_info}}</p>
+        <p style="margin: 4px 0;"><strong>Valor:</strong> R$ {{valor_parcela}}</p>
+        <p style="margin: 4px 0;"><strong>Venceu em:</strong> {{data_vencimento}} (<span style="color: #b91c1c; font-weight: bold;">{{dias_atraso}} dias de atraso</span>)</p>
+      </div>
+
+      <p>Sugerimos o contato direto com o segurado para alinhamento amigável e reenvio do link de pagamento com 2ª via atualizada:</p>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="{{link_fatura}}" class="btn" target="_blank">Abrir Link da Fatura (PIX / Boleto)</a>
+      </div>
+    </div>
+    <div class="footer">
+      DuoLife Hub &bull; Retenção &bull; {{-ano-}}
+    </div>
+  </div>
+</body>
+</html>`,
+      variables: ['nome', 'cliente_nome', 'cliente_documento', 'cliente_telefone', 'cliente_email', 'apolice_numero', 'cotacao_id', 'parcela_info', 'valor_parcela', 'data_vencimento', 'dias_atraso', 'link_fatura'],
+    },
+    {
+      code: 'alerta_inadimplencia_cliente',
+      name: 'Lembrete de Pagamento de Fatura — Segurado',
+      subject: 'Lembrete de Pagamento: Sua fatura de seguro está em aberto — DuoLife',
+      body_html: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f7faf9; color: #1e293b; margin: 0; padding: 24px; }
+    .container { max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+    .header { background: #0e4a5a; color: #ffffff; padding: 24px; text-align: center; }
+    .content { padding: 30px 24px; line-height: 1.6; }
+    .card-info { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px; margin: 20px 0; }
+    .btn { display: inline-block; background: #00d4e0; color: #072a33; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; }
+    .footer { font-size: 12px; color: #64748b; text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2 style="margin:0; font-size: 20px;">Lembrete de Pagamento de Seguro</h2>
+    </div>
+    <div class="content">
+      <p>Olá, <strong>{{nome|Cliente}}</strong>!</p>
+      <p>Constatamos que a sua parcela do seguro profissional ainda não foi identificada como liquidada pelo sistema financeiro.</p>
+      
+      <div class="card-info">
+        <p style="margin: 4px 0;"><strong>Proposta / Apólice:</strong> {{apolice_numero|#}}{{cotacao_id}}</p>
+        <p style="margin: 4px 0;"><strong>Parcela:</strong> {{parcela_info}}</p>
+        <p style="margin: 4px 0;"><strong>Valor:</strong> R$ {{valor_parcela}}</p>
+        <p style="margin: 4px 0;"><strong>Vencimento:</strong> {{data_vencimento}}</p>
+      </div>
+
+      <p>Para evitar a perda da proteção e manter sua apólice ativa sem interrupções, você pode quitar através de PIX instantâneo ou Boleto:</p>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="{{link_fatura}}" class="btn" target="_blank">Acessar Fatura / Pagar via PIX</a>
+      </div>
+
+      <p style="font-size: 13px; color: #64748b;">Caso o pagamento já tenha sido efetuado nas últimas 24 horas, desconsidere esta mensagem — a compensação bancária é atualizada automaticamente.</p>
+    </div>
+    <div class="footer">
+      DuoLife Seguros & Benefícios &bull; {{-ano-}}
+    </div>
+  </div>
+</body>
+</html>`,
+      variables: ['nome', 'cotacao_id', 'apolice_numero', 'parcela_info', 'valor_parcela', 'data_vencimento', 'link_fatura'],
+    },
   ];
 
   for (const tpl of defaultTemplates) {

@@ -50,6 +50,8 @@ interface ClienteSearchSelectorProps {
   publicToken?: string;
   selectedCliente: ClienteBuscaResult | null;
   isRenovacaoAtiva: boolean;
+  initialCpf?: string;
+  autoApplyRenewal?: boolean;
   onSelectCliente: (cliente: ClienteBuscaResult) => void;
   onApplyRenewal: (renewalData: RenewalData) => void;
   onClearSelection: () => void;
@@ -67,6 +69,8 @@ export default function ClienteSearchSelector({
   publicToken,
   selectedCliente,
   isRenovacaoAtiva,
+  initialCpf,
+  autoApplyRenewal,
   onSelectCliente,
   onApplyRenewal,
   onClearSelection,
@@ -77,6 +81,43 @@ export default function ClienteSearchSelector({
   const [showDropdown, setShowDropdown] = useState(false);
   const [searched, setSearched] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const initialLoadedRef = useRef(false);
+
+  // Auto-busca e auto-preenchimento caso venha initialCpf (ex: link de renovação da régua)
+  useEffect(() => {
+    if (!initialCpf || selectedCliente || initialLoadedRef.current) return;
+    const cleanDoc = initialCpf.replace(/\D/g, '');
+    if (cleanDoc.length < 11) return;
+    initialLoadedRef.current = true;
+
+    async function autoLoad() {
+      setLoading(true);
+      try {
+        const headers: Record<string, string> = {};
+        if (publicToken) headers['x-public-token'] = publicToken;
+        const url = new URL('/api/clientes/busca', window.location.origin);
+        url.searchParams.set('q', cleanDoc);
+        if (adminSelectedPartnerId) {
+          url.searchParams.set('partnerId', adminSelectedPartnerId);
+        }
+        const res = await fetch(url.toString(), { headers });
+        const data = await res.json();
+        if (data.clients && data.clients.length > 0) {
+          const client = data.clients[0];
+          onSelectCliente(client);
+          if (autoApplyRenewal && client.renewalData?.hasPreviousPolicy) {
+            onApplyRenewal(client.renewalData);
+          }
+        }
+      } catch (err) {
+        console.error('Erro no auto-carregamento por CPF de renovação:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    autoLoad();
+  }, [initialCpf, selectedCliente, autoApplyRenewal, adminSelectedPartnerId, publicToken, onSelectCliente, onApplyRenewal]);
 
   // Fecha dropdown ao clicar fora
   useEffect(() => {

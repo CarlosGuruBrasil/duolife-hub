@@ -15,6 +15,7 @@ const SECRET_KEYS = new Set([
   'EMAIL_MARKETING_API_KEY',
   'EMAIL_MARKETING_WEBHOOK_SECRET',
   'NET4LIFE_INFO_API_TOKEN',
+  'CRON_SECRET',
 ]);
 
 function maskSecret(val: string): string {
@@ -68,6 +69,13 @@ export async function GET() {
       NET4LIFE_INFO_REPLY_TO: dbSettings['NET4LIFE_INFO_REPLY_TO'] || process.env.NET4LIFE_INFO_REPLY_TO || '',
       NET4LIFE_INFO_SMTP_USER: dbSettings['NET4LIFE_INFO_SMTP_USER'] || process.env.NET4LIFE_INFO_SMTP_USER || '',
       NET4LIFE_INFO_ENABLED: dbSettings['NET4LIFE_INFO_ENABLED'] || process.env.NET4LIFE_INFO_ENABLED || 'true',
+
+      RENEWAL_WINDOWS: dbSettings['RENEWAL_WINDOWS'] || '60,30,15,0',
+      RENEWAL_ENABLED: dbSettings['RENEWAL_ENABLED'] || 'true',
+      INADIMPLENCIA_ENABLED: dbSettings['INADIMPLENCIA_ENABLED'] || 'true',
+      INADIMPLENCIA_A_VENCER_DAYS: dbSettings['INADIMPLENCIA_A_VENCER_DAYS'] || '3,1',
+      INADIMPLENCIA_VENCIDAS_DAYS: dbSettings['INADIMPLENCIA_VENCIDAS_DAYS'] || '1,3,7,15',
+      CRON_SECRET: dbSettings['CRON_SECRET'] || process.env.CRON_SECRET || '',
     };
 
     // Mascara segredos para evitar information disclosure no browser

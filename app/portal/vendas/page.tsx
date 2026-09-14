@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Plus } from 'lucide-react';
+import { Plus, RefreshCw } from 'lucide-react';
 import { getPartnerAccessContext, verifyPartnerAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
@@ -14,8 +14,10 @@ interface VendaRow {
   status: string;
   issue_date: string;
   expiry_date: string;
+  product_id: string;
   product_name: string;
   client_name: string;
+  client_cpf_cnpj: string;
 }
 
 const statusLabel: Record<string, string> = {
@@ -53,8 +55,10 @@ export default async function VendasPage() {
           s.status,
           s.issue_date,
           s.expiry_date,
+          s.product_id,
           p.name AS product_name,
-          c.client_name
+          c.client_name,
+          c.client_cpf_cnpj
         FROM sales s
         JOIN products p ON p.id = s.product_id
         JOIN cotacoes c ON c.id = s.cotacao_id
@@ -72,8 +76,10 @@ export default async function VendasPage() {
           s.status,
           s.issue_date,
           s.expiry_date,
+          s.product_id,
           p.name AS product_name,
-          c.client_name
+          c.client_name,
+          c.client_cpf_cnpj
         FROM sales s
         JOIN products p ON p.id = s.product_id
         JOIN cotacoes c ON c.id = s.cotacao_id
@@ -133,27 +139,62 @@ export default async function VendasPage() {
                   <th className="px-5 py-3 font-semibold">Comissão</th>
                   <th className="px-5 py-3 font-semibold">Vigência</th>
                   <th className="px-5 py-3 font-semibold">Status</th>
+                  <th className="px-5 py-3 font-semibold text-right">Ação</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {vendas.map((venda) => (
-                  <tr key={venda.id} className="table-row">
-                    <td className="px-5 py-4 font-semibold" style={{ color: 'var(--primary)' }}>{venda.client_name}</td>
-                    <td className="px-5 py-4 text-gray-600">{venda.policy_number || '-'}</td>
-                    <td className="px-5 py-4 text-gray-600">{venda.product_name}</td>
-                    <td className="px-5 py-4 text-gray-600">{formatCurrency(venda.premio_total)}</td>
-                    <td className="px-5 py-4 text-gray-600">
-                      {formatCurrency(venda.commission_amount)}
-                      {venda.commission_rate && <span className="block text-xs text-gray-400">{Number(venda.commission_rate)}%</span>}
-                    </td>
-                    <td className="px-5 py-4 text-gray-500">{formatDate(venda.issue_date)} - {formatDate(venda.expiry_date)}</td>
-                    <td className="px-5 py-4">
-                      <span className="status-pill">
-                        {statusLabel[venda.status] || venda.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {vendas.map((venda) => {
+                  const expiryDays = Math.round(
+                    (new Date(venda.expiry_date + 'T00:00:00').getTime() - Date.now()) /
+                      (1000 * 60 * 60 * 24)
+                  );
+                  const isExpiringSoon = venda.status === 'ativa' && expiryDays <= 60;
+
+                  return (
+                    <tr key={venda.id} className="table-row">
+                      <td className="px-5 py-4 font-semibold" style={{ color: 'var(--primary)' }}>
+                        {venda.client_name}
+                      </td>
+                      <td className="px-5 py-4 text-gray-600">{venda.policy_number || '-'}</td>
+                      <td className="px-5 py-4 text-gray-600">{venda.product_name}</td>
+                      <td className="px-5 py-4 text-gray-600">{formatCurrency(venda.premio_total)}</td>
+                      <td className="px-5 py-4 text-gray-600">
+                        {formatCurrency(venda.commission_amount)}
+                        {venda.commission_rate && (
+                          <span className="block text-xs text-gray-400">
+                            {Number(venda.commission_rate)}%
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-5 py-4 text-gray-500">
+                        {formatDate(venda.issue_date)} - {formatDate(venda.expiry_date)}
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className="status-pill">
+                          {statusLabel[venda.status] || venda.status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        {isExpiringSoon ? (
+                          <Link
+                            href={`/portal/cotacoes/nova?product=${encodeURIComponent(
+                              venda.product_id
+                            )}&cpf=${encodeURIComponent(
+                              (venda.client_cpf_cnpj || '').replace(/\D/g, '')
+                            )}&renovacao=true&origemSaleId=${encodeURIComponent(venda.id)}`}
+                            className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 transition-colors shadow-xs"
+                            title={`Apólice expira em ${expiryDays} dias. Clique para iniciar a renovação.`}
+                          >
+                            <RefreshCw size={12} className="text-emerald-600" />
+                            Renovar {expiryDays <= 0 ? '(Hoje)' : `(D-${expiryDays})`}
+                          </Link>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

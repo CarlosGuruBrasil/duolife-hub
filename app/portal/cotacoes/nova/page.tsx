@@ -7,10 +7,24 @@ import { sql } from '@/lib/pg';
 
 type Product = { id: string; name: string; description: string | null; product_type: 'insurance' | 'service'; flow_key: string; is_quoteable: boolean };
 
-export default async function NovaCotacaoPage({ searchParams }: { searchParams: Promise<{ product?: string; cotacaoId?: string }> }) {
+export default async function NovaCotacaoPage({
+  searchParams,
+}: {
+  searchParams: Promise<{
+    product?: string;
+    cotacaoId?: string;
+    cpf?: string;
+    clientCpfCnpj?: string;
+    renovacao?: string;
+    origemSaleId?: string;
+  }>;
+}) {
   const user = await verifyPartnerAuth();
   if (!user?.partnerId) redirect('/login');
-  const { product: paramProductId, cotacaoId } = await searchParams;
+  const { product: paramProductId, cotacaoId, cpf, clientCpfCnpj, renovacao } = await searchParams;
+
+  const targetCpf = cpf || clientCpfCnpj;
+  const isRenovacaoReq = renovacao === 'true' || renovacao === 'Sim' || Boolean(targetCpf);
 
   let productId = paramProductId;
   if (cotacaoId && !productId) {
@@ -22,6 +36,11 @@ export default async function NovaCotacaoPage({ searchParams }: { searchParams: 
     if (c?.product_id) {
       productId = c.product_id;
     }
+  }
+
+  // Se veio por link de renovação e não especificou produto, adota o RC padrão
+  if (!productId && targetCpf) {
+    productId = 'prod-rc-001';
   }
 
   const products = await sql<Product[]>`
@@ -56,7 +75,12 @@ export default async function NovaCotacaoPage({ searchParams }: { searchParams: 
           {cotacaoId ? 'Revise os dados e avance para finalizar sua proposta.' : 'Preencha as etapas para iniciar sua proposta.'}
         </p>
       </div>
-      <CotacaoFormRC productId={product.id} initialCotacaoId={cotacaoId} />
+      <CotacaoFormRC
+        productId={product.id}
+        initialCotacaoId={cotacaoId}
+        initialCpf={targetCpf}
+        initialRenovacao={isRenovacaoReq}
+      />
     </div>
   );
 }

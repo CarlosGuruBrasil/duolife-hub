@@ -25,6 +25,8 @@ import {
   ArrowRight,
   ShieldCheck,
   Info,
+  Clock,
+  Play,
 } from 'lucide-react';
 
 interface DevApiKeysClientProps {
@@ -55,6 +57,13 @@ interface ApiSettings {
   NET4LIFE_INFO_REPLY_TO: string;
   NET4LIFE_INFO_SMTP_USER: string;
   NET4LIFE_INFO_ENABLED: string;
+
+  RENEWAL_WINDOWS: string;
+  RENEWAL_ENABLED: string;
+  INADIMPLENCIA_ENABLED: string;
+  INADIMPLENCIA_A_VENCER_DAYS: string;
+  INADIMPLENCIA_VENCIDAS_DAYS: string;
+  CRON_SECRET: string;
 }
 
 const DEFAULT_SETTINGS: ApiSettings = {
@@ -77,9 +86,16 @@ const DEFAULT_SETTINGS: ApiSettings = {
   NET4LIFE_INFO_REPLY_TO: '',
   NET4LIFE_INFO_SMTP_USER: '',
   NET4LIFE_INFO_ENABLED: 'true',
+
+  RENEWAL_WINDOWS: '60,30,15,0',
+  RENEWAL_ENABLED: 'true',
+  INADIMPLENCIA_ENABLED: 'true',
+  INADIMPLENCIA_A_VENCER_DAYS: '3,1',
+  INADIMPLENCIA_VENCIDAS_DAYS: '1,3,7,15',
+  CRON_SECRET: '',
 };
 
-type TabType = 'visao-geral' | 'asaas' | 'zapsign' | 'wix' | 'email-marketing';
+type TabType = 'visao-geral' | 'asaas' | 'zapsign' | 'wix' | 'email-marketing' | 'lifecycle';
 
 export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
   const [settings, setSettings] = useState<ApiSettings>(DEFAULT_SETTINGS);
@@ -121,6 +137,32 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
       });
     } finally {
       setTestingNet4Life(false);
+    }
+  }
+
+  const [runningCron, setRunningCron] = useState(false);
+  const [cronResult, setCronResult] = useState<any>(null);
+
+  async function handleRunCron(dryRun: boolean) {
+    setRunningCron(true);
+    setCronResult(null);
+    try {
+      const res = await fetch(`/api/cron/lifecycle?dryRun=${dryRun ? 'true' : 'false'}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      setCronResult(data);
+      setFeedback({
+        type: data.ok ? 'success' : 'error',
+        message: data.ok
+          ? `Varredura de lifecycle concluída (${dryRun ? 'Modo Simulação' : 'Disparos Efetuados'})!`
+          : `Varredura concluída com avisos: ${data.errors?.join('; ') || 'Consulte os detalhes abaixo'}`,
+      });
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: `Erro ao acionar varredura: ${err?.message || err}` });
+    } finally {
+      setRunningCron(false);
     }
   }
 
@@ -261,6 +303,16 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
           : isNet4LifeInfoEnabled
           ? 'bg-amber-50 text-amber-800 border border-amber-200'
           : 'bg-gray-100 text-gray-600 border border-gray-200',
+    },
+    {
+      id: 'lifecycle',
+      label: 'Régua & Lifecycle',
+      icon: Clock,
+      badge: settings.RENEWAL_ENABLED !== 'false' ? 'Ativo' : 'Pausado',
+      badgeColor:
+        settings.RENEWAL_ENABLED !== 'false'
+          ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+          : 'bg-amber-50 text-amber-800 border border-amber-200',
     },
   ];
 
@@ -1274,6 +1326,315 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
                 <code className="bg-white px-1 rounded border text-gray-800">{"{{view_in_browser}}"}</code> (versão web do e-mail com HMAC) e{' '}
                 <code className="bg-white px-1 rounded border text-gray-800">{"{{unsubscribe_link}}"}</code> (descadastro LGPD).
               </p>
+            </div>
+          </div>
+        )}
+
+        {/* ================================================================= */}
+        {/* ABA: RÉGUA AUTOMATIZADA & RETENÇÃO (LIFECYCLE)                    */}
+        {/* ================================================================= */}
+        {activeTab === 'lifecycle' && (
+          <div className="space-y-6">
+            {/* Header / Visão Geral da Régua */}
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 space-y-4 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0 text-emerald-700">
+                    <Clock className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-gray-900">Régua Automatizada de Renovação e Retenção</h2>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Serviço agendado (cronjob) para antecipação de vencimentos de apólices e alertas de inadimplência Asaas.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-xs font-bold px-3 py-1.5 rounded-full border ${
+                      settings.RENEWAL_ENABLED !== 'false'
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : 'bg-gray-100 text-gray-600 border-gray-200'
+                    }`}
+                  >
+                    {settings.RENEWAL_ENABLED !== 'false' ? '● Renovação Ativa' : '○ Renovação Desativada'}
+                  </span>
+                  <span
+                    className={`text-xs font-bold px-3 py-1.5 rounded-full border ${
+                      settings.INADIMPLENCIA_ENABLED !== 'false'
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : 'bg-gray-100 text-gray-600 border-gray-200'
+                    }`}
+                  >
+                    {settings.INADIMPLENCIA_ENABLED !== 'false' ? '● Inadimplência Ativa' : '○ Inadimplência Desativada'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="border-t border-gray-100 pt-4 grid sm:grid-cols-3 gap-3 text-xs text-gray-600">
+                <div className="bg-gray-50 p-3 rounded-xl border border-gray-200/80">
+                  <span className="font-bold text-gray-900 block mb-1">1. Janelas de Renovação</span>
+                  Notifica o corretor responsável em D-60, D-30, D-15 e D-0 com link de 1 clique para iniciar cotação de renovação pré-preenchida.
+                </div>
+                <div className="bg-gray-50 p-3 rounded-xl border border-gray-200/80">
+                  <span className="font-bold text-gray-900 block mb-1">2. Alertas de Inadimplência</span>
+                  Avisa o corretor sobre parcelas a vencer e faturas vencidas do Asaas, fornecendo link de PIX/Boleto para reenvio ao segurado.
+                </div>
+                <div className="bg-gray-50 p-3 rounded-xl border border-gray-200/80">
+                  <span className="font-bold text-gray-900 block mb-1">3. Idempotência Blindada</span>
+                  Controle estrito por apólice e parcela em banco de dados, prevenindo qualquer disparo repetido na mesma janela ou dia.
+                </div>
+              </div>
+            </div>
+
+            {/* Configuração da Régua de Renovação */}
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 space-y-5 shadow-xs">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                    <RefreshCw className="h-4 w-4 text-[#0e4a5a]" />
+                    Parâmetros da Régua de Renovação
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Define o status operacional e os dias de antecedência para disparo de e-mails ao corretor.
+                  </p>
+                </div>
+
+                <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-bold text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={settings.RENEWAL_ENABLED !== 'false'}
+                    onChange={(e) => handleChange('RENEWAL_ENABLED', e.target.checked ? 'true' : 'false')}
+                    className="rounded border-gray-300 text-[#0e4a5a] focus:ring-[#0e4a5a] h-4 w-4"
+                  />
+                  Habilitar Régua de Renovação
+                </label>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Janelas de Antecedência em Dias (separadas por vírgula)
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.RENEWAL_WINDOWS}
+                    onChange={(e) => handleChange('RENEWAL_WINDOWS', e.target.value)}
+                    placeholder="60,30,15,0"
+                    className="form-input text-xs font-mono"
+                  />
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    Padrão recomendado: <code>60,30,15,0</code> (D-60 dois meses antes, D-30 um mês, D-15 quinze dias e D-0 no dia do vencimento).
+                  </p>
+                </div>
+
+                <div className="bg-emerald-50/60 border border-emerald-200 rounded-xl p-3.5 text-xs text-emerald-900 space-y-1">
+                  <div className="font-bold flex items-center gap-1.5 text-emerald-800">
+                    <ShieldCheck className="h-4 w-4" /> Link de Renovação com 1 Clique
+                  </div>
+                  <p className="text-[11px] leading-relaxed">
+                    O e-mail direciona o corretor para <code>/portal/cotacoes/nova?cpf=...&renovacao=true</code>, abrindo a proposta com coberturas e histórico anterior já selecionados.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Configuração de Alertas de Inadimplência */}
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 space-y-5 shadow-xs">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 text-amber-600" />
+                    Alertas de Inadimplência Asaas (Retenção Financeira)
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Mitigação de cancelamentos de apólices por falta de pagamento das parcelas do seguro.
+                  </p>
+                </div>
+
+                <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-bold text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={settings.INADIMPLENCIA_ENABLED !== 'false'}
+                    onChange={(e) => handleChange('INADIMPLENCIA_ENABLED', e.target.checked ? 'true' : 'false')}
+                    className="rounded border-gray-300 text-[#0e4a5a] focus:ring-[#0e4a5a] h-4 w-4"
+                  />
+                  Habilitar Alertas de Inadimplência
+                </label>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Dias de Alerta Preventivo — A Vencer (dias antes do vencimento)
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.INADIMPLENCIA_A_VENCER_DAYS}
+                    onChange={(e) => handleChange('INADIMPLENCIA_A_VENCER_DAYS', e.target.value)}
+                    placeholder="3,1"
+                    className="form-input text-xs font-mono"
+                  />
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    Padrão: <code>3,1</code> (3 dias antes e 1 dia antes do vencimento da parcela).
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Dias de Alerta Crítico — Faturas Vencidas (dias de atraso)
+                  </label>
+                  <input
+                    type="text"
+                    value={settings.INADIMPLENCIA_VENCIDAS_DAYS}
+                    onChange={(e) => handleChange('INADIMPLENCIA_VENCIDAS_DAYS', e.target.value)}
+                    placeholder="1,3,7,15"
+                    className="form-input text-xs font-mono"
+                  />
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    Padrão: <code>1,3,7,15</code> (D+1, D+3, D+7 e D+15 após o vencimento não liquidado).
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Segurança & Endpoint Agendado (Cronjob) */}
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 space-y-4 shadow-xs">
+              <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                <LockKeyhole className="h-4 w-4 text-[#0e4a5a]" />
+                Autenticação do Cronjob & Endpoint de Agendamento
+              </h3>
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Token Secreto do Cron (CRON_SECRET)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showSecrets['CRON_SECRET'] ? 'text' : 'password'}
+                      value={settings.CRON_SECRET}
+                      onChange={(e) => handleChange('CRON_SECRET', e.target.value)}
+                      placeholder="Ex: d41d8cd98f00b204e9800998ecf8427e"
+                      className="form-input text-xs font-mono pr-20"
+                    />
+                    <div className="absolute inset-y-0 right-0 flex items-center pr-2 gap-1">
+                      <button
+                        type="button"
+                        onClick={() => toggleShowSecret('CRON_SECRET')}
+                        className="p-1 text-gray-400 hover:text-gray-600 cursor-pointer"
+                      >
+                        {showSecrets['CRON_SECRET'] ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(settings.CRON_SECRET, 'CRON_SECRET')}
+                        className="p-1 text-gray-400 hover:text-gray-600 cursor-pointer"
+                      >
+                        {copiedKey === 'CRON_SECRET' ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    Utilizado para validar chamadas de agendadores externos via <code>Authorization: Bearer &lt;token&gt;</code>.
+                  </p>
+                </div>
+
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3.5 text-xs text-gray-700 space-y-1.5">
+                  <div className="font-bold text-gray-900">Como Agendar (Coolify / Crontab / Scheduler):</div>
+                  <div className="font-mono text-[11px] bg-white p-2 rounded border border-gray-200 overflow-x-auto text-gray-800">
+                    curl -X POST https://duolife.com.br/api/cron/lifecycle \<br />
+                    &nbsp;&nbsp;-H "Authorization: Bearer {settings.CRON_SECRET || 'SEU_TOKEN'}"
+                  </div>
+                  <p className="text-[10px] text-gray-500">
+                    Frequência recomendada: 1 vez ao dia às 08:00 BRT (ex: <code>0 11 * * *</code> em UTC).
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Painel de Disparo Manual & Teste */}
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-6 space-y-4 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-bold text-emerald-950 flex items-center gap-2">
+                    <Play className="h-4 w-4 text-emerald-700 fill-emerald-700" />
+                    Execução Imediata da Régua (Disparo sob Demanda)
+                  </h3>
+                  <p className="text-xs text-emerald-800 mt-0.5">
+                    Execute a varredura agora para verificar apólices e faturas elegíveis na data de hoje.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleRunCron(true)}
+                    disabled={runningCron}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl border border-emerald-300 bg-white text-emerald-800 hover:bg-emerald-50 transition disabled:opacity-50 cursor-pointer shadow-xs"
+                  >
+                    {runningCron ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Clock className="h-3.5 w-3.5 text-emerald-600" />}
+                    <span>Simular Varredura (Dry Run)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleRunCron(false)}
+                    disabled={runningCron}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold rounded-xl bg-[#0e4a5a] text-white hover:bg-[#072a33] transition disabled:opacity-50 cursor-pointer shadow-sm"
+                  >
+                    {runningCron ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5 text-[#00d4e0] fill-[#00d4e0]" />}
+                    <span>Executar Varredura Real</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Resultado do Teste */}
+              {cronResult && (
+                <div className="bg-white border border-emerald-200 rounded-xl p-4 text-xs space-y-3 shadow-xs">
+                  <div className="flex items-center justify-between border-b border-gray-100 pb-2">
+                    <span className="font-bold text-gray-900 flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                      Resultado da Execução ({cronResult.dryRun ? 'Modo Simulação' : 'Modo Produção'}):
+                    </span>
+                    <span className="text-gray-500 font-mono text-[11px]">
+                      Duração: {(cronResult.durationMs / 1000).toFixed(2)}s &bull; Data: {cronResult.targetDate}
+                    </span>
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                      <div className="font-bold text-[#0e4a5a] mb-1">Régua de Renovação</div>
+                      <div className="text-gray-700">
+                        Varredas: <strong>{cronResult.renewals?.scanned || 0}</strong> &bull; Notificadas:{' '}
+                        <strong className="text-emerald-700">{cronResult.renewals?.notified || 0}</strong> &bull; Ignoradas:{' '}
+                        {cronResult.renewals?.skipped || 0}
+                      </div>
+                    </div>
+
+                    <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                      <div className="font-bold text-amber-800 mb-1">Alertas de Inadimplência</div>
+                      <div className="text-gray-700">
+                        Varredas: <strong>{cronResult.delinquency?.scanned || 0}</strong> &bull; Notificadas:{' '}
+                        <strong className="text-amber-700">{cronResult.delinquency?.notified || 0}</strong> &bull; Ignoradas:{' '}
+                        {cronResult.delinquency?.skipped || 0}
+                      </div>
+                    </div>
+                  </div>
+
+                  {cronResult.errors && cronResult.errors.length > 0 && (
+                    <div className="bg-rose-50 border border-rose-200 p-2.5 rounded-lg text-rose-800 text-[11px]">
+                      <span className="font-bold block mb-1">Avisos / Erros:</span>
+                      <ul className="list-disc pl-4 space-y-0.5">
+                        {cronResult.errors.map((e: string, idx: number) => (
+                          <li key={idx}>{e}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
