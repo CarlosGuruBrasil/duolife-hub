@@ -89,6 +89,17 @@ export async function getSystemSetting(key: string, fallbackEnvValue?: string): 
 }
 
 /**
+ * Sanitiza tokens de API removendo espaços, quebras de linha, aspas e prefixos acidentais (ex: Bearer).
+ */
+export function sanitizeApiToken(raw?: string | null): string {
+  if (!raw) return '';
+  let token = String(raw).trim();
+  token = token.replace(/^["']|["']$/g, '').trim();
+  token = token.replace(/^Bearer\s+/i, '').trim();
+  return token;
+}
+
+/**
  * Salva ou atualiza um conjunto de configurações no banco de dados.
  */
 export async function updateSystemSettings(
@@ -98,7 +109,10 @@ export async function updateSystemSettings(
   await ensureSchema();
   for (const [key, value] of Object.entries(settings)) {
     const cleanKey = key.trim();
-    const cleanVal = value !== undefined && value !== null ? String(value).trim() : '';
+    let cleanVal = value !== undefined && value !== null ? String(value).trim() : '';
+    if (cleanKey.includes('TOKEN') || cleanKey.includes('SECRET') || cleanKey.includes('TEMPLATE') || cleanKey.includes('API_KEY')) {
+      cleanVal = sanitizeApiToken(cleanVal);
+    }
     
     await sql`
       INSERT INTO system_settings (key, value, updated_by, updated_at)
@@ -117,14 +131,14 @@ export async function updateSystemSettings(
 export async function getAsaasConfig(): Promise<AsaasConfig> {
   const dbSettings = await getAllSystemSettings();
 
-  const apiKey = dbSettings['ASAAS_API_KEY'] || process.env.ASAAS_API_KEY || '';
-  const webhookSecret = dbSettings['ASAAS_WEBHOOK_SECRET'] || process.env.ASAAS_WEBHOOK_SECRET || '';
+  const apiKey = sanitizeApiToken(dbSettings['ASAAS_API_KEY'] || process.env.ASAAS_API_KEY || '');
+  const webhookSecret = sanitizeApiToken(dbSettings['ASAAS_WEBHOOK_SECRET'] || process.env.ASAAS_WEBHOOK_SECRET || '');
   
   // Determina se é Sandbox ou Produção
-  let envSetting = dbSettings['ASAAS_ENVIRONMENT'];
+  let envSetting = (dbSettings['ASAAS_ENVIRONMENT'] || '').trim().toLowerCase();
   if (!envSetting) {
-    const envUrl = process.env.ASAAS_BASE_URL || '';
-    envSetting = envUrl.includes('sandbox') ? 'sandbox' : 'production';
+    const isSandboxEnv = process.env.ASAAS_BASE_URL?.includes('sandbox') ?? false;
+    envSetting = isSandboxEnv ? 'sandbox' : 'production';
   }
 
   const isSandbox = envSetting === 'sandbox';
@@ -146,13 +160,13 @@ export async function getAsaasConfig(): Promise<AsaasConfig> {
 export async function getZapSignConfig(): Promise<ZapSignConfig> {
   const dbSettings = await getAllSystemSettings();
 
-  const apiToken = dbSettings['ZAPSIGN_API_TOKEN'] || process.env.ZAPSIGN_API_TOKEN || '';
-  const webhookSecret = dbSettings['ZAPSIGN_WEBHOOK_SECRET'] || process.env.ZAPSIGN_WEBHOOK_SECRET || '';
-  const templateOficial = dbSettings['ZAPSIGN_TEMPLATE_OFICIAL'] || process.env.ZAPSIGN_TEMPLATE_OFICIAL || '';
-  const template100k = dbSettings['ZAPSIGN_TEMPLATE_100K'] || process.env.ZAPSIGN_TEMPLATE_100K || '';
-  const templateRenovacao = dbSettings['ZAPSIGN_TEMPLATE_RENOVACAO'] || process.env.ZAPSIGN_TEMPLATE_RENOVACAO || '';
+  const apiToken = sanitizeApiToken(dbSettings['ZAPSIGN_API_TOKEN'] || process.env.ZAPSIGN_API_TOKEN || '');
+  const webhookSecret = sanitizeApiToken(dbSettings['ZAPSIGN_WEBHOOK_SECRET'] || process.env.ZAPSIGN_WEBHOOK_SECRET || '');
+  const templateOficial = sanitizeApiToken(dbSettings['ZAPSIGN_TEMPLATE_OFICIAL'] || process.env.ZAPSIGN_TEMPLATE_OFICIAL || '');
+  const template100k = sanitizeApiToken(dbSettings['ZAPSIGN_TEMPLATE_100K'] || process.env.ZAPSIGN_TEMPLATE_100K || '');
+  const templateRenovacao = sanitizeApiToken(dbSettings['ZAPSIGN_TEMPLATE_RENOVACAO'] || process.env.ZAPSIGN_TEMPLATE_RENOVACAO || '');
 
-  let envSetting = dbSettings['ZAPSIGN_ENVIRONMENT'];
+  let envSetting = (dbSettings['ZAPSIGN_ENVIRONMENT'] || '').trim().toLowerCase();
   if (!envSetting) {
     const isSandboxEnv = process.env.ZAPSIGN_SANDBOX === 'true' || (process.env.ZAPSIGN_BASE_URL || '').includes('sandbox');
     envSetting = isSandboxEnv ? 'sandbox' : 'production';

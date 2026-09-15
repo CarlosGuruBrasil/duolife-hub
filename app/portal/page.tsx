@@ -3,7 +3,7 @@ import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { ClipboardList, DollarSign, FileText, Mail, MessageCircle, Plus, Share2, WalletCards } from 'lucide-react';
+import { ClipboardList, DollarSign, FileText, Mail, MessageCircle, Plus, Share2, Users } from 'lucide-react';
 import { getOrCreatePartnerSaleLink } from '@/lib/referral';
 import PartnerSaleLinkCard from '@/components/portal/PartnerSaleLinkCard';
 
@@ -20,7 +20,7 @@ export default async function PortalDashboard() {
   const [
     cotacoesCountResult,
     vendasCountResult,
-    comissoesCountResult,
+    clientsCountResult,
     saleLink,
   ] = await Promise.all([
     isCorretora
@@ -33,42 +33,38 @@ export default async function PortalDashboard() {
       ? sql`
           SELECT COUNT(*) as total, COALESCE(SUM(s.premio_total), 0) as volume
           FROM sales s
-          WHERE s.corretora_id = ${access.corretoraId} AND s.status = 'ativa'
+          WHERE s.corretora_id = ${access.corretoraId}
         `
       : access.visibleUserIds === null
       ? sql`
           SELECT COUNT(*) as total, COALESCE(SUM(s.premio_total), 0) as volume
           FROM sales s
-          WHERE s.partner_id = ${access.partnerId} AND s.status = 'ativa'
+          WHERE s.partner_id = ${access.partnerId}
         `
       : sql`
           SELECT COUNT(*) as total, COALESCE(SUM(s.premio_total), 0) as volume
           FROM sales s
           JOIN cotacoes c ON c.id = s.cotacao_id
           WHERE s.partner_id = ${access.partnerId}
-            AND s.status = 'ativa'
             AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
         `,
 
     isCorretora
       ? sql`
-          SELECT COALESCE(SUM(amount), 0) as pendente
-          FROM commissions
-          WHERE corretora_id = ${access.corretoraId} AND status = 'pendente'
+          SELECT COUNT(DISTINCT c.client_id) as total
+          FROM cotacoes c
+          WHERE c.corretora_id = ${access.corretoraId}
         `
       : access.visibleUserIds === null
       ? sql`
-          SELECT COALESCE(SUM(amount), 0) as pendente
-          FROM commissions
-          WHERE partner_id = ${access.partnerId} AND status = 'pendente'
+          SELECT COUNT(DISTINCT c.client_id) as total
+          FROM cotacoes c
+          WHERE c.partner_id = ${access.partnerId}
         `
       : sql`
-          SELECT COALESCE(SUM(cm.amount), 0) as pendente
-          FROM commissions cm
-          JOIN sales s ON s.id = cm.sale_id
-          JOIN cotacoes c ON c.id = s.cotacao_id
-          WHERE cm.partner_id = ${access.partnerId}
-            AND cm.status = 'pendente'
+          SELECT COUNT(DISTINCT c.client_id) as total
+          FROM cotacoes c
+          WHERE c.partner_id = ${access.partnerId}
             AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
         `,
 
@@ -77,13 +73,13 @@ export default async function PortalDashboard() {
 
   const [cotacoesCount] = cotacoesCountResult;
   const [vendasCount] = vendasCountResult;
-  const [comissoesCount] = comissoesCountResult;
+  const [clientsCount] = clientsCountResult;
 
   const kpis = [
     { label: isCorretora ? 'Cotações da Corretora' : 'Cotações realizadas', value: cotacoesCount.total, icon: ClipboardList, href: '/portal/cotacoes' },
     { label: isCorretora ? 'Apólices da Corretora' : 'Apólices ativas', value: vendasCount.total, icon: FileText, href: '/portal/vendas' },
     { label: isCorretora ? 'Volume Total da Equipe' : 'Volume em prêmios', value: `R$ ${Number(vendasCount.volume).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, icon: DollarSign, href: '/portal/vendas' },
-    { label: 'Comissões pendentes', value: `R$ ${Number(comissoesCount.pendente).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, icon: WalletCards, href: '/portal/comissoes' },
+    { label: isCorretora ? 'Segurados da Corretora' : 'Carteira de Clientes', value: clientsCount.total, icon: Users, href: '/portal/clientes' },
   ];
 
   return (
@@ -162,15 +158,15 @@ export default async function PortalDashboard() {
               style={{ color: 'var(--primary)' }}>
               <ClipboardList size={17} /> Nova operação
             </Link>
+            <Link href="/portal/clientes"
+              className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
+              style={{ color: 'var(--primary)' }}>
+              <Users size={17} /> Carteira de clientes
+            </Link>
             <Link href="/portal/vendas"
               className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
               style={{ color: 'var(--primary)' }}>
               <FileText size={17} /> Ver minhas vendas
-            </Link>
-            <Link href="/portal/comissoes"
-              className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"
-              style={{ color: 'var(--primary)' }}>
-              <WalletCards size={17} /> Extrato de comissões
             </Link>
             <Link href="/portal/perfil"
               className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium"

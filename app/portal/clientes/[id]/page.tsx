@@ -293,7 +293,7 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
         </div>
       </div>
 
-      <section className="card overflow-hidden p-0">
+      <section className="card no-hover overflow-hidden p-0">
         <div className="border-b border-gray-100 px-6 py-4">
           <h2 className="text-lg font-bold" style={{ color: 'var(--primary)' }}>Produtos e operações</h2>
         </div>
@@ -365,7 +365,7 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
         </div>
       </section>
 
-      <section className="card overflow-hidden p-0">
+      <section className="card no-hover overflow-hidden p-0">
         <div className="border-b border-gray-100 px-6 py-4">
           <h2 className="text-lg font-bold" style={{ color: 'var(--primary)' }}>Parcelas</h2>
         </div>

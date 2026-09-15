@@ -1,9 +1,15 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Plus, RefreshCw } from 'lucide-react';
+import { Plus, RefreshCw, FileText, Search } from 'lucide-react';
 import { getPartnerAccessContext, verifyPartnerAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
+import { PortalVendasFilterSection } from './_components/PortalVendasFilterSection';
+import { PortalVendasPagination } from './_components/PortalVendasPagination';
+import { PeriodPreset, resolveDateRange } from '@/lib/date-filters';
+import { formatCurrency, formatDate } from '@/lib/format';
+
+export const dynamic = 'force-dynamic';
 
 interface VendaRow {
   id: string;
@@ -28,17 +34,18 @@ const statusLabel: Record<string, string> = {
   suspensa: 'Suspensa',
 };
 
-function formatCurrency(value: string | number | null) {
-  if (value === null || value === undefined) return '-';
-  const num = typeof value === 'string' ? parseFloat(value) : value;
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num);
-}
+const statusColor: Record<string, string> = {
+  ativa: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+  cancelada: 'bg-rose-50 text-rose-700 border-rose-200',
+  expirada: 'bg-amber-50 text-amber-800 border-amber-200',
+  suspensa: 'bg-slate-100 text-slate-700 border-slate-200',
+};
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(new Date(value));
-}
-
-export default async function VendasPage() {
+export default async function VendasPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const user = await verifyPartnerAuth();
   if (!user) redirect('/login');
   const access = await getPartnerAccessContext(user);
@@ -48,81 +55,121 @@ export default async function VendasPage() {
 
   const isCorretora = Boolean(access.isCorretoraUser && access.corretoraId);
 
-  const vendas = isCorretora
-    ? await sql<VendaRow[]>`
-        SELECT
-          s.id,
-          s.policy_number,
-          s.premio_total,
-          s.commission_rate,
-          s.commission_amount,
-          s.status,
-          s.issue_date,
-          s.expiry_date,
-          s.product_id,
-          p.name AS product_name,
-          c.client_name,
-          c.client_cpf_cnpj,
-          pt.razao_social AS partner_name
-        FROM sales s
-        JOIN products p ON p.id = s.product_id
-        JOIN cotacoes c ON c.id = s.cotacao_id
-        LEFT JOIN partners pt ON pt.id = s.partner_id
-        WHERE s.corretora_id = ${access.corretoraId}
-        ORDER BY s.issue_date DESC, s.created_at DESC
-        LIMIT 150
-      `
-    : access.visibleUserIds === null
-    ? await sql<VendaRow[]>`
-        SELECT
-          s.id,
-          s.policy_number,
-          s.premio_total,
-          s.commission_rate,
-          s.commission_amount,
-          s.status,
-          s.issue_date,
-          s.expiry_date,
-          s.product_id,
-          p.name AS product_name,
-          c.client_name,
-          c.client_cpf_cnpj
-        FROM sales s
-        JOIN products p ON p.id = s.product_id
-        JOIN cotacoes c ON c.id = s.cotacao_id
-        WHERE s.partner_id = ${access.partnerId}
-        ORDER BY s.issue_date DESC, s.created_at DESC
-        LIMIT 100
-      `
-    : await sql<VendaRow[]>`
-        SELECT
-          s.id,
-          s.policy_number,
-          s.premio_total,
-          s.commission_rate,
-          s.commission_amount,
-          s.status,
-          s.issue_date,
-          s.expiry_date,
-          s.product_id,
-          p.name AS product_name,
-          c.client_name,
-          c.client_cpf_cnpj
-        FROM sales s
-        JOIN products p ON p.id = s.product_id
-        JOIN cotacoes c ON c.id = s.cotacao_id
-        WHERE s.partner_id = ${access.partnerId}
-          AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
-        ORDER BY s.issue_date DESC, s.created_at DESC
-        LIMIT 100
-      `;
+  const params = searchParams ? await searchParams : {};
+  const rawStatus = typeof params.status === 'string' ? params.status : '';
+  const status = statusLabel[rawStatus] ? rawStatus : '';
+  const q = (typeof params.q === 'string' ? params.q : '').trim().slice(0, 120);
+  const productId = typeof params.productId === 'string' ? params.productId : '';
+  const periodPreset = typeof params.periodPreset === 'string' ? (params.periodPreset as PeriodPreset) : undefined;
+  const startDate = typeof params.startDate === 'string' ? params.startDate : undefined;
+  const endDate = typeof params.endDate === 'string' ? params.endDate : undefined;
+  const pageSize = [10, 25, 50, 100].includes(Number(params.pageSize)) ? Number(params.pageSize) : 25;
+  const page = Math.max(1, Number(typeof params.page === 'string' ? params.page : '1') || 1);
 
-  const totalPremios = vendas.reduce((acc, v) => acc + parseFloat(v.premio_total || '0'), 0);
-  const totalComissoes = vendas.reduce((acc, v) => acc + parseFloat(v.commission_amount || '0'), 0);
+  // Cláusulas de controle de acesso do parceiro/corretora
+  const conditions = [];
+
+  if (isCorretora) {
+    conditions.push(sql`s.corretora_id = ${access.corretoraId}`);
+  } else if (access.visibleUserIds === null) {
+    conditions.push(sql`s.partner_id = ${access.partnerId}`);
+  } else {
+    conditions.push(sql`(s.partner_id = ${access.partnerId} AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL))`);
+  }
+
+  // Filtros dinâmicos
+  if (status) {
+    conditions.push(sql`s.status = ${status}`);
+  }
+  if (productId) {
+    conditions.push(sql`s.product_id = ${productId}`);
+  }
+
+  const { start, end } = resolveDateRange(periodPreset, startDate, endDate);
+  if (start) conditions.push(sql`s.created_at >= ${start}::timestamptz`);
+  if (end) conditions.push(sql`s.created_at <= ${end}::timestamptz`);
+
+  if (q) {
+    const textLike = `%${q.replace(/([\\%_])/g, '\\$1')}%`;
+    const digitsOnly = q.replace(/\D/g, '');
+    if (digitsOnly.length >= 3) {
+      const digitsLike = `%${digitsOnly.replace(/([\\%_])/g, '\\$1')}%`;
+      conditions.push(sql`(
+        c.client_name ILIKE ${textLike}
+        OR s.policy_number ILIKE ${textLike}
+        OR c.client_cpf_cnpj ILIKE ${textLike}
+        OR regexp_replace(COALESCE(c.client_cpf_cnpj, ''), '\\D', '', 'g') ILIKE ${digitsLike}
+        OR regexp_replace(COALESCE(s.policy_number, ''), '\\D', '', 'g') ILIKE ${digitsLike}
+      )`);
+    } else {
+      conditions.push(sql`(
+        c.client_name ILIKE ${textLike}
+        OR s.policy_number ILIKE ${textLike}
+        OR c.client_cpf_cnpj ILIKE ${textLike}
+      )`);
+    }
+  }
+
+  const where = conditions.reduce((acc, cond) => sql`${acc} AND ${cond}`);
+
+  const [metricsResult, productsList] = await Promise.all([
+    sql<{ total_count: string; total_premios: string; total_comissoes: string }[]>`
+      SELECT
+        COUNT(*)::text as total_count,
+        COALESCE(SUM(s.premio_total::numeric), 0)::text as total_premios,
+        COALESCE(SUM(s.commission_amount::numeric), 0)::text as total_comissoes
+      FROM sales s
+      JOIN products p ON p.id = s.product_id
+      JOIN cotacoes c ON c.id = s.cotacao_id
+      LEFT JOIN partners pt ON pt.id = s.partner_id
+      WHERE ${where}
+    `,
+    sql<{ id: string; name: string }[]>`
+      SELECT id, name
+      FROM products
+      WHERE active = true
+      ORDER BY name ASC
+    `,
+  ]);
+
+  const totalRecords = Number(metricsResult[0]?.total_count || 0);
+  const totalPremios = Number(metricsResult[0]?.total_premios || 0);
+  const totalComissoes = Number(metricsResult[0]?.total_comissoes || 0);
+
+  const totalPages = Math.ceil(totalRecords / pageSize);
+  const safePage = Math.min(page, Math.max(1, totalPages));
+  const offset = (safePage - 1) * pageSize;
+
+  const vendas = await sql<VendaRow[]>`
+    SELECT
+      s.id,
+      s.policy_number,
+      s.premio_total,
+      s.commission_rate,
+      s.commission_amount,
+      s.status,
+      s.issue_date,
+      s.expiry_date,
+      s.product_id,
+      p.name AS product_name,
+      c.client_name,
+      c.client_cpf_cnpj,
+      pt.razao_social AS partner_name
+    FROM sales s
+    JOIN products p ON p.id = s.product_id
+    JOIN cotacoes c ON c.id = s.cotacao_id
+    LEFT JOIN partners pt ON pt.id = s.partner_id
+    WHERE ${where}
+    ORDER BY s.issue_date DESC, s.created_at DESC
+    LIMIT ${pageSize}
+    OFFSET ${offset}
+  `;
+
+  const hasActiveFilters = Boolean(q || status || productId || (periodPreset && periodPreset !== 'all'));
 
   return (
-    <div>
-      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="page-title">Vendas</h1>
           <p className="muted mt-1 text-sm">
@@ -143,106 +190,146 @@ export default async function VendasPage() {
         </div>
       </div>
 
-      <div className="mb-6 grid gap-4 md:grid-cols-3">
-        <div className="card">
+      {/* Cards de Métricas Reativos (calculados sobre os filtros atuais) */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="card bg-white border border-gray-200 shadow-2xs">
           <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Apólices</div>
-          <div className="mt-2 text-2xl font-black" style={{ color: 'var(--primary)' }}>{vendas.length}</div>
+          <div className="mt-2 text-2xl font-black text-[#0e4a5a]">{totalRecords}</div>
         </div>
-        <div className="card">
-          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Prêmios</div>
-          <div className="mt-2 text-2xl font-black" style={{ color: 'var(--primary)' }}>{formatCurrency(totalPremios)}</div>
+        <div className="card bg-white border border-gray-200 shadow-2xs">
+          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Volume em Prêmios</div>
+          <div className="mt-2 text-2xl font-black text-[#0e4a5a]">{formatCurrency(totalPremios)}</div>
         </div>
-        <div className="card">
-          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Comissões geradas</div>
-          <div className="mt-2 text-2xl font-black" style={{ color: 'var(--primary)' }}>{formatCurrency(totalComissoes)}</div>
+        <div className="card bg-white border border-gray-200 shadow-2xs">
+          <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Comissões Geradas</div>
+          <div className="mt-2 text-2xl font-black text-emerald-700">{formatCurrency(totalComissoes)}</div>
         </div>
       </div>
 
-      <div className="card overflow-hidden p-0">
+      {/* Barra de Filtros Reativa e Inteligente */}
+      <PortalVendasFilterSection
+        products={productsList.map((p) => ({ id: p.id, name: p.name }))}
+        statusLabels={statusLabel}
+        pageSize={pageSize}
+      />
+
+      {/* Tabela de Vendas */}
+      <div className="card overflow-hidden p-0 border border-gray-200 shadow-xs bg-white">
         {vendas.length === 0 ? (
-          <div className="px-6 py-12 text-center">
-            <h2 className="text-lg font-bold" style={{ color: 'var(--primary)' }}>Nenhuma venda registrada</h2>
-            <p className="muted mx-auto mt-2 max-w-md text-sm">
-              As vendas emitidas pela DuoLife aparecerão aqui com apólice, prêmio e comissão.
+          <div className="px-6 py-16 text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 text-gray-400">
+              {hasActiveFilters ? <Search size={28} /> : <FileText size={28} />}
+            </div>
+            <h2 className="text-lg font-bold text-gray-900">
+              {hasActiveFilters ? 'Nenhuma venda encontrada' : 'Nenhuma venda registrada'}
+            </h2>
+            <p className="muted mx-auto mt-2 max-w-md text-sm text-gray-500">
+              {hasActiveFilters
+                ? 'Tente ajustar ou limpar os filtros para encontrar o que procura.'
+                : 'As vendas emitidas pela DuoLife aparecerão aqui com apólice, prêmio e comissão.'}
             </p>
+            {hasActiveFilters && (
+              <Link
+                href="/portal/vendas"
+                className="mt-5 inline-flex items-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-gray-800"
+              >
+                Limpar todos os filtros
+              </Link>
+            )}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] text-left text-sm">
-              <thead className="table-head">
-                <tr>
-                  <th className="px-5 py-3 font-semibold">Cliente</th>
-                  {isCorretora && <th className="px-5 py-3 font-semibold">Corretor</th>}
-                  <th className="px-5 py-3 font-semibold">Apólice</th>
-                  <th className="px-5 py-3 font-semibold">Produto</th>
-                  <th className="px-5 py-3 font-semibold">Prêmio</th>
-                  <th className="px-5 py-3 font-semibold">Comissão</th>
-                  <th className="px-5 py-3 font-semibold">Vigência</th>
-                  <th className="px-5 py-3 font-semibold">Status</th>
-                  <th className="px-5 py-3 font-semibold text-right">Ação</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {vendas.map((venda) => {
-                  const expiryDays = Math.round(
-                    (new Date(venda.expiry_date + 'T00:00:00').getTime() - Date.now()) /
-                      (1000 * 60 * 60 * 24)
-                  );
-                  const isExpiringSoon = venda.status === 'ativa' && expiryDays <= 60;
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[860px] text-left text-sm">
+                <thead className="border-b border-gray-200 bg-gray-50/75 text-xs font-semibold uppercase tracking-wider text-gray-600">
+                  <tr>
+                    <th className="px-5 py-3.5">Cliente</th>
+                    {isCorretora && <th className="px-5 py-3.5">Corretor</th>}
+                    <th className="px-5 py-3.5">Apólice</th>
+                    <th className="px-5 py-3.5">Produto</th>
+                    <th className="px-5 py-3.5">Prêmio</th>
+                    <th className="px-5 py-3.5">Comissão</th>
+                    <th className="px-5 py-3.5">Vigência</th>
+                    <th className="px-5 py-3.5">Status</th>
+                    <th className="px-5 py-3.5 text-right">Ação</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 bg-white">
+                  {vendas.map((venda) => {
+                    const expiryDays = Math.round(
+                      (new Date(venda.expiry_date + 'T00:00:00').getTime() - Date.now()) /
+                        (1000 * 60 * 60 * 24)
+                    );
+                    const isExpiringSoon = venda.status === 'ativa' && expiryDays <= 60;
 
-                  return (
-                    <tr key={venda.id} className="table-row">
-                      <td className="px-5 py-4 font-semibold" style={{ color: 'var(--primary)' }}>
-                        {venda.client_name}
-                      </td>
-                      {isCorretora && (
-                        <td className="px-5 py-4 text-xs font-semibold text-gray-700">
-                          {venda.partner_name || 'Corretora'}
+                    return (
+                      <tr key={venda.id} className="hover:bg-gray-50/75 transition-colors">
+                        <td className="px-5 py-4">
+                          <div className="font-semibold text-gray-900">{venda.client_name}</div>
+                          {venda.client_cpf_cnpj && (
+                            <div className="text-xs text-gray-500">{venda.client_cpf_cnpj}</div>
+                          )}
                         </td>
-                      )}
-                      <td className="px-5 py-4 text-gray-600">{venda.policy_number || '-'}</td>
-                      <td className="px-5 py-4 text-gray-600">{venda.product_name}</td>
-                      <td className="px-5 py-4 text-gray-600">{formatCurrency(venda.premio_total)}</td>
-                      <td className="px-5 py-4 text-gray-600">
-                        {formatCurrency(venda.commission_amount)}
-                        {venda.commission_rate && (
-                          <span className="block text-xs text-gray-400">
-                            {Number(venda.commission_rate)}%
-                          </span>
+                        {isCorretora && (
+                          <td className="px-5 py-4 text-xs font-semibold text-gray-700">
+                            {venda.partner_name || 'Corretora'}
+                          </td>
                         )}
-                      </td>
-                      <td className="px-5 py-4 text-gray-500">
-                        {formatDate(venda.issue_date)} - {formatDate(venda.expiry_date)}
-                      </td>
-                      <td className="px-5 py-4">
-                        <span className="status-pill">
-                          {statusLabel[venda.status] || venda.status}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 text-right">
-                        {isExpiringSoon ? (
-                          <Link
-                            href={`/portal/cotacoes/nova?product=${encodeURIComponent(
-                              venda.product_id
-                            )}&cpf=${encodeURIComponent(
-                              (venda.client_cpf_cnpj || '').replace(/\D/g, '')
-                            )}&renovacao=true&origemSaleId=${encodeURIComponent(venda.id)}`}
-                            className="inline-flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 transition-colors shadow-xs"
-                            title={`Apólice expira em ${expiryDays} dias. Clique para iniciar a renovação.`}
+                        <td className="px-5 py-4 text-gray-600 font-medium">{venda.policy_number || '-'}</td>
+                        <td className="px-5 py-4 text-gray-700 font-medium">{venda.product_name}</td>
+                        <td className="px-5 py-4 text-gray-900 font-semibold">{formatCurrency(venda.premio_total)}</td>
+                        <td className="px-5 py-4 text-gray-600">
+                          <div className="font-semibold text-gray-900">{formatCurrency(venda.commission_amount)}</div>
+                          {venda.commission_rate && (
+                            <span className="block text-xs text-gray-400">
+                              {Number(venda.commission_rate)}%
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-5 py-4 text-xs text-gray-500">
+                          {formatDate(venda.issue_date)} — {formatDate(venda.expiry_date)}
+                        </td>
+                        <td className="px-5 py-4">
+                          <span
+                            className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold border ${
+                              statusColor[venda.status] || 'bg-gray-100 text-gray-700 border-gray-200'
+                            }`}
                           >
-                            <RefreshCw size={12} className="text-emerald-600" />
-                            Renovar {expiryDays <= 0 ? '(Hoje)' : `(D-${expiryDays})`}
-                          </Link>
-                        ) : (
-                          <span className="text-xs text-gray-400">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                            {statusLabel[venda.status] || venda.status}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 text-right">
+                          {isExpiringSoon ? (
+                            <Link
+                              href={`/portal/cotacoes/nova?product=${encodeURIComponent(
+                                venda.product_id
+                              )}&cpf=${encodeURIComponent(
+                                (venda.client_cpf_cnpj || '').replace(/\D/g, '')
+                              )}&renovacao=true&origemSaleId=${encodeURIComponent(venda.id)}`}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-300 hover:bg-emerald-100 transition-colors shadow-2xs"
+                              title={`Apólice expira em ${expiryDays} dias. Clique para iniciar a renovação.`}
+                            >
+                              <RefreshCw size={12} className="text-emerald-600" />
+                              Renovar {expiryDays <= 0 ? '(Hoje)' : `(D-${expiryDays})`}
+                            </Link>
+                          ) : (
+                            <span className="text-xs text-gray-400">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <PortalVendasPagination
+              currentPage={safePage}
+              totalPages={totalPages}
+              totalRecords={totalRecords}
+              pageSize={pageSize}
+            />
+          </>
         )}
       </div>
     </div>

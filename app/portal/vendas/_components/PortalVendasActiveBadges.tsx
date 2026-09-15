@@ -1,0 +1,118 @@
+'use client';
+
+import React, { useTransition } from 'react';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import { X } from 'lucide-react';
+import { DATE_PRESET_OPTIONS, formatDateBR } from '@/lib/date-filters';
+
+interface Option {
+  id: string;
+  name: string;
+}
+
+interface PortalVendasActiveBadgesProps {
+  products: Option[];
+  statusLabels: Record<string, string>;
+}
+
+export function PortalVendasActiveBadges({
+  products,
+  statusLabels,
+}: PortalVendasActiveBadgesProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [, startTransition] = useTransition();
+
+  const q = searchParams.get('q');
+  const status = searchParams.get('status');
+  const productId = searchParams.get('productId');
+  const periodPreset = searchParams.get('periodPreset');
+  const startDate = searchParams.get('startDate');
+  const endDate = searchParams.get('endDate');
+
+  const removeParam = (keys: string[]) => {
+    const params = new URLSearchParams(searchParams.toString());
+    keys.forEach((k) => params.delete(k));
+    params.set('page', '1');
+
+    startTransition(() => {
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    });
+  };
+
+  const badges = [];
+
+  if (q) {
+    badges.push({
+      label: `Busca: "${q}"`,
+      onRemove: () => {
+        const input = document.querySelector('input[placeholder*="Buscar por cliente"]') as HTMLInputElement;
+        if (input) input.value = '';
+        removeParam(['q']);
+      },
+    });
+  }
+
+  if (status && statusLabels[status]) {
+    badges.push({
+      label: `Status: ${statusLabels[status]}`,
+      onRemove: () => removeParam(['status']),
+    });
+  }
+
+  if (productId) {
+    const prod = products.find((p) => p.id === productId);
+    badges.push({
+      label: `Produto: ${prod ? prod.name : 'Selecionado'}`,
+      onRemove: () => removeParam(['productId']),
+    });
+  }
+
+  if (periodPreset && periodPreset !== 'all') {
+    if (periodPreset === 'custom') {
+      let dateLabel = 'Período: Personalizado';
+      if (startDate && endDate) {
+        dateLabel = `Período: ${formatDateBR(startDate)} até ${formatDateBR(endDate)}`;
+      } else if (startDate) {
+        dateLabel = `Período: A partir de ${formatDateBR(startDate)}`;
+      } else if (endDate) {
+        dateLabel = `Período: Até ${formatDateBR(endDate)}`;
+      }
+      badges.push({
+        label: dateLabel,
+        onRemove: () => removeParam(['periodPreset', 'startDate', 'endDate']),
+      });
+    } else {
+      const preset = DATE_PRESET_OPTIONS.find((o) => o.value === periodPreset);
+      badges.push({
+        label: `Período: ${preset ? preset.label : periodPreset}`,
+        onRemove: () => removeParam(['periodPreset', 'startDate', 'endDate']),
+      });
+    }
+  }
+
+  if (badges.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 pt-1">
+      <span className="text-xs font-semibold text-gray-500">Filtros ativos:</span>
+      {badges.map((b, idx) => (
+        <span
+          key={idx}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-700 shadow-2xs"
+        >
+          <span>{b.label}</span>
+          <button
+            type="button"
+            onClick={b.onRemove}
+            className="rounded p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-700 cursor-pointer transition-colors"
+            title="Remover filtro"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </span>
+      ))}
+    </div>
+  );
+}

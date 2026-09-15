@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { verifyAuth, unauthorized } from '@/lib/auth';
 import { roleIsDev } from '@/lib/roles';
-import { getAllSystemSettings, updateSystemSettings } from '@/lib/system-settings';
+import { getAllSystemSettings, updateSystemSettings, sanitizeApiToken } from '@/lib/system-settings';
 import { logger } from '@/lib/logger';
 
 const SECRET_KEYS = new Set([
@@ -41,11 +41,11 @@ export async function GET() {
     // Mapeia os valores atuais com fallback para variáveis de ambiente
     const rawSettings: Record<string, string> = {
       ASAAS_API_KEY: dbSettings['ASAAS_API_KEY'] || process.env.ASAAS_API_KEY || '',
-      ASAAS_ENVIRONMENT: dbSettings['ASAAS_ENVIRONMENT'] || (process.env.ASAAS_BASE_URL?.includes('sandbox') ? 'sandbox' : 'sandbox'),
+      ASAAS_ENVIRONMENT: dbSettings['ASAAS_ENVIRONMENT'] || (process.env.ASAAS_BASE_URL?.includes('sandbox') ? 'sandbox' : 'production'),
       ASAAS_WEBHOOK_SECRET: dbSettings['ASAAS_WEBHOOK_SECRET'] || process.env.ASAAS_WEBHOOK_SECRET || '',
 
       ZAPSIGN_API_TOKEN: dbSettings['ZAPSIGN_API_TOKEN'] || process.env.ZAPSIGN_API_TOKEN || '',
-      ZAPSIGN_ENVIRONMENT: dbSettings['ZAPSIGN_ENVIRONMENT'] || (process.env.ZAPSIGN_SANDBOX === 'true' ? 'sandbox' : 'sandbox'),
+      ZAPSIGN_ENVIRONMENT: dbSettings['ZAPSIGN_ENVIRONMENT'] || (process.env.ZAPSIGN_SANDBOX === 'true' || (process.env.ZAPSIGN_BASE_URL || '').includes('sandbox') ? 'sandbox' : 'production'),
       ZAPSIGN_TEMPLATE_OFICIAL: dbSettings['ZAPSIGN_TEMPLATE_OFICIAL'] || process.env.ZAPSIGN_TEMPLATE_OFICIAL || '',
       ZAPSIGN_TEMPLATE_100K: dbSettings['ZAPSIGN_TEMPLATE_100K'] || process.env.ZAPSIGN_TEMPLATE_100K || '',
       ZAPSIGN_TEMPLATE_RENOVACAO: dbSettings['ZAPSIGN_TEMPLATE_RENOVACAO'] || process.env.ZAPSIGN_TEMPLATE_RENOVACAO || '',
@@ -123,7 +123,9 @@ export async function POST(req: NextRequest) {
           // Não alterou o segredo existente, ignora
           continue;
         }
-        sanitizedSettings[key] = trimmed;
+        sanitizedSettings[key] = (SECRET_KEYS.has(key) || key.includes('TEMPLATE') || key.includes('TOKEN') || key.includes('KEY')) 
+          ? sanitizeApiToken(trimmed) 
+          : trimmed;
       }
     }
 

@@ -52,7 +52,7 @@ const navSections: Array<{ title: string; items: NavItem[] }> = [
       { href: '/admin/relatorios', label: 'Relatórios', icon: BarChart3, description: 'Financeiro e indicadores.' },
       { href: '/admin/cotacoes', label: 'Cotações', icon: Briefcase, description: 'Propostas e cobrança.' },
       { href: '/admin/vendas', label: 'Vendas', icon: Shield, description: 'Apólices e prêmio total.' },
-      { href: '/admin/comissoes', label: 'Comissões', icon: WalletCards, description: 'Pendências e extrato.' },
+      // Oculto temporariamente: { href: '/admin/comissoes', label: 'Comissões', icon: WalletCards, description: 'Pendências e extrato.' },
       { href: '/admin/produtos', label: 'Produtos', icon: Package, description: 'Catálogo e fluxos.' },
       { href: '/admin/emails', label: 'E-mails', icon: Mail, description: 'Modelos e templates.' },
       { href: '/admin/gatilhos', label: 'Gatilhos & Fluxos', icon: GitFork, description: 'Árvores de decisão e regras.' },

@@ -43,7 +43,7 @@ export default function PortalShell({ children, user }: PortalShellProps) {
     { href: '/portal/cotacoes', label: 'Cotações', icon: ClipboardList },
     { href: '/portal/clientes', label: 'Clientes', icon: Users },
     { href: '/portal/vendas', label: 'Vendas', icon: FileText },
-    { href: '/portal/comissoes', label: 'Comissões', icon: WalletCards },
+    // Oculto temporariamente: { href: '/portal/comissoes', label: 'Comissões', icon: WalletCards },
     ...(isCorretoraOrManager ? [{ href: '/portal/equipe', label: 'Minha Equipe', icon: UserCheck }] : []),
     { href: '/portal/perfil', label: 'Perfil', icon: UserRound },
   ];

@@ -9,9 +9,11 @@ import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
 import { formatCurrency, formatDateTime } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
 
-export const dynamic = 'force-dynamic';
+import { CotacoesFilterSection } from './_components/CotacoesFilterSection';
+import { CotacoesPagination } from './_components/CotacoesPagination';
+import { PeriodPreset, resolveDateRange } from '@/lib/date-filters';
 
-const PAGE_SIZE = 50;
+export const dynamic = 'force-dynamic';
 
 interface AdminCotacaoRow {
   id: string;
@@ -77,15 +79,6 @@ function getDisplayPrice(cotacao: AdminCotacaoRow) {
   return 'Sob Consulta';
 }
 
-function buildQueryString(params: { status: string; q: string; page: number }) {
-  const search = new URLSearchParams();
-  if (params.status) search.set('status', params.status);
-  if (params.q) search.set('q', params.q);
-  if (params.page > 1) search.set('page', String(params.page));
-  const qs = search.toString();
-  return qs ? `?${qs}` : '';
-}
-
 export default async function AdminCotacoesPage({
   searchParams,
 }: {
@@ -98,31 +91,70 @@ export default async function AdminCotacoesPage({
 
   const params = searchParams ? await searchParams : {};
   const rawStatus = typeof params.status === 'string' ? params.status : '';
-  // Status vem da URL: só aceita valor conhecido, senão o filtro vira ruído silencioso.
   const status = statusLabel[rawStatus] ? rawStatus : '';
   const q = (typeof params.q === 'string' ? params.q : '').trim().slice(0, 120);
+  const productId = typeof params.productId === 'string' ? params.productId : '';
+  const partnerId = typeof params.partnerId === 'string' ? params.partnerId : '';
+  const periodPreset = typeof params.periodPreset === 'string' ? (params.periodPreset as PeriodPreset) : undefined;
+  const startDate = typeof params.startDate === 'string' ? params.startDate : undefined;
+  const endDate = typeof params.endDate === 'string' ? params.endDate : undefined;
+  const pageSize = [10, 25, 50, 100].includes(Number(params.pageSize)) ? Number(params.pageSize) : 25;
   const page = Math.max(1, Number(typeof params.page === 'string' ? params.page : '1') || 1);
 
   const conditions = [];
   if (status) conditions.push(sql`c.status = ${status}`);
+  if (productId) conditions.push(sql`c.product_id = ${productId}`);
+  if (partnerId) conditions.push(sql`c.partner_id = ${partnerId}`);
+
+  const { start, end } = resolveDateRange(periodPreset, startDate, endDate);
+  if (start) conditions.push(sql`c.created_at >= ${start}::timestamptz`);
+  if (end) conditions.push(sql`c.created_at <= ${end}::timestamptz`);
+
   if (q) {
-    // `%` e `_` do usuário são literais na busca, não coringas do ILIKE.
-    const like = `%${q.replace(/([\\%_])/g, '\\$1')}%`;
-    conditions.push(sql`(c.client_name ILIKE ${like} OR c.client_cpf_cnpj ILIKE ${like} OR c.client_email ILIKE ${like})`);
+    const textLike = `%${q.replace(/([\\%_])/g, '\\$1')}%`;
+    const digitsOnly = q.replace(/\D/g, '');
+    if (digitsOnly.length >= 3) {
+      const digitsLike = `%${digitsOnly.replace(/([\\%_])/g, '\\$1')}%`;
+      conditions.push(sql`(
+        c.client_name ILIKE ${textLike}
+        OR c.client_cpf_cnpj ILIKE ${textLike}
+        OR regexp_replace(c.client_cpf_cnpj, '\\D', '', 'g') ILIKE ${digitsLike}
+        OR c.client_email ILIKE ${textLike}
+        OR c.client_phone ILIKE ${textLike}
+        OR regexp_replace(COALESCE(c.client_phone, ''), '\\D', '', 'g') ILIKE ${digitsLike}
+      )`);
+    } else {
+      conditions.push(sql`(
+        c.client_name ILIKE ${textLike}
+        OR c.client_cpf_cnpj ILIKE ${textLike}
+        OR c.client_email ILIKE ${textLike}
+        OR c.client_phone ILIKE ${textLike}
+      )`);
+    }
   }
+
   const where = conditions.length
     ? conditions.reduce((acc, cond) => sql`${acc} AND ${cond}`)
     : sql`TRUE`;
 
-  const [{ total }] = await sql<{ total: number }[]>`
-    SELECT COUNT(*)::int AS total
-    FROM cotacoes c
-    JOIN products p ON p.id = c.product_id
-    JOIN partners part ON part.id = c.partner_id
-    WHERE ${where}
-  `;
+  const [countResult, productsList, partnersList] = await Promise.all([
+    sql<{ total: number }[]>`
+      SELECT COUNT(*)::int AS total
+      FROM cotacoes c
+      JOIN products p ON p.id = c.product_id
+      JOIN partners part ON part.id = c.partner_id
+      WHERE ${where}
+    `,
+    sql<{ id: string; name: string }[]>`
+      SELECT id, name FROM products WHERE is_active = true ORDER BY name ASC
+    `,
+    sql<{ id: string; name: string }[]>`
+      SELECT id, COALESCE(nome_fantasia, razao_social) AS name FROM partners ORDER BY name ASC
+    `,
+  ]);
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const total = countResult[0]?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const currentPage = Math.min(page, totalPages);
 
   const cotacoes = await sql<AdminCotacaoRow[]>`
@@ -145,12 +177,16 @@ export default async function AdminCotacoesPage({
     JOIN partners part ON part.id = c.partner_id
     WHERE ${where}
     ORDER BY c.created_at DESC
-    LIMIT ${PAGE_SIZE} OFFSET ${(currentPage - 1) * PAGE_SIZE}
+    LIMIT ${pageSize} OFFSET ${(currentPage - 1) * pageSize}
   `;
 
-  const hasFilters = Boolean(status || q);
-  const firstItem = total === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
-  const lastItem = (currentPage - 1) * PAGE_SIZE + cotacoes.length;
+  const hasFilters = Boolean(
+    status ||
+    q ||
+    productId ||
+    partnerId ||
+    (periodPreset && periodPreset !== 'all')
+  );
 
   return (
     <div className="space-y-6">
@@ -169,52 +205,13 @@ export default async function AdminCotacoesPage({
         </Link>
       </section>
 
-      {/* Filtros — form GET nativo, sem JS de cliente */}
-      <form
-        method="GET"
-        className="bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200/80 p-4 shadow-xs flex flex-col sm:flex-row sm:items-center gap-3"
-      >
-        <div className="relative flex-1 min-w-[220px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
-          <input
-            type="search"
-            name="q"
-            defaultValue={q}
-            placeholder="Buscar por nome, CPF/CNPJ ou e-mail"
-            aria-label="Buscar cotações"
-            className="w-full rounded-xl border border-slate-200 bg-slate-50 pl-9 pr-3 py-2 text-sm text-slate-900 focus:bg-white focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none transition-all"
-          />
-        </div>
-
-        <select
-          name="status"
-          defaultValue={status}
-          aria-label="Filtrar por situação"
-          className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800 focus:bg-white focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none cursor-pointer transition-all"
-        >
-          <option value="">Todas as situações</option>
-          {Object.entries(statusLabel).map(([value, label]) => (
-            <option key={value} value={value}>{label}</option>
-          ))}
-        </select>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="submit"
-            className="inline-flex items-center gap-1.5 rounded-xl bg-[#072a33] px-4 py-2 text-xs font-extrabold uppercase tracking-wider text-[#00d4e0] hover:bg-[#0e4a5a] transition-all shadow-xs"
-          >
-            Filtrar
-          </button>
-          {hasFilters && (
-            <Link
-              href="/admin/cotacoes"
-              className="text-xs font-semibold text-slate-500 hover:text-slate-900 px-3 py-2 transition-colors"
-            >
-              Limpar
-            </Link>
-          )}
-        </div>
-      </form>
+      {/* Seção de Filtros Reativos */}
+      <CotacoesFilterSection
+        products={productsList}
+        partners={partnersList}
+        statusLabels={statusLabel}
+        pageSize={pageSize}
+      />
 
       {/* Main Content Card */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
@@ -231,6 +228,14 @@ export default async function AdminCotacoesPage({
                 ? 'Ajuste a busca ou limpe os filtros para ver todas as cotações.'
                 : 'Crie a primeira cotação ou aguarde os parceiros gerarem propostas.'}
             </p>
+            {hasFilters && (
+              <Link
+                href="/admin/cotacoes"
+                className="mt-4 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#0e4a5a] text-white text-xs font-bold hover:bg-[#072a33] transition-colors shadow-xs"
+              >
+                Limpar todos os filtros
+              </Link>
+            )}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -360,36 +365,12 @@ export default async function AdminCotacoesPage({
           </div>
         )}
 
-        {total > 0 && (
-          <div className="flex items-center justify-between gap-3 border-t border-slate-100 px-6 py-4 text-xs font-medium text-slate-500">
-            <span>
-              Exibindo <strong className="text-slate-800">{firstItem}–{lastItem}</strong> de{' '}
-              <strong className="text-slate-800">{total}</strong> cotações
-            </span>
-
-            {totalPages > 1 && (
-              <div className="flex items-center gap-2">
-                {currentPage > 1 && (
-                  <Link
-                    href={`/admin/cotacoes${buildQueryString({ status, q, page: currentPage - 1 })}`}
-                    className="rounded-lg bg-slate-100 px-3 py-1.5 font-semibold text-slate-700 hover:bg-slate-200 transition-colors"
-                  >
-                    Anterior
-                  </Link>
-                )}
-                <span className="text-slate-500">Página {currentPage} de {totalPages}</span>
-                {currentPage < totalPages && (
-                  <Link
-                    href={`/admin/cotacoes${buildQueryString({ status, q, page: currentPage + 1 })}`}
-                    className="rounded-lg bg-slate-100 px-3 py-1.5 font-semibold text-slate-700 hover:bg-slate-200 transition-colors"
-                  >
-                    Próxima
-                  </Link>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+        <CotacoesPagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalRecords={total}
+          pageSize={pageSize}
+        />
       </div>
     </div>
   );

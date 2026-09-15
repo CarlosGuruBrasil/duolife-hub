@@ -4,7 +4,7 @@ import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { getAccessibleQuoteById } from '@/lib/access';
 import { parseJsonbField } from '@/lib/json-safe';
-import { getZapSignConfig } from '@/lib/system-settings';
+import { getZapSignConfig, sanitizeApiToken } from '@/lib/system-settings';
 import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
 import { generateAsaasPaymentForQuote } from '@/lib/asaas-service';
 
@@ -65,7 +65,7 @@ export async function POST(
 
     // 2. Consulta status na API da ZapSign
     const zapConfig = await getZapSignConfig();
-    const token = zapConfig.apiToken;
+    const token = sanitizeApiToken(zapConfig.apiToken);
     const baseUrl = zapConfig.baseUrl;
 
     if (!token) {
@@ -82,7 +82,12 @@ export async function POST(
     if (!response.ok) {
       const errText = await response.text();
       logger.error({ status: response.status, body: errText }, 'api.portal.verificar-assinatura.zapsign_failed');
-      return Response.json({ error: `Falha na API da ZapSign: ${errText}` }, { status: 400 });
+      let friendlyError = `Falha na API da ZapSign: ${errText}`;
+      if (errText.includes('API token not found') || errText.includes('Token da API não encontrado')) {
+        const ambAtual = zapConfig.isSandbox ? 'Sandbox (Testes)' : 'Produção Real';
+        friendlyError = `Falha de autenticação na ZapSign: O Token de API informado não foi localizado no ambiente ${ambAtual}. Verifique no painel administrativo (/admin/chaves-api) se o ambiente selecionado corresponde à conta onde o token foi gerado.`;
+      }
+      return Response.json({ error: friendlyError }, { status: 400 });
     }
 
     const resJson = await response.json();

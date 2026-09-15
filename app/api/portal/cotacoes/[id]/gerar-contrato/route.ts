@@ -6,7 +6,7 @@ import { getAccessibleQuoteById } from '@/lib/access';
 import { parseJsonbField } from '@/lib/json-safe';
 import { calcularPrecoServidor } from '@/lib/pricing';
 import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
-import { getZapSignConfig } from '@/lib/system-settings';
+import { getZapSignConfig, sanitizeApiToken } from '@/lib/system-settings';
 import { parseAtuacaoList } from '@/lib/atuacao';
 import { rateLimit, rateLimitResponse } from '@/lib/rate-limit';
 
@@ -308,7 +308,7 @@ export async function POST(
       external_id: cotacao.id
     };
 
-    const token = zapConfig.apiToken;
+    const token = sanitizeApiToken(zapConfig.apiToken);
     const baseUrl = zapConfig.baseUrl;
 
     if (!token) {
@@ -328,7 +328,12 @@ export async function POST(
 
     if (!response.ok) {
       logger.error({ status: response.status, body: responseText }, 'api.portal.gerar-contrato.zapsign_failed');
-      return Response.json({ error: `Falha na API da ZapSign: ${responseText}` }, { status: 400 });
+      let friendlyError = `Falha na API da ZapSign: ${responseText}`;
+      if (responseText.includes('API token not found') || responseText.includes('Token da API não encontrado')) {
+        const ambAtual = zapConfig.isSandbox ? 'Sandbox (Testes)' : 'Produção Real';
+        friendlyError = `Falha de autenticação na ZapSign: O Token de API informado não foi localizado no ambiente ${ambAtual}. Verifique no painel administrativo (/admin/chaves-api) se o ambiente selecionado corresponde à conta onde o token foi gerado (app.zapsign.com.br para Produção ou sandbox.app.zapsign.com.br para Sandbox).`;
+      }
+      return Response.json({ error: friendlyError }, { status: 400 });
     }
 
     const resJson = JSON.parse(responseText);

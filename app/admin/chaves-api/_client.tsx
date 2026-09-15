@@ -103,10 +103,46 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
   const [saving, setSaving] = useState(false);
   const [testingNet4Life, setTestingNet4Life] = useState(false);
   const [net4LifeTestResult, setNet4LifeTestResult] = useState<{ success: boolean; message: string; latencyMs?: number } | null>(null);
+  const [testingZapSign, setTestingZapSign] = useState(false);
+  const [zapSignTestResult, setZapSignTestResult] = useState<{
+    success: boolean;
+    message: string;
+    latencyMs?: number;
+    environment?: string;
+  } | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('visao-geral');
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  async function handleTestZapSign() {
+    setTestingZapSign(true);
+    setZapSignTestResult(null);
+    try {
+      const res = await fetch('/api/admin/chaves-api/test-zapsign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiToken: settings.ZAPSIGN_API_TOKEN,
+          environment: settings.ZAPSIGN_ENVIRONMENT,
+        }),
+      });
+      const data = await res.json();
+      setZapSignTestResult({
+        success: data.ok,
+        message: data.message || (data.ok ? 'Conexão realizada com sucesso!' : 'Falha na conexão.'),
+        latencyMs: data.latencyMs,
+        environment: data.environment,
+      });
+    } catch (err: any) {
+      setZapSignTestResult({
+        success: false,
+        message: err?.message || 'Erro de rede ao testar conexão com a ZapSign.',
+      });
+    } finally {
+      setTestingZapSign(false);
+    }
+  }
 
   async function handleTestNet4Life() {
     setTestingNet4Life(true);
@@ -534,24 +570,44 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-2 border-t border-gray-100">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      handleChange('ZAPSIGN_ENVIRONMENT', isZapSignSandbox ? 'production' : 'sandbox')
-                    }
-                    className="text-xs font-bold text-[#0e4a5a] hover:text-[#072a33] flex items-center gap-1 cursor-pointer"
-                  >
-                    <FlaskConical className="h-3.5 w-3.5 text-[#00d4e0]" />
-                    <span>Alternar para {isZapSignSandbox ? 'Produção' : 'Sandbox'}</span>
-                  </button>
+                {zapSignTestResult && (
+                  <div className={`p-2 rounded-lg text-[11px] flex items-center gap-1.5 border ${zapSignTestResult.success ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+                    {zapSignTestResult.success ? <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" /> : <AlertCircle className="h-3.5 w-3.5 text-amber-600 shrink-0" />}
+                    <span className="truncate">{zapSignTestResult.message}</span>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between pt-2 border-t border-gray-100 gap-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleChange('ZAPSIGN_ENVIRONMENT', isZapSignSandbox ? 'production' : 'sandbox')
+                      }
+                      className="text-xs font-bold text-[#0e4a5a] hover:text-[#072a33] flex items-center gap-1 cursor-pointer"
+                    >
+                      <FlaskConical className="h-3.5 w-3.5 text-[#00d4e0]" />
+                      <span>{isZapSignSandbox ? 'Ir p/ Produção' : 'Ir p/ Sandbox'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleTestZapSign}
+                      disabled={testingZapSign}
+                      className="text-xs font-semibold text-gray-600 hover:text-gray-900 flex items-center gap-1 cursor-pointer px-2 py-0.5 rounded border border-gray-200 bg-white hover:bg-gray-50"
+                      title="Testar autenticação ZapSign"
+                    >
+                      <RefreshCw className={`h-3 w-3 text-[#0e4a5a] ${testingZapSign ? 'animate-spin' : ''}`} />
+                      <span>{testingZapSign ? 'Testando...' : 'Testar'}</span>
+                    </button>
+                  </div>
 
                   <button
                     type="button"
                     onClick={() => setActiveTab('zapsign')}
-                    className="text-xs font-bold text-[#0e4a5a] hover:underline flex items-center gap-1 cursor-pointer"
+                    className="text-xs font-bold text-[#0e4a5a] hover:underline flex items-center gap-1 cursor-pointer shrink-0"
                   >
-                    <span>Configurar ZapSign</span>
+                    <span>Configurar</span>
                     <ArrowRight className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -870,20 +926,74 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() =>
-                  handleChange('ZAPSIGN_ENVIRONMENT', isZapSignSandbox ? 'production' : 'sandbox')
-                }
-                className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 ${
-                  isZapSignSandbox
-                    ? 'bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200'
-                    : 'bg-emerald-100 text-emerald-900 border border-emerald-300 hover:bg-emerald-200'
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleTestZapSign}
+                  disabled={testingZapSign}
+                  className="px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 border border-gray-300 bg-white hover:bg-gray-50 text-gray-800 disabled:opacity-50"
+                  title="Testa a autenticação do token informado na API da ZapSign"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 text-[#0e4a5a] ${testingZapSign ? 'animate-spin' : ''}`} />
+                  <span>{testingZapSign ? 'Testando...' : 'Testar Conexão'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleChange('ZAPSIGN_ENVIRONMENT', isZapSignSandbox ? 'production' : 'sandbox')
+                  }
+                  className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 ${
+                    isZapSignSandbox
+                      ? 'bg-amber-100 text-amber-900 border border-amber-300 hover:bg-amber-200'
+                      : 'bg-emerald-100 text-emerald-900 border border-emerald-300 hover:bg-emerald-200'
+                  }`}
+                >
+                  <Zap className="h-3.5 w-3.5" />
+                  <span>{isZapSignSandbox ? 'MODO TESTE (SANDBOX)' : 'PRODUÇÃO REAL'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Banner de Resultado do Teste */}
+            {zapSignTestResult && (
+              <div
+                className={`p-4 rounded-xl border flex items-start gap-3 transition-all ${
+                  zapSignTestResult.success
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    : 'bg-amber-50 border-amber-200 text-amber-900'
                 }`}
               >
-                <Zap className="h-3.5 w-3.5" />
-                <span>{isZapSignSandbox ? 'MODO TESTE (SANDBOX)' : 'PRODUÇÃO REAL'}</span>
-              </button>
+                {zapSignTestResult.success ? (
+                  <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                )}
+                <div className="space-y-1 text-xs">
+                  <div className="flex items-center gap-2 font-bold">
+                    <span>{zapSignTestResult.success ? 'Conexão ZapSign Homologada' : 'Atenção na Conexão ZapSign'}</span>
+                    {zapSignTestResult.latencyMs !== undefined && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-white border border-gray-200 font-mono">
+                        {zapSignTestResult.latencyMs}ms
+                      </span>
+                    )}
+                    {zapSignTestResult.environment && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-white border border-gray-200 uppercase font-black">
+                        {zapSignTestResult.environment}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-gray-700 leading-relaxed">{zapSignTestResult.message}</p>
+                </div>
+              </div>
+            )}
+
+            {/* Dica de Ambientes ZapSign */}
+            <div className="bg-blue-50/70 border border-blue-200 rounded-xl p-3.5 text-xs text-blue-950 flex items-start gap-2.5">
+              <Info className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
+              <div className="leading-relaxed">
+                <strong>Importante sobre Contas e Ambientes:</strong> A ZapSign possui sistemas distintos para <em>Produção</em> (<code>app.zapsign.com.br</code>) e <em>Sandbox</em> (<code>sandbox.app.zapsign.com.br</code>). O Token gerado em uma plataforma não é aceito na outra. Se a conta contratada pela empresa é a oficial, mantenha o modo <strong>PRODUÇÃO REAL</strong> selecionado.
+              </div>
             </div>
 
             <div className="grid md:grid-cols-2 gap-4">
