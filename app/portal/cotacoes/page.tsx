@@ -81,8 +81,10 @@ export default async function CotacoesPage({
     conditions.push(sql`c.corretora_id = ${access.corretoraId}`);
   } else if (access.visibleUserIds === null) {
     conditions.push(sql`c.partner_id = ${access.partnerId}`);
-  } else {
+  } else if (access.visibleUserIds.length > 0) {
     conditions.push(sql`(c.partner_id = ${access.partnerId} AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL))`);
+  } else {
+    conditions.push(sql`(c.partner_id = ${access.partnerId} AND c.partner_user_id IS NULL)`);
   }
 
   // Filtros dinâmicos
@@ -120,7 +122,9 @@ export default async function CotacoesPage({
     }
   }
 
-  const where = conditions.reduce((acc, cond) => sql`${acc} AND ${cond}`);
+  const where = conditions.length > 0
+    ? conditions.reduce((acc, cond) => sql`${acc} AND ${cond}`)
+    : sql`TRUE`;
 
   const [countResult, productsList] = await Promise.all([
     sql<{ count: string }[]>`
@@ -131,7 +135,7 @@ export default async function CotacoesPage({
     sql<{ id: string; name: string }[]>`
       SELECT id, name
       FROM products
-      WHERE active = true
+      WHERE is_active = true
       ORDER BY name ASC
     `,
   ]);

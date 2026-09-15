@@ -113,8 +113,8 @@ export default async function AdminVendasPage({
     sql<{ total_count: string; total_premios: string; total_comissoes: string }[]>`
       SELECT
         COUNT(*)::text as total_count,
-        COALESCE(SUM(s.premio_total::numeric), 0)::text as total_premios,
-        COALESCE(SUM(s.commission_amount::numeric), 0)::text as total_comissoes
+        COALESCE(SUM(NULLIF(regexp_replace(s.premio_total::text, '[^0-9.]', '', 'g'), '')::numeric), 0)::text as total_premios,
+        COALESCE(SUM(NULLIF(regexp_replace(s.commission_amount::text, '[^0-9.]', '', 'g'), '')::numeric), 0)::text as total_comissoes
       FROM sales s
       JOIN products pr ON pr.id = s.product_id
       JOIN cotacoes c ON c.id = s.cotacao_id
@@ -124,13 +124,13 @@ export default async function AdminVendasPage({
     sql<{ id: string; name: string }[]>`
       SELECT id, name
       FROM products
-      WHERE active = true
+      WHERE is_active = true
       ORDER BY name ASC
     `,
     sql<{ id: string; name: string }[]>`
       SELECT id, razao_social AS name
       FROM partners
-      WHERE active = true
+      WHERE status = 'active'
       ORDER BY razao_social ASC
     `,
   ]);

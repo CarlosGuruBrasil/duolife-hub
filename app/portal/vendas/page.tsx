@@ -73,8 +73,10 @@ export default async function VendasPage({
     conditions.push(sql`s.corretora_id = ${access.corretoraId}`);
   } else if (access.visibleUserIds === null) {
     conditions.push(sql`s.partner_id = ${access.partnerId}`);
-  } else {
+  } else if (access.visibleUserIds.length > 0) {
     conditions.push(sql`(s.partner_id = ${access.partnerId} AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL))`);
+  } else {
+    conditions.push(sql`(s.partner_id = ${access.partnerId} AND c.partner_user_id IS NULL)`);
   }
 
   // Filtros dinâmicos
@@ -110,14 +112,16 @@ export default async function VendasPage({
     }
   }
 
-  const where = conditions.reduce((acc, cond) => sql`${acc} AND ${cond}`);
+  const where = conditions.length > 0
+    ? conditions.reduce((acc, cond) => sql`${acc} AND ${cond}`)
+    : sql`TRUE`;
 
   const [metricsResult, productsList] = await Promise.all([
     sql<{ total_count: string; total_premios: string; total_comissoes: string }[]>`
       SELECT
         COUNT(*)::text as total_count,
-        COALESCE(SUM(s.premio_total::numeric), 0)::text as total_premios,
-        COALESCE(SUM(s.commission_amount::numeric), 0)::text as total_comissoes
+        COALESCE(SUM(NULLIF(regexp_replace(s.premio_total::text, '[^0-9.]', '', 'g'), '')::numeric), 0)::text as total_premios,
+        COALESCE(SUM(NULLIF(regexp_replace(s.commission_amount::text, '[^0-9.]', '', 'g'), '')::numeric), 0)::text as total_comissoes
       FROM sales s
       JOIN products p ON p.id = s.product_id
       JOIN cotacoes c ON c.id = s.cotacao_id
@@ -127,7 +131,7 @@ export default async function VendasPage({
     sql<{ id: string; name: string }[]>`
       SELECT id, name
       FROM products
-      WHERE active = true
+      WHERE is_active = true
       ORDER BY name ASC
     `,
   ]);
