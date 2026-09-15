@@ -14,6 +14,7 @@ import { upsertInsuranceClient } from './insurance-ops';
 import { isWixIntegrationEnabled } from './system-settings';
 import { findPartnerByWixCode, logSyncEvent, normalizeDigits, normalizeMaybeString } from './wix-sync';
 import { parseFlexibleDate, extractWixCreationDate } from './wix-compare';
+import { syncWixSalesToLocalDb } from './wix-sales-sync';
 
 const PAGE_SIZE = 100;
 
@@ -72,6 +73,7 @@ async function upsertItem(params: {
   wixCollectionId: string;
   item: WixQueryItem;
   collectionId: string;
+  skipDbInsert?: boolean;
 }) {
   const data = extractItemData(params.item);
   const externalId = normalizeMaybeString(params.item.id);
@@ -98,71 +100,87 @@ async function upsertItem(params: {
     parseFlexibleDate((params.item as Record<string, unknown>)._updatedDate) ||
     extractWixCreationDate(data, { _updatedDate: (params.item as Record<string, unknown>)._updatedDate }) ||
     wixCreatedAt;
-  const payload = {
-    collectionId: params.collectionId,
-    item: params.item,
+
+  if (!params.skipDbInsert) {
+    const payload = {
+      collectionId: params.collectionId,
+      item: params.item,
+    };
+    const payloadHash = stableHash(payload);
+
+    await sql`
+      INSERT INTO wix_items (
+        wix_collection_id,
+        wix_item_id,
+        external_id,
+        document_number,
+        name,
+        email,
+        phone,
+        status,
+        partner_code,
+        payload,
+        payload_hash,
+        wix_created_at,
+        wix_updated_at,
+        synced_at,
+        updated_at
+      )
+      VALUES (
+        ${params.wixCollectionId},
+        ${params.item.id},
+        ${externalId},
+        ${documentNumber},
+        ${name},
+        ${email},
+        ${phone},
+        ${status},
+        ${partnerCode},
+        ${JSON.stringify(payload)}::jsonb,
+        ${payloadHash},
+        ${wixCreatedAt},
+        ${wixUpdatedAt},
+        NOW(),
+        NOW()
+      )
+      ON CONFLICT (wix_collection_id, wix_item_id)
+      DO UPDATE SET
+        external_id = EXCLUDED.external_id,
+        document_number = EXCLUDED.document_number,
+        name = EXCLUDED.name,
+        email = EXCLUDED.email,
+        phone = EXCLUDED.phone,
+        status = EXCLUDED.status,
+        partner_code = EXCLUDED.partner_code,
+        payload = EXCLUDED.payload,
+        payload_hash = EXCLUDED.payload_hash,
+        wix_created_at = COALESCE(EXCLUDED.wix_created_at, wix_items.wix_created_at),
+        wix_updated_at = COALESCE(EXCLUDED.wix_updated_at, wix_items.wix_updated_at),
+        synced_at = NOW(),
+        updated_at = NOW(),
+        is_active = true
+    `;
+  }
+
+  return {
+    externalId,
+    documentNumber,
+    name,
+    email,
+    phone,
+    status,
+    statusCliente,
+    partnerCode,
+    data,
+    wixCreatedAt,
+    wixUpdatedAt,
   };
-  const payloadHash = stableHash(payload);
-
-  await sql`
-    INSERT INTO wix_items (
-      wix_collection_id,
-      wix_item_id,
-      external_id,
-      document_number,
-      name,
-      email,
-      phone,
-      status,
-      partner_code,
-      payload,
-      payload_hash,
-      wix_created_at,
-      wix_updated_at,
-      synced_at,
-      updated_at
-    )
-    VALUES (
-      ${params.wixCollectionId},
-      ${params.item.id},
-      ${externalId},
-      ${documentNumber},
-      ${name},
-      ${email},
-      ${phone},
-      ${status},
-      ${partnerCode},
-      ${JSON.stringify(payload)}::jsonb,
-      ${payloadHash},
-      ${wixCreatedAt},
-      ${wixUpdatedAt},
-      NOW(),
-      NOW()
-    )
-    ON CONFLICT (wix_collection_id, wix_item_id)
-    DO UPDATE SET
-      external_id = EXCLUDED.external_id,
-      document_number = EXCLUDED.document_number,
-      name = EXCLUDED.name,
-      email = EXCLUDED.email,
-      phone = EXCLUDED.phone,
-      status = EXCLUDED.status,
-      partner_code = EXCLUDED.partner_code,
-      payload = EXCLUDED.payload,
-      payload_hash = EXCLUDED.payload_hash,
-      wix_created_at = COALESCE(EXCLUDED.wix_created_at, wix_items.wix_created_at),
-      wix_updated_at = COALESCE(EXCLUDED.wix_updated_at, wix_items.wix_updated_at),
-      synced_at = NOW(),
-      updated_at = NOW(),
-      is_active = true
-  `;
-
-  return { externalId, documentNumber, name, email, phone, status, statusCliente, partnerCode, data };
 }
 
 async function upsertLeadFromWix(params: {
   collectionId: string;
   mirror: Awaited<ReturnType<typeof upsertItem>>;
+  onlyNew?: boolean;
 }) {
   const { externalId, documentNumber, name, email, phone, status, statusCliente, partnerCode, data } = params.mirror;
   if (!externalId && !documentNumber) return null;
@@ -194,6 +212,9 @@ async function upsertLeadFromWix(params: {
   const leadDataCadastro = wixCreatedAtStr ? new Date(wixCreatedAtStr) : null;
 
   if (existingLead) {
+    if (params.onlyNew) {
+      return null;
+    }
     const [updated] = await sql`
       UPDATE leads
       SET
@@ -263,11 +284,23 @@ function shouldImportAsClient(collectionId: string) {
 async function upsertInsuranceClientFromWix(params: {
   collectionId: string;
   mirror: Awaited<ReturnType<typeof upsertItem>>;
+  onlyNew?: boolean;
 }) {
   if (!shouldImportAsClient(params.collectionId)) return null;
 
   const { externalId, documentNumber, name, email, phone, status, statusCliente, data } = params.mirror;
   if (!documentNumber || !name) return null;
+
+  if (params.onlyNew) {
+    const [existing] = await sql`
+      SELECT id
+      FROM insurance_clients
+      WHERE document_number = ${documentNumber}
+         OR (metadata->>'externalId' = ${externalId} AND ${externalId} IS NOT NULL)
+      LIMIT 1
+    `;
+    if (existing) return null;
+  }
 
   const birthDate =
     normalizeMaybeString(data.dataNascimento) ||
@@ -298,9 +331,17 @@ async function upsertInsuranceClientFromWix(params: {
 async function upsertPartnerFromWix(params: {
   collectionId: string;
   mirror: Awaited<ReturnType<typeof upsertItem>>;
+  onlyNew?: boolean;
 }) {
   const { externalId, name, email, phone, partnerCode, data } = params.mirror;
   if (!email) return null;
+
+  if (params.onlyNew) {
+    const [existing] = await sql`
+      SELECT id FROM partners WHERE LOWER(email) = LOWER(${email}) LIMIT 1
+    `;
+    if (existing) return null;
+  }
 
   const metadata = {
     wix: {
@@ -445,16 +486,133 @@ async function upsertProductFromWixSeguro(mirror: Awaited<ReturnType<typeof upse
   return product?.id || null;
 }
 
+export interface WixPullEntitiesSelection {
+  mirror?: boolean;     // Gravar em wix_items e wix_collections (default: true)
+  clients?: boolean;    // Upsert em insurance_clients (default: true)
+  leads?: boolean;      // Upsert em leads (Import1) (default: true)
+  partners?: boolean;   // Upsert em partners (Usuarios) (default: true)
+  products?: boolean;   // Upsert em products (Planos / Seguros) (default: true)
+  sales?: boolean;      // Sincronizar vendas, cotações e comissões do Wix Import1 (default: false)
+}
+
+export interface WixPullOptions {
+  collections?: string[];           // IDs das coleções a baixar (ex: ['Import1', 'Usuarios']). Se vazio/omitido, todas.
+  entities?: WixPullEntitiesSelection;
+  createdAfter?: string | null;     // Data de corte ISO string (apenas itens criados após essa data)
+  onlyNew?: boolean;                // Se true, não atualiza registros existentes, apenas insere novos
+  maxItemsPerCollection?: number;   // Limite opcional por coleção
+}
+
 export interface WixPullResult {
   collectionsSynced: number;
   itemsSynced: number;
   leadsUpserted: number;
   clientsUpserted: number;
   partnersUpserted: number;
+  productsUpserted?: number;
+  salesCreated?: number;
+  salesUpdated?: number;
+  quotesCreated?: number;
+  quotesUpdated?: number;
+  totalRevenue?: number;
   durationMs: number;
+  executedCollections?: string[];
+  executedEntities?: string[];
 }
 
-export async function pullWixIntoLocalMirror(): Promise<WixPullResult> {
+export interface WixCollectionStatusInfo {
+  id: string;
+  displayName: string;
+  collectionType?: string;
+  itemsCount: number;
+  lastSyncedAt: string | null;
+}
+
+export async function listWixCollectionsStatus(): Promise<WixCollectionStatusInfo[]> {
+  await ensureSchema();
+
+  const localRows = await sql<Array<{
+    collection_id: string;
+    collection_name: string;
+    last_synced_at: string | null;
+    items_count: string | number;
+  }>>`
+    SELECT
+      wc.collection_id,
+      wc.collection_name,
+      wc.last_synced_at,
+      COALESCE(COUNT(wi.id), 0) AS items_count
+    FROM wix_collections wc
+    LEFT JOIN wix_items wi ON wi.wix_collection_id = wc.id
+    GROUP BY wc.id, wc.collection_id, wc.collection_name, wc.last_synced_at
+    ORDER BY wc.collection_name ASC
+  `;
+
+  const map = new Map<string, WixCollectionStatusInfo>();
+  for (const row of localRows) {
+    map.set(row.collection_id, {
+      id: row.collection_id,
+      displayName: row.collection_name || row.collection_id,
+      itemsCount: Number(row.items_count) || 0,
+      lastSyncedAt: row.last_synced_at,
+    });
+  }
+
+  try {
+    if ((await isWixIntegrationEnabled()) && (await hasWixReadAccess())) {
+      const remote = await wixListCollections();
+      for (const r of remote) {
+        if (!map.has(r.id)) {
+          map.set(r.id, {
+            id: r.id,
+            displayName: r.displayName || r.id,
+            collectionType: r.collectionType,
+            itemsCount: 0,
+            lastSyncedAt: null,
+          });
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn({ err }, 'wix.list_collections_status.remote_failed');
+  }
+
+  const canonical = [
+    { id: 'Import1', name: 'Import1 (Propostas & Vendas)' },
+    { id: 'Usuarios', name: 'Usuarios (Parceiros & Vendedores)' },
+    { id: 'Planos', name: 'Planos (Coberturas RC)' },
+    { id: 'Seguros', name: 'Seguros (Serviços e Planos)' },
+    { id: 'FORMULARIOHOMESITE', name: 'FORMULARIOHOMESITE (Leads Landing Page)' },
+  ];
+
+  for (const c of canonical) {
+    if (!map.has(c.id)) {
+      map.set(c.id, {
+        id: c.id,
+        displayName: c.name,
+        itemsCount: 0,
+        lastSyncedAt: null,
+      });
+    }
+  }
+
+  const priority: Record<string, number> = {
+    Import1: 1,
+    Usuarios: 2,
+    Planos: 3,
+    Seguros: 4,
+    FORMULARIOHOMESITE: 5,
+  };
+
+  return Array.from(map.values()).sort((a, b) => {
+    const prioA = priority[a.id] || 99;
+    const prioB = priority[b.id] || 99;
+    if (prioA !== prioB) return prioA - prioB;
+    return a.displayName.localeCompare(b.displayName);
+  });
+}
+
+export async function pullWixIntoLocalMirror(options?: WixPullOptions): Promise<WixPullResult> {
   await ensureSchema();
 
   if (!(await isWixIntegrationEnabled())) {
@@ -466,25 +624,50 @@ export async function pullWixIntoLocalMirror(): Promise<WixPullResult> {
   }
 
   const startedAt = Date.now();
-  const collections = await wixListCollections();
+  const remoteCollections = await wixListCollections();
+
+  // Opções e defaults (mantém compatibilidade total caso options seja omitido)
+  const syncMirror = options?.entities?.mirror ?? true;
+  const syncClients = options?.entities?.clients ?? true;
+  const syncLeads = options?.entities?.leads ?? true;
+  const syncPartners = options?.entities?.partners ?? true;
+  const syncProducts = options?.entities?.products ?? true;
+  const syncSales = options?.entities?.sales ?? false;
+  const onlyNew = options?.onlyNew ?? false;
+  const createdAfterTime = options?.createdAfter ? new Date(options.createdAfter).getTime() : null;
+
+  // Seleção de coleções
+  let targetCollections: Array<{ id: string; displayName?: string; collectionType?: string }> = [];
+  if (options?.collections && options.collections.length > 0) {
+    const remoteMap = new Map(remoteCollections.map((c) => [c.id, c]));
+    targetCollections = options.collections.map((id) => remoteMap.get(id) || { id, displayName: id });
+  } else {
+    targetCollections = remoteCollections;
+  }
+
   let collectionsSynced = 0;
   let itemsSynced = 0;
   let leadsUpserted = 0;
   let clientsUpserted = 0;
   let partnersUpserted = 0;
+  let productsUpserted = 0;
+  const executedCollections: string[] = [];
 
-  // Sincroniza TODAS as coleções do Wix (inclusive customizadas como Planos, Seguros, BDRC, etc.)
-  const allowedCollections = collections;
-
-  for (const collection of allowedCollections) {
+  for (const collection of targetCollections) {
     const schema = (await wixGetCollectionSchema(collection.id)) || {
       id: collection.id,
       displayName: collection.displayName,
       collectionType: collection.collectionType,
     };
 
-    const collectionRow = await upsertCollection(collection, schema);
+    let collectionRowId = collection.id;
+    if (syncMirror) {
+      const row = await upsertCollection(collection, schema);
+      collectionRowId = row.id;
+    }
+
     collectionsSynced += 1;
+    executedCollections.push(collection.id);
 
     let offset = 0;
     let pageCount = 0;
@@ -501,28 +684,58 @@ export async function pullWixIntoLocalMirror(): Promise<WixPullResult> {
       for (const item of items) {
         try {
           const mirror = await upsertItem({
-            wixCollectionId: collectionRow.id,
+            wixCollectionId: collectionRowId,
             item,
             collectionId: collection.id,
+            skipDbInsert: !syncMirror,
           });
+
+          // Filtro por data de criação do Wix (se especificado)
+          if (createdAfterTime && mirror.wixCreatedAt) {
+            const itemTime = new Date(mirror.wixCreatedAt).getTime();
+            if (!Number.isNaN(itemTime) && itemTime < createdAfterTime) {
+              continue;
+            }
+          }
+
           itemsSynced += 1;
           syncedItemsForCollection += 1;
 
-          const clientId = await upsertInsuranceClientFromWix({ collectionId: collection.id, mirror });
-          if (clientId) clientsUpserted += 1;
+          if (syncClients) {
+            const clientId = await upsertInsuranceClientFromWix({
+              collectionId: collection.id,
+              mirror,
+              onlyNew,
+            });
+            if (clientId) clientsUpserted += 1;
+          }
 
-          if (collection.id === 'Import1') {
-            const leadId = await upsertLeadFromWix({ collectionId: collection.id, mirror });
+          if (syncLeads && collection.id === 'Import1') {
+            const leadId = await upsertLeadFromWix({
+              collectionId: collection.id,
+              mirror,
+              onlyNew,
+            });
             if (leadId) leadsUpserted += 1;
           }
 
-          if (collection.id === 'Usuarios') {
-            const partnerId = await upsertPartnerFromWix({ collectionId: collection.id, mirror });
+          if (syncPartners && collection.id === 'Usuarios') {
+            const partnerId = await upsertPartnerFromWix({
+              collectionId: collection.id,
+              mirror,
+              onlyNew,
+            });
             if (partnerId) partnersUpserted += 1;
           }
 
-          if (collection.id === 'Planos') {
-            await upsertProductFromWixPlano(mirror);
+          if (syncProducts) {
+            if (collection.id === 'Planos') {
+              const pId = await upsertProductFromWixPlano(mirror);
+              if (pId) productsUpserted += 1;
+            } else if (collection.id === 'Seguros') {
+              const pId = await upsertProductFromWixSeguro(mirror);
+              if (pId) productsUpserted += 1;
+            }
           }
         } catch (err) {
           logger.warn({
@@ -531,20 +744,29 @@ export async function pullWixIntoLocalMirror(): Promise<WixPullResult> {
             itemId: item.id,
           }, 'wix.pull.item.skipped');
         }
+
+        if (options?.maxItemsPerCollection && syncedItemsForCollection >= options.maxItemsPerCollection) {
+          break;
+        }
       }
 
       pageCount += 1;
       if (items.length < PAGE_SIZE) break;
+      if (options?.maxItemsPerCollection && syncedItemsForCollection >= options.maxItemsPerCollection) {
+        break;
+      }
       offset += PAGE_SIZE;
     }
 
-    await sql`
-      UPDATE wix_collections
-      SET last_synced_at = NOW(),
-          sync_cursor = ${String(offset)},
-          updated_at = NOW()
-      WHERE id = ${collectionRow.id}
-    `;
+    if (syncMirror) {
+      await sql`
+        UPDATE wix_collections
+        SET last_synced_at = NOW(),
+            sync_cursor = ${String(offset)},
+            updated_at = NOW()
+        WHERE id = ${collectionRowId}
+      `;
+    }
 
     await logSyncEvent({
       entityType: 'wix_collection',
@@ -558,11 +780,42 @@ export async function pullWixIntoLocalMirror(): Promise<WixPullResult> {
         displayName: collection.displayName || schema.displayName || collection.id,
         itemsSynced: syncedItemsForCollection,
         pages: pageCount,
+        options: {
+          onlyNew,
+          createdAfter: options?.createdAfter || null,
+        },
       },
     });
   }
 
+  // Sincronização integrada de Vendas & Apólices caso solicitado
+  let salesCreated = 0;
+  let salesUpdated = 0;
+  let quotesCreated = 0;
+  let quotesUpdated = 0;
+  let totalRevenue = 0;
+
+  if (syncSales) {
+    try {
+      const salesResult = await syncWixSalesToLocalDb({ onlyNew });
+      salesCreated = salesResult.salesCreated;
+      salesUpdated = salesResult.salesUpdated;
+      quotesCreated = salesResult.quotesCreated;
+      quotesUpdated = salesResult.quotesUpdated;
+      totalRevenue = salesResult.totalRevenue;
+    } catch (err) {
+      logger.error({ err }, 'wix.pull.sales_sync_failed');
+    }
+  }
+
   const durationMs = Date.now() - startedAt;
+  const executedEntities: string[] = [];
+  if (syncMirror) executedEntities.push('mirror');
+  if (syncClients) executedEntities.push('clients');
+  if (syncLeads) executedEntities.push('leads');
+  if (syncPartners) executedEntities.push('partners');
+  if (syncProducts) executedEntities.push('products');
+  if (syncSales) executedEntities.push('sales');
 
   logger.info({
     collectionsSynced,
@@ -570,7 +823,12 @@ export async function pullWixIntoLocalMirror(): Promise<WixPullResult> {
     leadsUpserted,
     clientsUpserted,
     partnersUpserted,
+    productsUpserted,
+    salesCreated,
+    salesUpdated,
     durationMs,
+    executedCollections,
+    executedEntities,
   }, 'wix.pull.completed');
 
   return {
@@ -579,6 +837,14 @@ export async function pullWixIntoLocalMirror(): Promise<WixPullResult> {
     leadsUpserted,
     clientsUpserted,
     partnersUpserted,
+    productsUpserted,
+    salesCreated,
+    salesUpdated,
+    quotesCreated,
+    quotesUpdated,
+    totalRevenue,
     durationMs,
+    executedCollections,
+    executedEntities,
   };
 }

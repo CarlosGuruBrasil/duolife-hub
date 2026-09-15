@@ -3,20 +3,14 @@
 import React, { useState, useEffect, useTransition } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { Filter, RotateCcw, Loader2 } from 'lucide-react';
-import { PeriodPreset, QuotesFilterType } from '@/types/admin-clients';
+import { PeriodPreset } from '@/types/portal-clients';
 
-interface Option {
-  id: string;
-  name: string;
-}
-
-interface ClientesAdvancedFiltersProps {
+interface PortalClientesAdvancedFiltersProps {
   products: Array<{ id: string; name: string; code: string }>;
-  partners: Option[];
   isOpen: boolean;
 }
 
-export function ClientesAdvancedFilters({ products, partners, isOpen }: ClientesAdvancedFiltersProps) {
+export function PortalClientesAdvancedFilters({ products, isOpen }: PortalClientesAdvancedFiltersProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -24,27 +18,19 @@ export function ClientesAdvancedFilters({ products, partners, isOpen }: Clientes
 
   // Estados locais sincronizados com searchParams
   const [productId, setProductId] = useState(searchParams.get('productId') || '');
-  const [quotesFilter, setQuotesFilter] = useState<QuotesFilterType>(
-    (searchParams.get('quotesFilter') as QuotesFilterType) || 'all'
-  );
-  const [quoteStatus, setQuoteStatus] = useState(searchParams.get('quoteStatus') || '');
   const [signatureStatus, setSignatureStatus] = useState(searchParams.get('signatureStatus') || '');
   const [paymentStatus, setPaymentStatus] = useState(searchParams.get('paymentStatus') || '');
-  const [partnerId, setPartnerId] = useState(searchParams.get('partnerId') || '');
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>(
     (searchParams.get('periodPreset') as PeriodPreset) || 'all'
   );
   const [startDate, setStartDate] = useState(searchParams.get('startDate') || '');
   const [endDate, setEndDate] = useState(searchParams.get('endDate') || '');
 
-  // Sincroniza quando a URL mudar externamente
+  // Sincroniza quando a URL mudar externamente (ex: botão "Limpar filtros")
   useEffect(() => {
     setProductId(searchParams.get('productId') || '');
-    setQuotesFilter((searchParams.get('quotesFilter') as QuotesFilterType) || 'all');
-    setQuoteStatus(searchParams.get('quoteStatus') || '');
     setSignatureStatus(searchParams.get('signatureStatus') || '');
     setPaymentStatus(searchParams.get('paymentStatus') || '');
-    setPartnerId(searchParams.get('partnerId') || '');
     setPeriodPreset((searchParams.get('periodPreset') as PeriodPreset) || 'all');
     setStartDate(searchParams.get('startDate') || '');
     setEndDate(searchParams.get('endDate') || '');
@@ -86,67 +72,18 @@ export function ClientesAdvancedFilters({ products, partners, isOpen }: Clientes
     });
   };
 
-  const handleApply = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-
-    const params = new URLSearchParams(searchParams.toString());
-
-    if (productId) params.set('productId', productId);
-    else params.delete('productId');
-
-    if (quotesFilter && quotesFilter !== 'all') params.set('quotesFilter', quotesFilter);
-    else params.delete('quotesFilter');
-
-    if (quoteStatus) params.set('quoteStatus', quoteStatus);
-    else params.delete('quoteStatus');
-
-    if (signatureStatus) params.set('signatureStatus', signatureStatus);
-    else params.delete('signatureStatus');
-
-    if (paymentStatus) params.set('paymentStatus', paymentStatus);
-    else params.delete('paymentStatus');
-
-    if (partnerId) params.set('partnerId', partnerId);
-    else params.delete('partnerId');
-
-    if (periodPreset && periodPreset !== 'all') params.set('periodPreset', periodPreset);
-    else params.delete('periodPreset');
-
-    if (periodPreset === 'custom') {
-      if (startDate) params.set('startDate', startDate);
-      else params.delete('startDate');
-      if (endDate) params.set('endDate', endDate);
-      else params.delete('endDate');
-    } else {
-      params.delete('startDate');
-      params.delete('endDate');
-    }
-
-    params.set('page', '1');
-
-    startTransition(() => {
-      router.push(`${pathname}?${params.toString()}`);
-    });
-  };
-
   const handleClear = () => {
     setProductId('');
-    setQuotesFilter('all');
-    setQuoteStatus('');
     setSignatureStatus('');
     setPaymentStatus('');
-    setPartnerId('');
     setPeriodPreset('all');
     setStartDate('');
     setEndDate('');
 
     const params = new URLSearchParams(searchParams.toString());
     params.delete('productId');
-    params.delete('quotesFilter');
-    params.delete('quoteStatus');
     params.delete('signatureStatus');
     params.delete('paymentStatus');
-    params.delete('partnerId');
     params.delete('periodPreset');
     params.delete('startDate');
     params.delete('endDate');
@@ -158,10 +95,7 @@ export function ClientesAdvancedFilters({ products, partners, isOpen }: Clientes
   };
 
   return (
-    <form
-      onSubmit={handleApply}
-      className="bg-gray-50/95 backdrop-blur-sm rounded-2xl border border-gray-200/90 p-5 shadow-xs space-y-4"
-    >
+    <div className="bg-gray-50/95 backdrop-blur-sm rounded-2xl border border-gray-200/90 p-5 shadow-xs space-y-4">
       <div className="flex items-center justify-between border-b border-gray-200 pb-3">
         <div className="flex items-center gap-2">
           <Filter size={15} className="text-[#0e4a5a]" />
@@ -178,7 +112,7 @@ export function ClientesAdvancedFilters({ products, partners, isOpen }: Clientes
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* 1. Produto */}
         <div>
           <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
@@ -201,53 +135,7 @@ export function ClientesAdvancedFilters({ products, partners, isOpen }: Clientes
           </select>
         </div>
 
-        {/* 2. Cotações */}
-        <div>
-          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
-            Cotações
-          </label>
-          <select
-            value={quotesFilter}
-            onChange={(e) => {
-              const val = e.target.value as QuotesFilterType;
-              setQuotesFilter(val);
-              updateSingleFilter('quotesFilter', val);
-            }}
-            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none cursor-pointer"
-          >
-            <option value="all">Todas</option>
-            <option value="with_quotes">Com cotação</option>
-            <option value="without_quotes">Sem cotação</option>
-            <option value="multiple">2 ou mais cotações</option>
-          </select>
-        </div>
-
-        {/* 3. Situação da Cotação */}
-        <div>
-          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
-            Status Cotação
-          </label>
-          <select
-            value={quoteStatus}
-            onChange={(e) => {
-              setQuoteStatus(e.target.value);
-              updateSingleFilter('quoteStatus', e.target.value);
-            }}
-            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none cursor-pointer"
-          >
-            <option value="">Todos os status</option>
-            <option value="rascunho">Rascunho</option>
-            <option value="enviada">Enviada</option>
-            <option value="contrato_gerado">Aguard. Assinatura</option>
-            <option value="assinado">Assinado</option>
-            <option value="pagamento_gerado">Cobrança Gerada</option>
-            <option value="aprovada">Aprovada (Venda)</option>
-            <option value="recusada">Recusada</option>
-            <option value="expirada">Expirada</option>
-          </select>
-        </div>
-
-        {/* 4. Assinatura ZapSign */}
+        {/* 2. Assinatura ZapSign */}
         <div>
           <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
             Assinatura
@@ -270,7 +158,7 @@ export function ClientesAdvancedFilters({ products, partners, isOpen }: Clientes
           </select>
         </div>
 
-        {/* 5. Status Financeiro / Parcelas */}
+        {/* 3. Parcelas / Pagamento */}
         <div>
           <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
             Parcelas / Pagamento
@@ -293,31 +181,9 @@ export function ClientesAdvancedFilters({ products, partners, isOpen }: Clientes
             <option value="refunded">Estornado</option>
           </select>
         </div>
-
-        {/* 6. Parceiro / Corretor */}
-        <div>
-          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
-            Parceiro
-          </label>
-          <select
-            value={partnerId}
-            onChange={(e) => {
-              setPartnerId(e.target.value);
-              updateSingleFilter('partnerId', e.target.value);
-            }}
-            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none cursor-pointer"
-          >
-            <option value="">Todos os parceiros</option>
-            {partners.map((pt) => (
-              <option key={pt.id} value={pt.id}>
-                {pt.name}
-              </option>
-            ))}
-          </select>
-        </div>
       </div>
 
-      {/* Linha Secundária: Período de Cadastro */}
+      {/* Linha Secundária: Período de Cadastro / Datas */}
       <div className="pt-2 border-t border-gray-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[11px] font-bold uppercase tracking-wider text-gray-600 mr-1">
@@ -387,6 +253,6 @@ export function ClientesAdvancedFilters({ products, partners, isOpen }: Clientes
           </button>
         </div>
       </div>
-    </form>
+    </div>
   );
 }

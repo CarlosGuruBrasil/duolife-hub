@@ -6,6 +6,7 @@ import { sql } from '@/lib/pg';
 import WixPullClient from './_client';
 import { formatDateTime } from '@/lib/format';
 import { isWixIntegrationEnabled } from '@/lib/system-settings';
+import { listWixCollectionsStatus } from '@/lib/wix-pull';
 
 export const dynamic = 'force-dynamic';
 
@@ -52,6 +53,8 @@ export default async function AdminSyncPage() {
     LIMIT 100
   `;
 
+  const initialCollections = await listWixCollectionsStatus().catch(() => []);
+
   return (
     <div>
       <div className="mb-8 flex items-center gap-3">
@@ -67,6 +70,7 @@ export default async function AdminSyncPage() {
         itemsCount={Number(mirrorSummary?.items_count || 0)}
         lastSyncedAt={mirrorSummary?.last_synced_at || null}
         wixEnabled={wixEnabled}
+        initialCollections={initialCollections}
       />
 
       <div className="mb-6 grid gap-4 md:grid-cols-4">

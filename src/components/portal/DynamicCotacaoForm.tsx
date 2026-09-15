@@ -788,7 +788,7 @@ export default function DynamicCotacaoForm({
     // Passo 4: Declarações & Underwriting
     if (step === 4) {
       if (form.isRenovacao === 'Sim') {
-        if (!form.seguradora || !form.vigencia || !form.limite || !form.franquiaAnterior || !form.premio || !form.dataRetroativa) {
+        if (!form.seguradora || !form.vigencia || !form.limite || !form.dataRetroativa) {
           setError('Preencha todas as informações do seguro anterior para a renovação.');
           return;
         }
@@ -1791,7 +1791,7 @@ export default function DynamicCotacaoForm({
             <div className="space-y-4 border-b border-gray-200 pb-6">
               <h3 className="text-lg font-bold text-primary">Seguro Anterior (Últimos 2 anos)</h3>
 
-              <div className="grid gap-5 md:grid-cols-3">
+              <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
                 <label className="block">
                   <span className="field-label">Seguradora Anterior *</span>
                   <input
@@ -1820,28 +1820,6 @@ export default function DynamicCotacaoForm({
                     required
                     value={form.limite}
                     onChange={(e) => updateField('limite', formatMoneyInput(e.target.value))}
-                    className="form-input"
-                    placeholder="R$ 0,00"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="field-label">Franquia Anterior *</span>
-                  <input
-                    required
-                    value={form.franquiaAnterior}
-                    onChange={(e) => updateField('franquiaAnterior', formatMoneyInput(e.target.value))}
-                    className="form-input"
-                    placeholder="R$ 0,00"
-                  />
-                </label>
-
-                <label className="block">
-                  <span className="field-label">Prêmio Líquido Pago *</span>
-                  <input
-                    required
-                    value={form.premio}
-                    onChange={(e) => updateField('premio', formatMoneyInput(e.target.value))}
                     className="form-input"
                     placeholder="R$ 0,00"
                   />

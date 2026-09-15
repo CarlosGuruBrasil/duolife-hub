@@ -3,21 +3,21 @@
 import React, { useState, useEffect, useTransition, useRef } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { Search, X, SlidersHorizontal, ChevronDown, Loader2, RotateCcw } from 'lucide-react';
-import { PageSizeOption } from '@/types/admin-clients';
+import { PageSizeOption } from '@/types/portal-clients';
 
-interface ClientesFilterBarProps {
+interface PortalClientesFilterBarProps {
   activeFiltersCount: number;
   isOpenAdvanced: boolean;
   onToggleAdvanced: () => void;
   pageSize: PageSizeOption;
 }
 
-export function ClientesFilterBar({
+export function PortalClientesFilterBar({
   activeFiltersCount,
   isOpenAdvanced,
   onToggleAdvanced,
   pageSize,
-}: ClientesFilterBarProps) {
+}: PortalClientesFilterBarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -27,12 +27,12 @@ export function ClientesFilterBar({
   const [searchValue, setSearchValue] = useState(currentSearch);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Sincroniza o estado interno se a URL for alterada externamente (ex: botão "Limpar todos")
+  // Sincroniza o estado interno se a URL mudar externamente (ex: botão "Limpar filtros")
   useEffect(() => {
     setSearchValue(currentSearch);
   }, [currentSearch]);
 
-  // Busca em tempo real a cada caractere digitado (debounce de 280ms)
+  // Busca em tempo real a cada caractere digitado (debounce de 280ms sem necessidade de clicar em botões)
   useEffect(() => {
     if (searchValue === currentSearch) return;
 
@@ -141,13 +141,13 @@ export function ClientesFilterBar({
           )}
         </div>
 
-        {/* Ações: Toggle Filtros Avançados, Botão Limpar Filtros e Seletor de Limite */}
+        {/* Ações: Botão Limpar Filtros, Toggle Filtros Avançados e Seletor de Limite */}
         <div className="flex items-center justify-between sm:justify-end gap-2.5 shrink-0">
           {hasAnyFilterActive && (
             <button
               type="button"
               onClick={handleClearAll}
-              className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold hover:bg-rose-100 hover:border-rose-300 transition-all cursor-pointer shrink-0 shadow-2xs"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold hover:bg-rose-100 hover:border-rose-300 transition-all cursor-pointer shrink-0 shadow-2xs"
               title="Limpar todos os filtros e pesquisa"
               aria-label="Limpar todos os filtros"
             >

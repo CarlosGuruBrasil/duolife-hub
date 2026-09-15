@@ -154,12 +154,26 @@ export async function getAdminClientsList(
     )`);
   }
 
-  // Filtro por Status de Pagamento
+  // Filtro por Status de Pagamento / Parcelas
   if (rawParams.paymentStatus) {
-    conditions.push(sql`EXISTS (
-      SELECT 1 FROM payment_orders po_st
-      WHERE po_st.client_id = ic.id AND po_st.status = ${rawParams.paymentStatus}
-    )`);
+    if (rawParams.paymentStatus === 'paid') {
+      conditions.push(sql`EXISTS (
+        SELECT 1 FROM payment_orders po_st
+        WHERE po_st.client_id = ic.id
+          AND po_st.status IN ('paid', 'confirmed', 'received')
+      )`);
+    } else if (rawParams.paymentStatus === 'overdue') {
+      conditions.push(sql`EXISTS (
+        SELECT 1 FROM payment_orders po_st
+        WHERE po_st.client_id = ic.id
+          AND (po_st.status = 'overdue' OR (po_st.status = 'pending' AND po_st.due_date < CURRENT_DATE))
+      )`);
+    } else {
+      conditions.push(sql`EXISTS (
+        SELECT 1 FROM payment_orders po_st
+        WHERE po_st.client_id = ic.id AND po_st.status = ${rawParams.paymentStatus}
+      )`);
+    }
   }
 
   // Filtro por Parceiro
