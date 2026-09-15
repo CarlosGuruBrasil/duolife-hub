@@ -158,9 +158,13 @@ export default function AdminCorretoraDetailPage({ params }: { params: Promise<{
       <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="flex items-center gap-5">
-            {corretora.whiteLabel?.logoUrl ? (
+            {isNet4Life || corretora.whiteLabel?.logoUrl ? (
               <div className="w-24 h-16 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center p-2 shrink-0">
-                <img src={corretora.whiteLabel.logoUrl} alt={corretora.nome_fantasia} className="max-w-full max-h-full object-contain" />
+                <img
+                  src={isNet4Life ? '/images/corretoras/net4life-logo.png' : corretora.whiteLabel.logoUrl}
+                  alt={corretora.nome_fantasia}
+                  className="max-w-full max-h-full object-contain"
+                />
               </div>
             ) : (
               <div className="w-16 h-16 rounded-xl bg-primary/10 text-primary flex items-center justify-center font-bold text-xl shrink-0">

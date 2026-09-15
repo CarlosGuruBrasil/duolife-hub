@@ -304,14 +304,15 @@ export default function AdminCorretorasPage() {
                   const statusInfo = STATUS_LABELS[c.status] || STATUS_LABELS.active;
                   const Icon = statusInfo.icon;
                   const isNet4Life = c.id === 'corretora_net4life_001';
+                  const iconSrc = c.whiteLabel?.iconUrl || (isNet4Life ? '/images/corretoras/net4life-icon.png' : c.whiteLabel?.logoUrl);
 
                   return (
                     <tr key={c.id} className="hover:bg-gray-50/60 transition-colors">
                       <td className="py-4 px-4">
                         <div className="flex items-center gap-3">
-                          {c.whiteLabel?.logoUrl ? (
+                          {iconSrc ? (
                             <div className="w-10 h-10 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center p-1 overflow-hidden shrink-0">
-                              <img src={c.whiteLabel.logoUrl} alt={c.nome_fantasia} className="max-w-full max-h-full object-contain" />
+                              <img src={iconSrc} alt={c.nome_fantasia} className="max-w-full max-h-full object-contain" />
                             </div>
                           ) : (
                             <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-sm shrink-0">

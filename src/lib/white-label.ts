@@ -11,6 +11,7 @@ export interface WhiteLabelConfig {
   companyEmail: string;
   companyWebsite: string;
   logoUrl: string;
+  iconUrl?: string;
   primaryColor: string;
   secondaryColor: string;
   accentColor: string;
@@ -40,6 +41,7 @@ const DEFAULT_WHITE_LABEL: WhiteLabelConfig = {
   companyEmail: '',
   companyWebsite: '',
   logoUrl: '',
+  iconUrl: '',
   primaryColor: '#0e4a5a',
   secondaryColor: '#7fa8b2',
   accentColor: '#00d4e0',
