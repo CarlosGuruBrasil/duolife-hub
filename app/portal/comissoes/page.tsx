@@ -172,7 +172,7 @@ export default async function ComissoesPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs">
+      <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden">
         {comissoes.length === 0 ? (
           <div className="px-6 py-12 text-center">
             <h2 className="text-lg font-bold" style={{ color: 'var(--primary)' }}>Nenhuma comissão lançada</h2>
@@ -183,7 +183,7 @@ export default async function ComissoesPage() {
         ) : (
           <TableScrollContainer minWidth="820px">
             <table className="w-full min-w-[820px] text-left text-sm border-separate border-spacing-0">
-              <thead className="bg-gray-50/95 text-gray-600 text-xs font-semibold uppercase tracking-wider">
+              <thead className="table-sticky-head bg-gray-50/95 text-gray-600 text-xs font-semibold uppercase tracking-wider">
                 <tr>
                   <th className="px-5 py-3.5 table-sticky-col-head rounded-tl-2xl">Cliente</th>
                   {isCorretora && <th className="px-5 py-3.5 border-b border-gray-200">Corretor</th>}

@@ -202,7 +202,7 @@ export default async function CotacoesPage({
       />
 
       {/* Listagem */}
-      <div className="bg-white rounded-2xl border border-gray-200 shadow-xs">
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-xs overflow-hidden">
         {cotacoes.length === 0 ? (
           <div className="px-6 py-16 text-center">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 text-gray-400">
@@ -233,7 +233,7 @@ export default async function CotacoesPage({
           <>
             <TableScrollContainer minWidth="850px">
               <table className="w-full min-w-[850px] text-left text-sm border-separate border-spacing-0">
-                <thead className="bg-gray-50/95 text-xs font-semibold uppercase tracking-wider text-gray-600">
+                <thead className="table-sticky-head bg-gray-50/95 text-xs font-semibold uppercase tracking-wider text-gray-600">
                   <tr>
                     <th className="px-5 py-3.5 table-sticky-col-head rounded-tl-2xl">Cliente</th>
                     {isCorretora && <th className="px-5 py-3.5 border-b border-gray-200">Corretor</th>}

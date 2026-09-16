@@ -147,7 +147,7 @@ export default async function PortalClientesPage({
       />
 
       {/* Container de Resultados: Tabela Desktop e Cards Mobile */}
-      <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs">
+      <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden">
         {clients.length === 0 ? (
           <div className="px-6 py-16 text-center flex flex-col items-center justify-center space-y-3">
             <div className="w-14 h-14 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-400">
@@ -183,7 +183,7 @@ export default async function PortalClientesPage({
             <div className="hidden md:block">
               <TableScrollContainer minWidth="1080px">
                 <table className="w-full min-w-[1080px] text-left text-sm whitespace-nowrap border-separate border-spacing-0">
-                  <thead className="bg-gray-50/95 backdrop-blur-sm">
+                  <thead className="table-sticky-head bg-gray-50/95 backdrop-blur-sm">
                     <tr>
                       <PortalClientesSortHeader field="full_name" currentSort={sort} currentDirection={direction} className="table-sticky-col-head rounded-tl-2xl">
                         Cliente

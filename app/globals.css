@@ -755,6 +755,12 @@ textarea.form-input {
   background: #94a3b8;
 }
 
+.table-sticky-head {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
 .table-sticky-col-head {
   position: sticky;
   left: 0;

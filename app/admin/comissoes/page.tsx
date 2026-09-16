@@ -98,13 +98,13 @@ export default async function AdminComissoesPage() {
       </section>
 
       {/* Tabela de Comissões Padronizada */}
-      <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs">
+      <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden">
         {comissoes.length === 0 ? (
           <div className="px-6 py-16 text-center text-xs font-bold text-gray-400">Nenhuma comissão lançada.</div>
         ) : (
           <TableScrollContainer minWidth="1180px">
             <table className="w-full min-w-[1180px] text-left text-sm border-separate border-spacing-0">
-              <thead className="bg-gray-50/95 text-gray-600 text-xs font-semibold uppercase tracking-wider">
+              <thead className="table-sticky-head bg-gray-50/95 text-gray-600 text-xs font-semibold uppercase tracking-wider">
                 <tr>
                   <th className="px-5 py-3.5 table-sticky-col-head rounded-tl-2xl">Parceiro</th>
                   <th className="px-5 py-3.5 border-b border-gray-200">Cliente</th>

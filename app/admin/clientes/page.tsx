@@ -160,7 +160,7 @@ export default async function AdminClientesPage({
       />
 
       {/* Container Principal da Tabela / Cards Mobile */}
-      <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs">
+      <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden">
         {clients.length === 0 ? (
           <div className="px-6 py-20 text-center flex flex-col items-center justify-center space-y-3">
             <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-400">
@@ -196,7 +196,7 @@ export default async function AdminClientesPage({
             <div className="hidden md:block">
               <TableScrollContainer minWidth="1240px">
                 <table className="w-full min-w-[1240px] text-left text-sm whitespace-nowrap border-separate border-spacing-0">
-                  <thead className="bg-gray-50/95 backdrop-blur-sm">
+                  <thead className="table-sticky-head bg-gray-50/95 backdrop-blur-sm">
                     <tr>
                       <ClientesSortHeader field="full_name" currentSort={sort} currentDirection={direction} className="table-sticky-col-head rounded-tl-2xl">
                         Cliente

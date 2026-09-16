@@ -221,7 +221,7 @@ export default async function AdminCotacoesPage({
       />
 
       {/* Main Content Card */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs">
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
         {cotacoes.length === 0 ? (
           <div className="px-6 py-20 text-center flex flex-col items-center justify-center">
             <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
@@ -247,7 +247,7 @@ export default async function AdminCotacoesPage({
         ) : (
           <TableScrollContainer minWidth="1100px">
             <table className="w-full min-w-[1100px] text-left text-sm whitespace-nowrap border-separate border-spacing-0">
-              <thead className="bg-slate-50/95 backdrop-blur-sm text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+              <thead className="table-sticky-head bg-slate-50/95 backdrop-blur-sm text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                 <tr>
                   <th className="px-6 py-4 table-sticky-col-head rounded-tl-2xl">Cliente / CPF</th>
                   <th className="px-6 py-4 border-b border-slate-200">Plano / Cobertura</th>
