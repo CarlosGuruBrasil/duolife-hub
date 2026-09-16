@@ -71,7 +71,18 @@ export async function POST(req: NextRequest) {
 
   await ensureSchema();
 
-  const payload = await req.json();
+  let payload: any;
+  try {
+    payload = await req.json();
+  } catch (parseErr) {
+    logger.warn({ parseErr }, 'zapsign.webhook.invalid_json');
+    return NextResponse.json({ error: 'Payload JSON inválido' }, { status: 400 });
+  }
+
+  if (!payload || typeof payload !== 'object') {
+    return NextResponse.json({ error: 'Payload inválido' }, { status: 400 });
+  }
+
   const eventType = String(
     payload?.event_type ||
       payload?.event ||

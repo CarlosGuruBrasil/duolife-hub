@@ -17,6 +17,8 @@ export default async function PortalDashboard() {
   const isCorretora = Boolean(access.isCorretoraUser && access.corretoraId);
 
   // KPIs do parceiro/corretora e link ativo de vendas
+  const hasVisibleUsers = access.visibleUserIds !== null && access.visibleUserIds.length > 0;
+
   const [
     cotacoesCountResult,
     vendasCountResult,
@@ -27,7 +29,9 @@ export default async function PortalDashboard() {
       ? sql`SELECT COUNT(*) as total FROM cotacoes WHERE corretora_id = ${access.corretoraId}`
       : access.visibleUserIds === null
       ? sql`SELECT COUNT(*) as total FROM cotacoes WHERE partner_id = ${access.partnerId}`
-      : sql`SELECT COUNT(*) as total FROM cotacoes WHERE partner_id = ${access.partnerId} AND (partner_user_id IN ${sql(access.visibleUserIds)} OR partner_user_id IS NULL)`,
+      : hasVisibleUsers
+      ? sql`SELECT COUNT(*) as total FROM cotacoes WHERE partner_id = ${access.partnerId} AND (partner_user_id IN ${sql(access.visibleUserIds)} OR partner_user_id IS NULL)`
+      : sql`SELECT COUNT(*) as total FROM cotacoes WHERE partner_id = ${access.partnerId} AND partner_user_id IS NULL`,
 
     isCorretora
       ? sql`
@@ -41,12 +45,20 @@ export default async function PortalDashboard() {
           FROM sales s
           WHERE s.partner_id = ${access.partnerId}
         `
-      : sql`
+      : hasVisibleUsers
+      ? sql`
           SELECT COUNT(*) as total, COALESCE(SUM(s.premio_total), 0) as volume
           FROM sales s
           JOIN cotacoes c ON c.id = s.cotacao_id
           WHERE s.partner_id = ${access.partnerId}
             AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
+        `
+      : sql`
+          SELECT COUNT(*) as total, COALESCE(SUM(s.premio_total), 0) as volume
+          FROM sales s
+          JOIN cotacoes c ON c.id = s.cotacao_id
+          WHERE s.partner_id = ${access.partnerId}
+            AND c.partner_user_id IS NULL
         `,
 
     isCorretora
@@ -61,11 +73,18 @@ export default async function PortalDashboard() {
           FROM cotacoes c
           WHERE c.partner_id = ${access.partnerId}
         `
-      : sql`
+      : hasVisibleUsers
+      ? sql`
           SELECT COUNT(DISTINCT c.client_id) as total
           FROM cotacoes c
           WHERE c.partner_id = ${access.partnerId}
             AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
+        `
+      : sql`
+          SELECT COUNT(DISTINCT c.client_id) as total
+          FROM cotacoes c
+          WHERE c.partner_id = ${access.partnerId}
+            AND c.partner_user_id IS NULL
         `,
 
     access.partnerId ? getOrCreatePartnerSaleLink(access.partnerId) : Promise.resolve(null),

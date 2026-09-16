@@ -57,7 +57,18 @@ export async function POST(req: NextRequest) {
 
   await ensureSchema();
 
-  const body = await req.json();
+  let body: any;
+  try {
+    body = await req.json();
+  } catch (parseErr) {
+    logger.warn({ parseErr }, 'wix.webhook.invalid_json');
+    return Response.json({ error: 'Payload JSON inválido' }, { status: 400 });
+  }
+
+  if (!body || typeof body !== 'object') {
+    return Response.json({ error: 'Payload inválido' }, { status: 400 });
+  }
+
   const normalized = normalizeWixRecord(body);
   const partner = await findPartnerByWixCode(normalized.partnerWixCode);
   const partnerId = partner?.id ?? null;

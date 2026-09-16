@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { Plus_Jakarta_Sans } from 'next/font/google';
-import { MessageCircle } from 'lucide-react';
 import ReferralTracker from '@/components/public/ReferralTracker';
 import './globals.css';
 
@@ -86,15 +85,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <ReferralTracker />
         </Suspense>
         {children}
-        <a
-          href="https://wa.me/5547996486081?text=Olá! Gostaria de falar com o time comercial da DuoLife."
-          target="_blank"
-          rel="noopener"
-          aria-label="Falar no WhatsApp"
-          className="fixed right-4 bottom-[calc(env(safe-area-inset-bottom)+1rem)] z-[60] flex h-12 w-12 items-center justify-center rounded-full bg-[#25D366] text-white shadow-[0_8px_24px_rgba(0,0,0,0.25)] transition-transform duration-200 hover:scale-110 md:bottom-6 md:right-6 md:h-14 md:w-14"
-        >
-          <MessageCircle className="h-6 w-6 md:h-7 md:w-7" strokeWidth={2} />
-        </a>
       </body>
     </html>
   );

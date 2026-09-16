@@ -13,6 +13,7 @@ import {
   resolvePartnerFromCode,
 } from './wix-partners-catalog';
 import { mapSeguradoFromWixRaw } from './csv-row-mapper';
+import { parseCurrencyToNumber } from './format';
 
 export interface WixSalesSyncOptions {
   onlyForDocuments?: string[];
@@ -46,14 +47,7 @@ export interface WixSalesSyncResult {
 }
 
 function parseWixNumber(value: unknown): number {
-  if (value === null || value === undefined) return 0;
-  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-  if (typeof value === 'string') {
-    const clean = value.replace(/[^\d,-]/g, '').replace(',', '.');
-    const parsed = parseFloat(clean);
-    return Number.isFinite(parsed) ? parsed : 0;
-  }
-  return 0;
+  return parseCurrencyToNumber(value, 0);
 }
 
 export function extractWixRevenue(raw: Record<string, unknown> | null | undefined): number {

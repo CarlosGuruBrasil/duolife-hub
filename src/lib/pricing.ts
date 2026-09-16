@@ -1,12 +1,11 @@
 import { sql } from './pg';
 import { getRamoConfig, rcAdvogadosConfig } from '@/lib/product-schemas';
+import { parseCurrencyToNumber } from './format';
 
 // Mesma lógica de parse usada no formulário (CotacaoFormRC.tsx) — precisa ficar idêntica
 // pro valor exibido pro cliente bater com o que o servidor calcula e efetivamente cobra.
 export function parseMoneyToNumber(v?: string | null): number {
-  if (!v) return 0;
-  const clean = String(v).replace('R$', '').replace(/\./g, '').replace(',', '.').trim();
-  return parseFloat(clean) || 0;
+  return parseCurrencyToNumber(v, 0);
 }
 
 export const FALLBACK_PLANOS = rcAdvogadosConfig.planos;

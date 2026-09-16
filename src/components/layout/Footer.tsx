@@ -1,6 +1,6 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { Mail, MapPin, Phone } from 'lucide-react';
+import { Mail, MapPin, Phone, MessageCircle } from 'lucide-react';
 
 const links = [
   ['Quem Somos', '/quem-somos'],
@@ -17,83 +17,90 @@ const socials = [
 
 export default function Footer() {
   return (
-    <footer className="bg-[#072a33] text-white/70 py-20 border-t border-white/5 relative z-10">
-      <div className="w-[min(92%,1800px)] mx-auto px-6">
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-12">
-          
-          <div className="md:col-span-5 text-left">
-            <Image
-              src="/logo-horizontal.png"
-              alt="DuoLife Hub de Negócios"
-              width={170}
-              height={45}
-              className="mb-6 h-9 w-auto object-contain filter brightness-0 invert"
-            />
-            <p className="text-white/60 text-sm leading-relaxed max-w-sm">
-              Assessoria estratégica para corretores e consultores em saúde, seguros e benefícios corporativos. Desde 1995 unindo técnica, agilidade e excelência.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-              {socials.map((social) => (
-                <a
-                  className="bg-white/5 hover:bg-[#00d4e0]/20 text-white/80 hover:text-[#00d4e0] rounded-full px-5 py-2 text-xs font-black transition-colors border border-white/5"
-                  href={social.href}
-                  key={social.href}
-                  rel="noopener noreferrer"
-                  target="_blank"
-                >
-                  {social.label}
-                </a>
-              ))}
+    <>
+      <footer className="bg-[#072a33] text-white/70 py-20 border-t border-white/5 relative z-10">
+        <div className="w-[min(92%,1800px)] mx-auto px-6">
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-12">
+            
+            <div className="md:col-span-5 text-left">
+              <Image
+                src="/logo-horizontal.png"
+                alt="DuoLife Hub de Negócios"
+                width={170}
+                height={45}
+                className="mb-6 h-9 w-auto object-contain filter brightness-0 invert"
+              />
+              <p className="text-white/60 text-sm leading-relaxed max-w-sm">
+                Assessoria estratégica para corretores e consultores em saúde, seguros e benefícios corporativos. Desde 1995 unindo técnica, agilidade e excelência.
+              </p>
+              <div className="mt-6 flex flex-wrap gap-3">
+                {socials.map((social) => (
+                  <a
+                    className="bg-white/5 hover:bg-[#00d4e0]/20 text-white/80 hover:text-[#00d4e0] rounded-full px-5 py-2 text-xs font-black transition-colors border border-white/5"
+                    href={social.href}
+                    key={social.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {social.label}
+                  </a>
+                ))}
+              </div>
             </div>
-          </div>
 
-          <div className="md:col-span-2 text-left">
-            <h4 className="text-white text-xs font-black uppercase tracking-wider mb-6">Empresa</h4>
-            <ul className="space-y-3.5 text-sm">
-              {links.map(([label, href]) => (
-                <li key={href}>
-                  <Link href={href} className="hover:text-[#00d4e0] transition-colors">{label}</Link>
+            <div className="md:col-span-3 text-left">
+              <h4 className="text-white font-extrabold text-sm uppercase tracking-wider mb-6">Navegação</h4>
+              <ul className="space-y-3 text-sm">
+                {links.map(([label, href]) => (
+                  <li key={href}>
+                    <Link className="hover:text-[#00d4e0] transition-colors" href={href}>
+                      {label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="md:col-span-4 text-left">
+              <h4 className="text-white font-extrabold text-sm uppercase tracking-wider mb-6">Atendimento</h4>
+              <p className="text-white/60 text-sm mb-4">
+                Segunda a sexta, das 8h30 às 18h.
+              </p>
+              <ul className="space-y-3 text-sm">
+                <li>
+                  <a className="flex items-center gap-2.5 hover:text-[#00d4e0] transition-colors" href="tel:+5547996486081">
+                    <Phone size={14} className="text-[#00d4e0]" /> (47) 99648-6081
+                  </a>
                 </li>
-              ))}
-            </ul>
+                <li>
+                  <a className="flex items-center gap-2.5 hover:text-[#00d4e0] transition-colors" href="mailto:comercial@duolife.net.br">
+                    <Mail size={14} className="text-[#00d4e0]" /> comercial@duolife.net.br
+                  </a>
+                </li>
+                <li className="flex items-center gap-2.5 text-[#7fa8b2]">
+                  <MapPin size={14} /> Joinville e Florianópolis
+                </li>
+              </ul>
+            </div>
+
           </div>
 
-          <div className="md:col-span-2 text-left">
-            <h4 className="text-white text-xs font-black uppercase tracking-wider mb-6">Portal</h4>
-            <ul className="space-y-3.5 text-sm">
-              <li><Link href="/portal" className="hover:text-[#00d4e0] transition-colors">Área do Parceiro</Link></li>
-              <li><Link href="/portal/cotacoes" className="hover:text-[#00d4e0] transition-colors">Cotações</Link></li>
-              <li><Link href="/portal/vendas" className="hover:text-[#00d4e0] transition-colors">Vendas</Link></li>
-              <li><Link href="/login" className="hover:text-[#00d4e0] transition-colors">Entrar</Link></li>
-            </ul>
+          <div className="mt-16 pt-8 border-t border-white/5 flex flex-col md:flex-row items-center justify-between text-xs text-white/55 gap-4">
+            <span>© {new Date().getFullYear()} DuoLife Hub de Negócios. CNPJ 00.698.913/0001-23.</span>
+            <span>Santa Catarina, Brasil.</span>
           </div>
-
-          <div className="md:col-span-3 text-left">
-            <h4 className="text-white text-xs font-black uppercase tracking-wider mb-6">Contato</h4>
-            <ul className="space-y-4 text-sm">
-              <li>
-                <a className="flex items-center gap-2.5 hover:text-[#00d4e0] transition-colors" href="tel:+5547996486081">
-                  <Phone size={14} className="text-[#00d4e0]" /> (47) 99648-6081
-                </a>
-              </li>
-              <li>
-                <a className="flex items-center gap-2.5 hover:text-[#00d4e0] transition-colors" href="mailto:comercial@duolife.net.br">
-                  <Mail size={14} className="text-[#00d4e0]" /> comercial@duolife.net.br
-                </a>
-              </li>
-              <li className="flex items-center gap-2.5 text-[#7fa8b2]">
-                <MapPin size={14} /> Joinville e Florianópolis
-              </li>
-            </ul>
-          </div>
-
         </div>
+      </footer>
 
-        <div className="mt-16 pt-8 border-t border-white/5 flex flex-col md:flex-row items-center justify-between text-xs text-white/55 gap-4">
-          <span>© {new Date().getFullYear()} DuoLife Hub de Negócios. CNPJ 00.698.913/0001-23.</span>
-          <span>Santa Catarina, Brasil.</span>
-        </div>
-      </div>
-    </footer>
+      <a
+        href="https://wa.me/5547996486081?text=Olá! Gostaria de falar com o time comercial da DuoLife."
+        target="_blank"
+        rel="noopener"
+        aria-label="Falar no WhatsApp"
+        className="fixed right-4 bottom-[calc(env(safe-area-inset-bottom)+1rem)] z-[60] flex h-12 w-12 items-center justify-center rounded-full bg-[#25D366] text-white shadow-[0_8px_24px_rgba(0,0,0,0.25)] transition-transform duration-200 hover:scale-110 md:bottom-6 md:right-6 md:h-14 md:w-14"
+      >
+        <MessageCircle className="h-6 w-6 md:h-7 md:w-7" strokeWidth={2} />
+      </a>
+    </>
   );
 }

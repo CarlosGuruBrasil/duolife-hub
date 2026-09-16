@@ -59,6 +59,7 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
   const { id } = await params;
 
   const isCorretora = Boolean(access.isCorretoraUser && access.corretoraId);
+  const hasVisibleUsers = access.visibleUserIds !== null && access.visibleUserIds.length > 0;
 
   const [cotacao] = isCorretora
     ? await sql`
@@ -90,7 +91,8 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
           AND c.partner_id = ${access.partnerId}
         LIMIT 1
       `
-    : await sql`
+    : hasVisibleUsers
+    ? await sql`
         SELECT
           c.id, c.client_id, c.client_name, c.client_cpf_cnpj, c.client_email, c.client_phone,
           c.status, c.importancia_segurada, c.premio_final, c.premio_calculado, c.client_data, c.created_at,
@@ -103,6 +105,21 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
         WHERE c.id = ${id}
           AND c.partner_id = ${access.partnerId}
           AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
+        LIMIT 1
+      `
+    : await sql`
+        SELECT
+          c.id, c.client_id, c.client_name, c.client_cpf_cnpj, c.client_email, c.client_phone,
+          c.status, c.importancia_segurada, c.premio_final, c.premio_calculado, c.client_data, c.created_at,
+          c.notes, c.product_id,
+          p.name AS product_name,
+          part.nome_fantasia AS partner_name
+        FROM cotacoes c
+        JOIN products p ON p.id = c.product_id
+        JOIN partners part ON part.id = c.partner_id
+        WHERE c.id = ${id}
+          AND c.partner_id = ${access.partnerId}
+          AND c.partner_user_id IS NULL
         LIMIT 1
       `;
 

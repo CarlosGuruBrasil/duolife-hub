@@ -15,6 +15,7 @@ import { isWixIntegrationEnabled } from './system-settings';
 import { findPartnerByWixCode, logSyncEvent, normalizeDigits, normalizeMaybeString } from './wix-sync';
 import { parseFlexibleDate, extractWixCreationDate } from './wix-compare';
 import { syncWixSalesToLocalDb } from './wix-sales-sync';
+import { parseCurrencyToNumber } from './format';
 
 const PAGE_SIZE = 100;
 
@@ -387,11 +388,9 @@ async function upsertPartnerFromWix(params: {
 }
 
 function parseCurrencyValue(val: unknown): number | null {
-  if (!val) return null;
-  if (typeof val === 'number') return val;
-  const str = String(val).replace(/[^0-9,-]/g, '').replace(',', '.');
-  const num = parseFloat(str);
-  return isNaN(num) ? null : num;
+  if (val === null || val === undefined || val === '') return null;
+  const num = parseCurrencyToNumber(val, Number.NaN);
+  return Number.isNaN(num) ? null : num;
 }
 
 async function upsertProductFromWixPlano(mirror: Awaited<ReturnType<typeof upsertItem>>) {

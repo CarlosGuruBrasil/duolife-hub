@@ -57,30 +57,42 @@ async function wixRequest<T>(path: string, init: RequestInit = {}): Promise<{ ok
     return { ok: false, status: 503, data: null, text: 'WIX_API_KEY/WIX_SITE_ID não configurados' };
   }
 
-  const response = await fetch(`${WIX_DATA_BASE}${path}`, {
-    ...init,
-    headers: {
-      ...wixHeaders(config),
-      ...(init.headers || {}),
-    },
-  });
+  try {
+    const signal = init.signal || AbortSignal.timeout(15000);
+    const response = await fetch(`${WIX_DATA_BASE}${path}`, {
+      ...init,
+      signal,
+      headers: {
+        ...wixHeaders(config),
+        ...(init.headers || {}),
+      },
+    });
 
-  const text = await response.text();
-  let data: T | null = null;
-  if (text) {
-    try {
-      data = JSON.parse(text) as T;
-    } catch {
-      data = null;
+    const text = await response.text();
+    let data: T | null = null;
+    if (text) {
+      try {
+        data = JSON.parse(text) as T;
+      } catch {
+        data = null;
+      }
     }
-  }
 
-  return {
-    ok: response.ok,
-    status: response.status,
-    data,
-    text,
-  };
+    return {
+      ok: response.ok,
+      status: response.status,
+      data,
+      text,
+    };
+  } catch (err: unknown) {
+    const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
+    return {
+      ok: false,
+      status: isTimeout ? 504 : 500,
+      data: null,
+      text: err instanceof Error ? err.message : 'Erro na requisição à API do Wix',
+    };
+  }
 }
 
 export async function wixListCollections(): Promise<WixCollectionSummary[]> {

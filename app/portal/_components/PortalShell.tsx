@@ -73,7 +73,7 @@ export default function PortalShell({ children, user }: PortalShellProps) {
     : pathname.replace('/portal/', '').replace('-', ' ');
 
   return (
-    <div className="min-h-screen bg-[#f7faf9]">
+    <div className="w-full flex-1 h-screen flex flex-col bg-[#f7faf9] overflow-hidden">
       {/* 1. Full-Width Top Header Bar (100% Tela Cheia no topo com Logo DuoLife Oficial) */}
       <header className="fixed top-0 left-0 right-0 z-50 flex h-16 w-full items-center justify-between border-b border-gray-200/80 bg-white/95 px-6 backdrop-blur-md shadow-xs">
         {/* Left Side: Logo + Sidebar Toggle + Breadcrumb */}
@@ -258,8 +258,8 @@ export default function PortalShell({ children, user }: PortalShellProps) {
       </aside>
 
       {/* 3. Conteúdo Principal */}
-      <div className={`pt-16 transition-all duration-300 ${collapsed ? 'lg:pl-20' : 'lg:pl-64'}`}>
-        <main className="p-6 md:p-8">{children}</main>
+      <div className={`pt-16 h-full overflow-y-auto transition-all duration-300 ${collapsed ? 'lg:pl-20' : 'lg:pl-64'}`}>
+        <main className="p-6 md:p-8 pb-24">{children}</main>
       </div>
     </div>
   );

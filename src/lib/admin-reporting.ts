@@ -1,4 +1,5 @@
 import { sql } from '@/lib/pg';
+import { parseCurrencyToNumber } from '@/lib/format';
 
 type NumericLike = number | string | null;
 
@@ -780,14 +781,7 @@ export interface AdminRankingData {
 }
 
 function parseWixNumber(val: unknown): number {
-  if (typeof val === 'number') return Number.isFinite(val) ? val : 0;
-  if (!val) return 0;
-  if (typeof val === 'string') {
-    const cleaned = val.replace(/[^\d.,-]/g, '').replace(',', '.');
-    const num = parseFloat(cleaned);
-    return Number.isFinite(num) ? num : 0;
-  }
-  return 0;
+  return parseCurrencyToNumber(val, 0);
 }
 
 function extractWixRevenue(payload: Record<string, unknown> | null | undefined): number {
@@ -925,29 +919,54 @@ export async function getAdminRankingData(
         commission_total: NumericLike;
       }>
     >`
+      WITH q_agg AS (
+        SELECT
+          partner_id,
+          COUNT(*)::int AS quotes_count,
+          COUNT(*) FILTER (WHERE status IN ('pendente', 'aguardando_pagamento', 'aguardando_assinatura'))::int AS pending_count
+        FROM cotacoes
+        WHERE (${isAll} OR (created_at >= ${period.start}::date AND created_at < ${period.endExclusive}::date))
+        GROUP BY partner_id
+      ),
+      s_agg AS (
+        SELECT
+          partner_id,
+          COUNT(*)::int AS sales_count,
+          COALESCE(SUM(NULLIF(regexp_replace(premio_total::text, '[^0-9.]', '', 'g'), '')::numeric), 0) AS premium_total
+        FROM sales
+        WHERE (${isAll} OR (created_at >= ${period.start}::date AND created_at < ${period.endExclusive}::date))
+        GROUP BY partner_id
+      ),
+      po_agg AS (
+        SELECT
+          partner_id,
+          COALESCE(SUM(paid_amount), 0) AS paid_amount
+        FROM payment_orders
+        WHERE (${isAll} OR (created_at >= ${period.start}::date AND created_at < ${period.endExclusive}::date))
+        GROUP BY partner_id
+      ),
+      cm_agg AS (
+        SELECT
+          partner_id,
+          COALESCE(SUM(NULLIF(regexp_replace(amount::text, '[^0-9.]', '', 'g'), '')::numeric), 0) AS commission_total
+        FROM commissions
+        WHERE (${isAll} OR (created_at >= ${period.start}::date AND created_at < ${period.endExclusive}::date))
+        GROUP BY partner_id
+      )
       SELECT
         p.id AS partner_id,
-        COUNT(DISTINCT c.id)::int AS quotes_count,
-        COUNT(DISTINCT s.id)::int AS sales_count,
-        COUNT(DISTINCT CASE WHEN c.status IN ('pendente', 'aguardando_pagamento', 'aguardando_assinatura') THEN c.id END)::int AS pending_count,
-        COALESCE(SUM(s.premio_total), 0) AS premium_total,
-        COALESCE(SUM(po.paid_amount), 0) AS paid_amount,
-        COALESCE(SUM(cm.amount), 0) AS commission_total
+        COALESCE(q.quotes_count, 0) AS quotes_count,
+        COALESCE(s.sales_count, 0) AS sales_count,
+        COALESCE(q.pending_count, 0) AS pending_count,
+        COALESCE(s.premium_total, 0) AS premium_total,
+        COALESCE(po.paid_amount, 0) AS paid_amount,
+        COALESCE(cm.commission_total, 0) AS commission_total
       FROM partners p
-      LEFT JOIN cotacoes c
-        ON c.partner_id = p.id
-       AND (${isAll} OR (c.created_at >= ${period.start}::date AND c.created_at < ${period.endExclusive}::date))
-      LEFT JOIN sales s
-        ON s.partner_id = p.id
-       AND (${isAll} OR (s.created_at >= ${period.start}::date AND s.created_at < ${period.endExclusive}::date))
-      LEFT JOIN payment_orders po
-        ON po.partner_id = p.id
-       AND (${isAll} OR (po.created_at >= ${period.start}::date AND po.created_at < ${period.endExclusive}::date))
-      LEFT JOIN commissions cm
-        ON cm.partner_id = p.id
-       AND (${isAll} OR (cm.created_at >= ${period.start}::date AND cm.created_at < ${period.endExclusive}::date))
+      LEFT JOIN q_agg q ON q.partner_id = p.id
+      LEFT JOIN s_agg s ON s.partner_id = p.id
+      LEFT JOIN po_agg po ON po.partner_id = p.id
+      LEFT JOIN cm_agg cm ON cm.partner_id = p.id
       WHERE p.status != 'suspended'
-      GROUP BY p.id
     `;
 
     for (const r of duoRows) {

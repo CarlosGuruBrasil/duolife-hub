@@ -54,6 +54,7 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
   const { id } = await params;
 
   const isCorretora = Boolean(access.isCorretoraUser && access.corretoraId);
+  const hasVisibleUsers = access.visibleUserIds !== null && access.visibleUserIds.length > 0;
 
   const [client] = isCorretora
     ? await sql`
@@ -81,7 +82,8 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
           )
         LIMIT 1
       `
-    : await sql`
+    : hasVisibleUsers
+    ? await sql`
         SELECT id, full_name, document_number, email, phone, birth_date, metadata
         FROM insurance_clients
         WHERE id = ${id}
@@ -91,6 +93,19 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
             WHERE c.client_id = insurance_clients.id
               AND c.partner_id = ${access.partnerId}
               AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
+          )
+        LIMIT 1
+      `
+    : await sql`
+        SELECT id, full_name, document_number, email, phone, birth_date, metadata
+        FROM insurance_clients
+        WHERE id = ${id}
+          AND EXISTS (
+            SELECT 1
+            FROM cotacoes c
+            WHERE c.client_id = insurance_clients.id
+              AND c.partner_id = ${access.partnerId}
+              AND c.partner_user_id IS NULL
           )
         LIMIT 1
       `;
@@ -153,7 +168,8 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
           AND c.partner_id = ${access.partnerId}
         ORDER BY c.created_at DESC
       `
-    : await sql`
+    : hasVisibleUsers
+    ? await sql`
         SELECT
           c.id,
           c.status,
@@ -179,6 +195,34 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
         WHERE c.client_id = ${id}
           AND c.partner_id = ${access.partnerId}
           AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
+        ORDER BY c.created_at DESC
+      `
+    : await sql`
+        SELECT
+          c.id,
+          c.status,
+          c.created_at,
+          c.premio_final,
+          c.importancia_segurada,
+          c.client_name,
+          c.client_cpf_cnpj,
+          c.client_email,
+          c.client_phone,
+          c.client_data,
+          c.notes,
+          p.name AS product_name,
+          po.status AS payment_status,
+          po.installment_count,
+          po.paid_installments,
+          sd.status AS signature_status,
+          sd.signed_file_url
+        FROM cotacoes c
+        JOIN products p ON p.id = c.product_id
+        LEFT JOIN payment_orders po ON po.cotacao_id = c.id
+        LEFT JOIN signature_documents sd ON sd.cotacao_id = c.id
+        WHERE c.client_id = ${id}
+          AND c.partner_id = ${access.partnerId}
+          AND c.partner_user_id IS NULL
         ORDER BY c.created_at DESC
       `;
 
@@ -222,7 +266,8 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
           AND c.partner_id = ${access.partnerId}
         ORDER BY pi.due_date ASC NULLS LAST, pi.installment_number ASC
       `
-    : await sql`
+    : hasVisibleUsers
+    ? await sql`
         SELECT
           pi.id,
           pi.cotacao_id,
@@ -240,6 +285,26 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
         WHERE pi.client_id = ${id}
           AND c.partner_id = ${access.partnerId}
           AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
+        ORDER BY pi.due_date ASC NULLS LAST, pi.installment_number ASC
+      `
+    : await sql`
+        SELECT
+          pi.id,
+          pi.cotacao_id,
+          pi.installment_number,
+          pi.status,
+          pi.amount,
+          pi.due_date,
+          pi.paid_at,
+          pi.bank_slip_url,
+          pi.invoice_url,
+          p.name AS product_name
+        FROM payment_installments pi
+        JOIN cotacoes c ON c.id = pi.cotacao_id
+        JOIN products p ON p.id = c.product_id
+        WHERE pi.client_id = ${id}
+          AND c.partner_id = ${access.partnerId}
+          AND c.partner_user_id IS NULL
         ORDER BY pi.due_date ASC NULLS LAST, pi.installment_number ASC
       `;
 

@@ -44,6 +44,7 @@ export default async function ComissoesPage() {
   await ensureSchema();
 
   const isCorretora = Boolean(access.isCorretoraUser && access.corretoraId);
+  const hasVisibleUsers = access.visibleUserIds !== null && access.visibleUserIds.length > 0;
 
   const comissoes = isCorretora
     ? await sql<ComissaoRow[]>`
@@ -87,7 +88,8 @@ export default async function ComissoesPage() {
         ORDER BY cm.created_at DESC
         LIMIT 100
       `
-    : await sql<ComissaoRow[]>`
+    : hasVisibleUsers
+    ? await sql<ComissaoRow[]>`
         SELECT
           cm.id,
           cm.amount,
@@ -104,6 +106,26 @@ export default async function ComissoesPage() {
         JOIN cotacoes c ON c.id = s.cotacao_id
         WHERE cm.partner_id = ${access.partnerId}
           AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
+        ORDER BY cm.created_at DESC
+        LIMIT 100
+      `
+    : await sql<ComissaoRow[]>`
+        SELECT
+          cm.id,
+          cm.amount,
+          cm.rate,
+          cm.status,
+          cm.reference_month,
+          cm.payment_date,
+          s.policy_number,
+          p.name AS product_name,
+          c.client_name
+        FROM commissions cm
+        JOIN sales s ON s.id = cm.sale_id
+        JOIN products p ON p.id = s.product_id
+        JOIN cotacoes c ON c.id = s.cotacao_id
+        WHERE cm.partner_id = ${access.partnerId}
+          AND c.partner_user_id IS NULL
         ORDER BY cm.created_at DESC
         LIMIT 100
       `;
