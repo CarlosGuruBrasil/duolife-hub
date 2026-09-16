@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
-import { formatCurrency, formatDate } from '@/lib/format';
+import { formatCurrency, formatDate, formatStatusLabel } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
+import { ExcluirBoletoButton } from '@/components/dev/ExcluirBoletoButton';
 
 interface Installment {
   id: string;
@@ -51,12 +52,14 @@ interface AsaasLookup {
 const statusLabel: Record<string, string> = {
   pending: 'Pendente',
   paid: 'Pago',
+  paga: 'Paga',
   received: 'Recebido',
   confirmed: 'Confirmado',
   partially_paid: 'Parcialmente pago',
   overdue: 'Vencido',
   refunded: 'Estornado',
   cancelled: 'Cancelado',
+  signed: 'Assinado',
 };
 
 const billingTypeLabel: Record<string, string> = {
@@ -108,10 +111,13 @@ function chargeLabel(charge: AsaasCharge): string {
 export function PagamentosPanel({
   cotacaoId,
   liveAsaas = false,
+  canDeleteBoleto = false,
 }: {
   cotacaoId: string;
   /** Admin: consulta as cobranças do cliente direto na API do Asaas. */
   liveAsaas?: boolean;
+  /** Dev: permite excluir boletos/cobranças diretamente. */
+  canDeleteBoleto?: boolean;
 }) {
   const [orders, setOrders] = useState<Order[] | null>(null);
   const [installments, setInstallments] = useState<Installment[] | null>(null);
@@ -121,7 +127,7 @@ export function PagamentosPanel({
   const [asaasLoading, setAsaasLoading] = useState(liveAsaas);
   const [asaasError, setAsaasError] = useState('');
 
-  useEffect(() => {
+  const loadLocalPayments = useCallback(() => {
     fetch(`/api/portal/cotacoes/${cotacaoId}/pagamentos`)
       .then((res) => res.json())
       .then((data) => {
@@ -134,6 +140,10 @@ export function PagamentosPanel({
       })
       .catch(() => setError('Erro ao carregar pagamentos'));
   }, [cotacaoId]);
+
+  useEffect(() => {
+    loadLocalPayments();
+  }, [loadLocalPayments]);
 
   const loadAsaas = useCallback(() => {
     setAsaasLoading(true);
@@ -155,6 +165,11 @@ export function PagamentosPanel({
   useEffect(() => {
     if (liveAsaas) loadAsaas();
   }, [liveAsaas, loadAsaas]);
+
+  const refreshData = useCallback(() => {
+    loadLocalPayments();
+    if (liveAsaas) loadAsaas();
+  }, [loadLocalPayments, liveAsaas, loadAsaas]);
 
   // Mais recentes primeiro (vencimento decrescente).
   const asaasCharges = useMemo(() => {
@@ -179,7 +194,7 @@ export function PagamentosPanel({
       ) : (
         orders.map((order) => (
           <div key={order.id} className="text-sm text-gray-700">
-            Cobrança por <strong>{billingTypeLabel[order.billing_type] || order.billing_type}</strong> — {formatCurrency(order.amount_total)} em {order.installment_count}x — status <strong>{statusLabel[order.status] || order.status}</strong>
+            Cobrança por <strong>{billingTypeLabel[order.billing_type] || order.billing_type}</strong> — {formatCurrency(order.amount_total)} em {order.installment_count}x — status <strong>{formatStatusLabel(order.status)}</strong>
           </div>
         ))
       )}
@@ -263,14 +278,14 @@ export function PagamentosPanel({
                           <td className="py-2 pr-3">
                             <span
                               className={`inline-block rounded border px-2 py-0.5 text-[11px] font-semibold ${
-                                asaasStatusTone[charge.status] || 'bg-gray-100 text-gray-700 border-gray-200'
+                                asaasStatusTone[charge.status?.toUpperCase()] || asaasStatusTone[charge.status] || 'bg-gray-100 text-gray-700 border-gray-200'
                               }`}
                             >
-                              {asaasStatusLabel[charge.status] || charge.status}
+                              {asaasStatusLabel[charge.status?.toUpperCase()] || asaasStatusLabel[charge.status] || formatStatusLabel(charge.status)}
                             </span>
                           </td>
                           <td className="py-2">
-                            <div className="flex flex-wrap gap-x-3 gap-y-1">
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                               {invoice && (
                                 <a href={invoice} target="_blank" rel="noreferrer" className="text-emerald-700 font-semibold hover:underline">
                                   Fatura
@@ -287,6 +302,13 @@ export function PagamentosPanel({
                                 </a>
                               )}
                               {!invoice && !slip && !receipt && <span className="text-gray-400">-</span>}
+                              {canDeleteBoleto && !charge.deleted && charge.status !== 'RECEIVED' && charge.status !== 'CONFIRMED' && charge.status !== 'RECEIVED_IN_CASH' && (
+                                <ExcluirBoletoButton
+                                  id={charge.id}
+                                  variant="icon"
+                                  onDeleted={refreshData}
+                                />
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -323,6 +345,7 @@ export function PagamentosPanel({
                   <th className="py-2 pr-3">Vencimento</th>
                   <th className="py-2 pr-3">Status</th>
                   <th className="py-2">Boleto</th>
+                  {canDeleteBoleto && <th className="py-2 text-center">Ações</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -331,7 +354,7 @@ export function PagamentosPanel({
                     <td className="py-2 pr-3 text-gray-900">{inst.installment_number}</td>
                     <td className="py-2 pr-3 text-gray-900">{formatCurrency(inst.amount)}</td>
                     <td className="py-2 pr-3 text-gray-700">{formatDate(inst.due_date)}</td>
-                    <td className="py-2 pr-3 text-gray-700">{statusLabel[inst.status] || inst.status}</td>
+                    <td className="py-2 pr-3 text-gray-700">{formatStatusLabel(inst.status)}</td>
                     <td className="py-2">
                       {safeExternalUrl(inst.bank_slip_url) ? (
                         <a
@@ -347,6 +370,15 @@ export function PagamentosPanel({
                         <span className="text-gray-400">-</span>
                       )}
                     </td>
+                    {canDeleteBoleto && (
+                      <td className="py-2 text-center">
+                        <ExcluirBoletoButton
+                          id={inst.id}
+                          variant="icon"
+                          onDeleted={refreshData}
+                        />
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

@@ -3,7 +3,7 @@ import { WalletCards } from 'lucide-react';
 import { verifyAdminAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
-import { formatCurrency, formatDate } from '@/lib/format';
+import { formatCurrency, formatDateTime as formatDate, formatStatusLabel } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
@@ -129,7 +129,7 @@ export default async function AdminComissoesPage() {
                     </td>
                     <td className="px-5 py-4 text-gray-500">{formatDate(comissao.payment_date)}</td>
                     <td className="px-5 py-4">
-                      <span className="status-pill">{statusLabel[comissao.status] || comissao.status}</span>
+                      <span className="status-pill">{formatStatusLabel(comissao.status)}</span>
                     </td>
                   </tr>
                 ))}

@@ -5,7 +5,7 @@ import { verifyPartnerAuth, getPartnerAccessContext } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { PagamentosPanel } from '@/components/portal/PagamentosPanel';
-import { formatCurrency, formatDate, formatDateTime, formatAtuacao } from '@/lib/format';
+import { formatCurrency, formatDate, formatDateTime, formatAtuacao, formatStatusLabel } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
 import EditarPropostaButton from '@/components/modals/EditarPropostaButton';
 import { EnviarFaturaEmailButton } from '@/components/cotacao/EnviarFaturaEmailButton';
@@ -15,11 +15,15 @@ const statusLabel: Record<string, string> = {
   enviada: 'Enviada',
   contrato_gerado: 'Aguardando Assinatura (ZapSign)',
   assinado: 'Contrato Assinado (ZapSign)',
+  signed: 'Contrato Assinado (ZapSign)',
   pagamento_gerado: 'Fatura Gerada (Asaas)',
   aprovada: 'Aprovada (Venda)',
   recusada: 'Recusada',
   expirada: 'Expirada',
   emitida: 'Apólice Emitida (KEV Seguros)',
+  ativa: 'Ativa',
+  active: 'Ativa',
+  confirmed: 'Confirmado',
 };
 
 const statusColor: Record<string, string> = {
@@ -465,7 +469,7 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
               </h2>
               <div className="grid grid-cols-2 gap-3 text-xs text-emerald-950 font-medium">
                 <div><span>Número da Apólice:</span> <strong className="block text-sm font-bold">{sale.policy_number}</strong></div>
-                <div><span>Status da Venda:</span> <strong className="block text-sm font-bold uppercase">{sale.status}</strong></div>
+                <div><span>Status da Venda:</span> <strong className="block text-sm font-bold">{formatStatusLabel(sale.status)}</strong></div>
                 <div><span>Vigência Início:</span> <strong>{formatDate(sale.issue_date)}</strong></div>
                 <div><span>Vigência Fim:</span> <strong>{formatDate(sale.expiry_date)}</strong></div>
               </div>

@@ -4,6 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { ArrowRight, UserCheck } from 'lucide-react';
 import { PortalClientRow } from '@/types/portal-clients';
+import { formatStatusLabel } from '@/lib/format';
 
 const statusLabel: Record<string, string> = {
   rascunho: 'Rascunho',
@@ -85,10 +86,10 @@ export function PortalClientesCardMobile({ client }: { client: PortalClientRow }
         {sigStatus && (
           <span
             className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${
-              statusBadgeColor[sigStatus] || 'bg-gray-50 text-gray-700 border-gray-200'
+              statusBadgeColor[sigStatus.toLowerCase()] || statusBadgeColor[sigStatus] || 'bg-gray-50 text-gray-700 border-gray-200'
             }`}
           >
-            {statusLabel[sigStatus] || sigStatus}
+            {formatStatusLabel(sigStatus)}
           </span>
         )}
       </div>

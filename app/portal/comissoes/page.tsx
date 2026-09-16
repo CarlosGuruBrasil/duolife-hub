@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { getPartnerAccessContext, verifyPartnerAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
+import { formatStatusLabel } from '@/lib/format';
 
 interface ComissaoRow {
   id: string;
@@ -212,7 +213,7 @@ export default async function ComissoesPage() {
                     <td className="px-5 py-4 text-gray-500">{formatDate(comissao.payment_date)}</td>
                     <td className="px-5 py-4">
                       <span className="status-pill">
-                        {statusLabel[comissao.status] || comissao.status}
+                        {formatStatusLabel(comissao.status)}
                       </span>
                     </td>
                   </tr>

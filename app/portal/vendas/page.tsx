@@ -7,7 +7,7 @@ import { ensureSchema } from '@/lib/schema';
 import { PortalVendasFilterSection } from './_components/PortalVendasFilterSection';
 import { PortalVendasPagination } from './_components/PortalVendasPagination';
 import { PeriodPreset, resolveDateRange } from '@/lib/date-filters';
-import { formatCurrency, formatDate } from '@/lib/format';
+import { formatCurrency, formatDate, formatStatusLabel } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,16 +29,24 @@ interface VendaRow {
 
 const statusLabel: Record<string, string> = {
   ativa: 'Ativa',
+  active: 'Ativa',
   cancelada: 'Cancelada',
+  cancelled: 'Cancelada',
   expirada: 'Expirada',
+  expired: 'Expirada',
   suspensa: 'Suspensa',
+  suspended: 'Suspensa',
 };
 
 const statusColor: Record<string, string> = {
   ativa: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+  active: 'bg-emerald-50 text-emerald-800 border-emerald-200',
   cancelada: 'bg-rose-50 text-rose-700 border-rose-200',
+  cancelled: 'bg-rose-50 text-rose-700 border-rose-200',
   expirada: 'bg-amber-50 text-amber-800 border-amber-200',
+  expired: 'bg-amber-50 text-amber-800 border-amber-200',
   suspensa: 'bg-slate-100 text-slate-700 border-slate-200',
+  suspended: 'bg-slate-100 text-slate-700 border-slate-200',
 };
 
 export default async function VendasPage({
@@ -296,10 +304,10 @@ export default async function VendasPage({
                         <td className="px-5 py-4">
                           <span
                             className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold border ${
-                              statusColor[venda.status] || 'bg-gray-100 text-gray-700 border-gray-200'
+                              statusColor[venda.status?.toLowerCase()] || statusColor[venda.status] || 'bg-gray-100 text-gray-700 border-gray-200'
                             }`}
                           >
-                            {statusLabel[venda.status] || venda.status}
+                            {formatStatusLabel(venda.status)}
                           </span>
                         </td>
                         <td className="px-5 py-4 text-right">

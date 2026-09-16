@@ -1,13 +1,14 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { ArrowLeft, ExternalLink } from 'lucide-react';
-import { verifyAuth, isInternalUser } from '@/lib/auth';
+import { verifyAuth, isInternalUser, isDevUser } from '@/lib/auth';
 import { ensureSchema } from '@/lib/schema';
 import { sql } from '@/lib/pg';
-import { formatCurrency, formatDateTime as formatDate } from '@/lib/format';
+import { formatCurrency, formatDateTime as formatDate, formatStatusLabel } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
 import EditarClienteButton from '@/components/modals/EditarClienteButton';
 import EditarPropostaButton from '@/components/modals/EditarPropostaButton';
+import { ExcluirClienteButton, ExcluirCotacaoButton, ExcluirBoletoButton } from '@/components/dev';
 
 function formatDocument(value: string) {
   const digits = value.replace(/\D/g, '');
@@ -33,8 +34,11 @@ const statusLabel: Record<string, string> = {
   enviada: 'Enviada',
   contrato_gerado: 'Aguardando assinatura',
   assinado: 'Assinado',
+  signed: 'Assinado',
   pagamento_gerado: 'Cobrança gerada',
   aprovada: 'Aprovada',
+  recusada: 'Recusada',
+  expirada: 'Expirada',
   paid: 'Pago',
   partially_paid: 'Parcial',
   overdue: 'Vencido',
@@ -42,6 +46,7 @@ const statusLabel: Record<string, string> = {
   refunded: 'Estornado',
   confirmed: 'Confirmado',
   received: 'Recebido',
+  cancelled: 'Cancelado',
 };
 
 export default async function AdminClienteDetalhePage({ params }: { params: Promise<{ id: string }> }) {
@@ -49,6 +54,8 @@ export default async function AdminClienteDetalhePage({ params }: { params: Prom
   if (!user || !isInternalUser(user)) {
     redirect('/login');
   }
+
+  const isDev = isDevUser(user);
 
   await ensureSchema();
   const { id } = await params;
@@ -196,6 +203,14 @@ export default async function AdminClienteDetalhePage({ params }: { params: Prom
               variant="primary"
               size="md"
             />
+            {isDev && (
+              <ExcluirClienteButton
+                clientId={client.id}
+                clientName={client.full_name}
+                variant="header"
+                redirectTo="/admin/clientes"
+              />
+            )}
           </div>
         </div>
 
@@ -228,9 +243,9 @@ export default async function AdminClienteDetalhePage({ params }: { params: Prom
                   <tr key={quote.id} className="hover:bg-gray-50/80 transition-colors duration-150">
                     <td className="px-6 py-4 font-medium text-gray-700">{quote.partner_name || 'DuoLife'}</td>
                     <td className="px-6 py-4 font-medium text-gray-700">{quote.product_name}</td>
-                    <td className="px-6 py-4 text-gray-600">{statusLabel[quote.status] || quote.status}</td>
+                    <td className="px-6 py-4 text-gray-600">{formatStatusLabel(quote.status)}</td>
                     <td className="px-6 py-4 text-gray-600">
-                      <div>{statusLabel[quote.signature_status || ''] || quote.signature_status || '-'}</div>
+                      <div>{formatStatusLabel(quote.signature_status)}</div>
                       {safeExternalUrl(quote.signed_file_url) ? (
                         <a href={safeExternalUrl(quote.signed_file_url)} target="_blank" rel="noreferrer" className="text-xs font-medium text-sky-700 underline">
                           Abrir contrato
@@ -239,7 +254,7 @@ export default async function AdminClienteDetalhePage({ params }: { params: Prom
                     </td>
                     <td className="px-6 py-4 text-gray-600">
                       {quote.installment_count
-                        ? `${quote.paid_installments || 0}/${quote.installment_count} • ${statusLabel[quote.payment_status || ''] || quote.payment_status || '-'}`
+                        ? `${quote.paid_installments || 0}/${quote.installment_count} • ${formatStatusLabel(quote.payment_status)}`
                         : '-'}
                     </td>
                     <td className="px-6 py-4 text-right font-semibold text-gray-900">{formatCurrency(quote.premio_final)}</td>
@@ -270,6 +285,13 @@ export default async function AdminClienteDetalhePage({ params }: { params: Prom
                         >
                           Ver <ExternalLink size={11} />
                         </Link>
+                        {isDev && (
+                          <ExcluirCotacaoButton
+                            cotacaoId={quote.id}
+                            clientName={quote.client_name}
+                            variant="icon"
+                          />
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -295,12 +317,15 @@ export default async function AdminClienteDetalhePage({ params }: { params: Prom
                   <th className="px-6 py-4 font-semibold text-gray-500 uppercase tracking-wider text-xs">Vencimento</th>
                   <th className="px-6 py-4 font-semibold text-gray-500 uppercase tracking-wider text-xs">Pagamento</th>
                   <th className="px-6 py-4 font-semibold text-gray-500 uppercase tracking-wider text-xs">Boleto</th>
+                  {isDev && (
+                    <th className="px-6 py-4 font-semibold text-gray-500 uppercase tracking-wider text-xs text-center">Ações</th>
+                  )}
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {installments.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-10 text-center text-sm text-gray-500">
+                    <td colSpan={isDev ? 9 : 8} className="px-6 py-10 text-center text-sm text-gray-500">
                       Nenhuma parcela gerada para este cliente ainda.
                     </td>
                   </tr>
@@ -320,6 +345,14 @@ export default async function AdminClienteDetalhePage({ params }: { params: Prom
                         </a>
                       ) : '-'}
                     </td>
+                    {isDev && (
+                      <td className="px-6 py-4 text-center">
+                        <ExcluirBoletoButton
+                          id={item.id}
+                          variant="icon"
+                        />
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

@@ -4,12 +4,15 @@ import React from 'react';
 import Link from 'next/link';
 import { ArrowRight, UserCheck } from 'lucide-react';
 import { AdminClientRow } from '@/types/admin-clients';
+import { ExcluirClienteButton } from '@/components/dev';
+import { formatStatusLabel } from '@/lib/format';
 
 const statusLabel: Record<string, string> = {
   rascunho: 'Rascunho',
   enviada: 'Enviada',
   contrato_gerado: 'Aguard. assinatura',
   assinado: 'Assinado',
+  signed: 'Assinado',
   pagamento_gerado: 'Cobrança gerada',
   aprovada: 'Aprovada',
   paid: 'Pago',
@@ -23,6 +26,7 @@ const statusLabel: Record<string, string> = {
 
 const statusBadgeColor: Record<string, string> = {
   assinado: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  signed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   paid: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   confirmed: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   received: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -48,7 +52,13 @@ function formatDate(value: string) {
   }
 }
 
-export function ClientesCardMobile({ client }: { client: AdminClientRow }) {
+export function ClientesCardMobile({
+  client,
+  isDev = false,
+}: {
+  client: AdminClientRow;
+  isDev?: boolean;
+}) {
   const initials = client.full_name
     .split(' ')
     .filter(Boolean)
@@ -77,10 +87,10 @@ export function ClientesCardMobile({ client }: { client: AdminClientRow }) {
         {sigStatus && (
           <span
             className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${
-              statusBadgeColor[sigStatus] || 'bg-gray-50 text-gray-700 border-gray-200'
+              statusBadgeColor[sigStatus.toLowerCase()] || statusBadgeColor[sigStatus] || 'bg-gray-50 text-gray-700 border-gray-200'
             }`}
           >
-            {statusLabel[sigStatus] || sigStatus}
+            {formatStatusLabel(sigStatus)}
           </span>
         )}
       </div>
@@ -121,12 +131,21 @@ export function ClientesCardMobile({ client }: { client: AdminClientRow }) {
           Cadastrado em {formatDate(client.created_at)}
         </span>
 
-        <Link
-          href={`/admin/clientes/${client.id}`}
-          className="inline-flex items-center gap-1.5 text-xs font-extrabold text-[#0e4a5a] hover:text-[#0b3a47] py-1.5 px-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
-        >
-          Ver operação <ArrowRight size={13} />
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href={`/admin/clientes/${client.id}`}
+            className="inline-flex items-center gap-1.5 text-xs font-extrabold text-[#0e4a5a] hover:text-[#0b3a47] py-1.5 px-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"
+          >
+            Ver operação <ArrowRight size={13} />
+          </Link>
+          {isDev && (
+            <ExcluirClienteButton
+              clientId={client.id}
+              clientName={client.full_name}
+              variant="icon"
+            />
+          )}
+        </div>
       </div>
     </div>
   );

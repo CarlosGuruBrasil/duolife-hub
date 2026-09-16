@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { verifyAdminAuth } from '@/lib/auth';
 import { ensureSchema } from '@/lib/schema';
 import { getAdminReportData, getRecentMonthOptions } from '@/lib/admin-reporting';
+import { formatStatusLabel } from '@/lib/format';
 import AdminPeriodFilterBar from '../_components/AdminPeriodFilterBar';
 
 function formatCurrency(value: number) {
@@ -75,7 +76,7 @@ export default async function AdminRelatoriosPage({
               <tbody className="divide-y divide-gray-100">
                 {data.quoteStatuses.map((row) => (
                   <tr key={row.status} className="table-row">
-                    <td className="px-4 py-3 font-semibold">{row.status}</td>
+                    <td className="px-4 py-3 font-semibold">{formatStatusLabel(row.status)}</td>
                     <td className="px-4 py-3 text-gray-600">{row.count}</td>
                     <td className="px-4 py-3 text-gray-600">{formatCurrency(row.premioTotal)}</td>
                   </tr>
@@ -96,7 +97,7 @@ export default async function AdminRelatoriosPage({
             {data.paymentStatuses.map((row) => (
               <div key={row.status} className="admin-inline-stat">
                 <div>
-                  <div className="admin-inline-stat-label">{row.status}</div>
+                  <div className="admin-inline-stat-label">{formatStatusLabel(row.status)}</div>
                   <div className="admin-inline-stat-copy">{row.ordersCount} ordens</div>
                 </div>
                 <div className="text-right">

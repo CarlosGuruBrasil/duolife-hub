@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation';
 import { verifyAdminAuth } from '@/lib/auth';
 import { ensureSchema } from '@/lib/schema';
 import { getAdminDashboardData, getRecentMonthOptions } from '@/lib/admin-reporting';
+import { formatStatusLabel } from '@/lib/format';
 import AdminPeriodFilterBar from './_components/AdminPeriodFilterBar';
 
 function formatCurrency(value: number) {
@@ -21,9 +22,10 @@ function monthHref(value: string) {
 }
 
 function statusBadge(status: string) {
-  const tone = status === 'ativa' || status === 'aprovada' || status === 'paga'
+  const s = String(status || '').toLowerCase();
+  const tone = ['ativa', 'active', 'aprovada', 'approved', 'paga', 'pago', 'paid', 'assinado', 'signed', 'confirmado', 'confirmed', 'recebido', 'received'].includes(s)
     ? 'is-success'
-    : status === 'pendente' || status === 'pagamento_gerado' || status === 'contrato_gerado'
+    : ['pendente', 'pending', 'pagamento_gerado', 'contrato_gerado', 'waiting_signatures'].includes(s)
       ? 'is-warning'
       : 'is-neutral';
   return `admin-status-badge ${tone}`;
@@ -184,7 +186,7 @@ export default async function AdminDashboard({
                   <div className="admin-inline-stat-copy">{event.subtitle}</div>
                 </div>
                 <div className="text-right">
-                  <div className={statusBadge(event.status)}>{event.status}</div>
+                  <div className={statusBadge(event.status)}>{formatStatusLabel(event.status)}</div>
                   <div className="mt-1 text-xs text-[var(--text-light)]">{formatDateTime(event.createdAt)}</div>
                   {event.amount !== null && (
                     <div className="mt-1 text-sm font-semibold text-[var(--primary)]">{formatCurrency(event.amount)}</div>

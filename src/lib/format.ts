@@ -51,4 +51,75 @@ export function formatDate(value: string | Date | null | undefined): string {
   return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(date);
 }
 
+/**
+ * Dicionário universal de tradução e localização de status de todo o ecossistema DuoLife Hub.
+ * Cobre cotações, assinaturas (ZapSign), cobranças/parcelas (Asaas), vendas/apólices e comissões.
+ */
+export const GLOBAL_STATUS_LABELS: Record<string, string> = {
+  // Cotações / Propostas
+  rascunho: 'Rascunho',
+  enviada: 'Enviada',
+  contrato_gerado: 'Aguardando assinatura',
+  assinado: 'Assinado',
+  pagamento_gerado: 'Cobrança gerada',
+  aprovada: 'Aprovada',
+  recusada: 'Recusada',
+  expirada: 'Expirada',
+  emitida: 'Apólice emitida',
+  draft: 'Rascunho',
+  approved: 'Aprovada',
+  rejected: 'Recusada',
+  expired: 'Expirada',
+
+  // ZapSign / Documentos de Assinatura
+  signed: 'Assinado',
+  pending: 'Pendente',
+  waiting_signatures: 'Aguardando assinatura',
+  refused: 'Recusado',
+  cancelled: 'Cancelado',
+
+  // Asaas / Financeiro / Ordens / Parcelas
+  paid: 'Pago',
+  paga: 'Paga',
+  confirmed: 'Confirmado',
+  received: 'Recebido',
+  received_in_cash: 'Recebido em dinheiro',
+  partially_paid: 'Parcial',
+  overdue: 'Vencido',
+  refunded: 'Estornado',
+  estornada: 'Estornada',
+  refund_requested: 'Estorno solicitado',
+  refund_in_progress: 'Estorno em andamento',
+  chargeback_requested: 'Chargeback solicitado',
+  chargeback_dispute: 'Chargeback em disputa',
+  awaiting_risk_analysis: 'Em análise de risco',
+  dunning_requested: 'Em negativação',
+  dunning_received: 'Negativação recebida',
+  payment_deleted: 'Removida',
+
+  // Vendas / Apólices
+  ativa: 'Ativa',
+  active: 'Ativa',
+  cancelada: 'Cancelada',
+  suspensa: 'Suspensa',
+  suspended: 'Suspensa',
+  inativo: 'Inativo',
+  inactive: 'Inativo',
+
+  // Comissões
+  pendente: 'Pendente',
+};
+
+/**
+ * Formata qualquer status em código/inglês para o rótulo amigável em pt-BR de forma insensível a maiúsculas/minúsculas.
+ */
+export function formatStatusLabel(status: string | null | undefined, fallback = '-'): string {
+  if (!status) return fallback;
+  const clean = String(status).trim();
+  if (!clean) return fallback;
+  const lower = clean.toLowerCase();
+  return GLOBAL_STATUS_LABELS[lower] || GLOBAL_STATUS_LABELS[clean] || clean;
+}
+
 export { formatAtuacao, parseAtuacaoList, AREAS_ATUACAO_MAP } from './atuacao';
+

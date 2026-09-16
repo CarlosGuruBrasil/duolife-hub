@@ -10,6 +10,7 @@ import {
   PortalClientSortField,
   SortDirection,
 } from '@/types/portal-clients';
+import { formatStatusLabel } from '@/lib/format';
 import { PortalClientesFilterSection } from './_components/PortalClientesFilterSection';
 import { PortalClientesSortHeader } from './_components/PortalClientesSortHeader';
 import { PortalClientesPagination } from './_components/PortalClientesPagination';
@@ -246,10 +247,10 @@ export default async function PortalClientesPage({
                           {sigStatus ? (
                             <span
                               className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${
-                                statusBadgeColor[sigStatus] || 'bg-gray-50 text-gray-700 border-gray-200'
+                                statusBadgeColor[sigStatus.toLowerCase()] || statusBadgeColor[sigStatus] || 'bg-gray-50 text-gray-700 border-gray-200'
                               }`}
                             >
-                              {statusLabel[sigStatus] || sigStatus}
+                              {formatStatusLabel(sigStatus)}
                             </span>
                           ) : (
                             <span className="text-gray-400 text-xs">-</span>
@@ -265,7 +266,7 @@ export default async function PortalClientesPage({
                               </span>
                               {payStatus && (
                                 <span className="text-[11px] text-gray-500">
-                                  {statusLabel[payStatus] || payStatus}
+                                  {formatStatusLabel(payStatus)}
                                 </span>
                               )}
                             </div>

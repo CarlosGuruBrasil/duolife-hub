@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { ArrowLeft, ExternalLink, FileText, UserCheck, CreditCard, ShieldCheck, FileCheck, Play } from 'lucide-react';
-import { verifyAuth, isInternalUser } from '@/lib/auth';
+import { verifyAuth, isInternalUser, isDevUser } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { PagamentosPanel } from './_pagamentos-client';
 import { GerarBoletoButton } from '../_gerar-boleto-button';
@@ -10,17 +10,22 @@ import { formatCurrency, formatDate, formatDateTime, formatAtuacao } from '@/lib
 import { safeExternalUrl } from '@/lib/safe-url';
 import { isDateBeforeToday } from '@/lib/business-days';
 import EditarPropostaButton from '@/components/modals/EditarPropostaButton';
+import { ExcluirCotacaoButton, ExcluirBoletoButton } from '@/components/dev';
 
 const statusLabel: Record<string, string> = {
   rascunho: 'Rascunho',
   enviada: 'Enviada',
   contrato_gerado: 'Aguardando Assinatura (ZapSign)',
   assinado: 'Contrato Assinado (ZapSign)',
+  signed: 'Contrato Assinado (ZapSign)',
   pagamento_gerado: 'Fatura Gerada (Asaas)',
   aprovada: 'Aprovada (Venda)',
   recusada: 'Recusada',
   expirada: 'Expirada',
   emitida: 'Apólice Emitida (KEV Seguros)',
+  ativa: 'Ativa',
+  active: 'Ativa',
+  confirmed: 'Confirmado',
 };
 
 const statusColor: Record<string, string> = {
@@ -55,6 +60,8 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
   if (!user || !isInternalUser(user)) {
     redirect('/login');
   }
+
+  const isDev = isDevUser(user);
 
   const { id } = await params;
 
@@ -207,6 +214,14 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
                 <Play size={13} className="fill-current" /> Dar Continuidade à Cotação
               </Link>
             )}
+            {isDev && (
+              <ExcluirCotacaoButton
+                cotacaoId={cotacao.id}
+                clientName={cotacao.client_name}
+                variant="header"
+                redirectTo="/admin/cotacoes"
+              />
+            )}
           </div>
         </div>
       </div>
@@ -336,6 +351,12 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
                       hasLink={Boolean(linkBoleto)}
                       variant="card"
                     />
+                    {isDev && (
+                      <ExcluirBoletoButton
+                        id={checkoutId || paymentOrder?.id || cotacao.id}
+                        variant="card"
+                      />
+                    )}
                   </div>
                 </div>
 
@@ -433,7 +454,7 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
         <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider mb-4 flex items-center gap-2">
           <CreditCard size={16} className="text-slate-600" /> Histórico de Parcelas & Ordens Financeiras
         </h2>
-        <PagamentosPanel cotacaoId={cotacao.id} liveAsaas />
+        <PagamentosPanel cotacaoId={cotacao.id} liveAsaas canDeleteBoleto={isDev} />
       </div>
     </div>
   );

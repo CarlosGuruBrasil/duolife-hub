@@ -4,7 +4,7 @@ import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { getPartnerAccessContext, verifyPartnerAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
-import { formatCurrency, formatDateTime as formatDate } from '@/lib/format';
+import { formatCurrency, formatDateTime as formatDate, formatStatusLabel } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
 import EditarClienteButton from '@/components/modals/EditarClienteButton';
 import EditarPropostaButton from '@/components/modals/EditarPropostaButton';
@@ -33,8 +33,11 @@ const statusLabel: Record<string, string> = {
   enviada: 'Enviada',
   contrato_gerado: 'Aguardando assinatura',
   assinado: 'Assinado',
+  signed: 'Assinado',
   pagamento_gerado: 'Cobrança gerada',
   aprovada: 'Aprovada',
+  recusada: 'Recusada',
+  expirada: 'Expirada',
   paid: 'Pago',
   partially_paid: 'Parcial',
   overdue: 'Vencido',
@@ -42,6 +45,7 @@ const statusLabel: Record<string, string> = {
   refunded: 'Estornado',
   confirmed: 'Confirmado',
   received: 'Recebido',
+  cancelled: 'Cancelado',
 };
 
 export default async function PortalClienteDetalhePage({ params }: { params: Promise<{ id: string }> }) {
@@ -379,9 +383,9 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
               {quotes.map((quote) => (
                 <tr key={quote.id} className="table-row">
                   <td className="px-5 py-4 font-semibold text-slate-700">{quote.product_name}</td>
-                  <td className="px-5 py-4">{statusLabel[quote.status] || quote.status}</td>
+                  <td className="px-5 py-4">{formatStatusLabel(quote.status)}</td>
                   <td className="px-5 py-4">
-                    <div>{statusLabel[quote.signature_status || ''] || quote.signature_status || '-'}</div>
+                    <div>{formatStatusLabel(quote.signature_status)}</div>
                     {safeExternalUrl(quote.signed_file_url) ? (
                       <a href={safeExternalUrl(quote.signed_file_url)} target="_blank" className="text-xs font-medium text-sky-700 underline" rel="noreferrer">
                         Abrir contrato
@@ -390,7 +394,7 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
                   </td>
                   <td className="px-5 py-4">
                     {quote.installment_count
-                      ? `${quote.paid_installments || 0}/${quote.installment_count} • ${statusLabel[quote.payment_status || ''] || quote.payment_status || '-'}`
+                      ? `${quote.paid_installments || 0}/${quote.installment_count} • ${formatStatusLabel(quote.payment_status)}`
                       : '-'}
                   </td>
                   <td className="px-5 py-4">{formatCurrency(quote.premio_final)}</td>
@@ -458,7 +462,7 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
                 <tr key={item.id} className="table-row">
                   <td className="px-5 py-4 font-medium text-slate-700">{item.product_name}</td>
                   <td className="px-5 py-4">{item.installment_number}</td>
-                  <td className="px-5 py-4">{statusLabel[item.status] || item.status}</td>
+                  <td className="px-5 py-4">{formatStatusLabel(item.status)}</td>
                   <td className="px-5 py-4">{formatCurrency(item.amount)}</td>
                   <td className="px-5 py-4">{formatDate(item.due_date)}</td>
                   <td className="px-5 py-4">{formatDate(item.paid_at)}</td>

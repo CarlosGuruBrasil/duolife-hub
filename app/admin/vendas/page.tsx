@@ -8,40 +8,47 @@ import WixSalesSyncButton from './_sync-button';
 import { VendasFilterSection } from './_components/VendasFilterSection';
 import { VendasPagination } from './_components/VendasPagination';
 import { PeriodPreset, resolveDateRange } from '@/lib/date-filters';
-import { formatCurrency, formatDate } from '@/lib/format';
+import { formatCurrency, formatDate, formatStatusLabel } from '@/lib/format';
 
 export const dynamic = 'force-dynamic';
 
 interface VendaRow {
   id: string;
-  policy_number: string | null;
-  importancia_segurada: string | null;
-  premio_total: string | null;
-  commission_rate: string | null;
-  commission_amount: string | null;
+  policy_number: string;
+  premio_total: number;
+  commission_amount: number;
+  commission_rate: number | null;
   status: string;
-  source: string | null;
-  issue_date: string;
-  expiry_date: string;
+  issue_date: string | null;
+  expiry_date: string | null;
   created_at: string;
-  partner_name: string;
-  product_name: string;
   client_name: string;
+  product_name: string;
+  partner_name: string;
   client_cpf_cnpj: string | null;
+  source?: string | null;
 }
 
 const statusLabel: Record<string, string> = {
   ativa: 'Ativa',
+  active: 'Ativa',
   cancelada: 'Cancelada',
+  cancelled: 'Cancelada',
   expirada: 'Expirada',
+  expired: 'Expirada',
   suspensa: 'Suspensa',
+  suspended: 'Suspensa',
 };
 
 const statusColor: Record<string, string> = {
   ativa: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+  active: 'bg-emerald-50 text-emerald-800 border-emerald-200',
   cancelada: 'bg-rose-50 text-rose-700 border-rose-200',
+  cancelled: 'bg-rose-50 text-rose-700 border-rose-200',
   expirada: 'bg-amber-50 text-amber-800 border-amber-200',
+  expired: 'bg-amber-50 text-amber-800 border-amber-200',
   suspensa: 'bg-slate-100 text-slate-700 border-slate-200',
+  suspended: 'bg-slate-100 text-slate-700 border-slate-200',
 };
 
 export default async function AdminVendasPage({
@@ -289,10 +296,10 @@ export default async function AdminVendasPage({
                       <td className="px-5 py-4">
                         <span
                           className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold border ${
-                            statusColor[venda.status] || 'bg-gray-100 text-gray-700 border-gray-200'
+                            statusColor[venda.status?.toLowerCase()] || statusColor[venda.status] || 'bg-gray-100 text-gray-700 border-gray-200'
                           }`}
                         >
-                          {statusLabel[venda.status] || venda.status}
+                          {formatStatusLabel(venda.status)}
                         </span>
                       </td>
                     </tr>

@@ -4,7 +4,7 @@ import { Plus, Play, Search, FileText } from 'lucide-react';
 import { getPartnerAccessContext, verifyPartnerAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema, seedInitialData } from '@/lib/schema';
-import { formatCurrency, formatDate } from '@/lib/format';
+import { formatCurrency, formatDate, formatStatusLabel } from '@/lib/format';
 import { PortalCotacoesFilterSection } from './_components/PortalCotacoesFilterSection';
 import { PortalCotacoesPagination } from './_components/PortalCotacoesPagination';
 import { PeriodPreset, resolveDateRange } from '@/lib/date-filters';
@@ -33,6 +33,7 @@ const statusLabel: Record<string, string> = {
   emitida: 'Emitida',
   contrato_gerado: 'Aguardando Assinatura',
   assinado: 'Contrato Assinado',
+  signed: 'Contrato Assinado',
   pagamento_gerado: 'Fatura Gerada',
 };
 
@@ -44,6 +45,7 @@ const statusColor: Record<string, string> = {
   expirada: 'bg-rose-50 text-rose-700 border-rose-200',
   emitida: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   assinado: 'bg-purple-50 text-purple-700 border-purple-200',
+  signed: 'bg-purple-50 text-purple-700 border-purple-200',
   pagamento_gerado: 'bg-amber-50 text-amber-800 border-amber-200',
   contrato_gerado: 'bg-amber-50 text-amber-800 border-amber-200',
 };
@@ -265,10 +267,10 @@ export default async function CotacoesPage({
                       <td className="px-5 py-4">
                         <span
                           className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold border ${
-                            statusColor[cotacao.status] || 'bg-gray-100 text-gray-700 border-gray-200'
+                            statusColor[cotacao.status?.toLowerCase()] || statusColor[cotacao.status] || 'bg-gray-100 text-gray-700 border-gray-200'
                           }`}
                         >
-                          {statusLabel[cotacao.status] || cotacao.status}
+                          {statusLabel[cotacao.status?.toLowerCase()] || formatStatusLabel(cotacao.status)}
                         </span>
                       </td>
                       <td className="px-5 py-4 text-gray-500 text-xs">{formatDate(cotacao.created_at)}</td>

@@ -1,5 +1,5 @@
 import { sql } from '@/lib/pg';
-import { parseCurrencyToNumber } from '@/lib/format';
+import { parseCurrencyToNumber, formatStatusLabel } from '@/lib/format';
 
 type NumericLike = number | string | null;
 
@@ -138,20 +138,25 @@ const STATUS_LABELS: Record<string, string> = {
   enviada: 'Enviada',
   contrato_gerado: 'Contrato gerado',
   assinado: 'Assinado',
+  signed: 'Assinado',
   pagamento_gerado: 'Pagamento gerado',
   aprovada: 'Aprovada',
   recusada: 'Recusada',
   expirada: 'Expirada',
   emitida: 'Emitida',
   ativa: 'Ativa',
+  active: 'Ativa',
   cancelada: 'Cancelada',
+  cancelled: 'Cancelada',
   pendente: 'Pendente',
-  paga: 'Paga',
-  estornada: 'Estornada',
   pending: 'Pendente',
+  paga: 'Paga',
   paid: 'Pago',
+  confirmed: 'Confirmado',
+  received: 'Recebido',
   overdue: 'Vencido',
   partially_paid: 'Parcial',
+  estornada: 'Estornada',
   refunded: 'Estornado',
 };
 
@@ -544,7 +549,7 @@ export async function getAdminDashboardData(
     metricCards: buildMetricCards(summary, previousSummary),
     funnel: funnelRows.map((row) => ({
       status: row.status,
-      label: STATUS_LABELS[row.status] || row.status,
+      label: formatStatusLabel(row.status),
       count: toNumber(row.count),
     })),
     productPerformance: productRows.map((row) => ({
@@ -564,6 +569,7 @@ export async function getAdminDashboardData(
     })),
     recentEvents: eventRows.map((row) => ({
       ...row,
+      status: formatStatusLabel(row.status),
       amount: row.amount ? toNumber(row.amount) : null,
     })),
     syncHealth: syncRows.map((row) => ({
@@ -697,12 +703,12 @@ export async function getAdminReportData(
   return {
     period,
     quoteStatuses: quoteStatuses.map((row) => ({
-      status: STATUS_LABELS[row.status] || row.status,
+      status: formatStatusLabel(row.status),
       count: toNumber(row.count),
       premioTotal: toNumber(row.premio_total),
     })),
     paymentStatuses: paymentStatuses.map((row) => ({
-      status: STATUS_LABELS[row.status] || row.status,
+      status: formatStatusLabel(row.status),
       ordersCount: toNumber(row.orders_count),
       amountTotal: toNumber(row.amount_total),
       paidAmount: toNumber(row.paid_amount),
@@ -721,7 +727,7 @@ export async function getAdminReportData(
       partnerName: row.partner_name,
       amountTotal: toNumber(row.amount_total),
       dueDate: row.due_date,
-      status: STATUS_LABELS[row.status] || row.status,
+      status: formatStatusLabel(row.status),
     })),
     syncErrors: syncErrors.map((row) => ({
       sourceSystem: row.source_system,

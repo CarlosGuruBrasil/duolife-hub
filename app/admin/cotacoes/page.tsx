@@ -1,12 +1,13 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Plus, ExternalLink, FileText, Search, Play } from 'lucide-react';
-import { verifyAuth, isInternalUser } from '@/lib/auth';
+import { verifyAuth, isInternalUser, isDevUser } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { RecusarCotacaoButton } from './_recusar-button';
 import { GerarBoletoButton } from './_gerar-boleto-button';
+import { ExcluirCotacaoButton } from '@/components/dev';
 import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
-import { formatCurrency, formatDateTime } from '@/lib/format';
+import { formatCurrency, formatDateTime, formatStatusLabel } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
 
 import { CotacoesFilterSection } from './_components/CotacoesFilterSection';
@@ -22,11 +23,12 @@ interface AdminCotacaoRow {
   client_email: string | null;
   client_phone: string | null;
   importancia_segurada: string | null;
-  premio_final: string | null;
   premio_calculado: string | null;
+  premio_final: string | null;
   status: string;
   created_at: string;
   client_data: unknown;
+  product_id: string;
   product_name: string;
   partner_name: string;
 }
@@ -36,6 +38,7 @@ const statusLabel: Record<string, string> = {
   enviada: 'Enviada',
   contrato_gerado: 'Aguardando Assinatura',
   assinado: 'Contrato Assinado',
+  signed: 'Contrato Assinado',
   pagamento_gerado: 'Fatura Gerada (Asaas)',
   aprovada: 'Aprovada (Venda)',
   emitida: 'Apólice Emitida',
@@ -51,6 +54,7 @@ const statusColor: Record<string, string> = {
   expirada: 'bg-rose-50 text-rose-700 border-rose-200',
   emitida: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   assinado: 'bg-purple-50 text-purple-700 border-purple-200',
+  signed: 'bg-purple-50 text-purple-700 border-purple-200',
   pagamento_gerado: 'bg-amber-50 text-amber-800 border-amber-200',
   contrato_gerado: 'bg-amber-50 text-amber-800 border-amber-200'
 };
@@ -88,6 +92,8 @@ export default async function AdminCotacoesPage({
   if (!user || !isInternalUser(user)) {
     redirect('/login');
   }
+
+  const isDev = isDevUser(user);
 
   const params = searchParams ? await searchParams : {};
   const rawStatus = typeof params.status === 'string' ? params.status : '';
@@ -294,8 +300,8 @@ export default async function AdminCotacoesPage({
                       </td>
 
                       <td className="px-6 py-4 text-center">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${statusColor[cotacao.status] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
-                          {statusLabel[cotacao.status] || cotacao.status}
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${statusColor[cotacao.status?.toLowerCase()] || statusColor[cotacao.status] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                          {statusLabel[cotacao.status?.toLowerCase()] || formatStatusLabel(cotacao.status)}
                         </span>
                       </td>
 
@@ -354,6 +360,13 @@ export default async function AdminCotacoesPage({
                           </Link>
                           {!ESTADOS_TERMINAIS.includes(cotacao.status) && (
                             <RecusarCotacaoButton id={cotacao.id} clientName={cotacao.client_name} />
+                          )}
+                          {isDev && (
+                            <ExcluirCotacaoButton
+                              cotacaoId={cotacao.id}
+                              clientName={cotacao.client_name}
+                              variant="icon"
+                            />
                           )}
                         </div>
                       </td>

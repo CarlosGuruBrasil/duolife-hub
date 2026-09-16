@@ -209,3 +209,60 @@ export async function listAsaasChargesForClient(params: {
 
   return { ok: true, customerIds: [...ids], charges, truncated };
 }
+
+/**
+ * Cancela e exclui uma cobrança no Asaas (apenas cobranças não pagas).
+ * Retorna ok: true se excluída com sucesso ou se já não existia (404).
+ */
+export async function deleteAsaasPayment(
+  paymentId: string
+): Promise<{ ok: boolean; deleted: boolean; error?: string }> {
+  if (!paymentId || !paymentId.trim()) {
+    return { ok: false, deleted: false, error: 'ID da cobrança Asaas inválido' };
+  }
+
+  const { apiKey, baseUrl } = await getAsaasConfig();
+  if (!apiKey) {
+    return { ok: false, deleted: false, error: 'Chave de API do Asaas não configurada' };
+  }
+
+  const cleanId = paymentId.trim();
+
+  try {
+    const res = await fetch(`${baseUrl}/payments/${encodeURIComponent(cleanId)}`, {
+      method: 'DELETE',
+      headers: {
+        access_token: apiKey,
+        'Content-Type': 'application/json',
+      },
+      cache: 'no-store',
+    });
+
+    if (res.status === 404) {
+      // Já não existe ou já foi excluída
+      return { ok: true, deleted: true };
+    }
+
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+
+    if (res.ok && (body.deleted === true || body.id)) {
+      logger.info({ paymentId: cleanId }, 'asaas.payment.deleted_remotely');
+      return { ok: true, deleted: true };
+    }
+
+    const firstError = Array.isArray(body.errors) && body.errors.length > 0
+      ? (body.errors[0] as Record<string, unknown>).description
+      : body.message;
+
+    const errorMsg = String(firstError || `Erro ${res.status} ao remover cobrança no Asaas`);
+    logger.warn({ paymentId: cleanId, status: res.status, errorMsg }, 'asaas.payment.delete_refused');
+    return { ok: false, deleted: false, error: errorMsg };
+  } catch (err) {
+    logger.error({ err, paymentId: cleanId }, 'asaas.payment.delete_network_failed');
+    return {
+      ok: false,
+      deleted: false,
+      error: err instanceof Error ? err.message : 'Falha de comunicação com o Asaas',
+    };
+  }
+}

@@ -1,9 +1,10 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ArrowRight, Users, UserCheck, ShieldCheck } from 'lucide-react';
-import { verifyAuth, isInternalUser } from '@/lib/auth';
+import { verifyAuth, isInternalUser, isDevUser } from '@/lib/auth';
 import { ensureSchema } from '@/lib/schema';
 import { getAdminClientsList } from '@/lib/admin-clients-service';
+import { ExcluirClienteButton } from '@/components/dev';
 import {
   ClientSortField,
   PageSizeOption,
@@ -11,6 +12,7 @@ import {
   QuotesFilterType,
   SortDirection,
 } from '@/types/admin-clients';
+import { formatStatusLabel } from '@/lib/format';
 import { ClientesSortHeader } from './_components/ClientesSortHeader';
 import { ClientesPagination } from './_components/ClientesPagination';
 import { ClientesCardMobile } from './_components/ClientesCardMobile';
@@ -80,6 +82,8 @@ export default async function AdminClientesPage({
   if (!user || !isInternalUser(user)) {
     redirect('/login');
   }
+
+  const isDev = isDevUser(user);
 
   await ensureSchema();
 
@@ -183,7 +187,7 @@ export default async function AdminClientesPage({
             {/* Visualização em Cartões Mobile (<= 768px) */}
             <div className="md:hidden divide-y divide-gray-100 p-3 space-y-3">
               {clients.map((client) => (
-                <ClientesCardMobile key={client.id} client={client} />
+                <ClientesCardMobile key={client.id} client={client} isDev={isDev} />
               ))}
             </div>
 
@@ -267,10 +271,10 @@ export default async function AdminClientesPage({
                           {sigStatus ? (
                             <span
                               className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
-                                statusBadgeColor[sigStatus] || 'bg-gray-100 text-gray-700 border-gray-200'
+                                statusBadgeColor[sigStatus.toLowerCase()] || statusBadgeColor[sigStatus] || 'bg-gray-100 text-gray-700 border-gray-200'
                               }`}
                             >
-                              {statusLabel[sigStatus] || sigStatus}
+                              {formatStatusLabel(sigStatus)}
                             </span>
                           ) : (
                             <span className="text-gray-400 text-xs">—</span>
@@ -287,10 +291,10 @@ export default async function AdminClientesPage({
                               {payStatus && (
                                 <span
                                   className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold border ${
-                                    statusBadgeColor[payStatus] || 'bg-gray-100 text-gray-700 border-gray-200'
+                                    statusBadgeColor[payStatus.toLowerCase()] || statusBadgeColor[payStatus] || 'bg-gray-100 text-gray-700 border-gray-200'
                                   }`}
                                 >
-                                  {statusLabel[payStatus] || payStatus}
+                                  {formatStatusLabel(payStatus)}
                                 </span>
                               )}
                             </div>
@@ -311,12 +315,21 @@ export default async function AdminClientesPage({
 
                         {/* Ações */}
                         <td className="px-6 py-4 text-right">
-                          <Link
-                            href={`/admin/clientes/${client.id}`}
-                            className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0e4a5a] hover:text-[#0b3a47] py-1.5 px-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors shadow-2xs"
-                          >
-                            Ver operação <ArrowRight size={14} />
-                          </Link>
+                          <div className="flex items-center justify-end gap-2">
+                            <Link
+                              href={`/admin/clientes/${client.id}`}
+                              className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0e4a5a] hover:text-[#0b3a47] py-1.5 px-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors shadow-2xs"
+                            >
+                              Ver operação <ArrowRight size={14} />
+                            </Link>
+                            {isDev && (
+                              <ExcluirClienteButton
+                                clientId={client.id}
+                                clientName={client.full_name}
+                                variant="icon"
+                              />
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
