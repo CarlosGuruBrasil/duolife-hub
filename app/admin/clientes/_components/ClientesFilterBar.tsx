@@ -26,15 +26,26 @@ export function ClientesFilterBar({
   const currentSearch = searchParams.get('q') || '';
   const [searchValue, setSearchValue] = useState(currentSearch);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isFocusedRef = useRef(false);
 
-  // Sincroniza o estado interno se a URL for alterada externamente (ex: botão "Limpar todos")
+  // Sincroniza o input APENAS se o usuário NÃO estiver com foco nele (evita apagar o texto durante a digitação)
   useEffect(() => {
-    setSearchValue(currentSearch);
+    if (!isFocusedRef.current) {
+      setSearchValue(currentSearch);
+    }
   }, [currentSearch]);
 
-  // Busca em tempo real a cada caractere digitado (debounce de 280ms)
   useEffect(() => {
-    if (searchValue === currentSearch) return;
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const nextVal = e.target.value;
+    setSearchValue(nextVal);
 
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
@@ -42,7 +53,7 @@ export function ClientesFilterBar({
 
     debounceTimerRef.current = setTimeout(() => {
       const params = new URLSearchParams(searchParams.toString());
-      const trimmed = searchValue.trim();
+      const trimmed = nextVal.trim();
       if (trimmed) {
         params.set('q', trimmed);
       } else {
@@ -53,14 +64,8 @@ export function ClientesFilterBar({
       startTransition(() => {
         router.replace(`${pathname}?${params.toString()}`, { scroll: false });
       });
-    }, 280);
-
-    return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-    };
-  }, [searchValue, currentSearch, pathname, router, searchParams]);
+    }, 380);
+  };
 
   const handleClear = () => {
     if (debounceTimerRef.current) {
@@ -124,7 +129,13 @@ export function ClientesFilterBar({
           <input
             type="search"
             value={searchValue}
-            onChange={(e) => setSearchValue(e.target.value)}
+            onChange={handleChange}
+            onFocus={() => {
+              isFocusedRef.current = true;
+            }}
+            onBlur={() => {
+              isFocusedRef.current = false;
+            }}
             placeholder="Buscar em tempo real por nome, CPF/CNPJ, e-mail ou telefone..."
             aria-label="Buscar clientes em tempo real"
             className="w-full rounded-xl border border-gray-200 bg-gray-50/80 pl-10 pr-9 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:bg-white focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none transition-all"
@@ -141,58 +152,60 @@ export function ClientesFilterBar({
           )}
         </div>
 
-        {/* Ações: Toggle Filtros Avançados, Botão Limpar Filtros e Seletor de Limite */}
-        <div className="flex items-center justify-between sm:justify-end gap-2.5 shrink-0">
+        {/* Botão de Filtros Avançados */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onToggleAdvanced}
+            className={`inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-sm font-semibold transition-all ${
+              isOpenAdvanced || activeFiltersCount > 0
+                ? 'bg-[#0e4a5a]/10 border-[#0e4a5a] text-[#0e4a5a]'
+                : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100 hover:border-gray-300'
+            }`}
+          >
+            <SlidersHorizontal size={15} />
+            <span>Filtros</span>
+            {activeFiltersCount > 0 && (
+              <span className="flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-[#0e4a5a] text-white text-xs font-bold">
+                {activeFiltersCount}
+              </span>
+            )}
+            <ChevronDown
+              size={14}
+              className={`transition-transform duration-200 ${isOpenAdvanced ? 'rotate-180' : ''}`}
+            />
+          </button>
+
+          {/* Botão Limpar Filtros em Destaque */}
           {hasAnyFilterActive && (
             <button
               type="button"
               onClick={handleClearAll}
-              className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-xs font-bold hover:bg-rose-100 hover:border-rose-300 transition-all cursor-pointer shrink-0 shadow-2xs"
-              title="Limpar todos os filtros e pesquisa"
-              aria-label="Limpar todos os filtros"
+              title="Limpar todos os filtros e busca"
+              className="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-rose-200 bg-rose-50/80 text-rose-700 hover:bg-rose-100 hover:border-rose-300 text-xs font-bold transition-colors cursor-pointer shadow-2xs"
             >
               <RotateCcw size={13} />
               <span>Limpar filtros</span>
             </button>
           )}
 
-          {/* Botão de Toggle Filtros Avançados */}
-          <button
-            type="button"
-            onClick={onToggleAdvanced}
-            className={`inline-flex items-center gap-2 px-3.5 py-2.5 rounded-xl border text-xs font-bold transition-all ${
-              isOpenAdvanced || activeFiltersCount > 0
-                ? 'border-[#0e4a5a] bg-[#0e4a5a]/5 text-[#0e4a5a]'
-                : 'border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100 hover:border-gray-300'
-            }`}
-          >
-            <SlidersHorizontal size={14} className="text-[#0e4a5a]" />
-            <span>Filtros</span>
-            {activeFiltersCount > 0 && (
-              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[#0e4a5a] text-[10px] font-extrabold text-white">
-                {activeFiltersCount}
-              </span>
-            )}
-            <ChevronDown
-              size={14}
-              className={`text-gray-400 transition-transform duration-200 ${isOpenAdvanced ? 'rotate-180' : ''}`}
-            />
-          </button>
-
-          {/* Seletor de Itens por Página */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-gray-500 hidden md:inline">Exibir:</span>
+          {/* Seletor de Registros por Página */}
+          <div className="relative">
             <select
               value={pageSize}
               onChange={(e) => handlePageSizeChange(e.target.value)}
-              aria-label="Selecione a quantidade de itens por página"
-              className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-bold text-gray-700 focus:bg-white focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none cursor-pointer transition-all"
+              aria-label="Itens por página"
+              className="appearance-none rounded-xl border border-gray-200 bg-gray-50 pl-3 pr-8 py-2.5 text-xs font-semibold text-gray-700 hover:border-gray-300 focus:bg-white focus:border-[#00d4e0] focus:outline-none transition-all cursor-pointer"
             >
-              <option value="10">10 por página</option>
-              <option value="20">20 por página</option>
-              <option value="50">50 por página</option>
-              <option value="100">100 por página</option>
+              <option value="10">10 / pág</option>
+              <option value="25">25 / pág</option>
+              <option value="50">50 / pág</option>
+              <option value="100">100 / pág</option>
             </select>
+            <ChevronDown
+              size={12}
+              className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400"
+            />
           </div>
         </div>
       </div>

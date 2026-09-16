@@ -25,13 +25,26 @@ export function VendasFilterBar({
   const currentSearch = searchParams.get('q') || '';
   const [searchValue, setSearchValue] = useState(currentSearch);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isFocusedRef = useRef(false);
 
+  // Sincroniza o input APENAS se o usuário NÃO estiver com foco nele (evita apagar o texto durante a digitação)
   useEffect(() => {
-    setSearchValue(currentSearch);
+    if (!isFocusedRef.current) {
+      setSearchValue(currentSearch);
+    }
   }, [currentSearch]);
 
   useEffect(() => {
-    if (searchValue === currentSearch) return;
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const nextVal = e.target.value;
+    setSearchValue(nextVal);
 
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
@@ -39,7 +52,7 @@ export function VendasFilterBar({
 
     debounceTimerRef.current = setTimeout(() => {
       const params = new URLSearchParams(searchParams.toString());
-      const clean = searchValue.trim();
+      const clean = nextVal.trim();
       if (clean) {
         params.set('q', clean);
       } else {
@@ -50,16 +63,27 @@ export function VendasFilterBar({
       startTransition(() => {
         router.replace(`${pathname}?${params.toString()}`, { scroll: false });
       });
-    }, 280);
+    }, 380);
+  };
 
-    return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
-    };
-  }, [searchValue, currentSearch, pathname, router, searchParams]);
+  const handleClear = () => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+    setSearchValue('');
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('q');
+    params.set('page', '1');
+
+    startTransition(() => {
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    });
+  };
 
   const handleClearAll = () => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
     setSearchValue('');
     startTransition(() => {
       router.replace(pathname, { scroll: false });
@@ -75,7 +99,7 @@ export function VendasFilterBar({
     });
   };
 
-  const hasAnyFilter = Boolean(currentSearch || activeFiltersCount > 0);
+  const hasAnyFilter = Boolean(searchValue || activeFiltersCount > 0);
 
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -91,22 +115,20 @@ export function VendasFilterBar({
         <input
           type="text"
           value={searchValue}
-          onChange={(e) => setSearchValue(e.target.value)}
+          onChange={handleChange}
+          onFocus={() => {
+            isFocusedRef.current = true;
+          }}
+          onBlur={() => {
+            isFocusedRef.current = false;
+          }}
           placeholder="Buscar por cliente, apólice ou parceiro..."
           className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-10 pr-9 text-sm text-gray-900 placeholder:text-gray-400 focus:border-[#0e4a5a] focus:outline-hidden focus:ring-2 focus:ring-[#0e4a5a]/15 transition-all shadow-2xs"
         />
         {searchValue && (
           <button
             type="button"
-            onClick={() => {
-              setSearchValue('');
-              const params = new URLSearchParams(searchParams.toString());
-              params.delete('q');
-              params.set('page', '1');
-              startTransition(() => {
-                router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-              });
-            }}
+            onClick={handleClear}
             className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600 cursor-pointer"
             title="Limpar busca"
           >
