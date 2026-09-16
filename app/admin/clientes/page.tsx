@@ -17,6 +17,7 @@ import { ClientesSortHeader } from './_components/ClientesSortHeader';
 import { ClientesPagination } from './_components/ClientesPagination';
 import { ClientesCardMobile } from './_components/ClientesCardMobile';
 import { ClientesFilterSection } from './_components/ClientesFilterSection';
+import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
 
 export const dynamic = 'force-dynamic';
 
@@ -159,7 +160,7 @@ export default async function AdminClientesPage({
       />
 
       {/* Container Principal da Tabela / Cards Mobile */}
-      <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden">
+      <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs">
         {clients.length === 0 ? (
           <div className="px-6 py-20 text-center flex flex-col items-center justify-center space-y-3">
             <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-400">
@@ -192,150 +193,152 @@ export default async function AdminClientesPage({
             </div>
 
             {/* Visualização em Tabela Rica (>= 768px Tablet e Desktop) */}
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full min-w-[1240px] text-left text-sm whitespace-nowrap">
-                <thead className="bg-gray-50/80 backdrop-blur-sm border-b border-gray-200">
-                  <tr>
-                    <ClientesSortHeader field="full_name" currentSort={sort} currentDirection={direction}>
-                      Cliente
-                    </ClientesSortHeader>
-                    <ClientesSortHeader field="email" currentSort={sort} currentDirection={direction}>
-                      Contato
-                    </ClientesSortHeader>
-                    <ClientesSortHeader field="partner_names" currentSort={sort} currentDirection={direction}>
-                      Parceiros
-                    </ClientesSortHeader>
-                    <ClientesSortHeader field="products_count" currentSort={sort} currentDirection={direction} align="center">
-                      Produtos
-                    </ClientesSortHeader>
-                    <ClientesSortHeader field="cotacoes_count" currentSort={sort} currentDirection={direction} align="center">
-                      Cotações
-                    </ClientesSortHeader>
-                    <ClientesSortHeader field="last_signature_status" currentSort={sort} currentDirection={direction}>
-                      Assinatura
-                    </ClientesSortHeader>
-                    <ClientesSortHeader field="paid_installments" currentSort={sort} currentDirection={direction}>
-                      Parcelas
-                    </ClientesSortHeader>
-                    <ClientesSortHeader field="created_at" currentSort={sort} currentDirection={direction}>
-                      Cadastro
-                    </ClientesSortHeader>
-                    <ClientesSortHeader field="updated_at" currentSort={sort} currentDirection={direction}>
-                      Atualização
-                    </ClientesSortHeader>
-                    <th scope="col" className="px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">
-                      Ações
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {clients.map((client) => {
-                    const sigStatus = client.last_signature_status || client.last_quote_status;
-                    const payStatus = client.last_payment_status;
+            <div className="hidden md:block">
+              <TableScrollContainer minWidth="1240px">
+                <table className="w-full min-w-[1240px] text-left text-sm whitespace-nowrap border-separate border-spacing-0">
+                  <thead className="bg-gray-50/95 backdrop-blur-sm">
+                    <tr>
+                      <ClientesSortHeader field="full_name" currentSort={sort} currentDirection={direction} className="table-sticky-col-head rounded-tl-2xl">
+                        Cliente
+                      </ClientesSortHeader>
+                      <ClientesSortHeader field="email" currentSort={sort} currentDirection={direction} className="border-b border-gray-200">
+                        Contato
+                      </ClientesSortHeader>
+                      <ClientesSortHeader field="partner_names" currentSort={sort} currentDirection={direction} className="border-b border-gray-200">
+                        Parceiros
+                      </ClientesSortHeader>
+                      <ClientesSortHeader field="products_count" currentSort={sort} currentDirection={direction} align="center" className="border-b border-gray-200">
+                        Produtos
+                      </ClientesSortHeader>
+                      <ClientesSortHeader field="cotacoes_count" currentSort={sort} currentDirection={direction} align="center" className="border-b border-gray-200">
+                        Cotações
+                      </ClientesSortHeader>
+                      <ClientesSortHeader field="last_signature_status" currentSort={sort} currentDirection={direction} className="border-b border-gray-200">
+                        Assinatura
+                      </ClientesSortHeader>
+                      <ClientesSortHeader field="paid_installments" currentSort={sort} currentDirection={direction} className="border-b border-gray-200">
+                        Parcelas
+                      </ClientesSortHeader>
+                      <ClientesSortHeader field="created_at" currentSort={sort} currentDirection={direction} className="border-b border-gray-200">
+                        Cadastro
+                      </ClientesSortHeader>
+                      <ClientesSortHeader field="updated_at" currentSort={sort} currentDirection={direction} className="border-b border-gray-200">
+                        Atualização
+                      </ClientesSortHeader>
+                      <th scope="col" className="px-6 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right border-b border-gray-200 rounded-tr-2xl">
+                        Ações
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {clients.map((client) => {
+                      const sigStatus = client.last_signature_status || client.last_quote_status;
+                      const payStatus = client.last_payment_status;
 
-                    return (
-                      <tr key={client.id} className="hover:bg-gray-50/80 transition-colors duration-150">
-                        {/* Cliente: Nome e Documento */}
-                        <td className="px-6 py-4">
-                          <div className="font-semibold text-gray-900">{client.full_name}</div>
-                          <div className="text-xs text-gray-500 mt-0.5">{formatDocument(client.document_number)}</div>
-                        </td>
+                      return (
+                        <tr key={client.id} className="group hover:bg-gray-50/80 transition-colors duration-150">
+                          {/* Cliente: Nome e Documento */}
+                          <td className="px-6 py-4 table-sticky-col-cell">
+                            <div className="font-semibold text-gray-900">{client.full_name}</div>
+                            <div className="text-xs text-gray-500 mt-0.5">{formatDocument(client.document_number)}</div>
+                          </td>
 
-                        {/* Contato: Email e Telefone */}
-                        <td className="px-6 py-4 text-gray-600">
-                          <div className="text-gray-900 text-xs font-medium">{client.email || '-'}</div>
-                          <div className="text-xs text-gray-500 mt-0.5">{client.phone || '-'}</div>
-                        </td>
+                          {/* Contato: Email e Telefone */}
+                          <td className="px-6 py-4 text-gray-600 border-b border-gray-100">
+                            <div className="text-gray-900 text-xs font-medium">{client.email || '-'}</div>
+                            <div className="text-xs text-gray-500 mt-0.5">{client.phone || '-'}</div>
+                          </td>
 
-                        {/* Parceiros */}
-                        <td className="px-6 py-4 text-gray-600 max-w-[240px] truncate" title={client.partner_names || ''}>
-                          {client.partner_names || '-'}
-                        </td>
+                          {/* Parceiros */}
+                          <td className="px-6 py-4 text-gray-600 max-w-[240px] truncate border-b border-gray-100" title={client.partner_names || ''}>
+                            {client.partner_names || '-'}
+                          </td>
 
-                        {/* Produtos */}
-                        <td className="px-6 py-4 text-center">
-                          <span className="inline-flex items-center justify-center min-w-[28px] h-6 px-2 rounded-full bg-teal-50 text-[#0e4a5a] text-xs font-bold border border-teal-100">
-                            {client.products_count}
-                          </span>
-                        </td>
-
-                        {/* Cotações */}
-                        <td className="px-6 py-4 text-center">
-                          <span className="inline-flex items-center justify-center min-w-[28px] h-6 px-2 rounded-full bg-gray-100 text-gray-800 text-xs font-bold border border-gray-200">
-                            {client.cotacoes_count}
-                          </span>
-                        </td>
-
-                        {/* Assinatura */}
-                        <td className="px-6 py-4 text-gray-600">
-                          {sigStatus ? (
-                            <span
-                              className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
-                                statusBadgeColor[sigStatus.toLowerCase()] || statusBadgeColor[sigStatus] || 'bg-gray-100 text-gray-700 border-gray-200'
-                              }`}
-                            >
-                              {formatStatusLabel(sigStatus)}
+                          {/* Produtos */}
+                          <td className="px-6 py-4 text-center border-b border-gray-100">
+                            <span className="inline-flex items-center justify-center min-w-[28px] h-6 px-2 rounded-full bg-teal-50 text-[#0e4a5a] text-xs font-bold border border-teal-100">
+                              {client.products_count}
                             </span>
-                          ) : (
-                            <span className="text-gray-400 text-xs">—</span>
-                          )}
-                        </td>
+                          </td>
 
-                        {/* Parcelas e Pagamento */}
-                        <td className="px-6 py-4 text-gray-600">
-                          {client.total_installments > 0 ? (
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-gray-900 text-xs">
-                                {client.paid_installments}/{client.total_installments}
+                          {/* Cotações */}
+                          <td className="px-6 py-4 text-center border-b border-gray-100">
+                            <span className="inline-flex items-center justify-center min-w-[28px] h-6 px-2 rounded-full bg-gray-100 text-gray-800 text-xs font-bold border border-gray-200">
+                              {client.cotacoes_count}
+                            </span>
+                          </td>
+
+                          {/* Assinatura */}
+                          <td className="px-6 py-4 text-gray-600 border-b border-gray-100">
+                            {sigStatus ? (
+                              <span
+                                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
+                                  statusBadgeColor[sigStatus.toLowerCase()] || statusBadgeColor[sigStatus] || 'bg-gray-100 text-gray-700 border-gray-200'
+                                }`}
+                              >
+                                {formatStatusLabel(sigStatus)}
                               </span>
-                              {payStatus && (
-                                <span
-                                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold border ${
-                                    statusBadgeColor[payStatus.toLowerCase()] || statusBadgeColor[payStatus] || 'bg-gray-100 text-gray-700 border-gray-200'
-                                  }`}
-                                >
-                                  {formatStatusLabel(payStatus)}
+                            ) : (
+                              <span className="text-gray-400 text-xs">—</span>
+                            )}
+                          </td>
+
+                          {/* Parcelas e Pagamento */}
+                          <td className="px-6 py-4 text-gray-600 border-b border-gray-100">
+                            {client.total_installments > 0 ? (
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-gray-900 text-xs">
+                                  {client.paid_installments}/{client.total_installments}
                                 </span>
+                                {payStatus && (
+                                  <span
+                                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold border ${
+                                      statusBadgeColor[payStatus.toLowerCase()] || statusBadgeColor[payStatus] || 'bg-gray-100 text-gray-700 border-gray-200'
+                                    }`}
+                                  >
+                                    {formatStatusLabel(payStatus)}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-gray-400 text-xs">—</span>
+                            )}
+                          </td>
+
+                          {/* Data de Cadastro */}
+                          <td className="px-6 py-4 text-gray-500 text-xs border-b border-gray-100">
+                            {client.created_at ? formatDate(client.created_at) : '-'}
+                          </td>
+
+                          {/* Data de Atualização */}
+                          <td className="px-6 py-4 text-gray-500 text-xs border-b border-gray-100">
+                            {client.updated_at ? formatDate(client.updated_at) : '-'}
+                          </td>
+
+                          {/* Ações */}
+                          <td className="px-6 py-4 text-right border-b border-gray-100">
+                            <div className="flex items-center justify-end gap-2">
+                              <Link
+                                href={`/admin/clientes/${client.id}`}
+                                className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0e4a5a] hover:text-[#0b3a47] py-1.5 px-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors shadow-2xs"
+                              >
+                                Ver operação <ArrowRight size={14} />
+                              </Link>
+                              {isDev && (
+                                <ExcluirClienteButton
+                                  clientId={client.id}
+                                  clientName={client.full_name}
+                                  variant="icon"
+                                />
                               )}
                             </div>
-                          ) : (
-                            <span className="text-gray-400 text-xs">—</span>
-                          )}
-                        </td>
-
-                        {/* Data de Cadastro */}
-                        <td className="px-6 py-4 text-gray-500 text-xs">
-                          {client.created_at ? formatDate(client.created_at) : '-'}
-                        </td>
-
-                        {/* Data de Atualização */}
-                        <td className="px-6 py-4 text-gray-500 text-xs">
-                          {client.updated_at ? formatDate(client.updated_at) : '-'}
-                        </td>
-
-                        {/* Ações */}
-                        <td className="px-6 py-4 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <Link
-                              href={`/admin/clientes/${client.id}`}
-                              className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0e4a5a] hover:text-[#0b3a47] py-1.5 px-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors shadow-2xs"
-                            >
-                              Ver operação <ArrowRight size={14} />
-                            </Link>
-                            {isDev && (
-                              <ExcluirClienteButton
-                                clientId={client.id}
-                                clientName={client.full_name}
-                                variant="icon"
-                              />
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </TableScrollContainer>
             </div>
 
             {/* Paginação */}

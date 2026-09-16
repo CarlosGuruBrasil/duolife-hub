@@ -4,6 +4,7 @@ import { getPartnerAccessContext, verifyPartnerAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { formatStatusLabel } from '@/lib/format';
+import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
 
 interface ComissaoRow {
   id: string;
@@ -171,7 +172,7 @@ export default async function ComissoesPage() {
         </div>
       </div>
 
-      <div className="card overflow-hidden p-0">
+      <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs">
         {comissoes.length === 0 ? (
           <div className="px-6 py-12 text-center">
             <h2 className="text-lg font-bold" style={{ color: 'var(--primary)' }}>Nenhuma comissão lançada</h2>
@@ -180,38 +181,38 @@ export default async function ComissoesPage() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[820px] text-left text-sm">
-              <thead className="table-head">
+          <TableScrollContainer minWidth="820px">
+            <table className="w-full min-w-[820px] text-left text-sm border-separate border-spacing-0">
+              <thead className="bg-gray-50/95 text-gray-600 text-xs font-semibold uppercase tracking-wider">
                 <tr>
-                  <th className="px-5 py-3 font-semibold">Cliente</th>
-                  {isCorretora && <th className="px-5 py-3 font-semibold">Corretor</th>}
-                  <th className="px-5 py-3 font-semibold">Apólice</th>
-                  <th className="px-5 py-3 font-semibold">Produto</th>
-                  <th className="px-5 py-3 font-semibold">Referência</th>
-                  <th className="px-5 py-3 font-semibold">Valor</th>
-                  <th className="px-5 py-3 font-semibold">Pagamento</th>
-                  <th className="px-5 py-3 font-semibold">Status</th>
+                  <th className="px-5 py-3.5 table-sticky-col-head rounded-tl-2xl">Cliente</th>
+                  {isCorretora && <th className="px-5 py-3.5 border-b border-gray-200">Corretor</th>}
+                  <th className="px-5 py-3.5 border-b border-gray-200">Apólice</th>
+                  <th className="px-5 py-3.5 border-b border-gray-200">Produto</th>
+                  <th className="px-5 py-3.5 border-b border-gray-200">Referência</th>
+                  <th className="px-5 py-3.5 border-b border-gray-200">Valor</th>
+                  <th className="px-5 py-3.5 border-b border-gray-200">Pagamento</th>
+                  <th className="px-5 py-3.5 border-b border-gray-200 rounded-tr-2xl">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {comissoes.map((comissao) => (
-                  <tr key={comissao.id} className="table-row">
-                    <td className="px-5 py-4 font-semibold" style={{ color: 'var(--primary)' }}>{comissao.client_name}</td>
+                  <tr key={comissao.id} className="group hover:bg-gray-50/75 transition-colors">
+                    <td className="px-5 py-4 font-semibold table-sticky-col-cell" style={{ color: 'var(--primary)' }}>{comissao.client_name}</td>
                     {isCorretora && (
-                      <td className="px-5 py-4 text-xs font-semibold text-gray-700">
+                      <td className="px-5 py-4 text-xs font-semibold text-gray-700 border-b border-gray-100">
                         {comissao.partner_name || 'Corretora'}
                       </td>
                     )}
-                    <td className="px-5 py-4 text-gray-600">{comissao.policy_number || '-'}</td>
-                    <td className="px-5 py-4 text-gray-600">{comissao.product_name}</td>
-                    <td className="px-5 py-4 text-gray-600">{comissao.reference_month || '-'}</td>
-                    <td className="px-5 py-4 text-gray-600">
+                    <td className="px-5 py-4 text-gray-600 border-b border-gray-100">{comissao.policy_number || '-'}</td>
+                    <td className="px-5 py-4 text-gray-600 border-b border-gray-100">{comissao.product_name}</td>
+                    <td className="px-5 py-4 text-gray-600 border-b border-gray-100">{comissao.reference_month || '-'}</td>
+                    <td className="px-5 py-4 text-gray-600 border-b border-gray-100">
                       {formatCurrency(comissao.amount)}
                       <span className="block text-xs text-gray-400">{Number(comissao.rate)}%</span>
                     </td>
-                    <td className="px-5 py-4 text-gray-500">{formatDate(comissao.payment_date)}</td>
-                    <td className="px-5 py-4">
+                    <td className="px-5 py-4 text-gray-500 border-b border-gray-100">{formatDate(comissao.payment_date)}</td>
+                    <td className="px-5 py-4 border-b border-gray-100">
                       <span className="status-pill">
                         {formatStatusLabel(comissao.status)}
                       </span>
@@ -220,7 +221,7 @@ export default async function ComissoesPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableScrollContainer>
         )}
       </div>
     </div>

@@ -9,6 +9,7 @@ import { VendasFilterSection } from './_components/VendasFilterSection';
 import { VendasPagination } from './_components/VendasPagination';
 import { PeriodPreset, resolveDateRange } from '@/lib/date-filters';
 import { formatCurrency, formatDate, formatStatusLabel } from '@/lib/format';
+import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
 
 export const dynamic = 'force-dynamic';
 
@@ -221,7 +222,7 @@ export default async function AdminVendasPage({
       />
 
       {/* Tabela de Vendas Padronizada */}
-      <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden">
+      <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs">
         {vendas.length === 0 ? (
           <div className="px-6 py-16 text-center">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 text-gray-400">
@@ -246,31 +247,31 @@ export default async function AdminVendasPage({
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1100px] text-left text-sm">
-                <thead className="border-b border-gray-200 bg-gray-50/75 text-xs font-semibold uppercase tracking-wider text-gray-600">
+            <TableScrollContainer minWidth="1100px">
+              <table className="w-full min-w-[1100px] text-left text-sm border-separate border-spacing-0">
+                <thead className="bg-gray-50/95 text-xs font-semibold uppercase tracking-wider text-gray-600">
                   <tr>
-                    <th className="px-5 py-3.5">Parceiro</th>
-                    <th className="px-5 py-3.5">Cliente</th>
-                    <th className="px-5 py-3.5">Apólice</th>
-                    <th className="px-5 py-3.5">Produto</th>
-                    <th className="px-5 py-3.5">Prêmio</th>
-                    <th className="px-5 py-3.5">Comissão</th>
-                    <th className="px-5 py-3.5">Vigência</th>
-                    <th className="px-5 py-3.5">Status</th>
+                    <th className="px-5 py-3.5 table-sticky-col-head rounded-tl-2xl">Cliente</th>
+                    <th className="px-5 py-3.5 border-b border-gray-200">Parceiro</th>
+                    <th className="px-5 py-3.5 border-b border-gray-200">Apólice</th>
+                    <th className="px-5 py-3.5 border-b border-gray-200">Produto</th>
+                    <th className="px-5 py-3.5 border-b border-gray-200">Prêmio</th>
+                    <th className="px-5 py-3.5 border-b border-gray-200">Comissão</th>
+                    <th className="px-5 py-3.5 border-b border-gray-200">Vigência</th>
+                    <th className="px-5 py-3.5 border-b border-gray-200 rounded-tr-2xl">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 bg-white">
                   {vendas.map((venda) => (
-                    <tr key={venda.id} className="hover:bg-gray-50/75 transition-colors">
-                      <td className="px-5 py-4 text-xs font-semibold text-gray-700">{venda.partner_name}</td>
-                      <td className="px-5 py-4">
+                    <tr key={venda.id} className="group hover:bg-gray-50/75 transition-colors">
+                      <td className="px-5 py-4 table-sticky-col-cell">
                         <div className="font-semibold text-gray-900">{venda.client_name}</div>
                         {venda.client_cpf_cnpj && (
                           <div className="text-xs text-gray-500">{venda.client_cpf_cnpj}</div>
                         )}
                       </td>
-                      <td className="px-5 py-4 text-gray-600">
+                      <td className="px-5 py-4 text-xs font-semibold text-gray-700 border-b border-gray-100">{venda.partner_name}</td>
+                      <td className="px-5 py-4 text-gray-600 border-b border-gray-100">
                         <div className="font-semibold text-gray-800">{venda.policy_number || '-'}</div>
                         {venda.source === 'wix' ? (
                           <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-cyan-50 border border-cyan-200 text-[#0e4a5a] mt-0.5">
@@ -282,18 +283,18 @@ export default async function AdminVendasPage({
                           </span>
                         )}
                       </td>
-                      <td className="px-5 py-4 text-gray-700 font-medium">{venda.product_name}</td>
-                      <td className="px-5 py-4 font-semibold text-gray-900">{formatCurrency(venda.premio_total)}</td>
-                      <td className="px-5 py-4 text-gray-600">
+                      <td className="px-5 py-4 text-gray-700 font-medium border-b border-gray-100">{venda.product_name}</td>
+                      <td className="px-5 py-4 font-semibold text-gray-900 border-b border-gray-100">{formatCurrency(venda.premio_total)}</td>
+                      <td className="px-5 py-4 text-gray-600 border-b border-gray-100">
                         <div className="font-semibold text-gray-900">{formatCurrency(venda.commission_amount)}</div>
                         {venda.commission_rate && (
                           <span className="text-xs text-gray-400">{Number(venda.commission_rate)}%</span>
                         )}
                       </td>
-                      <td className="px-5 py-4 text-xs text-gray-500">
+                      <td className="px-5 py-4 text-xs text-gray-500 border-b border-gray-100">
                         {formatDate(venda.issue_date)} — {formatDate(venda.expiry_date)}
                       </td>
-                      <td className="px-5 py-4">
+                      <td className="px-5 py-4 border-b border-gray-100">
                         <span
                           className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold border ${
                             statusColor[venda.status?.toLowerCase()] || statusColor[venda.status] || 'bg-gray-100 text-gray-700 border-gray-200'
@@ -306,7 +307,7 @@ export default async function AdminVendasPage({
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableScrollContainer>
 
             <VendasPagination
               currentPage={safePage}

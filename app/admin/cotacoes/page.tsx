@@ -13,6 +13,7 @@ import { safeExternalUrl } from '@/lib/safe-url';
 import { CotacoesFilterSection } from './_components/CotacoesFilterSection';
 import { CotacoesPagination } from './_components/CotacoesPagination';
 import { PeriodPreset, resolveDateRange } from '@/lib/date-filters';
+import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
 
 export const dynamic = 'force-dynamic';
 
@@ -220,7 +221,7 @@ export default async function AdminCotacoesPage({
       />
 
       {/* Main Content Card */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs">
         {cotacoes.length === 0 ? (
           <div className="px-6 py-20 text-center flex flex-col items-center justify-center">
             <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mb-4">
@@ -244,18 +245,18 @@ export default async function AdminCotacoesPage({
             )}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1100px] text-left text-sm whitespace-nowrap">
-              <thead className="bg-slate-50/80 backdrop-blur-sm border-b border-slate-200 text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+          <TableScrollContainer minWidth="1100px">
+            <table className="w-full min-w-[1100px] text-left text-sm whitespace-nowrap border-separate border-spacing-0">
+              <thead className="bg-slate-50/95 backdrop-blur-sm text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
                 <tr>
-                  <th className="px-6 py-4">Cliente / CPF</th>
-                  <th className="px-6 py-4">Plano / Cobertura</th>
-                  <th className="px-6 py-4">Parceiro / Vendedor</th>
-                  <th className="px-6 py-4 text-right">Valor Total</th>
-                  <th className="px-6 py-4 text-center">Situação / Status</th>
-                  <th className="px-6 py-4 text-center">Fatura & Contrato</th>
-                  <th className="px-6 py-4 text-right">Data</th>
-                  <th className="px-6 py-4 text-center">Ações</th>
+                  <th className="px-6 py-4 table-sticky-col-head rounded-tl-2xl">Cliente / CPF</th>
+                  <th className="px-6 py-4 border-b border-slate-200">Plano / Cobertura</th>
+                  <th className="px-6 py-4 border-b border-slate-200">Parceiro / Vendedor</th>
+                  <th className="px-6 py-4 border-b border-slate-200 text-right">Valor Total</th>
+                  <th className="px-6 py-4 border-b border-slate-200 text-center">Situação / Status</th>
+                  <th className="px-6 py-4 border-b border-slate-200 text-center">Fatura & Contrato</th>
+                  <th className="px-6 py-4 border-b border-slate-200 text-right">Data</th>
+                  <th className="px-6 py-4 border-b border-slate-200 text-center rounded-tr-2xl">Ações</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -269,7 +270,7 @@ export default async function AdminCotacoesPage({
 
                   return (
                     <tr key={cotacao.id} className="hover:bg-slate-50/60 transition-colors duration-150 group">
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 table-sticky-col-cell">
                         <Link href={`/admin/cotacoes/${cotacao.id}`} className="font-semibold text-slate-900 hover:text-emerald-600 hover:underline block">
                           {cotacao.client_name}
                         </Link>
@@ -278,12 +279,12 @@ export default async function AdminCotacoesPage({
                         </div>
                       </td>
 
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 border-b border-slate-100">
                         <span className="text-sm font-semibold text-slate-900 block">{planoNome}</span>
                         {cobertura && <span className="text-xs text-slate-500 font-normal block">{cobertura}</span>}
                       </td>
 
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 border-b border-slate-100">
                         <span className="inline-flex items-center gap-1.5 font-medium text-slate-700">
                           <div className="w-5 h-5 rounded bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600 uppercase">
                             {(cotacao.partner_name || 'DL').substring(0, 2)}
@@ -292,20 +293,20 @@ export default async function AdminCotacoesPage({
                         </span>
                       </td>
 
-                      <td className="px-6 py-4 text-right">
+                      <td className="px-6 py-4 text-right border-b border-slate-100">
                         <span className="text-sm font-bold text-slate-900 block">{getDisplayPrice(cotacao)}</span>
                         {clientData.parcela && Number(clientData.parcela) > 1 && (
                           <span className="text-[11px] text-slate-500 font-normal block">{clientData.parcela}x parcelado</span>
                         )}
                       </td>
 
-                      <td className="px-6 py-4 text-center">
+                      <td className="px-6 py-4 text-center border-b border-slate-100">
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${statusColor[cotacao.status?.toLowerCase()] || statusColor[cotacao.status] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
                           {statusLabel[cotacao.status?.toLowerCase()] || formatStatusLabel(cotacao.status)}
                         </span>
                       </td>
 
-                      <td className="px-6 py-4 text-center">
+                      <td className="px-6 py-4 text-center border-b border-slate-100">
                         <div className="flex items-center justify-center gap-2">
                           {linkBoleto ? (
                             <a
@@ -337,11 +338,11 @@ export default async function AdminCotacoesPage({
                         </div>
                       </td>
 
-                      <td className="px-6 py-4 text-slate-500 text-xs text-right font-medium">
+                      <td className="px-6 py-4 text-slate-500 text-xs text-right font-medium border-b border-slate-100">
                         {formatDateTime(cotacao.created_at)}
                       </td>
 
-                      <td className="px-6 py-4 text-center">
+                      <td className="px-6 py-4 text-center border-b border-slate-100">
                         <div className="flex items-center justify-center gap-2">
                           {cotacao.status === 'rascunho' && (
                             <Link
@@ -375,7 +376,7 @@ export default async function AdminCotacoesPage({
                 })}
               </tbody>
             </table>
-          </div>
+          </TableScrollContainer>
         )}
 
         <CotacoesPagination

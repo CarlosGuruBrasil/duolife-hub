@@ -4,6 +4,7 @@ import { verifyAdminAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { formatCurrency, formatDateTime as formatDate, formatStatusLabel } from '@/lib/format';
+import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
 
 export const dynamic = 'force-dynamic';
 
@@ -97,45 +98,45 @@ export default async function AdminComissoesPage() {
       </section>
 
       {/* Tabela de Comissões Padronizada */}
-      <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden">
+      <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs">
         {comissoes.length === 0 ? (
           <div className="px-6 py-16 text-center text-xs font-bold text-gray-400">Nenhuma comissão lançada.</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[1180px] text-left text-sm">
-              <thead className="table-head">
+          <TableScrollContainer minWidth="1180px">
+            <table className="w-full min-w-[1180px] text-left text-sm border-separate border-spacing-0">
+              <thead className="bg-gray-50/95 text-gray-600 text-xs font-semibold uppercase tracking-wider">
                 <tr>
-                  <th className="px-5 py-3 font-semibold">Parceiro</th>
-                  <th className="px-5 py-3 font-semibold">Cliente</th>
-                  <th className="px-5 py-3 font-semibold">Apólice</th>
-                  <th className="px-5 py-3 font-semibold">Produto</th>
-                  <th className="px-5 py-3 font-semibold">Referência</th>
-                  <th className="px-5 py-3 font-semibold">Valor</th>
-                  <th className="px-5 py-3 font-semibold">Pagamento</th>
-                  <th className="px-5 py-3 font-semibold">Status</th>
+                  <th className="px-5 py-3.5 table-sticky-col-head rounded-tl-2xl">Parceiro</th>
+                  <th className="px-5 py-3.5 border-b border-gray-200">Cliente</th>
+                  <th className="px-5 py-3.5 border-b border-gray-200">Apólice</th>
+                  <th className="px-5 py-3.5 border-b border-gray-200">Produto</th>
+                  <th className="px-5 py-3.5 border-b border-gray-200">Referência</th>
+                  <th className="px-5 py-3.5 border-b border-gray-200">Valor</th>
+                  <th className="px-5 py-3.5 border-b border-gray-200">Pagamento</th>
+                  <th className="px-5 py-3.5 border-b border-gray-200 rounded-tr-2xl">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {comissoes.map((comissao) => (
-                  <tr key={comissao.id} className="table-row">
-                    <td className="px-5 py-4 text-gray-600">{comissao.partner_name}</td>
-                    <td className="px-5 py-4 font-semibold" style={{ color: 'var(--primary)' }}>{comissao.client_name}</td>
-                    <td className="px-5 py-4 text-gray-600">{comissao.policy_number || '-'}</td>
-                    <td className="px-5 py-4 text-gray-600">{comissao.product_name}</td>
-                    <td className="px-5 py-4 text-gray-600">{comissao.reference_month || '-'}</td>
-                    <td className="px-5 py-4 text-gray-600">
+                  <tr key={comissao.id} className="group hover:bg-gray-50/75 transition-colors">
+                    <td className="px-5 py-4 table-sticky-col-cell text-xs font-semibold text-gray-700">{comissao.partner_name}</td>
+                    <td className="px-5 py-4 font-semibold border-b border-gray-100" style={{ color: 'var(--primary)' }}>{comissao.client_name}</td>
+                    <td className="px-5 py-4 text-gray-600 border-b border-gray-100">{comissao.policy_number || '-'}</td>
+                    <td className="px-5 py-4 text-gray-600 border-b border-gray-100">{comissao.product_name}</td>
+                    <td className="px-5 py-4 text-gray-600 border-b border-gray-100">{comissao.reference_month || '-'}</td>
+                    <td className="px-5 py-4 text-gray-600 border-b border-gray-100">
                       {formatCurrency(comissao.amount)}
                       <span className="block text-xs text-gray-400">{Number(comissao.rate)}%</span>
                     </td>
-                    <td className="px-5 py-4 text-gray-500">{formatDate(comissao.payment_date)}</td>
-                    <td className="px-5 py-4">
+                    <td className="px-5 py-4 text-gray-500 border-b border-gray-100">{formatDate(comissao.payment_date)}</td>
+                    <td className="px-5 py-4 border-b border-gray-100">
                       <span className="status-pill">{formatStatusLabel(comissao.status)}</span>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableScrollContainer>
         )}
       </div>
     </div>

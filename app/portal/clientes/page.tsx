@@ -15,6 +15,7 @@ import { PortalClientesFilterSection } from './_components/PortalClientesFilterS
 import { PortalClientesSortHeader } from './_components/PortalClientesSortHeader';
 import { PortalClientesPagination } from './_components/PortalClientesPagination';
 import { PortalClientesCardMobile } from './_components/PortalClientesCardMobile';
+import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
 
 export const dynamic = 'force-dynamic';
 
@@ -146,7 +147,7 @@ export default async function PortalClientesPage({
       />
 
       {/* Container de Resultados: Tabela Desktop e Cards Mobile */}
-      <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs overflow-hidden">
+      <div className="bg-white rounded-2xl border border-gray-200/80 shadow-xs">
         {clients.length === 0 ? (
           <div className="px-6 py-16 text-center flex flex-col items-center justify-center space-y-3">
             <div className="w-14 h-14 bg-gray-50 rounded-2xl flex items-center justify-center text-gray-400">
@@ -179,122 +180,124 @@ export default async function PortalClientesPage({
             </div>
 
             {/* Visualização em Tabela Desktop (>= 768px) */}
-            <div className="hidden md:block overflow-x-auto">
-              <table className="w-full min-w-[1080px] text-left text-sm whitespace-nowrap">
-                <thead className="bg-gray-50/80 backdrop-blur-sm border-b border-gray-200">
-                  <tr>
-                    <PortalClientesSortHeader field="full_name" currentSort={sort} currentDirection={direction}>
-                      Cliente
-                    </PortalClientesSortHeader>
-                    <PortalClientesSortHeader field="email" currentSort={sort} currentDirection={direction}>
-                      Contato
-                    </PortalClientesSortHeader>
-                    <PortalClientesSortHeader field="products_count" currentSort={sort} currentDirection={direction} align="center">
-                      Produtos
-                    </PortalClientesSortHeader>
-                    <PortalClientesSortHeader field="cotacoes_count" currentSort={sort} currentDirection={direction} align="center">
-                      Cotações
-                    </PortalClientesSortHeader>
-                    <PortalClientesSortHeader field="last_signature_status" currentSort={sort} currentDirection={direction}>
-                      Assinatura
-                    </PortalClientesSortHeader>
-                    <PortalClientesSortHeader field="paid_installments" currentSort={sort} currentDirection={direction}>
-                      Parcelas
-                    </PortalClientesSortHeader>
-                    <PortalClientesSortHeader field="updated_at" currentSort={sort} currentDirection={direction}>
-                      Atualização
-                    </PortalClientesSortHeader>
-                    <th scope="col" className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">
-                      Ações
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {clients.map((client) => {
-                    const sigStatus = client.last_signature_status || client.last_quote_status;
-                    const payStatus = client.last_payment_status;
+            <div className="hidden md:block">
+              <TableScrollContainer minWidth="1080px">
+                <table className="w-full min-w-[1080px] text-left text-sm whitespace-nowrap border-separate border-spacing-0">
+                  <thead className="bg-gray-50/95 backdrop-blur-sm">
+                    <tr>
+                      <PortalClientesSortHeader field="full_name" currentSort={sort} currentDirection={direction} className="table-sticky-col-head rounded-tl-2xl">
+                        Cliente
+                      </PortalClientesSortHeader>
+                      <PortalClientesSortHeader field="email" currentSort={sort} currentDirection={direction} className="border-b border-gray-200">
+                        Contato
+                      </PortalClientesSortHeader>
+                      <PortalClientesSortHeader field="products_count" currentSort={sort} currentDirection={direction} align="center" className="border-b border-gray-200">
+                        Produtos
+                      </PortalClientesSortHeader>
+                      <PortalClientesSortHeader field="cotacoes_count" currentSort={sort} currentDirection={direction} align="center" className="border-b border-gray-200">
+                        Cotações
+                      </PortalClientesSortHeader>
+                      <PortalClientesSortHeader field="last_signature_status" currentSort={sort} currentDirection={direction} className="border-b border-gray-200">
+                        Assinatura
+                      </PortalClientesSortHeader>
+                      <PortalClientesSortHeader field="paid_installments" currentSort={sort} currentDirection={direction} className="border-b border-gray-200">
+                        Parcelas
+                      </PortalClientesSortHeader>
+                      <PortalClientesSortHeader field="updated_at" currentSort={sort} currentDirection={direction} className="border-b border-gray-200">
+                        Atualização
+                      </PortalClientesSortHeader>
+                      <th scope="col" className="px-5 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right border-b border-gray-200 rounded-tr-2xl">
+                        Ações
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {clients.map((client) => {
+                      const sigStatus = client.last_signature_status || client.last_quote_status;
+                      const payStatus = client.last_payment_status;
 
-                    return (
-                      <tr key={client.id} className="hover:bg-gray-50/80 transition-colors duration-150">
-                        {/* Cliente: Nome e Documento */}
-                        <td className="px-5 py-4">
-                          <div className="font-semibold text-gray-900">{client.full_name}</div>
-                          <div className="text-xs text-gray-500 mt-0.5">{formatDocument(client.document_number)}</div>
-                        </td>
+                      return (
+                        <tr key={client.id} className="group hover:bg-gray-50/80 transition-colors duration-150">
+                          {/* Cliente: Nome e Documento */}
+                          <td className="px-5 py-4 table-sticky-col-cell">
+                            <div className="font-semibold text-gray-900">{client.full_name}</div>
+                            <div className="text-xs text-gray-500 mt-0.5">{formatDocument(client.document_number)}</div>
+                          </td>
 
-                        {/* Contato */}
-                        <td className="px-5 py-4 text-gray-600">
-                          <div className="text-gray-900 text-xs font-medium">{client.email || '-'}</div>
-                          <div className="text-xs text-gray-500 mt-0.5">{client.phone || '-'}</div>
-                        </td>
+                          {/* Contato */}
+                          <td className="px-5 py-4 text-gray-600 border-b border-gray-100">
+                            <div className="text-gray-900 text-xs font-medium">{client.email || '-'}</div>
+                            <div className="text-xs text-gray-500 mt-0.5">{client.phone || '-'}</div>
+                          </td>
 
-                        {/* Produtos */}
-                        <td className="px-5 py-4 text-center">
-                          <span className="inline-flex items-center justify-center h-6 min-w-[24px] px-1.5 rounded-full bg-gray-100 text-xs font-bold text-gray-700">
-                            {client.products_count}
-                          </span>
-                        </td>
-
-                        {/* Cotações */}
-                        <td className="px-5 py-4 text-center">
-                          <span className="inline-flex items-center justify-center h-6 min-w-[24px] px-1.5 rounded-full bg-gray-100 text-xs font-bold text-gray-700">
-                            {client.cotacoes_count}
-                          </span>
-                        </td>
-
-                        {/* Status da Assinatura */}
-                        <td className="px-5 py-4">
-                          {sigStatus ? (
-                            <span
-                              className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${
-                                statusBadgeColor[sigStatus.toLowerCase()] || statusBadgeColor[sigStatus] || 'bg-gray-50 text-gray-700 border-gray-200'
-                              }`}
-                            >
-                              {formatStatusLabel(sigStatus)}
+                          {/* Produtos */}
+                          <td className="px-5 py-4 text-center border-b border-gray-100">
+                            <span className="inline-flex items-center justify-center h-6 min-w-[24px] px-1.5 rounded-full bg-gray-100 text-xs font-bold text-gray-700">
+                              {client.products_count}
                             </span>
-                          ) : (
-                            <span className="text-gray-400 text-xs">-</span>
-                          )}
-                        </td>
+                          </td>
 
-                        {/* Parcelas / Pagamento */}
-                        <td className="px-5 py-4 text-gray-600">
-                          {client.total_installments > 0 ? (
-                            <div className="flex flex-col gap-0.5">
-                              <span className="font-bold text-gray-900 text-xs">
-                                {client.paid_installments}/{client.total_installments} parcelas
+                          {/* Cotações */}
+                          <td className="px-5 py-4 text-center border-b border-gray-100">
+                            <span className="inline-flex items-center justify-center h-6 min-w-[24px] px-1.5 rounded-full bg-gray-100 text-xs font-bold text-gray-700">
+                              {client.cotacoes_count}
+                            </span>
+                          </td>
+
+                          {/* Status da Assinatura */}
+                          <td className="px-5 py-4 border-b border-gray-100">
+                            {sigStatus ? (
+                              <span
+                                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border ${
+                                  statusBadgeColor[sigStatus.toLowerCase()] || statusBadgeColor[sigStatus] || 'bg-gray-50 text-gray-700 border-gray-200'
+                                }`}
+                              >
+                                {formatStatusLabel(sigStatus)}
                               </span>
-                              {payStatus && (
-                                <span className="text-[11px] text-gray-500">
-                                  {formatStatusLabel(payStatus)}
+                            ) : (
+                              <span className="text-gray-400 text-xs">-</span>
+                            )}
+                          </td>
+
+                          {/* Parcelas / Pagamento */}
+                          <td className="px-5 py-4 text-gray-600 border-b border-gray-100">
+                            {client.total_installments > 0 ? (
+                              <div className="flex flex-col gap-0.5">
+                                <span className="font-bold text-gray-900 text-xs">
+                                  {client.paid_installments}/{client.total_installments} parcelas
                                 </span>
-                              )}
-                            </div>
-                          ) : (
-                            <span className="text-gray-400 text-xs">-</span>
-                          )}
-                        </td>
+                                {payStatus && (
+                                  <span className="text-[11px] text-gray-500">
+                                    {formatStatusLabel(payStatus)}
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-gray-400 text-xs">-</span>
+                            )}
+                          </td>
 
-                        {/* Última atualização */}
-                        <td className="px-5 py-4 text-gray-500 text-xs">
-                          {client.updated_at ? formatDate(client.updated_at) : formatDate(client.created_at)}
-                        </td>
+                          {/* Última atualização */}
+                          <td className="px-5 py-4 text-gray-500 text-xs border-b border-gray-100">
+                            {client.updated_at ? formatDate(client.updated_at) : formatDate(client.created_at)}
+                          </td>
 
-                        {/* Link de Ação */}
-                        <td className="px-5 py-4 text-right">
-                          <Link
-                            href={`/portal/clientes/${client.id}`}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0e4a5a]/5 text-[#0e4a5a] font-bold text-xs hover:bg-[#0e4a5a]/10 transition-colors"
-                          >
-                            <span>Ver operação</span>
-                            <ArrowRight size={13} />
-                          </Link>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+                          {/* Link de Ação */}
+                          <td className="px-5 py-4 text-right border-b border-gray-100">
+                            <Link
+                              href={`/portal/clientes/${client.id}`}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0e4a5a]/5 text-[#0e4a5a] font-bold text-xs hover:bg-[#0e4a5a]/10 transition-colors"
+                            >
+                              <span>Ver operação</span>
+                              <ArrowRight size={13} />
+                            </Link>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </TableScrollContainer>
             </div>
 
             {/* Paginação */}

@@ -738,6 +738,46 @@ textarea.form-input {
   background: #f7fbfb;
 }
 
+/* Custom Scrollbar e Suporte a Tabelas Densas Sticky */
+.custom-scrollbar::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.table-sticky-col-head {
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 30;
+  background-color: #f8fafc;
+  border-right: 1px solid #e2e8f0;
+  box-shadow: 3px 0 6px -2px rgba(0, 0, 0, 0.04);
+}
+
+.table-sticky-col-cell {
+  position: sticky;
+  left: 0;
+  z-index: 10;
+  background-color: #ffffff;
+  border-right: 1px solid #f1f5f9;
+  box-shadow: 3px 0 6px -2px rgba(0, 0, 0, 0.04);
+}
+
+tr:hover .table-sticky-col-cell {
+  background-color: #f8fafc;
+}
+
 .status-pill {
   align-items: center;
   background: var(--accent-soft);

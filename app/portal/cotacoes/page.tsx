@@ -8,6 +8,7 @@ import { formatCurrency, formatDate, formatStatusLabel } from '@/lib/format';
 import { PortalCotacoesFilterSection } from './_components/PortalCotacoesFilterSection';
 import { PortalCotacoesPagination } from './_components/PortalCotacoesPagination';
 import { PeriodPreset, resolveDateRange } from '@/lib/date-filters';
+import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
 
 export const dynamic = 'force-dynamic';
 
@@ -201,7 +202,7 @@ export default async function CotacoesPage({
       />
 
       {/* Listagem */}
-      <div className="card overflow-hidden p-0 border border-gray-200 shadow-xs bg-white">
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-xs">
         {cotacoes.length === 0 ? (
           <div className="px-6 py-16 text-center">
             <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gray-100 text-gray-400">
@@ -230,24 +231,24 @@ export default async function CotacoesPage({
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[850px] text-left text-sm">
-                <thead className="border-b border-gray-200 bg-gray-50/75 text-xs font-semibold uppercase tracking-wider text-gray-600">
+            <TableScrollContainer minWidth="850px">
+              <table className="w-full min-w-[850px] text-left text-sm border-separate border-spacing-0">
+                <thead className="bg-gray-50/95 text-xs font-semibold uppercase tracking-wider text-gray-600">
                   <tr>
-                    <th className="px-5 py-3.5">Cliente</th>
-                    {isCorretora && <th className="px-5 py-3.5">Corretor</th>}
-                    <th className="px-5 py-3.5">Produto</th>
-                    <th className="px-5 py-3.5">Importância</th>
-                    <th className="px-5 py-3.5">Prêmio</th>
-                    <th className="px-5 py-3.5">Status</th>
-                    <th className="px-5 py-3.5">Criada em</th>
-                    <th className="px-5 py-3.5 text-center">Ações</th>
+                    <th className="px-5 py-3.5 table-sticky-col-head rounded-tl-2xl">Cliente</th>
+                    {isCorretora && <th className="px-5 py-3.5 border-b border-gray-200">Corretor</th>}
+                    <th className="px-5 py-3.5 border-b border-gray-200">Produto</th>
+                    <th className="px-5 py-3.5 border-b border-gray-200">Importância</th>
+                    <th className="px-5 py-3.5 border-b border-gray-200">Prêmio</th>
+                    <th className="px-5 py-3.5 border-b border-gray-200">Status</th>
+                    <th className="px-5 py-3.5 border-b border-gray-200">Criada em</th>
+                    <th className="px-5 py-3.5 border-b border-gray-200 text-center rounded-tr-2xl">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 bg-white">
                   {cotacoes.map((cotacao) => (
-                    <tr key={cotacao.id} className="hover:bg-gray-50/75 transition-colors">
-                      <td className="px-5 py-4">
+                    <tr key={cotacao.id} className="group hover:bg-gray-50/75 transition-colors">
+                      <td className="px-5 py-4 table-sticky-col-cell">
                         <Link
                           href={`/portal/cotacoes/${cotacao.id}`}
                           className="font-semibold text-gray-900 hover:text-[#0e4a5a] hover:underline block"
@@ -257,14 +258,14 @@ export default async function CotacoesPage({
                         <div className="text-xs text-gray-500">{cotacao.client_cpf_cnpj}</div>
                       </td>
                       {isCorretora && (
-                        <td className="px-5 py-4 text-xs font-semibold text-gray-700">
+                        <td className="px-5 py-4 text-xs font-semibold text-gray-700 border-b border-gray-100">
                           {cotacao.partner_name || 'Corretora'}
                         </td>
                       )}
-                      <td className="px-5 py-4 text-gray-600 font-medium">{cotacao.product_name}</td>
-                      <td className="px-5 py-4 text-gray-600">{formatCurrency(cotacao.importancia_segurada)}</td>
-                      <td className="px-5 py-4 text-gray-900 font-semibold">{formatCurrency(cotacao.premio_final)}</td>
-                      <td className="px-5 py-4">
+                      <td className="px-5 py-4 text-gray-600 font-medium border-b border-gray-100">{cotacao.product_name}</td>
+                      <td className="px-5 py-4 text-gray-600 border-b border-gray-100">{formatCurrency(cotacao.importancia_segurada)}</td>
+                      <td className="px-5 py-4 text-gray-900 font-semibold border-b border-gray-100">{formatCurrency(cotacao.premio_final)}</td>
+                      <td className="px-5 py-4 border-b border-gray-100">
                         <span
                           className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold border ${
                             statusColor[cotacao.status?.toLowerCase()] || statusColor[cotacao.status] || 'bg-gray-100 text-gray-700 border-gray-200'
@@ -273,8 +274,8 @@ export default async function CotacoesPage({
                           {statusLabel[cotacao.status?.toLowerCase()] || formatStatusLabel(cotacao.status)}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-gray-500 text-xs">{formatDate(cotacao.created_at)}</td>
-                      <td className="px-5 py-4 text-center">
+                      <td className="px-5 py-4 text-gray-500 text-xs border-b border-gray-100">{formatDate(cotacao.created_at)}</td>
+                      <td className="px-5 py-4 text-center border-b border-gray-100">
                         <div className="flex items-center justify-center gap-2">
                           {cotacao.status === 'rascunho' && (
                             <Link
@@ -298,7 +299,7 @@ export default async function CotacoesPage({
                   ))}
                 </tbody>
               </table>
-            </div>
+            </TableScrollContainer>
 
             <PortalCotacoesPagination
               currentPage={safePage}
