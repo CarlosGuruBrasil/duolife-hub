@@ -104,16 +104,21 @@ export async function GET(req: NextRequest) {
         `;
       }
     } else if (access) {
-      // Parceiro pesquisa clientes da sua carteira ou por documento exato
+      // Parceiro pesquisa exclusivamente clientes da sua carteira (isolamento multi-tenant contra IDOR / LGPD)
       const isExactDoc = digitsOnly.length >= 11;
       const targetPartnerId = access.partnerId;
 
       if (isExactDoc) {
-        // Se digitou CPF/CNPJ completo, permite encontrar o cliente mesmo que criado globalmente
+        // Busca por documento exato restrita à carteira do parceiro logado
         clients = await sql`
-          SELECT id, document_number, document_type, full_name, email, phone, birth_date, metadata, created_at
-          FROM insurance_clients
-          WHERE document_number = ${digitsOnly}
+          SELECT DISTINCT ic.id, ic.document_number, ic.document_type, ic.full_name, ic.email, ic.phone, ic.birth_date, ic.metadata, ic.created_at
+          FROM insurance_clients ic
+          LEFT JOIN cotacoes c ON c.client_id = ic.id AND c.partner_id = ${targetPartnerId}
+          LEFT JOIN sales s ON s.client_id = ic.id AND s.partner_id = ${targetPartnerId}
+          WHERE (
+            c.id IS NOT NULL OR s.id IS NOT NULL OR (ic.metadata->>'partnerId') = ${targetPartnerId}
+          )
+          AND ic.document_number = ${digitsOnly}
           LIMIT 1
         `;
       }

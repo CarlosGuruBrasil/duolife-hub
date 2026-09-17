@@ -10,11 +10,22 @@ export async function proxy(req: NextRequest) {
   const isApi = pathname.startsWith('/api/');
   const token = req.cookies.get('duolife_token')?.value;
 
-  // 1. Proteção do Portal de Parceiros (/portal e /api/portal)
-  if (pathname.startsWith('/portal') || pathname.startsWith('/api/portal')) {
-    // Requisições com token público de contratação (ex.: /contratar/[token])
+  // 1. Proteção de Negócios e Portal de Parceiros (/portal e rotas de API de negócio)
+  const isBusinessProtected =
+    pathname.startsWith('/portal') ||
+    pathname.startsWith('/api/portal') ||
+    pathname.startsWith('/api/clientes') ||
+    pathname.startsWith('/api/comissoes') ||
+    pathname.startsWith('/api/cotacoes') ||
+    pathname.startsWith('/api/vendas') ||
+    pathname.startsWith('/api/parceiros/me') ||
+    pathname.startsWith('/api/parceiros/usuarios');
+
+  if (isBusinessProtected) {
+    // Requisições com token público de contratação (ex.: /contratar/[token] para cotações)
     const publicToken = req.headers.get('x-public-token');
-    if (publicToken && isApi) {
+    const isPublicTokenRoute = pathname.startsWith('/api/cotacoes') || pathname.startsWith('/api/portal');
+    if (publicToken && isApi && isPublicTokenRoute) {
       return NextResponse.next();
     }
 
@@ -78,5 +89,11 @@ export const config = {
     '/admin/:path*',
     '/api/portal/:path*',
     '/api/admin/:path*',
+    '/api/clientes/:path*',
+    '/api/comissoes/:path*',
+    '/api/cotacoes/:path*',
+    '/api/vendas/:path*',
+    '/api/parceiros/me/:path*',
+    '/api/parceiros/usuarios/:path*',
   ],
 };

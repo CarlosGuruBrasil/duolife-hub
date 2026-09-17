@@ -3,6 +3,7 @@ import { ensureSchema } from '@/lib/schema';
 import { ensureDefaultEmailTemplates } from '@/lib/email-service';
 import { getLifecycleConfig, runFullLifecycleScan } from '@/lib/lifecycle-service';
 import { verifyAdminAuth } from '@/lib/auth';
+import { verifyWebhookToken } from '@/lib/webhook-auth';
 import { logger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
@@ -11,14 +12,12 @@ async function authorizeRequest(req: NextRequest): Promise<{ authorized: boolean
   const config = await getLifecycleConfig();
   const authHeader = req.headers.get('authorization') || '';
   const headerSecret = req.headers.get('x-cron-secret') || '';
-  const url = new URL(req.url);
-  const querySecret = url.searchParams.get('secret') || '';
 
   const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-  const providedSecret = bearerToken || headerSecret || querySecret;
+  const providedSecret = bearerToken || headerSecret;
 
-  // 1. Validação via CRON_SECRET (para cron jobs, Coolify, Docker, curl)
-  if (config.cronSecret && providedSecret && providedSecret === config.cronSecret) {
+  // 1. Validação via CRON_SECRET (tempo constante contra timing attacks, sem expor em query string)
+  if (config.cronSecret && providedSecret && verifyWebhookToken(providedSecret, config.cronSecret)) {
     return { authorized: true, triggeredBy: 'cron' };
   }
 

@@ -56,6 +56,7 @@ import { generateEmailHtml } from './emailHtmlGenerator';
 import { syncHtmlToEmailDesign } from './emailHtmlParser';
 import { createBlankDesign, STARTER_TEMPLATES } from './defaultTemplates';
 import styles from './EmailVisualEditor.module.css';
+import { sanitizeHtml } from '@/lib/sanitize';
 
 interface RichTextEditorProps {
   initialHtml: string;
@@ -2278,7 +2279,7 @@ function renderBlockPreview(block: EmailBlock) {
     case 'text':
       return (
         <div
-          dangerouslySetInnerHTML={{ __html: content.data.html || '<p style="color:#94a3b8;">Texto vazio...</p>' }}
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(content.data.html || '<p style="color:#94a3b8;">Texto vazio...</p>') }}
           style={{
             textAlign: content.data.align || 'left',
             color: content.data.color,
@@ -2415,7 +2416,7 @@ function renderBlockPreview(block: EmailBlock) {
     case 'html':
       return (
         <div
-          dangerouslySetInnerHTML={{ __html: content.data.rawHtml || '<div style="color:#94a3b8;">HTML Vazio...</div>' }}
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(content.data.rawHtml || '<div style="color:#94a3b8;">HTML Vazio...</div>') }}
         />
       );
 
