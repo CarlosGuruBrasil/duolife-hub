@@ -382,7 +382,9 @@ export function buildRamoStep3Schema(ramo: RamoConfig) {
   });
 
   return schema.superRefine((data, ctx) => {
-    const isPlano100k = data.tipoDePlano === '100k';
+    const isPlano100k =
+      String(data.tipoDePlano || '').toLowerCase() === '100k' ||
+      String(data.tipoDePlano || '') === '100';
 
     // Se o ramo exige faturamento e não é plano simplificado 100k
     if (ramo.hasFaturamento && !isPlano100k) {
@@ -453,7 +455,9 @@ export function buildRamoStep4Schema(ramo: RamoConfig) {
   const baseSchema = z.object(questionShape).passthrough();
 
   return baseSchema.superRefine((data: Record<string, any>, ctx) => {
-    const isPlano100k = data.tipoDePlano === '100k';
+    const isPlano100k =
+      String(data.tipoDePlano || '').toLowerCase() === '100k' ||
+      String(data.tipoDePlano || '') === '100';
 
     // Validação de seguro anterior em caso de renovação
     if (data.isRenovacao === 'Sim') {

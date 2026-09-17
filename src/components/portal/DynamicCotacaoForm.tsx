@@ -260,6 +260,14 @@ export default function DynamicCotacaoForm({
   const [planoSel, setPlanoSel] = useState<Plano | null>(null);
   const [parcelaSel, setParcelaSel] = useState<{ qtd: number; valor: number } | null>(null);
 
+  // Helper reativo para identificar plano 100k simplificado
+  const isPlano100k = useMemo(() => {
+    if (!planoSel) return false;
+    const tipo = String(planoSel.tipoDePlano || '').toLowerCase();
+    const cob = String(planoSel.cobertura || '');
+    return tipo === '100k' || tipo === '100' || cob.includes('100.000');
+  }, [planoSel]);
+
   // Estados e referências para busca automática de CEP (Aba Segurado)
   const [loadingCep, setLoadingCep] = useState<boolean>(false);
   const [cepStatus, setCepStatus] = useState<'idle' | 'loading' | 'success' | 'not_found' | 'error'>('idle');
@@ -776,7 +784,7 @@ export default function DynamicCotacaoForm({
       ];
 
       // Plano 100k somente permite 1x (à vista)
-      if (plano.tipoDePlano === '100k') {
+      if (String(plano.tipoDePlano || '').toLowerCase() === '100k') {
         return [opcoes[0]];
       }
 
@@ -839,7 +847,7 @@ export default function DynamicCotacaoForm({
 
     // Passo 3: Perfil e Atuação
     if (step === 3) {
-      if (planoSel?.tipoDePlano !== '100k') {
+      if (!isPlano100k) {
         if (resolvedRamoConfig.hasFaturamento) {
           if (!form.faturamentoAntes || !form.faturamentoDepois) {
             setError('Informe o faturamento bruto anual dos períodos indicados.');
@@ -871,7 +879,7 @@ export default function DynamicCotacaoForm({
       }
 
       // Validação do questionário dinâmico do ramo
-      if (planoSel?.tipoDePlano !== '100k' && resolvedRamoConfig.requiresUnderwriting !== false) {
+      if (!isPlano100k && resolvedRamoConfig.requiresUnderwriting !== false) {
         for (const item of resolvedRamoConfig.questionarioRisco) {
           const resp = form[item.id] || 'Não';
           if (resp === 'Sim') {
@@ -936,6 +944,7 @@ export default function DynamicCotacaoForm({
         vigencia: form.vigencia ? formatDateForIso(form.vigencia) : (form.dataInicioVigencia ? formatDateForIso(form.dataInicioVigencia) : null),
         dataRetroativa: form.dataRetroativa ? formatDateForIso(form.dataRetroativa) : null,
         renovacao: form.isRenovacao === 'Sim',
+        isRenovacao: form.isRenovacao,
         // Especialidades & Atuação unificadas
         especialidades: form.especialidades,
         atuacao: form.especialidades.length > 0 ? form.especialidades.join(':') : (form.atuacao.length > 0 ? form.atuacao.join(':') : ''),
@@ -1306,7 +1315,7 @@ export default function DynamicCotacaoForm({
                         )}
                       </div>
 
-                      {plano.tipoDePlano !== '100k' && (
+                      {String(plano.tipoDePlano || '').toLowerCase() !== '100k' && (
                         <div className="text-[11px] text-gray-500 text-right font-medium">
                           ou até 6x de aprox. {formatCurrencyBRL(vDescontado / 6)}
                         </div>
@@ -1770,8 +1779,21 @@ export default function DynamicCotacaoForm({
             </label>
           </div>
 
+          {/* Card Informativo de Perfil Simplificado no Plano 100k */}
+          {isPlano100k && (
+            <div className="bg-emerald-50 border border-emerald-200 p-4 rounded-xl text-emerald-900 flex items-start space-x-3">
+              <ShieldCheck className="w-5 h-5 text-emerald-600 flex-shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <h4 className="font-bold text-sm">Perfil Simplificado ({planoSel?.nomeExibido || 'Plano 100 Mil'})</h4>
+                <p className="text-xs text-emerald-800 leading-relaxed">
+                  Este plano possui contratação simplificada com isenção do preenchimento de áreas de atuação e faturamento anual.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Faturamento Anual se aplicável e não for plano 100k */}
-          {planoSel?.tipoDePlano !== '100k' && resolvedRamoConfig.hasFaturamento && (
+          {!isPlano100k && resolvedRamoConfig.hasFaturamento && (
             <div className="grid gap-5 md:grid-cols-2">
               <label className="block">
                 <span className="field-label">
@@ -1799,8 +1821,8 @@ export default function DynamicCotacaoForm({
             </div>
           )}
 
-          {/* Especialidades Dinâmicas do Ramo */}
-          {resolvedRamoConfig.especialidades && resolvedRamoConfig.especialidades.length > 0 && (
+          {/* Especialidades Dinâmicas do Ramo (Oculto no Plano 100k Simplificado) */}
+          {!isPlano100k && resolvedRamoConfig.especialidades && resolvedRamoConfig.especialidades.length > 0 && (
             <div>
               <span className="field-label mb-2 block text-gray-900 font-semibold">
                 {resolvedRamoConfig.especialidadesLabel || 'Áreas de Atuação e Especialidades'} *
@@ -1841,7 +1863,7 @@ export default function DynamicCotacaoForm({
           )}
 
           {/* Switches de Pessoa Politicamente Exposta (PPE) */}
-          {planoSel?.tipoDePlano !== '100k' && resolvedRamoConfig.hasPpe && (
+          {!isPlano100k && resolvedRamoConfig.hasPpe && (
             <div className="space-y-4 pt-2">
               <h4 className="text-base font-bold text-primary">Pessoa Politicamente Exposta (PPE)</h4>
 
@@ -1972,7 +1994,7 @@ export default function DynamicCotacaoForm({
           )}
 
           {/* Questionário de Risco Dinâmico do Ramo */}
-          {planoSel?.tipoDePlano !== '100k' && resolvedRamoConfig.requiresUnderwriting !== false ? (
+          {!isPlano100k && resolvedRamoConfig.requiresUnderwriting !== false ? (
             <div className="space-y-4">
               <h3 className="text-lg font-bold text-primary">Questionário de Risco & Underwriting</h3>
               <p className="text-xs text-gray-500">

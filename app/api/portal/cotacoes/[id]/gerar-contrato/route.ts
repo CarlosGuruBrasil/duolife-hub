@@ -96,12 +96,21 @@ export async function POST(
 
     // 2. Determina o template do ZapSign
     const zapConfig = await getZapSignConfig();
-    const isRenovacao = clientData.renovacao === true || clientData.renovacao === 'true' || clientData.renovacao === 'Sim';
-    const isPlano100k = clientData.tipo === '100k';
-    const templateId = isPlano100k
-      ? zapConfig.template100k
-      : isRenovacao
-        ? zapConfig.templateRenovacao
+    const isRenovacao =
+      clientData.isRenovacao === 'Sim' ||
+      clientData.renovacao === true ||
+      clientData.renovacao === 'true' ||
+      clientData.renovacao === 'Sim';
+    const isPlano100k =
+      String(clientData.tipo || '').toLowerCase() === '100k' ||
+      String(clientData.tipoDePlano || '').toLowerCase() === '100k';
+
+    // Se no dropdown "É uma renovação de apólice anterior?" foi selecionado "Sim (Renovação de seguro anterior)",
+    // prioriza OBRIGATORIAMENTE o Template Renovação.
+    const templateId = isRenovacao
+      ? zapConfig.templateRenovacao
+      : isPlano100k
+        ? zapConfig.template100k
         : zapConfig.templateOficial;
 
     if (!templateId) {
