@@ -200,6 +200,23 @@ Transformar a DuoLife em um portal/admin operacional estável, com banco isolado
   - `npx tsc --noEmit`: 0 erros.
   - `npm run build`: 64 rotas compiladas com sucesso no Turbopack.
 
+## Nova Cotação: Ocultação de Áreas de Atuação no Plano 100K e Template de Renovação no ZapSign em 2026-09-17
+- Mudanças aplicadas:
+  - Formulário de Cotação Dinâmico (`src/components/portal/DynamicCotacaoForm.tsx`):
+    - Helper unificado `isPlano100k` para identificação segura do plano 100 mil simplificado.
+    - Aba 3 (Renovação & Perfil de Atuação): ocultado o bloco de "Áreas de Atuação Jurídica *" e faturamento anual quando `isPlano100k` for verdadeiro.
+    - Adicionado card informativo de Perfil Simplificado no padrão do Design System (`bg-emerald-50 border-emerald-200 text-emerald-900` com `ShieldCheck`).
+    - Validação de avanço ajustada para não exigir especialidades ou faturamento no plano 100k.
+    - Envio explícito de `isRenovacao: form.isRenovacao` e `renovacao: form.isRenovacao === 'Sim'` no payload da cotação.
+  - API de Geração de Contratos ZapSign (`app/api/portal/cotacoes/[id]/gerar-contrato/route.ts`):
+    - Atualizada a determinação do template: se `isRenovacao` for verdadeiro ("Sim" / `true`), prioriza obrigatoriamente o `templateRenovacao`, inclusive se contratado no plano de 100k.
+  - Esquema Zod de Ramo (`src/lib/product-schemas/registry.ts`):
+    - Validações dos passos 3 e 4 tornadas case-insensitive para `isPlano100k`.
+- Evidência técnica:
+  - Commit `bf9c385` publicado na branch `main`.
+  - `npx tsc --noEmit`: 0 erros.
+  - `npm run build`: 66 rotas compiladas com sucesso no Turbopack.
+
 
 
 
