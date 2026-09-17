@@ -25,6 +25,7 @@ import {
   type RankingSource,
 } from '@/lib/admin-reporting';
 import AdminPeriodFilterBar from '../_components/AdminPeriodFilterBar';
+import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
 
 function formatCurrency(value: number) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -411,28 +412,28 @@ export default async function AdminRankingPage({
             )}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[950px] text-left text-sm">
-              <thead className="table-head">
+          <TableScrollContainer minWidth="1050px">
+            <table className="w-full min-w-[1050px] text-left text-sm border-separate border-spacing-0">
+              <thead className="table-sticky-head bg-gray-50/95 text-xs font-semibold uppercase tracking-wider text-gray-600">
                 <tr>
-                  <th className="px-4 py-3 font-semibold text-center w-14">#</th>
-                  <th className="px-4 py-3 font-semibold">Parceiro / CodigoVenda</th>
-                  <th className="px-4 py-3 font-semibold text-center">Cotações / Propostas</th>
-                  <th className="px-4 py-3 font-semibold text-center">Fechados</th>
-                  <th className="px-4 py-3 font-semibold text-center">Pendentes</th>
-                  <th className="px-4 py-3 font-semibold text-center">Conversão</th>
-                  <th className="px-4 py-3 font-semibold text-right">Volume Emitido</th>
+                  <th className="px-4 py-3.5 font-semibold text-center w-14 table-sticky-col-head rounded-tl-2xl">#</th>
+                  <th className="px-4 py-3.5 font-semibold border-b border-gray-200">Parceiro / CodigoVenda</th>
+                  <th className="px-4 py-3.5 font-semibold text-center border-b border-gray-200">Cotações / Propostas</th>
+                  <th className="px-4 py-3.5 font-semibold text-center border-b border-gray-200">Fechados</th>
+                  <th className="px-4 py-3.5 font-semibold text-center border-b border-gray-200">Pendentes</th>
+                  <th className="px-4 py-3.5 font-semibold text-center border-b border-gray-200">Conversão</th>
+                  <th className="px-4 py-3.5 font-semibold text-right border-b border-gray-200">Volume Emitido</th>
                   {source === 'duolife' && (
-                    <th className="px-4 py-3 font-semibold text-right">Comissões</th>
+                    <th className="px-4 py-3.5 font-semibold text-right border-b border-gray-200">Comissões</th>
                   )}
                   {source === 'consolidated' && (
-                    <th className="px-4 py-3 font-semibold text-center">Detalhamento</th>
+                    <th className="px-4 py-3.5 font-semibold text-center border-b border-gray-200">Detalhamento</th>
                   )}
-                  <th className="px-4 py-3 font-semibold text-right">Ticket Médio</th>
-                  <th className="px-4 py-3 font-semibold text-center">Ações</th>
+                  <th className="px-4 py-3.5 font-semibold text-right border-b border-gray-200">Ticket Médio</th>
+                  <th className="px-4 py-3.5 font-semibold text-center border-b border-gray-200 rounded-tr-2xl">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-100 bg-white">
                 {ranking.map((row: AdminRankingRow) => {
                   const isTop1 = row.posicao === 1 && (row.salesCount > 0 || row.premiumTotal > 0);
                   const isTop2 = row.posicao === 2 && (row.salesCount > 0 || row.premiumTotal > 0);
@@ -441,7 +442,7 @@ export default async function AdminRankingPage({
                   return (
                     <tr
                       key={`${row.partnerCode}-${row.partnerId || row.partnerName}`}
-                      className={`table-row ${
+                      className={`group hover:bg-gray-50/75 transition-colors ${
                         isTop1
                           ? 'bg-amber-50/30'
                           : isTop2
@@ -451,7 +452,15 @@ export default async function AdminRankingPage({
                           : ''
                       }`}
                     >
-                      <td className="px-4 py-3.5 text-center">
+                      <td className={`px-4 py-3.5 text-center table-sticky-col-cell ${
+                        isTop1
+                          ? '!bg-amber-50/80'
+                          : isTop2
+                          ? '!bg-slate-50/90'
+                          : isTop3
+                          ? '!bg-orange-50/60'
+                          : ''
+                      }`}>
                         {isTop1 ? (
                           <span className="w-7 h-7 rounded-full bg-amber-400 text-white font-black text-xs inline-flex items-center justify-center shadow-xs">
                             1
@@ -469,7 +478,7 @@ export default async function AdminRankingPage({
                         )}
                       </td>
 
-                      <td className="px-4 py-3.5">
+                      <td className="px-4 py-3.5 border-b border-gray-100">
                         <div className="font-bold text-gray-900 flex items-center gap-2 flex-wrap">
                           <span>{row.partnerName}</span>
                           {row.isLinkedToDuoLife ? (
@@ -478,7 +487,7 @@ export default async function AdminRankingPage({
                             </span>
                           ) : (
                             <span className="text-[10px] font-semibold uppercase px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
-                              Wix Import1
+                              Wix Import
                             </span>
                           )}
                           {row.partnerCode && (
@@ -490,11 +499,11 @@ export default async function AdminRankingPage({
                         <div className="text-xs text-gray-500 line-clamp-1">{row.razaoSocial}</div>
                       </td>
 
-                      <td className="px-4 py-3.5 text-center font-medium text-gray-700">
+                      <td className="px-4 py-3.5 text-center font-medium text-gray-700 border-b border-gray-100">
                         {row.quotesCount}
                       </td>
 
-                      <td className="px-4 py-3.5 text-center">
+                      <td className="px-4 py-3.5 text-center border-b border-gray-100">
                         <span
                           className={`inline-flex px-2 py-0.5 rounded-full text-xs font-bold ${
                             row.salesCount > 0
@@ -506,7 +515,7 @@ export default async function AdminRankingPage({
                         </span>
                       </td>
 
-                      <td className="px-4 py-3.5 text-center text-xs font-medium text-gray-600">
+                      <td className="px-4 py-3.5 text-center text-xs font-medium text-gray-600 border-b border-gray-100">
                         {row.pendingCount > 0 ? (
                           <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">
                             {row.pendingCount}
@@ -516,22 +525,22 @@ export default async function AdminRankingPage({
                         )}
                       </td>
 
-                      <td className="px-4 py-3.5 text-center text-xs font-semibold text-gray-600">
+                      <td className="px-4 py-3.5 text-center text-xs font-semibold text-gray-600 border-b border-gray-100">
                         {formatPercent(row.conversionRate)}
                       </td>
 
-                      <td className="px-4 py-3.5 text-right font-bold text-gray-900">
+                      <td className="px-4 py-3.5 text-right font-bold text-gray-900 border-b border-gray-100">
                         {formatCurrency(row.premiumTotal)}
                       </td>
 
                       {source === 'duolife' && (
-                        <td className="px-4 py-3.5 text-right text-xs font-medium text-gray-600">
+                        <td className="px-4 py-3.5 text-right text-xs font-medium text-gray-600 border-b border-gray-100">
                           {formatCurrency(row.commissionTotal)}
                         </td>
                       )}
 
                       {source === 'consolidated' && (
-                        <td className="px-4 py-3.5 text-center text-[11px] text-gray-500">
+                        <td className="px-4 py-3.5 text-center text-[11px] text-gray-500 border-b border-gray-100">
                           <div className="inline-flex flex-col text-left">
                             <span>DuoLife: <strong>{row.duolifeSalesCount || 0}</strong> ({formatCurrency(row.duolifePremiumTotal || 0)})</span>
                             <span>Wix: <strong>{row.wixSalesCount || 0}</strong> ({formatCurrency(row.wixPremiumTotal || 0)})</span>
@@ -539,11 +548,11 @@ export default async function AdminRankingPage({
                         </td>
                       )}
 
-                      <td className="px-4 py-3.5 text-right text-xs text-gray-600">
+                      <td className="px-4 py-3.5 text-right text-xs text-gray-600 border-b border-gray-100">
                         {formatCurrency(row.ticketMedio)}
                       </td>
 
-                      <td className="px-4 py-3.5 text-center">
+                      <td className="px-4 py-3.5 text-center border-b border-gray-100">
                         {row.partnerId ? (
                           <Link
                             href={`/admin/parceiros/${row.partnerId}`}
@@ -566,7 +575,7 @@ export default async function AdminRankingPage({
                 })}
               </tbody>
             </table>
-          </div>
+          </TableScrollContainer>
         )}
       </section>
     </div>

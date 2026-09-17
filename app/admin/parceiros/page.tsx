@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Building2, CheckCircle, Clock, XCircle, Plus, UserPlus } from 'lucide-react';
 import { formatDate } from '@/lib/format';
+import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
 
 interface Parceiro {
   id: string;
@@ -363,32 +364,32 @@ function AdminParceirosInner() {
         ) : parceiros.length === 0 ? (
           <div className="p-8 text-center text-gray-400">Nenhum parceiro encontrado.</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] text-sm">
-            <thead>
-              <tr className="border-b" style={{ borderColor: 'var(--border)', background: 'var(--bg-gray)' }}>
-                <th className="text-left px-6 py-3 font-semibold text-gray-600">Empresa</th>
-                <th className="text-left px-6 py-3 font-semibold text-gray-600">Corretora</th>
-                <th className="text-left px-6 py-3 font-semibold text-gray-600">CNPJ / CPF</th>
-                <th className="text-left px-6 py-3 font-semibold text-gray-600">E-mail</th>
-                <th className="text-left px-6 py-3 font-semibold text-gray-600">Status</th>
-                <th className="text-left px-6 py-3 font-semibold text-gray-600">Cadastro</th>
-                <th className="px-6 py-3" />
+          <TableScrollContainer minWidth="920px">
+            <table className="w-full min-w-[920px] text-sm border-separate border-spacing-0">
+            <thead className="table-sticky-head bg-gray-50/95 text-xs font-semibold uppercase tracking-wider text-gray-600">
+              <tr>
+                <th className="text-left px-6 py-3.5 table-sticky-col-head rounded-tl-2xl">Empresa</th>
+                <th className="text-left px-6 py-3.5 border-b border-gray-200">Corretora</th>
+                <th className="text-left px-6 py-3.5 border-b border-gray-200">CNPJ / CPF</th>
+                <th className="text-left px-6 py-3.5 border-b border-gray-200">E-mail</th>
+                <th className="text-left px-6 py-3.5 border-b border-gray-200">Status</th>
+                <th className="text-left px-6 py-3.5 border-b border-gray-200">Cadastro</th>
+                <th className="px-6 py-3.5 border-b border-gray-200 rounded-tr-2xl text-right">Ações</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-gray-100 bg-white">
               {parceiros.map((p) => {
                 const s = STATUS_LABELS[p.status] ?? { label: p.status, color: '#666', icon: Clock };
                 const Icon = s.icon;
                 return (
-                  <tr key={p.id} className="border-b last:border-0" style={{ borderColor: 'var(--border)' }}>
-                    <td className="px-6 py-4">
-                      <div className="font-semibold">{p.razao_social}</div>
+                  <tr key={p.id} className="group hover:bg-gray-50/75 transition-colors">
+                    <td className="px-6 py-4 table-sticky-col-cell">
+                      <div className="font-semibold text-gray-900">{p.razao_social}</div>
                       {p.nome_fantasia && p.nome_fantasia !== p.razao_social && (
-                        <div className="text-xs text-gray-400">{p.nome_fantasia}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">{p.nome_fantasia}</div>
                       )}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 border-b border-gray-100">
                       {p.corretora_id ? (
                         <Link
                           href={`/admin/corretoras/${p.corretora_id}`}
@@ -405,18 +406,18 @@ function AdminParceirosInner() {
                         </span>
                       )}
                     </td>
-                    <td className="px-6 py-4 text-gray-500">{formatarDocumento(p)}</td>
-                    <td className="px-6 py-4 text-gray-500">{p.email}</td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 text-gray-600 border-b border-gray-100">{formatarDocumento(p)}</td>
+                    <td className="px-6 py-4 text-gray-600 border-b border-gray-100">{p.email}</td>
+                    <td className="px-6 py-4 border-b border-gray-100">
                       <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full"
                         style={{ background: `${s.color}18`, color: s.color }}>
                         <Icon size={12} /> {s.label}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-gray-400 text-xs">
+                    <td className="px-6 py-4 text-gray-500 text-xs border-b border-gray-100">
                       {formatDate(p.created_at)}
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 border-b border-gray-100 text-right">
                       <div className="flex gap-2 justify-end">
                         <Link
                           href={`/admin/parceiros/${p.id}`}
@@ -450,7 +451,7 @@ function AdminParceirosInner() {
               })}
             </tbody>
             </table>
-          </div>
+          </TableScrollContainer>
         )}
       </div>
     </div>

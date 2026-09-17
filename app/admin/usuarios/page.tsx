@@ -7,6 +7,7 @@ import { verifyAdminAuth, isPlatformAdmin, INTERNAL_ROLE_LABEL, INTERNAL_ROLES }
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { formatDate } from '@/lib/format';
+import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
 
 export const dynamic = 'force-dynamic';
 
@@ -205,29 +206,31 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
         {admins.length === 0 ? (
           <div className="p-8 text-center text-gray-400">Nenhum usuário admin encontrado.</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[900px] text-left text-sm">
-              <thead className="table-head">
+          <TableScrollContainer minWidth="900px">
+            <table className="w-full min-w-[900px] text-left text-sm border-separate border-spacing-0">
+              <thead className="table-sticky-head bg-gray-50/95 text-xs font-semibold uppercase tracking-wider text-gray-600">
                 <tr>
-                  <th className="px-5 py-3 font-semibold">Nome</th>
-                  <th className="px-5 py-3 font-semibold">E-mail</th>
-                  <th className="px-5 py-3 font-semibold">Perfil</th>
-                  <th className="px-5 py-3 font-semibold">Status</th>
-                  <th className="px-5 py-3 font-semibold">Cadastro</th>
-                  <th className="px-5 py-3 font-semibold text-right">Ação</th>
+                  <th className="px-5 py-3.5 table-sticky-col-head rounded-tl-2xl">Nome</th>
+                  <th className="px-5 py-3.5 border-b border-gray-200">E-mail</th>
+                  <th className="px-5 py-3.5 border-b border-gray-200">Perfil</th>
+                  <th className="px-5 py-3.5 border-b border-gray-200">Status</th>
+                  <th className="px-5 py-3.5 border-b border-gray-200">Cadastro</th>
+                  <th className="px-5 py-3.5 border-b border-gray-200 rounded-tr-2xl text-right">Ação</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-100 bg-white">
                 {admins.map((admin) => (
-                  <tr key={admin.id} className="table-row">
-                    <td className="px-5 py-4 font-semibold" style={{ color: 'var(--primary)' }}>{admin.name}</td>
-                    <td className="px-5 py-4 text-gray-600">{admin.email}</td>
-                    <td className="px-5 py-4 text-gray-600">{INTERNAL_ROLE_LABEL[admin.role] || admin.role}</td>
-                    <td className="px-5 py-4">
+                  <tr key={admin.id} className="group hover:bg-gray-50/75 transition-colors">
+                    <td className="px-5 py-4 table-sticky-col-cell">
+                      <div className="font-semibold text-primary">{admin.name}</div>
+                    </td>
+                    <td className="px-5 py-4 text-gray-600 border-b border-gray-100">{admin.email}</td>
+                    <td className="px-5 py-4 text-gray-600 border-b border-gray-100">{INTERNAL_ROLE_LABEL[admin.role] || admin.role}</td>
+                    <td className="px-5 py-4 border-b border-gray-100">
                       <span className="status-pill">{admin.is_active ? 'Ativo' : 'Inativo'}</span>
                     </td>
-                    <td className="px-5 py-4 text-gray-500">{formatDate(admin.created_at)}</td>
-                    <td className="px-5 py-4 text-right">
+                    <td className="px-5 py-4 text-gray-500 text-xs border-b border-gray-100">{formatDate(admin.created_at)}</td>
+                    <td className="px-5 py-4 text-right border-b border-gray-100">
                       <div className="flex justify-end gap-2">
                         <Link href={`/admin/usuarios?edit=${admin.id}`} className="btn-outline text-xs px-3 py-1.5 min-h-0">
                           Editar
@@ -249,7 +252,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
                 ))}
               </tbody>
             </table>
-          </div>
+          </TableScrollContainer>
         )}
       </div>
     </div>

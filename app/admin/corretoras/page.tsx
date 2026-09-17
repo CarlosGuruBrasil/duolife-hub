@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { Building, CheckCircle, Clock, XCircle, Plus, Users, Briefcase, ExternalLink, ShieldCheck, Phone, Mail, MapPin } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import type { WhiteLabelConfig } from '@/lib/white-label';
+import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
 
 interface Corretora {
   id: string;
@@ -286,20 +287,20 @@ export default function AdminCorretorasPage() {
         ) : corretoras.length === 0 ? (
           <div className="p-12 text-center text-sm text-gray-500">Nenhuma corretora cadastrada.</div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-gray-700">
-              <thead className="bg-gray-50 border-b border-gray-200 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+          <TableScrollContainer minWidth="960px">
+            <table className="w-full min-w-[960px] text-left text-sm text-gray-700 border-separate border-spacing-0">
+              <thead className="table-sticky-head bg-gray-50/95 text-xs font-semibold text-gray-600 uppercase tracking-wider">
                 <tr>
-                  <th className="py-3.5 px-4">Corretora</th>
-                  <th className="py-3.5 px-4">CNPJ & SUSEP</th>
-                  <th className="py-3.5 px-4">Contatos</th>
-                  <th className="py-3.5 px-4 text-center">Parceiros</th>
-                  <th className="py-3.5 px-4 text-center">Cotações</th>
-                  <th className="py-3.5 px-4 text-center">Status</th>
-                  <th className="py-3.5 px-4 text-right">Ações</th>
+                  <th className="py-3.5 px-4 table-sticky-col-head rounded-tl-xl">Corretora</th>
+                  <th className="py-3.5 px-4 border-b border-gray-200">CNPJ & SUSEP</th>
+                  <th className="py-3.5 px-4 border-b border-gray-200">Contatos</th>
+                  <th className="py-3.5 px-4 text-center border-b border-gray-200">Parceiros</th>
+                  <th className="py-3.5 px-4 text-center border-b border-gray-200">Cotações</th>
+                  <th className="py-3.5 px-4 text-center border-b border-gray-200">Status</th>
+                  <th className="py-3.5 px-4 text-right border-b border-gray-200 rounded-tr-xl">Ações</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-gray-100 bg-white">
                 {corretoras.map((c) => {
                   const statusInfo = STATUS_LABELS[c.status] || STATUS_LABELS.active;
                   const Icon = statusInfo.icon;
@@ -307,8 +308,8 @@ export default function AdminCorretorasPage() {
                   const iconSrc = c.whiteLabel?.iconUrl || (isNet4Life ? '/images/corretoras/net4life-icon.png' : c.whiteLabel?.logoUrl);
 
                   return (
-                    <tr key={c.id} className="hover:bg-gray-50/60 transition-colors">
-                      <td className="py-4 px-4">
+                    <tr key={c.id} className="group hover:bg-gray-50/75 transition-colors">
+                      <td className="py-4 px-4 table-sticky-col-cell">
                         <div className="flex items-center gap-3">
                           {iconSrc ? (
                             <div className="w-10 h-10 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-center p-1 overflow-hidden shrink-0">
@@ -332,13 +333,13 @@ export default function AdminCorretorasPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="py-4 px-4 font-mono text-xs text-gray-600">
+                      <td className="py-4 px-4 font-mono text-xs text-gray-600 border-b border-gray-100">
                         <div>{formatarCnpj(c.cnpj)}</div>
                         {c.susep && (
                           <div className="text-[11px] text-gray-500 mt-0.5">SUSEP: <span className="font-medium text-gray-700">{c.susep}</span></div>
                         )}
                       </td>
-                      <td className="py-4 px-4 text-xs text-gray-600">
+                      <td className="py-4 px-4 text-xs text-gray-600 border-b border-gray-100">
                         <div className="flex items-center gap-1 text-gray-900">
                           <Mail size={12} className="text-gray-400" /> {c.email}
                         </div>
@@ -348,19 +349,19 @@ export default function AdminCorretorasPage() {
                           </div>
                         )}
                       </td>
-                      <td className="py-4 px-4 text-center">
+                      <td className="py-4 px-4 text-center border-b border-gray-100">
                         <span className="inline-flex items-center gap-1 font-semibold text-gray-900 bg-gray-100 px-2.5 py-1 rounded-full text-xs">
                           <Users size={12} className="text-gray-500" />
                           {c.partners_count}
                         </span>
                       </td>
-                      <td className="py-4 px-4 text-center">
+                      <td className="py-4 px-4 text-center border-b border-gray-100">
                         <span className="inline-flex items-center gap-1 font-semibold text-gray-900 bg-gray-100 px-2.5 py-1 rounded-full text-xs">
                           <Briefcase size={12} className="text-gray-500" />
                           {c.cotacoes_count}
                         </span>
                       </td>
-                      <td className="py-4 px-4 text-center">
+                      <td className="py-4 px-4 text-center border-b border-gray-100">
                         <span
                           className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full"
                           style={{
@@ -372,7 +373,7 @@ export default function AdminCorretorasPage() {
                           {statusInfo.label}
                         </span>
                       </td>
-                      <td className="py-4 px-4 text-right">
+                      <td className="py-4 px-4 text-right border-b border-gray-100">
                         <Link
                           href={`/admin/corretoras/${c.id}`}
                           className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80 bg-primary/10 hover:bg-primary/20 px-3 py-1.5 rounded-lg transition-colors"
@@ -385,7 +386,7 @@ export default function AdminCorretorasPage() {
                 })}
               </tbody>
             </table>
-          </div>
+          </TableScrollContainer>
         )}
       </div>
     </div>
