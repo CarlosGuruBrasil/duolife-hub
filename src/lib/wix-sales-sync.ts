@@ -117,6 +117,10 @@ export function extractWixAsaasCustomer(raw: Record<string, unknown> | null | un
 export function extractWixZapSignToken(raw: Record<string, unknown> | null | undefined): string | null {
   if (!raw) return null;
   return (
+    normalizeMaybeString(raw.Token) ||
+    normalizeMaybeString(raw.token) ||
+    normalizeMaybeString(raw.TokenZapSign) ||
+    normalizeMaybeString(raw.tokenZapSign) ||
     normalizeMaybeString(raw.tokenZapsign) ||
     normalizeMaybeString(raw.token_zapsign) ||
     normalizeMaybeString(raw.zapsignToken) ||
@@ -321,10 +325,13 @@ export function isWixContractSigned(
   raw: Record<string, unknown> | null | undefined,
   statusRaw: unknown,
   hasSignedUrl: boolean,
-  isFechado: boolean
+  isFechado: boolean,
+  hasToken?: boolean
 ): boolean {
   if (isFechado) return true;
   if (hasSignedUrl) return true;
+  if (hasToken) return true;
+  if (extractWixZapSignToken(raw)) return true;
   const s = String(statusRaw || raw?.statusCliente || raw?.status || raw?.situacao || '').toLowerCase().trim();
   if (
     s.includes('assinado') ||
@@ -1182,6 +1189,208 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
     pendingQuotesCount,
     canceledQuotesCount,
     totalRevenue,
+    durationMs,
+    details,
+  };
+}
+
+export interface WixTokenSyncResult {
+  totalWixWithToken: number;
+  quotesUpdated: number;
+  signaturesUpserted: number;
+  durationMs: number;
+  details: Array<{
+    wixId: string;
+    clientName: string | null;
+    documentNumber: string | null;
+    token: string;
+    cotacaoId: string | null;
+    action: 'updated' | 'not_found' | 'skipped';
+  }>;
+}
+
+/**
+ * Varre todos os registros da coleção Import1 em wix_items que possuem Token (token do ZapSign).
+ * Conforme a regra de negócio oficial: todo cliente que possui o Token é porque assinou o contrato.
+ * Cria/atualiza signature_documents para "signed" e avança o status da cotação para "assinado".
+ */
+export async function syncWixTokensToContracts(): Promise<WixTokenSyncResult> {
+  const startTime = Date.now();
+  await ensureSchema();
+
+  // 1. Busca todos os registros de Import1 em wix_items com qualquer variação de token
+  const items = await sql<Array<{ id: string; data: Record<string, unknown>; created_at: Date }>>`
+    SELECT id, data, created_at
+    FROM wix_items
+    WHERE collection_id = 'Import1'
+      AND (
+        data->>'Token' IS NOT NULL
+        OR data->>'token' IS NOT NULL
+        OR data->>'TokenZapSign' IS NOT NULL
+        OR data->>'tokenZapSign' IS NOT NULL
+        OR data->>'tokenZapsign' IS NOT NULL
+        OR data->>'token_zapsign' IS NOT NULL
+        OR data->>'zapsignToken' IS NOT NULL
+        OR data->>'tokenDoc' IS NOT NULL
+      )
+  `;
+
+  let quotesUpdated = 0;
+  let signaturesUpserted = 0;
+  const details: WixTokenSyncResult['details'] = [];
+
+  for (const item of items) {
+    const raw = item.data || {};
+    const token = extractWixZapSignToken(raw);
+    if (!token) continue;
+
+    const urls = extractWixUrls(raw);
+    const signedUrl = urls.signedFileUrl || `https://app.zapsign.com.br/verificar/${token}`;
+    const rawDateStr =
+      parseFlexibleDate(raw._createdDate) ||
+      extractWixCreationDate(raw, { id: item.id });
+    const wixDate = rawDateStr ? new Date(rawDateStr) : item.created_at;
+
+    const rawCpf =
+      normalizeDigits(raw.cpf) ||
+      normalizeDigits(raw.cnpj) ||
+      normalizeDigits(raw.documentNumber) ||
+      normalizeDigits(raw.documento) ||
+      normalizeDigits(raw.cpfCnpj);
+
+    const clientName =
+      normalizeMaybeString(raw.nome) ||
+      normalizeMaybeString(raw.name) ||
+      normalizeMaybeString(raw.nomeExibido) ||
+      null;
+
+    // Localiza cotação correspondente no banco
+    const [cotacao] = await sql<Array<{
+      id: string;
+      client_id: string | null;
+      status: string;
+      client_data: unknown;
+    }>>`
+      SELECT id, client_id, status, client_data
+      FROM cotacoes
+      WHERE external_ref = ${item.id}
+         OR metadata->>'wixId' = ${item.id}
+         ${rawCpf ? sql`OR client_cpf_cnpj = ${rawCpf}` : sql``}
+      ORDER BY (external_ref = ${item.id} OR metadata->>'wixId' = ${item.id}) DESC, created_at DESC
+      LIMIT 1
+    `;
+
+    if (cotacao) {
+      // Upsert em signature_documents
+      await sql`
+        INSERT INTO signature_documents (
+          cotacao_id,
+          client_id,
+          provider,
+          external_document_id,
+          sign_url,
+          signed_file_url,
+          status,
+          signed_at,
+          last_event_type,
+          raw_payload,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          ${cotacao.id},
+          ${cotacao.client_id},
+          'zapsign',
+          ${token},
+          ${signedUrl},
+          ${signedUrl},
+          'signed',
+          ${wixDate},
+          'doc_signed',
+          ${JSON.stringify({ source: 'wix_token_sync', token, wixId: item.id })}::jsonb,
+          ${wixDate},
+          NOW()
+        )
+        ON CONFLICT (provider, external_document_id)
+        DO UPDATE SET
+          signed_file_url = COALESCE(EXCLUDED.signed_file_url, signature_documents.signed_file_url),
+          status = 'signed',
+          signed_at = COALESCE(signature_documents.signed_at, EXCLUDED.signed_at),
+          last_event_type = 'doc_signed',
+          updated_at = NOW()
+      `;
+      signaturesUpserted++;
+
+      // Atualiza cotação
+      const [order] = await sql<Array<{ id: string }>>`
+        SELECT id FROM payment_orders WHERE cotacao_id = ${cotacao.id} LIMIT 1
+      `;
+      const nextStatus = ['rascunho', 'enviada', 'contrato_gerado'].includes(cotacao.status)
+        ? (order ? 'pagamento_gerado' : 'assinado')
+        : cotacao.status;
+
+      await sql`
+        UPDATE cotacoes
+        SET
+          client_data = COALESCE(client_data, '{}'::jsonb) || ${JSON.stringify({
+            contratoToken: token,
+            tokenZapsign: token,
+            contratoPdf: signedUrl,
+            urlAssinado: signedUrl,
+            assinadoEm: wixDate.toISOString(),
+          })}::jsonb,
+          status = ${nextStatus},
+          updated_at = NOW()
+        WHERE id = ${cotacao.id}
+      `;
+      quotesUpdated++;
+
+      // Atualiza cliente se existir
+      if (cotacao.client_id) {
+        await sql`
+          UPDATE insurance_clients
+          SET
+            metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify({
+              zapsignToken: token,
+              contratoPdf: signedUrl,
+            })}::jsonb,
+            updated_at = NOW()
+          WHERE id = ${cotacao.client_id}
+        `;
+      }
+
+      details.push({
+        wixId: item.id,
+        clientName,
+        documentNumber: rawCpf,
+        token,
+        cotacaoId: cotacao.id,
+        action: 'updated',
+      });
+    } else {
+      details.push({
+        wixId: item.id,
+        clientName,
+        documentNumber: rawCpf,
+        token,
+        cotacaoId: null,
+        action: 'not_found',
+      });
+    }
+  }
+
+  const durationMs = Date.now() - startTime;
+  logger.info({
+    totalWixWithToken: items.length,
+    quotesUpdated,
+    signaturesUpserted,
+    durationMs,
+  }, 'wix.tokens.sync.completed');
+
+  return {
+    totalWixWithToken: items.length,
+    quotesUpdated,
+    signaturesUpserted,
     durationMs,
     details,
   };

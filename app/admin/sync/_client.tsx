@@ -80,8 +80,15 @@ export default function WixPullClient({
   // Módulo de Reconciliação ZapSign
   const [zapStatus, setZapStatus] = useState<ZapSignSyncSummary>(initialZapSignStatus);
   const [runningZapSign, setRunningZapSign] = useState(false);
+  const [runningWixTokens, setRunningWixTokens] = useState(false);
   const [zapOnlyPending, setZapOnlyPending] = useState(true);
   const [zapMessage, setZapMessage] = useState('');
+  const [wixTokenResult, setWixTokenResult] = useState<{
+    totalWixWithToken?: number;
+    quotesUpdated?: number;
+    signaturesUpserted?: number;
+    durationMs?: number;
+  } | null>(null);
   const [zapResult, setZapResult] = useState<{
     totalTokensFound?: number;
     totalProcessed?: number;
@@ -235,6 +242,39 @@ export default function WixPullClient({
       setZapMessage('Falha de rede ao conectar com a API da ZapSign.');
     } finally {
       setRunningZapSign(false);
+    }
+  }
+
+  async function runWixTokenSync() {
+    setRunningWixTokens(true);
+    setZapMessage('Lendo tokens da coleção Import1 do Wix e atualizando contratos...');
+    setWixTokenResult(null);
+
+    try {
+      const response = await fetch('/api/admin/sync/zapsign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'sync_wix_tokens' }),
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        setZapMessage(data.error || 'Falha ao sincronizar tokens do Wix.');
+        setRunningWixTokens(false);
+        return;
+      }
+
+      setWixTokenResult(data.wixResult);
+      if (data.status) {
+        setZapStatus(data.status);
+      }
+      setZapMessage(
+        `Sucesso! ${data.wixResult.quotesUpdated} cotação(ões) atualizada(s) para Assinado e ${data.wixResult.signaturesUpserted} contrato(s) registrado(s).`
+      );
+    } catch {
+      setZapMessage('Falha de rede ao sincronizar tokens do Wix.');
+    } finally {
+      setRunningWixTokens(false);
     }
   }
 
@@ -813,22 +853,43 @@ export default function WixPullClient({
 
         {/* Controles de Disparo */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
-          <div className="flex flex-wrap items-center gap-4">
+          <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
               className="btn-primary flex items-center gap-2"
+              onClick={runWixTokenSync}
+              disabled={runningWixTokens || runningZapSign}
+              title="Aplica a regra oficial: todo cliente da coleção Import1 com a coluna Token já assinou o contrato."
+            >
+              {runningWixTokens ? (
+                <>
+                  <RefreshCw size={15} className="animate-spin" />
+                  <span>Sincronizando Tokens do Wix...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 size={16} />
+                  <span>Sincronizar Tokens do Wix Import1</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              className="px-4 py-2 text-xs font-bold text-gray-800 bg-gray-100 hover:bg-gray-200 border border-gray-300 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50"
               onClick={runZapSignSync}
-              disabled={runningZapSign}
+              disabled={runningZapSign || runningWixTokens}
+              title="Consulta cada token na API da ZapSign para baixar o PDF assinado oficial."
             >
               {runningZapSign ? (
                 <>
-                  <RefreshCw size={15} className="animate-spin" />
+                  <RefreshCw size={14} className="animate-spin text-primary" />
                   <span>Consultando ZapSign...</span>
                 </>
               ) : (
                 <>
-                  <FileCheck size={16} />
-                  <span>Sincronizar Assinaturas ZapSign</span>
+                  <FileCheck size={15} className="text-primary" />
+                  <span>Validar na API da ZapSign</span>
                 </>
               )}
             </button>
@@ -840,14 +901,45 @@ export default function WixPullClient({
                 onChange={(e) => setZapOnlyPending(e.target.checked)}
                 className="accent-[#0e4a5a]"
               />
-              <span>Consultar apenas pendentes</span>
+              <span>Apenas pendentes na ZapSign</span>
             </label>
           </div>
 
           <div className="text-xs text-gray-500">
-            {zapMessage || 'Valida tokens via GET /docs/{token}/ com pool de conexões seguro.'}
+            {zapMessage || 'Regra oficial: coluna Token em Import1 define o contrato como assinado.'}
           </div>
         </div>
+
+        {/* Resultados Sincronização Tokens Wix */}
+        {wixTokenResult && (
+          <div className="p-4 rounded-xl border border-teal-200 bg-teal-50/60 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-teal-900 font-bold text-sm">
+                <CheckCircle2 size={16} className="text-teal-600" />
+                <span>Tokens do Wix Import1 Sincronizados com Sucesso!</span>
+              </div>
+              <div className="text-xs font-semibold text-teal-700 flex items-center gap-1">
+                <Clock size={13} />
+                {((wixTokenResult.durationMs || 0) / 1000).toFixed(2)}s decorridos
+              </div>
+            </div>
+
+            <div className="grid gap-3 grid-cols-2 sm:grid-cols-3">
+              <div className="rounded-xl border border-gray-200 bg-white p-3">
+                <div className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Itens Wix c/ Token</div>
+                <div className="mt-1 text-xl font-black text-gray-900">{wixTokenResult.totalWixWithToken ?? 0}</div>
+              </div>
+              <div className="rounded-xl border border-teal-200 bg-white p-3">
+                <div className="text-[11px] uppercase tracking-wide text-teal-700 font-bold">Cotações Atualizadas</div>
+                <div className="mt-1 text-xl font-black text-teal-800">{wixTokenResult.quotesUpdated ?? 0}</div>
+              </div>
+              <div className="rounded-xl border border-emerald-200 bg-white p-3">
+                <div className="text-[11px] uppercase tracking-wide text-emerald-700 font-bold">Contratos &quot;signed&quot;</div>
+                <div className="mt-1 text-xl font-black text-emerald-800">{wixTokenResult.signaturesUpserted ?? 0}</div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Resultados ZapSign */}
         {zapResult && (

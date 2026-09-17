@@ -18,15 +18,23 @@ loadEnvFile(path.resolve(process.cwd(), '.env.local'));
 loadEnvFile(path.resolve(process.cwd(), '.env'));
 
 import { reconcileZapSignDocuments, getZapSignSyncStatus } from '../src/lib/zapsign-sync';
+import { syncWixTokensToContracts } from '../src/lib/wix-sales-sync';
 
 async function main() {
-  console.log('🚀 Iniciando reconciliação em lote com a API da ZapSign...\n');
+  console.log('🚀 Iniciando atualização e reconciliação de contratos...\n');
 
+  console.log('1️⃣ Sincronizando Tokens do Wix Import1 (regra oficial: quem tem Token assinou)...');
+  const wixRes = await syncWixTokensToContracts();
+  console.log(`  - Total no Wix com Token identificado: ${wixRes.totalWixWithToken}`);
+  console.log(`  - Cotações atualizadas para status assinado: ${wixRes.quotesUpdated}`);
+  console.log(`  - Assinaturas registradas como "signed": ${wixRes.signaturesUpserted}`);
+  console.log(`  - Duração: ${(wixRes.durationMs / 1000).toFixed(2)}s\n`);
+
+  console.log('2️⃣ Estado Consolidado dos Tokens no Banco de Dados:');
   const beforeStatus = await getZapSignSyncStatus();
-  console.log('📊 Estado Atual no Banco de Dados:');
   console.log(`  - Total de tokens identificados: ${beforeStatus.totalTokens}`);
   console.log(`  - Contratos já confirmados como assinados: ${beforeStatus.signedTokens}`);
-  console.log(`  - Contratos aguardando validação / pendentes: ${beforeStatus.pendingTokens}\n`);
+  console.log(`  - Contratos aguardando validação na ZapSign: ${beforeStatus.pendingTokens}\n`);
 
   if (beforeStatus.pendingTokens === 0 && process.argv.includes('--only-pending')) {
     console.log('✅ Nenhum contrato pendente de validação encontrado.');
