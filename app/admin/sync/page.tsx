@@ -7,6 +7,7 @@ import WixPullClient from './_client';
 import { formatDateTime } from '@/lib/format';
 import { isWixIntegrationEnabled } from '@/lib/system-settings';
 import { listWixCollectionsStatus } from '@/lib/wix-pull';
+import { getZapSignSyncStatus } from '@/lib/zapsign-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -54,6 +55,11 @@ export default async function AdminSyncPage() {
   `;
 
   const initialCollections = await listWixCollectionsStatus().catch(() => []);
+  const initialZapSignStatus = await getZapSignSyncStatus().catch(() => ({
+    totalTokens: 0,
+    signedTokens: 0,
+    pendingTokens: 0,
+  }));
 
   return (
     <div>
@@ -71,6 +77,7 @@ export default async function AdminSyncPage() {
         lastSyncedAt={mirrorSummary?.last_synced_at || null}
         wixEnabled={wixEnabled}
         initialCollections={initialCollections}
+        initialZapSignStatus={initialZapSignStatus}
       />
 
       <div className="mb-6 grid gap-4 md:grid-cols-4">

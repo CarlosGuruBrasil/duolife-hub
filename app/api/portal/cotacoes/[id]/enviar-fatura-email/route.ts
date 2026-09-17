@@ -33,8 +33,16 @@ export async function POST(
       : [];
 
     const [partnerRow] = cotacao.partner_id
-      ? await sql<{ nome_fantasia: string; razao_social: string; email?: string }[]>`
-          SELECT nome_fantasia, razao_social, email FROM partners WHERE id = ${cotacao.partner_id} LIMIT 1
+      ? await sql<{ nome: string; email: string; codigo_venda?: string }[]>`
+          SELECT
+            COALESCE(p.nome_fantasia, p.razao_social) AS nome,
+            COALESCE(NULLIF(p.email, ''), pu.email) AS email,
+            p.metadata->'whiteLabel'->>'wixCode' AS codigo_venda
+          FROM partners p
+          LEFT JOIN partner_users pu ON pu.partner_id = p.id AND pu.is_active = true
+          WHERE p.id = ${cotacao.partner_id}
+          ORDER BY pu.created_at ASC
+          LIMIT 1
         `
       : [];
 
@@ -121,7 +129,7 @@ export async function POST(
       ? Math.round((valorTotal / qtdParcelas) * 100) / 100
       : valorTotal;
 
-    const partnerName = partnerRow?.nome_fantasia || partnerRow?.razao_social || 'DuoLife';
+    const partnerName = partnerRow?.nome || 'DuoLife';
 
     // 6. Dispara evento de domínio oficial FATURA_GERADA
     let actionsExecuted = 0;
@@ -150,10 +158,12 @@ export async function POST(
           forma_pagamento: 'BOLETO',
           status: 'PENDING',
         },
-        parceiro: {
-          nome: partnerName,
-          email: partnerRow?.email,
-        },
+        parceiro: partnerRow ? {
+          id: cotacao.partner_id,
+          nome: partnerRow.nome,
+          email: partnerRow.email,
+          codigoVenda: partnerRow.codigo_venda,
+        } : undefined,
         dados: {
           checkoutId,
           link_fatura: linkBoleto,

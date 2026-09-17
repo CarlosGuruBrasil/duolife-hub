@@ -51,7 +51,12 @@ export default function AdminEmailsPage() {
         setSuccess(data.message || `${data.synced} templates sincronizados com sucesso com o Net4Life Info!`);
         await loadData();
       } else {
-        setError(data.error || 'Falha ao sincronizar templates com o Net4Life Info.');
+        const detailMsg =
+          data.error ||
+          (Array.isArray(data.errors) && data.errors.length > 0 ? data.errors.join(' | ') : null) ||
+          data.message ||
+          'Falha ao sincronizar templates com o Net4Life Info.';
+        setError(detailMsg);
       }
     } catch (err: any) {
       setError(err?.message || 'Erro de conexão ao sincronizar templates.');

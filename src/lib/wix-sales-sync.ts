@@ -317,6 +317,28 @@ export function classifyWixStatus(statusRaw: unknown): 'fechado' | 'pendente' | 
   return 'outro';
 }
 
+export function isWixContractSigned(
+  raw: Record<string, unknown> | null | undefined,
+  statusRaw: unknown,
+  hasSignedUrl: boolean,
+  isFechado: boolean
+): boolean {
+  if (isFechado) return true;
+  if (hasSignedUrl) return true;
+  const s = String(statusRaw || raw?.statusCliente || raw?.status || raw?.situacao || '').toLowerCase().trim();
+  if (
+    s.includes('assinado') ||
+    s.includes('contrato assinado') ||
+    s === '2' ||
+    s.startsWith('2 ') ||
+    s.startsWith('2-') ||
+    s.startsWith('2 -')
+  ) {
+    return true;
+  }
+  return false;
+}
+
 export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Promise<WixSalesSyncResult> {
   await ensureSchema();
   const startTime = Date.now();
@@ -447,6 +469,12 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
       const urls = extractWixUrls(raw);
       const address = parseWixAddress(raw);
       const installmentsInfo = extractWixInstallments(raw, revenue);
+      const isContractSigned = isWixContractSigned(
+        raw,
+        wix.statusCliente || wix.status,
+        Boolean(urls.signedFileUrl),
+        classification === 'fechado'
+      );
 
       // Bloco cadastral/profissional completo (nascimento, endereço, vigência,
       // seguro anterior, declarações de sinistro) — mesmo mapeamento usado pelo
@@ -607,13 +635,19 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
 
       // Determina status da cotação
       let cotacaoStatus = 'rascunho';
-      if (classification === 'fechado') cotacaoStatus = 'emitida';
-      else if (classification === 'pendente') {
-        cotacaoStatus = 'enviada';
-        pendingQuotesCount++;
+      if (classification === 'fechado') {
+        cotacaoStatus = 'emitida';
       } else if (classification === 'cancelado') {
         cotacaoStatus = 'cancelada';
         canceledQuotesCount++;
+      } else if (isContractSigned) {
+        cotacaoStatus = (installmentsInfo.paidCount > 0 || installmentsInfo.count > 0)
+          ? 'pagamento_gerado'
+          : 'assinado';
+        pendingQuotesCount++;
+      } else if (classification === 'pendente') {
+        cotacaoStatus = 'enviada';
+        pendingQuotesCount++;
       }
 
       const quoteClientData = {
@@ -685,6 +719,8 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
         urlAssinado: urls.signedFileUrl,
         linkBoleto: urls.bankSlipUrl,
         contratoToken: zapsignToken,
+        contratoPdf: urls.signedFileUrl || null,
+        assinadoEm: isContractSigned ? wixDate.toISOString() : null,
         origem: 'wix_sync',
         codigoVenda: rawPartnerCode ? rawPartnerCode.toLowerCase() : null,
         codigoWix: segurado.codigoWix,
@@ -730,7 +766,11 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
               importancia_segurada = ${coverageFinal},
               premio_calculado = ${revenue},
               premio_final = ${revenue},
-              status = ${cotacaoStatus},
+              status = CASE
+                WHEN cotacoes.status IN ('emitida', 'aprovada') AND ${cotacaoStatus} NOT IN ('emitida', 'aprovada') THEN cotacoes.status
+                WHEN ${isContractSigned} AND cotacoes.status IN ('rascunho', 'enviada', 'contrato_gerado') THEN ${cotacaoStatus}
+                ELSE ${cotacaoStatus}
+              END,
               metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify({ source: 'wix', wixId: wix.id, wix: raw })}::jsonb,
               created_at = ${wixDate},
               updated_at = NOW()
@@ -1059,8 +1099,8 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
       }
 
       // 8. Sincroniza Contrato ZapSign em SIGNATURE_DOCUMENTS
-      if (zapsignToken) {
-        const isSigned = classification === 'fechado';
+      if (zapsignToken || urls.signedFileUrl) {
+        const extDocId = zapsignToken || `WIX-ZAP-${wix.id}`;
         await sql`
           INSERT INTO signature_documents (
             cotacao_id,
@@ -1080,21 +1120,22 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
             ${cotacaoId},
             ${clientId},
             'zapsign',
-            ${zapsignToken},
+            ${extDocId},
             ${urls.signedFileUrl},
             ${urls.signedFileUrl},
-            ${isSigned ? 'signed' : 'pending'},
-            ${isSigned ? wixDate : null},
-            ${isSigned ? 'doc_signed' : 'doc_created'},
-            ${JSON.stringify({ source: 'wix', token: zapsignToken, raw })}::jsonb,
+            ${isContractSigned ? 'signed' : 'pending'},
+            ${isContractSigned ? wixDate : null},
+            ${isContractSigned ? 'doc_signed' : 'doc_created'},
+            ${JSON.stringify({ source: 'wix', token: extDocId, raw })}::jsonb,
             ${wixDate},
             NOW()
           )
           ON CONFLICT (provider, external_document_id)
           DO UPDATE SET
             signed_file_url = COALESCE(EXCLUDED.signed_file_url, signature_documents.signed_file_url),
-            status = EXCLUDED.status,
-            signed_at = COALESCE(EXCLUDED.signed_at, signature_documents.signed_at),
+            status = CASE WHEN EXCLUDED.status = 'signed' THEN 'signed' ELSE signature_documents.status END,
+            signed_at = COALESCE(signature_documents.signed_at, EXCLUDED.signed_at),
+            last_event_type = CASE WHEN EXCLUDED.status = 'signed' THEN 'doc_signed' ELSE signature_documents.last_event_type END,
             updated_at = NOW()
         `;
         signaturesCreated++;

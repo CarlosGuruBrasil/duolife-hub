@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "node scripts/migrate.mjs && next start",
     "test": "echo \"No tests configured\"",
-    "wix:pull": "tsx scripts/run-wix-pull.ts"
+    "wix:pull": "tsx scripts/run-wix-pull.ts",
+    "zapsign:sync": "tsx scripts/sync-zapsign-batch.ts"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

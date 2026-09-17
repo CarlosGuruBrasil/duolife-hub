@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ArrowRight, UserCheck } from 'lucide-react';
 import { AdminClientRow } from '@/types/admin-clients';
 import { ExcluirClienteButton } from '@/components/dev';
+import TransferirParceiroClienteButton from '@/components/modals/TransferirParceiroClienteButton';
 import { formatStatusLabel } from '@/lib/format';
 
 const statusLabel: Record<string, string> = {
@@ -132,6 +133,16 @@ export function ClientesCardMobile({
         </span>
 
         <div className="flex items-center gap-2">
+          <TransferirParceiroClienteButton
+            clienteId={client.id}
+            clienteNome={client.full_name}
+            currentPartner={{
+              name: client.partner_names || null,
+            }}
+            totalQuotesCount={client.cotacoes_count}
+            variant="icon"
+            size="sm"
+          />
           <Link
             href={`/admin/clientes/${client.id}`}
             className="inline-flex items-center gap-1.5 text-xs font-extrabold text-[#0e4a5a] hover:text-[#0b3a47] py-1.5 px-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors"

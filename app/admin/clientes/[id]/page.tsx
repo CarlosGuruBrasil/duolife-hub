@@ -8,6 +8,8 @@ import { formatCurrency, formatDateTime as formatDate, formatStatusLabel } from 
 import { safeExternalUrl } from '@/lib/safe-url';
 import EditarClienteButton from '@/components/modals/EditarClienteButton';
 import EditarPropostaButton from '@/components/modals/EditarPropostaButton';
+import TransferirParceiroClienteButton from '@/components/modals/TransferirParceiroClienteButton';
+import TransferirParceiroCotacaoButton from '@/components/modals/TransferirParceiroCotacaoButton';
 import { ExcluirClienteButton, ExcluirCotacaoButton, ExcluirBoletoButton } from '@/components/dev';
 
 function formatDocument(value: string) {
@@ -82,8 +84,12 @@ export default async function AdminClienteDetalhePage({ params }: { params: Prom
       c.client_phone,
       c.client_data,
       c.notes,
+      c.partner_id,
+      c.partner_user_id,
       COALESCE(p.name, 'RC Profissional') AS product_name,
       COALESCE(pr.nome_fantasia, pr.razao_social, 'NET4Life') AS partner_name,
+      pr.status AS partner_status,
+      pu.name AS partner_user_name,
       po.status AS payment_status,
       po.installment_count,
       po.paid_installments,
@@ -92,6 +98,7 @@ export default async function AdminClienteDetalhePage({ params }: { params: Prom
     FROM cotacoes c
     LEFT JOIN products p ON p.id = c.product_id
     LEFT JOIN partners pr ON pr.id = c.partner_id
+    LEFT JOIN partner_users pu ON pu.id = c.partner_user_id
     LEFT JOIN payment_orders po ON po.cotacao_id = c.id
     LEFT JOIN signature_documents sd ON sd.cotacao_id = c.id
     WHERE c.client_id = ${id}
@@ -189,7 +196,7 @@ export default async function AdminClienteDetalhePage({ params }: { params: Prom
               </div>
             )}
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <EditarClienteButton
               cliente={{
                 id: client.id,
@@ -201,6 +208,19 @@ export default async function AdminClienteDetalhePage({ params }: { params: Prom
                 address: clientAddress,
               }}
               variant="primary"
+              size="md"
+            />
+            <TransferirParceiroClienteButton
+              clienteId={client.id}
+              clienteNome={client.full_name}
+              currentPartner={{
+                id: quotes[0]?.partner_id || (clientMeta.partnerId as string) || null,
+                name: quotes[0]?.partner_name || (clientMeta.partnerName as string) || null,
+                userName: quotes[0]?.partner_user_name || null,
+                isActive: quotes[0]?.partner_status === 'active',
+              }}
+              totalQuotesCount={quotes.length}
+              variant="outline"
               size="md"
             />
             {isDev && (
@@ -285,6 +305,18 @@ export default async function AdminClienteDetalhePage({ params }: { params: Prom
                         >
                           Ver <ExternalLink size={11} />
                         </Link>
+                        <TransferirParceiroCotacaoButton
+                          cotacaoId={quote.id}
+                          cotacaoTitle={`Cotação #${quote.id.slice(0, 8)} · ${quote.product_name}`}
+                          currentPartner={{
+                            id: quote.partner_id,
+                            name: quote.partner_name,
+                            userName: quote.partner_user_name,
+                            isActive: quote.partner_status === 'active',
+                          }}
+                          variant="icon"
+                          size="sm"
+                        />
                         {isDev && (
                           <ExcluirCotacaoButton
                             cotacaoId={quote.id}

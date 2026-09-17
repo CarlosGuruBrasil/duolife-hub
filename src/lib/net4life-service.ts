@@ -1,7 +1,7 @@
 import https from 'node:https';
 import { sql } from './pg';
 import { logger } from './logger';
-import { getNet4LifeInfoConfig, type Net4LifeInfoConfig } from './system-settings';
+import { getNet4LifeInfoConfig, sanitizeApiToken, type Net4LifeInfoConfig } from './system-settings';
 import type { EmailTemplate } from './email-service';
 
 export interface Net4LifeSendEmailOptions {
@@ -75,7 +75,10 @@ async function callNet4LifeApi<T = any>(
   let basePath = parsed.pathname.replace(/\/+$/, '');
   let fullPath = `${basePath}${endpointPath.startsWith('/') ? endpointPath : `/${endpointPath}`}`;
 
-  const token = config.apiToken.trim();
+  const token = sanitizeApiToken(config.apiToken);
+  if (!token) {
+    throw new Error('Token de aplicação Net4Life Info não configurado ou vazio.');
+  }
   const serializedBody = bodyData ? JSON.stringify(bodyData) : '';
   const bodyBuffer = bodyData ? Buffer.from(serializedBody, 'utf-8') : null;
 
@@ -228,8 +231,9 @@ export async function pushTemplateToNet4Life(
     }
 
     const payload: Record<string, any> = {
-      nome: template.name,
-      assunto: template.subject,
+      acao: 'publicar',
+      nome: template.name.trim(),
+      assunto: template.subject.trim(),
       conteudo_html: template.bodyHtml,
       variaveis: template.variables || [],
     };
@@ -242,12 +246,30 @@ export async function pushTemplateToNet4Life(
 
     if (res.status >= 200 && res.status < 300) {
       const data: any = res.data;
-      const externalId = data.id || data.template_id || (data.template && data.template.id) || template.externalId;
+      if (data.success === false || data.sucesso === false) {
+        return {
+          success: false,
+          error: data.msg || data.mensagem || data.data?.msg || data.error || 'Erro reportado pela API Net4Life Info.',
+        };
+      }
+      const rawExtId =
+        data.id ||
+        data.template_id ||
+        data.data?.id ||
+        data.data?.template_id ||
+        (data.template && data.template.id) ||
+        template.externalId;
+      const externalId = rawExtId ? String(rawExtId) : undefined;
       return { success: true, externalId };
     }
 
     const errData: any = res.data;
-    const error = errData.msg || errData.mensagem || errData.error || `HTTP ${res.status}`;
+    const error =
+      errData.msg ||
+      errData.mensagem ||
+      errData.data?.msg ||
+      errData.error ||
+      (res.status === 401 ? 'Token de acesso Net4Life Info inválido ou inativo (HTTP 401).' : `Erro HTTP ${res.status}`);
     return { success: false, error };
   } catch (err: any) {
     return { success: false, error: err?.message || 'Falha ao sincronizar template com Net4Life Info.' };
@@ -280,13 +302,19 @@ export async function fetchNet4LifeTemplates(): Promise<{
     const res = await callNet4LifeApi('/templates', 'GET');
     if (res.status >= 200 && res.status < 300) {
       const data: any = res.data;
-      const list = Array.isArray(data) ? data : data.templates || data.data || [];
+      if (data.success === false || data.sucesso === false) {
+        return {
+          success: false,
+          error: data.msg || data.mensagem || data.data?.msg || 'Erro retornado pela API Net4Life Info',
+        };
+      }
+      const list = Array.isArray(data) ? data : data.data || data.templates || [];
       return { success: true, templates: list };
     }
     const errData: any = res.data;
     return {
       success: false,
-      error: errData.msg || errData.mensagem || `HTTP ${res.status}`,
+      error: errData.msg || errData.mensagem || errData.data?.msg || `HTTP ${res.status}`,
     };
   } catch (err: any) {
     return { success: false, error: err?.message || 'Erro ao consultar templates no Net4Life Info' };
@@ -304,7 +332,15 @@ export async function testNet4LifeConnection(
     const res = await callNet4LifeApi('/templates', 'GET', undefined, customConfig);
     const latencyMs = Date.now() - start;
 
-    if (res.status === 200) {
+    if (res.status >= 200 && res.status < 300) {
+      const data: any = res.data;
+      if (data.success === false || data.sucesso === false) {
+        return {
+          success: false,
+          message: `Falha na API: ${data.msg || data.mensagem || 'Resposta de erro da API Net4Life Info'}`,
+          latencyMs,
+        };
+      }
       return {
         success: true,
         message: 'Conexão estabelecida com sucesso com a API Net4Life Info / FluxoSend!',
@@ -313,7 +349,11 @@ export async function testNet4LifeConnection(
     }
 
     const errData: any = res.data;
-    const msg = errData.msg || errData.mensagem || (res.status === 401 ? 'Token de aplicação inválido ou inativo.' : `HTTP ${res.status}`);
+    const msg =
+      errData.msg ||
+      errData.mensagem ||
+      errData.data?.msg ||
+      (res.status === 401 ? 'Token de aplicação inválido ou inativo.' : `HTTP ${res.status}`);
     return {
       success: false,
       message: `Falha na autenticação: ${msg}`,
@@ -338,7 +378,7 @@ export async function syncAllTemplatesWithNet4Life(): Promise<Net4LifeSyncResult
       success: false,
       total: 0,
       synced: 0,
-      errors: ['A integração com Net4Life Info está desativada ou sem token configurado.'],
+      errors: ['A integração com Net4Life Info está desativada ou sem token configurado. Acesse Configurações > Chaves de API.'],
     };
   }
 
@@ -349,6 +389,15 @@ export async function syncAllTemplatesWithNet4Life(): Promise<Net4LifeSyncResult
     WHERE is_active = true
     ORDER BY name ASC
   `;
+
+  if (localTemplates.length === 0) {
+    return {
+      success: true,
+      total: 0,
+      synced: 0,
+      errors: [],
+    };
+  }
 
   let synced = 0;
   const errors: string[] = [];
@@ -363,14 +412,22 @@ export async function syncAllTemplatesWithNet4Life(): Promise<Net4LifeSyncResult
         variables: tpl.variables,
       });
 
-      if (pushResult.success && pushResult.externalId) {
-        await sql`
-          UPDATE email_templates
-          SET
-            external_id = ${pushResult.externalId},
-            last_synced_at = NOW()
-          WHERE id = ${tpl.id}
-        `;
+      if (pushResult.success) {
+        if (pushResult.externalId) {
+          await sql`
+            UPDATE email_templates
+            SET
+              external_id = ${pushResult.externalId},
+              last_synced_at = NOW()
+            WHERE id = ${tpl.id}
+          `;
+        } else {
+          await sql`
+            UPDATE email_templates
+            SET last_synced_at = NOW()
+            WHERE id = ${tpl.id}
+          `;
+        }
         synced++;
       } else {
         errors.push(`Template "${tpl.name}" (${tpl.code}): ${pushResult.error || 'Erro desconhecido'}`);

@@ -5,6 +5,7 @@ import { verifyAuth, isInternalUser, isDevUser } from '@/lib/auth';
 import { ensureSchema } from '@/lib/schema';
 import { getAdminClientsList } from '@/lib/admin-clients-service';
 import { ExcluirClienteButton } from '@/components/dev';
+import TransferirParceiroClienteButton from '@/components/modals/TransferirParceiroClienteButton';
 import {
   ClientSortField,
   PageSizeOption,
@@ -318,6 +319,16 @@ export default async function AdminClientesPage({
                           {/* Ações */}
                           <td className="px-6 py-4 text-right border-b border-gray-100">
                             <div className="flex items-center justify-end gap-2">
+                              <TransferirParceiroClienteButton
+                                clienteId={client.id}
+                                clienteNome={client.full_name}
+                                currentPartner={{
+                                  name: client.partner_names || null,
+                                }}
+                                totalQuotesCount={client.cotacoes_count}
+                                variant="icon"
+                                size="sm"
+                              />
                               <Link
                                 href={`/admin/clientes/${client.id}`}
                                 className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0e4a5a] hover:text-[#0b3a47] py-1.5 px-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition-colors shadow-2xs"

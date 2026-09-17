@@ -10,6 +10,7 @@ import { formatCurrency, formatDate, formatDateTime, formatAtuacao } from '@/lib
 import { safeExternalUrl } from '@/lib/safe-url';
 import { isDateBeforeToday } from '@/lib/business-days';
 import EditarPropostaButton from '@/components/modals/EditarPropostaButton';
+import TransferirParceiroCotacaoButton from '@/components/modals/TransferirParceiroCotacaoButton';
 import { ExcluirCotacaoButton, ExcluirBoletoButton } from '@/components/dev';
 
 const statusLabel: Record<string, string> = {
@@ -69,12 +70,15 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
     SELECT
       c.id, c.client_name, c.client_cpf_cnpj, c.client_email, c.client_phone,
       c.status, c.importancia_segurada, c.premio_final, c.premio_calculado, c.client_data, c.created_at,
-      c.notes,
+      c.notes, c.partner_id, c.partner_user_id,
       p.name AS product_name,
-      part.nome_fantasia AS partner_name
+      COALESCE(part.nome_fantasia, part.razao_social) AS partner_name,
+      part.status AS partner_status,
+      pu.name AS partner_user_name
     FROM cotacoes c
     JOIN products p ON p.id = c.product_id
     JOIN partners part ON part.id = c.partner_id
+    LEFT JOIN partner_users pu ON pu.id = c.partner_user_id
     WHERE c.id = ${id}
   `;
 
@@ -205,6 +209,18 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
               variant="outline"
               size="sm"
             />
+            <TransferirParceiroCotacaoButton
+              cotacaoId={cotacao.id}
+              cotacaoTitle={`Cotação #${cotacao.id.slice(0, 8)} · ${cotacao.client_name}`}
+              currentPartner={{
+                id: cotacao.partner_id,
+                name: cotacao.partner_name,
+                userName: cotacao.partner_user_name,
+                isActive: cotacao.partner_status === 'active',
+              }}
+              variant="outline"
+              size="sm"
+            />
             {cotacao.status === 'rascunho' && (
               <Link
                 href={`/admin/cotacoes/nova?cotacaoId=${cotacao.id}`}
@@ -286,8 +302,28 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
               <span className="font-semibold text-slate-700 block">{franquia}</span>
             </div>
             <div>
-              <span className="text-slate-400 font-medium block">Vendedor / Parceiro</span>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-400 font-medium block">Vendedor / Parceiro</span>
+                <TransferirParceiroCotacaoButton
+                  cotacaoId={cotacao.id}
+                  cotacaoTitle={`Cotação #${cotacao.id.slice(0, 8)} · ${cotacao.client_name}`}
+                  currentPartner={{
+                    id: cotacao.partner_id,
+                    name: cotacao.partner_name,
+                    userName: cotacao.partner_user_name,
+                    isActive: cotacao.partner_status === 'active',
+                  }}
+                  variant="ghost"
+                  size="sm"
+                  className="p-0 min-h-0 text-[#0e4a5a] text-[11px] font-semibold hover:underline"
+                >
+                  <span>Mudar</span>
+                </TransferirParceiroCotacaoButton>
+              </div>
               <span className="font-semibold text-slate-900 block">{cotacao.partner_name}</span>
+              {cotacao.partner_user_name && (
+                <span className="text-[11px] text-slate-500 block">Corretor: {cotacao.partner_user_name}</span>
+              )}
             </div>
           </div>
 

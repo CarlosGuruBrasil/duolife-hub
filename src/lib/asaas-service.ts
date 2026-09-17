@@ -449,8 +449,16 @@ export async function generateAsaasPaymentForQuote(
         : [];
 
       const [partnerRow] = cotacao.partner_id
-        ? await sql<{ nome_fantasia: string; razao_social: string }[]>`
-            SELECT nome_fantasia, razao_social FROM partners WHERE id = ${cotacao.partner_id} LIMIT 1
+        ? await sql<{ nome: string; email: string; codigo_venda?: string }[]>`
+            SELECT
+              COALESCE(p.nome_fantasia, p.razao_social) AS nome,
+              COALESCE(NULLIF(p.email, ''), pu.email) AS email,
+              p.metadata->'whiteLabel'->>'wixCode' AS codigo_venda
+            FROM partners p
+            LEFT JOIN partner_users pu ON pu.partner_id = p.id AND pu.is_active = true
+            WHERE p.id = ${cotacao.partner_id}
+            ORDER BY pu.created_at ASC
+            LIMIT 1
           `
         : [];
 
@@ -480,9 +488,12 @@ export async function generateAsaasPaymentForQuote(
           forma_pagamento: 'BOLETO',
           status: 'PENDING',
         },
-        parceiro: {
-          nome: partnerRow?.nome_fantasia || partnerRow?.razao_social || 'DuoLife',
-        },
+        parceiro: partnerRow ? {
+          id: cotacao.partner_id,
+          nome: partnerRow.nome,
+          email: partnerRow.email,
+          codigoVenda: partnerRow.codigo_venda,
+        } : undefined,
         dados: {
           checkoutId,
           link_fatura: linkBoleto,

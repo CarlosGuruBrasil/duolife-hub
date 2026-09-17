@@ -741,7 +741,14 @@ export async function processCsvRowsBatch(
 
       // 9. Criação de Documento ZapSign
       if (zapsignToken || urlDocOriginal || urlAssinado) {
-        const signStatus = (urlAssinado || cotacaoStatus === 'aprovada') ? 'signed' : 'pending';
+        const isSignedDoc = Boolean(
+          urlAssinado ||
+          cotacaoStatus === 'aprovada' ||
+          cotacaoStatus === 'assinado' ||
+          statusLower.includes('assinado') ||
+          statusLower.includes('contrato assinado')
+        );
+        const signStatus = isSignedDoc ? 'signed' : 'pending';
         const extDocId = zapsignToken || `CSV-ZAP-${cotacao.id}`;
 
         try {
@@ -764,8 +771,9 @@ export async function processCsvRowsBatch(
                 external_document_id = COALESCE(signature_documents.external_document_id, ${extDocId}),
                 sign_url = COALESCE(${urlDocOriginal || urlProposta}, signature_documents.sign_url),
                 signed_file_url = COALESCE(${urlAssinado}, signature_documents.signed_file_url),
-                status = ${signStatus},
+                status = CASE WHEN ${signStatus} = 'signed' THEN 'signed' ELSE signature_documents.status END,
                 signed_at = COALESCE(signature_documents.signed_at, ${signStatus === 'signed' ? createdAtDate : null}),
+                last_event_type = CASE WHEN ${signStatus} = 'signed' THEN 'doc_signed' ELSE signature_documents.last_event_type END,
                 updated_at = NOW()
               WHERE id = ${activeDoc.id}
             `;
@@ -781,6 +789,7 @@ export async function processCsvRowsBatch(
                 signed_file_url,
                 status,
                 signed_at,
+                last_event_type,
                 created_at,
                 updated_at
               )
@@ -793,12 +802,15 @@ export async function processCsvRowsBatch(
                 ${urlAssinado},
                 ${signStatus},
                 ${signStatus === 'signed' ? createdAtDate : null},
+                ${signStatus === 'signed' ? 'doc_signed' : 'doc_created'},
                 ${createdAtDate},
                 NOW()
               )
               ON CONFLICT (provider, external_document_id) DO UPDATE SET
                 signed_file_url = COALESCE(EXCLUDED.signed_file_url, signature_documents.signed_file_url),
-                status = EXCLUDED.status,
+                status = CASE WHEN EXCLUDED.status = 'signed' THEN 'signed' ELSE signature_documents.status END,
+                signed_at = COALESCE(signature_documents.signed_at, EXCLUDED.signed_at),
+                last_event_type = CASE WHEN EXCLUDED.status = 'signed' THEN 'doc_signed' ELSE signature_documents.last_event_type END,
                 updated_at = NOW()
             `;
             signaturesCreated++;

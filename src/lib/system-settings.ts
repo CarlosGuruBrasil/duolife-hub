@@ -273,14 +273,18 @@ export async function getNet4LifeInfoConfig(): Promise<Net4LifeInfoConfig> {
     dbSettings['NET4LIFE_INFO_API_URL'] ||
     process.env.NET4LIFE_INFO_API_URL ||
     'https://api.duo24horas.com.br/email_marketing/v1';
-  // Normaliza caso o operador insira a URL da landing page net4lifeinfo.com.br
-  const apiUrl = rawApiUrl.includes('net4lifeinfo.com.br')
-    ? rawApiUrl.replace(/https?:\/\/(?:app\.|www\.)?net4lifeinfo\.com\.br(?:\/doc)?/i, 'https://api.duo24horas.com.br')
-    : rawApiUrl;
-  const apiToken =
+  let apiUrl = rawApiUrl.trim().replace(/\/+$/, '');
+  if (apiUrl.includes('net4lifeinfo.com.br')) {
+    apiUrl = apiUrl.replace(/https?:\/\/(?:app\.|www\.)?net4lifeinfo\.com\.br(?:\/doc)?/i, 'https://api.duo24horas.com.br');
+  }
+  if (!apiUrl.includes('/email_marketing/v1')) {
+    apiUrl = `${apiUrl}/email_marketing/v1`;
+  }
+  const apiToken = sanitizeApiToken(
     dbSettings['NET4LIFE_INFO_API_TOKEN'] ||
     process.env.NET4LIFE_INFO_API_TOKEN ||
-    '';
+    ''
+  );
   const senderEmail =
     dbSettings['NET4LIFE_INFO_SENDER_EMAIL'] ||
     process.env.NET4LIFE_INFO_SENDER_EMAIL ||

@@ -31,15 +31,25 @@ export async function POST(req: NextRequest) {
       'emails.templates.sync_all_executed'
     );
 
-    return Response.json({
-      ok: result.success,
-      total: result.total,
-      synced: result.synced,
-      errors: result.errors,
-      message: result.success
-        ? `Sincronização concluída com sucesso! ${result.synced} de ${result.total} templates sincronizados com o Net4Life Info.`
-        : `${result.synced} de ${result.total} templates sincronizados. Ocorreram avisos em alguns modelos.`,
-    });
+    const errorMessage = !result.success
+      ? (result.errors.length > 0
+          ? result.errors.slice(0, 3).join(' | ') + (result.errors.length > 3 ? ` (+${result.errors.length - 3} outros)` : '')
+          : 'Falha ao sincronizar templates com o Net4Life Info.')
+      : undefined;
+
+    return Response.json(
+      {
+        ok: result.success,
+        total: result.total,
+        synced: result.synced,
+        errors: result.errors,
+        error: errorMessage,
+        message: result.success
+          ? `Sincronização concluída com sucesso! ${result.synced} de ${result.total} templates sincronizados com o Net4Life Info.`
+          : `${result.synced} de ${result.total} templates sincronizados. ${result.errors.length > 0 ? result.errors[0] : 'Ocorreram erros durante o envio.'}`,
+      },
+      { status: result.success ? 200 : (result.synced > 0 ? 207 : 400) }
+    );
   } catch (err: any) {
     logger.error({ err }, 'emails.templates.sync_all_failed');
     return Response.json(

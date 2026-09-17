@@ -148,6 +148,18 @@ export async function POST(
           SELECT full_name, email, document_number, phone FROM insurance_clients WHERE id = ${cotacaoCompleta.client_id} LIMIT 1
         ` : [];
 
+        const [partnerRow] = cotacaoCompleta?.partner_id ? await sql<{ nome: string; email: string; codigo_venda?: string }[]>`
+          SELECT
+            COALESCE(p.nome_fantasia, p.razao_social) AS nome,
+            COALESCE(NULLIF(p.email, ''), pu.email) AS email,
+            p.metadata->'whiteLabel'->>'wixCode' AS codigo_venda
+          FROM partners p
+          LEFT JOIN partner_users pu ON pu.partner_id = p.id AND pu.is_active = true
+          WHERE p.id = ${cotacaoCompleta.partner_id}
+          ORDER BY pu.created_at ASC
+          LIMIT 1
+        ` : [];
+
         await dispatchDomainEvent('CONTRATO_ASSINADO', {
           eventType: 'CONTRATO_ASSINADO',
           contextId: cotacao.id,
@@ -157,6 +169,12 @@ export async function POST(
             documento: clientRow?.document_number || clientData.cpf || clientData.cnpj,
             telefone: clientRow?.phone || clientData.telefone,
           },
+          parceiro: partnerRow ? {
+            id: cotacaoCompleta.partner_id,
+            nome: partnerRow.nome,
+            email: partnerRow.email,
+            codigoVenda: partnerRow.codigo_venda,
+          } : undefined,
           cotacao: {
             id: cotacao.id,
             status: 'assinado',

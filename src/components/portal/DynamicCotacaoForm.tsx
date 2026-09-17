@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { 
   Check, 
@@ -12,9 +12,12 @@ import {
   DollarSign, 
   Percent,
   CheckCircle,
+  CheckCircle2,
   AlertCircle,
   ExternalLink,
   Loader2,
+  Search,
+  Copy,
   Tag,
   SlidersHorizontal,
   X,
@@ -257,6 +260,12 @@ export default function DynamicCotacaoForm({
   const [planoSel, setPlanoSel] = useState<Plano | null>(null);
   const [parcelaSel, setParcelaSel] = useState<{ qtd: number; valor: number } | null>(null);
 
+  // Estados e referências para busca automática de CEP (Aba Segurado)
+  const [loadingCep, setLoadingCep] = useState<boolean>(false);
+  const [cepStatus, setCepStatus] = useState<'idle' | 'loading' | 'success' | 'not_found' | 'error'>('idle');
+  const lastSearchedCepRef = useRef<string>('');
+  const numeroInputRef = useRef<HTMLInputElement>(null);
+
   // Cupons & Desconto Comercial
   const [cupomCode, setCupomCode] = useState('');
   const [cupomDesconto, setCupomDesconto] = useState(0);
@@ -277,6 +286,7 @@ export default function DynamicCotacaoForm({
 
   // ZapSign & Asaas links
   const [signUrl, setSignUrl] = useState('');
+  const [copiedSignUrl, setCopiedSignUrl] = useState(false);
   const [docToken, setDocToken] = useState('');
   const [contratoAssinado, setContratoAssinado] = useState(false);
   const [verificandoAssinatura, setVerificandoAssinatura] = useState(false);
@@ -600,6 +610,10 @@ export default function DynamicCotacaoForm({
       cidade: cliente.address?.cidade || prev.cidade,
       uf: cliente.address?.uf || prev.uf,
     }));
+    if (cliente.address?.cep) {
+      lastSearchedCepRef.current = cliente.address.cep.replace(/\D/g, '');
+      setCepStatus('success');
+    }
   }
 
   function handleApplyRenewal(renewal: RenewalData) {
@@ -627,27 +641,89 @@ export default function DynamicCotacaoForm({
   function handleClearClienteSelection() {
     setSelectedCliente(null);
     setIsRenovacaoAtiva(false);
+    lastSearchedCepRef.current = '';
+    setCepStatus('idle');
   }
 
-  async function handleCepSearch(cepVal: string) {
+  async function handleCepSearch(cepVal: string, force = false) {
     const rawCep = cepVal.replace(/\D/g, '');
-    if (rawCep.length === 8) {
+    if (rawCep.length !== 8) {
+      setCepStatus('idle');
+      return;
+    }
+
+    if (!force && lastSearchedCepRef.current === rawCep) {
+      return;
+    }
+
+    lastSearchedCepRef.current = rawCep;
+    setLoadingCep(true);
+    setCepStatus('loading');
+
+    try {
+      // 1. Consulta à rota de alta disponibilidade da aplicação (/api/cep/[cep])
+      let endereco: {
+        logradouro?: string;
+        bairro?: string;
+        cidade?: string;
+        uf?: string;
+      } | null = null;
+
       try {
-        const res = await fetch(`https://viacep.com.br/ws/${rawCep}/json/`);
-        const data = await res.json();
-        if (!data.erro) {
-          setForm((current) => ({
-            ...current,
-            cep: maskCep(cepVal),
-            logradouro: data.logradouro || '',
-            bairro: data.bairro || '',
-            cidade: data.localidade || '',
-            uf: data.uf || current.uf,
-          }));
+        const res = await fetch(`/api/cep/${rawCep}`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.ok && json.endereco) {
+            endereco = json.endereco;
+          }
         }
-      } catch (err) {
-        console.warn('ViaCEP indisponível:', err);
+      } catch (errApi) {
+        console.warn('API interna de CEP indisponível, tentando fallback direto:', errApi);
       }
+
+      // 2. Fallback client-side direto para ViaCEP se a API interna falhar
+      if (!endereco) {
+        try {
+          const resViaCep = await fetch(`https://viacep.com.br/ws/${rawCep}/json/`);
+          if (resViaCep.ok) {
+            const dataVia = await resViaCep.json();
+            if (!dataVia.erro) {
+              endereco = {
+                logradouro: dataVia.logradouro,
+                bairro: dataVia.bairro,
+                cidade: dataVia.localidade,
+                uf: dataVia.uf,
+              };
+            }
+          }
+        } catch {
+          // Falha de rede/CORS no fallback
+        }
+      }
+
+      if (endereco) {
+        setForm((current) => ({
+          ...current,
+          cep: maskCep(cepVal),
+          logradouro: endereco!.logradouro || current.logradouro,
+          bairro: endereco!.bairro || current.bairro,
+          cidade: endereco!.cidade || current.cidade,
+          uf: (endereco!.uf || current.uf).toUpperCase(),
+        }));
+        setCepStatus('success');
+
+        // Move suavemente o foco para o campo de número
+        setTimeout(() => {
+          numeroInputRef.current?.focus();
+        }, 80);
+      } else {
+        setCepStatus('not_found');
+      }
+    } catch (err) {
+      console.warn('Erro ao consultar CEP:', err);
+      setCepStatus('error');
+    } finally {
+      setLoadingCep(false);
     }
   }
 
@@ -943,6 +1019,17 @@ export default function DynamicCotacaoForm({
   // ------------------------------------------------------------------
   // 7. Passo 6: Assinatura e Fatura Asaas
   // ------------------------------------------------------------------
+  async function handleCopySignUrl() {
+    if (!signUrl) return;
+    try {
+      await navigator.clipboard.writeText(signUrl);
+      setCopiedSignUrl(true);
+      setTimeout(() => setCopiedSignUrl(false), 2500);
+    } catch (err) {
+      console.warn('Falha ao copiar link ZapSign:', err);
+    }
+  }
+
   async function handleVerificarAssinatura() {
     if (!cotacaoId) return;
 
@@ -1485,21 +1572,65 @@ export default function DynamicCotacaoForm({
           </div>
 
           {/* Endereço de Contato / Comercial */}
-          <h3 className="text-lg font-bold text-primary pt-4">Endereço de Contato / Comercial</h3>
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-4 pb-1 border-b border-gray-100">
+            <h3 className="text-lg font-bold text-primary">Endereço de Contato / Comercial</h3>
+            {loadingCep && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-primary font-medium animate-pulse">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-[#00d4e0]" /> Buscando endereço...
+              </span>
+            )}
+            {cepStatus === 'success' && !loadingCep && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
+                <CheckCircle2 className="w-3.5 h-3.5" /> Endereço localizado
+              </span>
+            )}
+            {cepStatus === 'not_found' && !loadingCep && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-amber-600 font-medium">
+                <AlertCircle className="w-3.5 h-3.5" /> CEP não localizado. Preencha manualmente.
+              </span>
+            )}
+            {cepStatus === 'error' && !loadingCep && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-rose-600 font-medium">
+                <AlertCircle className="w-3.5 h-3.5" /> Falha ao consultar CEP. Preencha manualmente.
+              </span>
+            )}
+          </div>
+
           <div className="grid gap-5 md:grid-cols-3">
             <label className="block">
               <span className="field-label">CEP *</span>
-              <input
-                required
-                value={form.cep}
-                onChange={(e) => {
-                  const val = maskCep(e.target.value);
-                  updateField('cep', val);
-                  handleCepSearch(val);
-                }}
-                className="form-input"
-                placeholder="00000-000"
-              />
+              <div className="relative">
+                <input
+                  required
+                  value={form.cep}
+                  maxLength={9}
+                  onChange={(e) => {
+                    const val = maskCep(e.target.value);
+                    updateField('cep', val);
+                    const digits = val.replace(/\D/g, '');
+                    if (digits.length === 8) {
+                      handleCepSearch(val);
+                    } else if (digits.length < 8) {
+                      setCepStatus('idle');
+                    }
+                  }}
+                  onBlur={(e) => {
+                    const digits = e.target.value.replace(/\D/g, '');
+                    if (digits.length === 8 && lastSearchedCepRef.current !== digits) {
+                      handleCepSearch(e.target.value, true);
+                    }
+                  }}
+                  className="form-input pr-10 font-mono"
+                  placeholder="00000-000"
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none flex items-center">
+                  {loadingCep ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-[#00d4e0]" />
+                  ) : (
+                    <Search className="w-4 h-4" />
+                  )}
+                </div>
+              </div>
             </label>
 
             <label className="block md:col-span-2">
@@ -1516,6 +1647,7 @@ export default function DynamicCotacaoForm({
             <label className="block">
               <span className="field-label">Número *</span>
               <input
+                ref={numeroInputRef}
                 required
                 value={form.numero}
                 onChange={(e) => updateField('numero', e.target.value)}
@@ -2059,18 +2191,58 @@ export default function DynamicCotacaoForm({
           {!contratoAssinado ? (
             <div className="space-y-4">
               <p className="text-sm text-gray-700">
-                A proposta foi gerada via <strong>ZapSign</strong>. Realize a assinatura digital pelo quadro abaixo:
+                A proposta foi gerada via <strong>ZapSign</strong>. Realize a assinatura digital pelo quadro abaixo ou envie o link diretamente para o cliente:
               </p>
 
               {signUrl ? (
-                <div className="border border-gray-200 rounded-xl overflow-hidden bg-white h-[520px]">
-                  <iframe
-                    src={signUrl}
-                    className="w-full h-full border-0"
-                    allow="geolocation; camera"
-                    title="ZapSign Assinatura Digital"
-                  />
-                </div>
+                <>
+                  {/* Card com Link Copiável do ZapSign para Envio ao Cliente */}
+                  <div className="bg-emerald-50/50 border border-emerald-200 rounded-xl p-4 space-y-2.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                        <FileText size={14} className="text-primary" />
+                        Link de Assinatura do Cliente (ZapSign)
+                      </span>
+                      <a
+                        href={signUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-primary hover:underline inline-flex items-center gap-1 font-semibold"
+                      >
+                        Abrir em nova aba <ExternalLink size={12} />
+                      </a>
+                    </div>
+                    <p className="text-xs text-gray-600">
+                      Copie o link abaixo para enviar ao segurado por WhatsApp ou e-mail, ou conclua a assinatura no quadro interativo a seguir:
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={signUrl}
+                        onClick={(e) => (e.target as HTMLInputElement).select()}
+                        className="form-input text-xs font-mono bg-white text-gray-800 py-2 px-3 select-all flex-1 border border-gray-300 rounded-lg focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleCopySignUrl}
+                        className="btn btn-primary py-2 px-3.5 text-xs flex items-center gap-1.5 whitespace-nowrap cursor-pointer shadow-xs font-semibold"
+                      >
+                        {copiedSignUrl ? <Check size={14} className="text-emerald-300" /> : <Copy size={14} />}
+                        <span>{copiedSignUrl ? 'Copiado!' : 'Copiar Link'}</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="border border-gray-200 rounded-xl overflow-hidden bg-white h-[520px]">
+                    <iframe
+                      src={signUrl}
+                      className="w-full h-full border-0"
+                      allow="geolocation; camera"
+                      title="ZapSign Assinatura Digital"
+                    />
+                  </div>
+                </>
               ) : (
                 <div className="py-12 text-center text-gray-500">
                   <Loader2 className="w-8 h-8 animate-spin text-emerald-600 mx-auto mb-2" />

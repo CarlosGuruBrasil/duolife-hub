@@ -14,6 +14,7 @@ import { CotacoesFilterSection } from './_components/CotacoesFilterSection';
 import { CotacoesPagination } from './_components/CotacoesPagination';
 import { PeriodPreset, resolveDateRange } from '@/lib/date-filters';
 import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
+import TransferirParceiroCotacaoButton from '@/components/modals/TransferirParceiroCotacaoButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -31,7 +32,10 @@ interface AdminCotacaoRow {
   client_data: unknown;
   product_id: string;
   product_name: string;
+  partner_id: string;
   partner_name: string;
+  partner_status?: string | null;
+  partner_user_name?: string | null;
 }
 
 const statusLabel: Record<string, string> = {
@@ -177,11 +181,15 @@ export default async function AdminCotacoesPage({
       c.status,
       c.created_at,
       c.client_data,
+      c.partner_id,
       p.name AS product_name,
-      part.nome_fantasia AS partner_name
+      COALESCE(part.nome_fantasia, part.razao_social) AS partner_name,
+      part.status AS partner_status,
+      pu.name AS partner_user_name
     FROM cotacoes c
     JOIN products p ON p.id = c.product_id
     JOIN partners part ON part.id = c.partner_id
+    LEFT JOIN partner_users pu ON pu.id = c.partner_user_id
     WHERE ${where}
     ORDER BY c.created_at DESC
     LIMIT ${pageSize} OFFSET ${(currentPage - 1) * pageSize}
@@ -285,12 +293,31 @@ export default async function AdminCotacoesPage({
                       </td>
 
                       <td className="px-6 py-4 border-b border-slate-100">
-                        <span className="inline-flex items-center gap-1.5 font-medium text-slate-700">
-                          <div className="w-5 h-5 rounded bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600 uppercase">
-                            {(cotacao.partner_name || 'DL').substring(0, 2)}
-                          </div>
-                          {cotacao.partner_name || 'DuoLife'}
-                        </span>
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="inline-flex items-center gap-1.5 font-medium text-slate-700">
+                            <div className="w-5 h-5 rounded bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600 uppercase shrink-0">
+                              {(cotacao.partner_name || 'DL').substring(0, 2)}
+                            </div>
+                            <div className="min-w-0">
+                              <span className="block truncate">{cotacao.partner_name || 'DuoLife'}</span>
+                              {cotacao.partner_user_name && (
+                                <span className="text-[10px] text-slate-400 font-normal block truncate">{cotacao.partner_user_name}</span>
+                              )}
+                            </div>
+                          </span>
+                          <TransferirParceiroCotacaoButton
+                            cotacaoId={cotacao.id}
+                            cotacaoTitle={`Cotação #${cotacao.id.slice(0, 8)} · ${cotacao.client_name}`}
+                            currentPartner={{
+                              id: cotacao.partner_id,
+                              name: cotacao.partner_name,
+                              userName: cotacao.partner_user_name,
+                              isActive: cotacao.partner_status === 'active',
+                            }}
+                            variant="icon"
+                            size="sm"
+                          />
+                        </div>
                       </td>
 
                       <td className="px-6 py-4 text-right border-b border-slate-100">

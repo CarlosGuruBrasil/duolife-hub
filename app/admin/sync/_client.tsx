@@ -16,9 +16,12 @@ import {
   CheckCircle2,
   Clock,
   HelpCircle,
+  FileSignature,
+  FileCheck,
 } from 'lucide-react';
 import { formatDateTime } from '@/lib/format';
 import type { WixCollectionStatusInfo, WixPullResult, WixPullEntitiesSelection } from '@/lib/wix-pull';
+import type { ZapSignSyncSummary } from '@/lib/zapsign-sync';
 
 interface Props {
   collectionsCount: number;
@@ -26,6 +29,7 @@ interface Props {
   lastSyncedAt: string | null;
   wixEnabled: boolean;
   initialCollections?: WixCollectionStatusInfo[];
+  initialZapSignStatus?: ZapSignSyncSummary;
 }
 
 export default function WixPullClient({
@@ -34,6 +38,7 @@ export default function WixPullClient({
   lastSyncedAt: initialLastSyncedAt,
   wixEnabled,
   initialCollections = [],
+  initialZapSignStatus = { totalTokens: 0, signedTokens: 0, pendingTokens: 0 },
 }: Props) {
   // Estado das Coleções
   const [collections, setCollections] = useState<WixCollectionStatusInfo[]>(initialCollections);
@@ -70,6 +75,20 @@ export default function WixPullClient({
     quotesCreated?: number;
     quotesUpdated?: number;
     totalRevenue?: number;
+  } | null>(null);
+
+  // Módulo de Reconciliação ZapSign
+  const [zapStatus, setZapStatus] = useState<ZapSignSyncSummary>(initialZapSignStatus);
+  const [runningZapSign, setRunningZapSign] = useState(false);
+  const [zapOnlyPending, setZapOnlyPending] = useState(true);
+  const [zapMessage, setZapMessage] = useState('');
+  const [zapResult, setZapResult] = useState<{
+    totalTokensFound?: number;
+    totalProcessed?: number;
+    updatedToSigned?: number;
+    stillPending?: number;
+    notFoundOrError?: number;
+    durationMs?: number;
   } | null>(null);
 
   // Alternar seleção de coleção
@@ -179,6 +198,43 @@ export default function WixPullClient({
       setSalesMessage('Falha de rede ao sincronizar vendas.');
     } finally {
       setRunningSales(false);
+    }
+  }
+
+  async function runZapSignSync() {
+    setRunningZapSign(true);
+    setZapMessage('Consultando API da ZapSign e reconciliando contratos...');
+    setZapResult(null);
+
+    try {
+      const response = await fetch('/api/admin/sync/zapsign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ onlyPending: zapOnlyPending, limit: 500, concurrency: 4 }),
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        setZapMessage(data.error || 'Falha ao reconciliar contratos com a ZapSign.');
+        setRunningZapSign(false);
+        return;
+      }
+
+      setZapResult(data.result);
+      setZapMessage(
+        `Reconciliação concluída! ${data.result.updatedToSigned} contrato(s) atualizado(s) para Assinado.`
+      );
+
+      // Atualiza contadores
+      const statusRes = await fetch('/api/admin/sync/zapsign');
+      const statusData = await statusRes.json();
+      if (statusData.ok && statusData.status) {
+        setZapStatus(statusData.status);
+      }
+    } catch {
+      setZapMessage('Falha de rede ao conectar com a API da ZapSign.');
+    } finally {
+      setRunningZapSign(false);
     }
   }
 
@@ -720,6 +776,113 @@ export default function WixPullClient({
             </div>
           </div>
         ) : null}
+      </div>
+
+      {/* CARD TERCIÁRIO: RECONCILIAÇÃO DE CONTRATOS ZAPSIGN */}
+      <div className="card space-y-5 bg-white border border-gray-200">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-200 pb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <FileSignature size={18} className="text-primary" />
+              <h2 className="text-lg font-black text-gray-900">Reconciliação de Contratos ZapSign</h2>
+            </div>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Consulta a API oficial da ZapSign para validar o status real de cada token, atualizar documentos para &quot;Assinado&quot; e capturar o PDF com o protocolo de assinatura.
+            </p>
+          </div>
+        </div>
+
+        {/* Contadores ZapSign */}
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Total com Token ZapSign</div>
+            <div className="mt-1 text-2xl font-black text-primary">{zapStatus.totalTokens}</div>
+            <div className="text-[11px] text-gray-400 mt-0.5">contratos identificados</div>
+          </div>
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Assinados no Sistema</div>
+            <div className="mt-1 text-2xl font-black text-emerald-800">{zapStatus.signedTokens}</div>
+            <div className="text-[11px] text-emerald-600 mt-0.5">status &quot;signed&quot; confirmado</div>
+          </div>
+          <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Pendentes de Validação</div>
+            <div className="mt-1 text-2xl font-black text-amber-800">{zapStatus.pendingTokens}</div>
+            <div className="text-[11px] text-amber-600 mt-0.5">aguardando confirmação</div>
+          </div>
+        </div>
+
+        {/* Controles de Disparo */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
+          <div className="flex flex-wrap items-center gap-4">
+            <button
+              type="button"
+              className="btn-primary flex items-center gap-2"
+              onClick={runZapSignSync}
+              disabled={runningZapSign}
+            >
+              {runningZapSign ? (
+                <>
+                  <RefreshCw size={15} className="animate-spin" />
+                  <span>Consultando ZapSign...</span>
+                </>
+              ) : (
+                <>
+                  <FileCheck size={16} />
+                  <span>Sincronizar Assinaturas ZapSign</span>
+                </>
+              )}
+            </button>
+
+            <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-700">
+              <input
+                type="checkbox"
+                checked={zapOnlyPending}
+                onChange={(e) => setZapOnlyPending(e.target.checked)}
+                className="accent-[#0e4a5a]"
+              />
+              <span>Consultar apenas pendentes</span>
+            </label>
+          </div>
+
+          <div className="text-xs text-gray-500">
+            {zapMessage || 'Valida tokens via GET /docs/{token}/ com pool de conexões seguro.'}
+          </div>
+        </div>
+
+        {/* Resultados ZapSign */}
+        {zapResult && (
+          <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/60 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-emerald-900 font-bold text-sm">
+                <CheckCircle2 size={16} className="text-emerald-600" />
+                <span>Reconciliação ZapSign Concluída!</span>
+              </div>
+              <div className="text-xs font-semibold text-emerald-700 flex items-center gap-1">
+                <Clock size={13} />
+                {((zapResult.durationMs || 0) / 1000).toFixed(2)}s decorridos
+              </div>
+            </div>
+
+            <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
+              <div className="rounded-xl border border-gray-200 bg-white p-3">
+                <div className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Processados</div>
+                <div className="mt-1 text-xl font-black text-gray-900">{zapResult.totalProcessed ?? 0}</div>
+              </div>
+              <div className="rounded-xl border border-emerald-200 bg-white p-3">
+                <div className="text-[11px] uppercase tracking-wide text-emerald-700 font-bold">Atualizados p/ Assinado</div>
+                <div className="mt-1 text-xl font-black text-emerald-800">{zapResult.updatedToSigned ?? 0}</div>
+              </div>
+              <div className="rounded-xl border border-amber-200 bg-white p-3">
+                <div className="text-[11px] uppercase tracking-wide text-amber-700 font-bold">Ainda Pendentes</div>
+                <div className="mt-1 text-xl font-black text-amber-800">{zapResult.stillPending ?? 0}</div>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-white p-3">
+                <div className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Erros / Não Achados</div>
+                <div className="mt-1 text-xl font-black text-gray-900">{zapResult.notFoundOrError ?? 0}</div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
