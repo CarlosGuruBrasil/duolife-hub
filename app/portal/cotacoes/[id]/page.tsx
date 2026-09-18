@@ -9,6 +9,7 @@ import { formatCurrency, formatDate, formatDateTime, formatAtuacao, formatStatus
 import { safeExternalUrl } from '@/lib/safe-url';
 import EditarPropostaButton from '@/components/modals/EditarPropostaButton';
 import { EnviarFaturaEmailButton } from '@/components/cotacao/EnviarFaturaEmailButton';
+import { VerificarZapSignButton } from '@/components/cotacao/VerificarZapSignButton';
 
 const statusLabel: Record<string, string> = {
   rascunho: 'Rascunho',
@@ -152,6 +153,23 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
     LIMIT 1
   `;
 
+  // Busca Contrato / Documento de Assinatura ZapSign se houver
+  const [signatureDoc] = await sql<Array<{
+    id: string;
+    external_document_id: string | null;
+    sign_url: string | null;
+    signed_file_url: string | null;
+    status: string;
+    signed_at: string | null;
+    created_at: string;
+  }>>`
+    SELECT id, external_document_id, sign_url, signed_file_url, status, signed_at, created_at
+    FROM signature_documents
+    WHERE cotacao_id = ${id} AND provider = 'zapsign'
+    ORDER BY created_at DESC
+    LIMIT 1
+  `;
+
   const clientData = parseClientData(cotacao.client_data);
 
   const planoNome = String(clientData.nomePlano || clientData.tipoDePlano || 'RC Advogados');
@@ -193,8 +211,43 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
 
   const linkBoleto = safeExternalUrl(clientData.linkBoleto as string | undefined);
   const checkoutId = String(clientData.checkoutId || '');
-  const signUrl = safeExternalUrl(clientData.signUrl as string | undefined);
-  const contratoGeradoEm = String(clientData.contratoGeradoEm || '');
+
+  // Dados unificados do Contrato ZapSign
+  const isAssinado = [
+    'assinado',
+    'signed',
+    'pagamento_gerado',
+    'aprovada',
+    'emitida',
+    'ativa',
+    'active',
+  ].includes(String(cotacao.status || '').toLowerCase()) ||
+  signatureDoc?.status === 'signed' ||
+  Boolean(signatureDoc?.signed_file_url) ||
+  Boolean(clientData.contratoPdf) ||
+  Boolean(clientData.signedFileUrl) ||
+  Boolean(clientData.assinadoEm);
+
+  const docToken = String(
+    signatureDoc?.external_document_id ||
+    clientData.contratoToken ||
+    clientData.tokenZapsign ||
+    ''
+  ).trim();
+
+  const signedPdfUrl = safeExternalUrl(
+    signatureDoc?.signed_file_url ||
+    (clientData.contratoPdf as string | undefined) ||
+    (clientData.signedFileUrl as string | undefined) ||
+    (clientData.linkContrato as string | undefined)
+  );
+
+  const verifyUrl = docToken ? safeExternalUrl(`https://app.zapsign.com.br/verificar/${docToken}`) : null;
+  const signUrl = safeExternalUrl(signatureDoc?.sign_url || (clientData.signUrl as string | undefined));
+  const contratoUrl = signedPdfUrl || verifyUrl || signUrl;
+
+  const dataAssinatura = signatureDoc?.signed_at || (clientData.assinadoEm as string | undefined);
+  const dataCriacaoContrato = signatureDoc?.created_at || (clientData.contratoGeradoEm as string | undefined);
 
   return (
     <div className="space-y-6 max-w-[1100px] mx-auto">
@@ -429,35 +482,125 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
 
           {/* Contrato & ZapSign */}
           <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4">
-            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 pb-3">
-              <FileCheck size={16} className="text-purple-600" /> Contrato & Assinatura (ZapSign)
-            </h2>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                <FileCheck size={16} className="text-purple-600" /> Contrato & Assinatura (ZapSign)
+              </h2>
+              {(isAssinado || Boolean(docToken) || cotacao.status === 'contrato_gerado') && (
+                <VerificarZapSignButton id={cotacao.id} variant="compact" label="Sincronizar ZapSign" />
+              )}
+            </div>
 
-            {signUrl ? (
+            {isAssinado ? (
               <div className="space-y-3">
-                <div className="flex items-center justify-between text-xs bg-purple-50/80 border border-purple-200/80 p-3 rounded-xl">
-                  <div>
-                    <span className="font-bold text-purple-900 block">Documento de Contrato Gerado</span>
-                    {Boolean(contratoGeradoEm) && (
-                      <span className="text-purple-700 text-[11px] block">
-                        Gerado em: {formatDateTime(contratoGeradoEm)}
-                      </span>
-                    )}
+                <div className="bg-purple-50/80 border border-purple-200/80 p-4 rounded-xl space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-700 text-white">
+                          ✓ Contrato Assinado
+                        </span>
+                        {docToken && (
+                          <span className="text-[11px] text-purple-700 font-mono">
+                            ID: {docToken.slice(0, 14)}
+                          </span>
+                        )}
+                      </div>
+                      {dataAssinatura && (
+                        <p className="text-xs text-purple-900 font-medium">
+                          Assinado digitalmente em: <strong>{formatDateTime(String(dataAssinatura))}</strong>
+                        </p>
+                      )}
+                      {dataCriacaoContrato && (
+                        <p className="text-[11px] text-purple-700">
+                          Gerado em: {formatDateTime(String(dataCriacaoContrato))}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {contratoUrl ? (
+                        <a
+                          href={contratoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 bg-purple-700 hover:bg-purple-800 !text-white text-white font-bold px-3.5 py-2 rounded-xl text-xs transition-colors shadow-xs"
+                          title="Abrir Contrato Assinado"
+                        >
+                          <span>📄</span>
+                          <span className="!text-white text-white">
+                            {signedPdfUrl ? 'Abrir Contrato Assinado (PDF)' : 'Ver Contrato no ZapSign'}
+                          </span>
+                          <ExternalLink size={13} className="!text-white text-white shrink-0" />
+                        </a>
+                      ) : (
+                        <VerificarZapSignButton id={cotacao.id} variant="card" label="Buscar PDF na ZapSign" />
+                      )}
+
+                      {signUrl && signUrl !== contratoUrl && (
+                        <a
+                          href={signUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-700 hover:underline"
+                          title="Página de Assinatura"
+                        >
+                          Página de Assinatura <ExternalLink size={11} />
+                        </a>
+                      )}
+                    </div>
                   </div>
-                  <a
-                    href={signUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 bg-purple-700 hover:bg-purple-800 !text-white text-white font-bold px-3.5 py-1.5 rounded-lg text-xs transition-colors shadow-xs"
-                  >
-                    <span>✍️</span>
-                    <span className="!text-white text-white">Ver Assinatura</span>
-                    <ExternalLink size={12} className="!text-white text-white shrink-0" />
-                  </a>
+                </div>
+              </div>
+            ) : signUrl || docToken || cotacao.status === 'contrato_gerado' ? (
+              <div className="space-y-3">
+                <div className="bg-amber-50/80 border border-amber-200/80 p-4 rounded-xl space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-600 text-white">
+                          Aguardando Assinatura
+                        </span>
+                        {docToken && (
+                          <span className="text-[11px] text-amber-800 font-mono">
+                            ID: {docToken.slice(0, 14)}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-amber-900 font-medium">
+                        O contrato digital foi gerado e está aguardando a assinatura do cliente.
+                      </p>
+                      {dataCriacaoContrato && (
+                        <p className="text-[11px] text-amber-700">
+                          Gerado em: {formatDateTime(String(dataCriacaoContrato))}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      {signUrl && (
+                        <a
+                          href={signUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 !text-white text-white font-bold px-3.5 py-2 rounded-xl text-xs transition-colors shadow-xs"
+                        >
+                          <span>✍️</span>
+                          <span className="!text-white text-white">Abrir Link de Assinatura</span>
+                          <ExternalLink size={13} className="!text-white text-white shrink-0" />
+                        </a>
+                      )}
+                      <VerificarZapSignButton id={cotacao.id} variant="card" label="Verificar se já Assinou" />
+                    </div>
+                  </div>
                 </div>
               </div>
             ) : (
-              <p className="text-xs text-slate-500 font-medium">O contrato digital ainda não foi assinado ou enviado para o ZapSign.</p>
+              <div className="space-y-2">
+                <p className="text-xs text-slate-500 font-medium">
+                  O contrato digital ainda não foi gerado ou enviado para o ZapSign.
+                </p>
+              </div>
             )}
           </div>
 

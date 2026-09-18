@@ -41,25 +41,53 @@ export async function POST(
       return Response.json({ error: 'Cotação não encontrada' }, { status: 404 });
     }
 
-    // Se já estiver em estados avançados de assinatura/pagamento, retorna diretamente
-    if (['assinado', 'pagamento_gerado', 'aprovada'].includes(cotacao.status)) {
+    const clientData = parseJsonbField<Record<string, any>>(cotacao.client_data);
+    let docToken = String(clientData.contratoToken || clientData.tokenZapsign || '').trim();
+
+    if (!docToken) {
+      const [docRow] = await sql<{ external_document_id: string | null; signed_file_url: string | null }[]>`
+        SELECT external_document_id, signed_file_url
+        FROM signature_documents
+        WHERE cotacao_id = ${cotacao.id} AND provider = 'zapsign'
+        ORDER BY created_at DESC
+        LIMIT 1
+      `;
+      if (docRow?.external_document_id) {
+        docToken = docRow.external_document_id;
+      }
+    }
+
+    let existingPdf = String(clientData.contratoPdf || clientData.signedFileUrl || clientData.linkContrato || '').trim();
+    if (!existingPdf) {
+      const [sigPdf] = await sql<{ signed_file_url: string | null }[]>`
+        SELECT signed_file_url
+        FROM signature_documents
+        WHERE cotacao_id = ${cotacao.id} AND provider = 'zapsign' AND signed_file_url IS NOT NULL
+        ORDER BY created_at DESC
+        LIMIT 1
+      `;
+      if (sigPdf?.signed_file_url) existingPdf = sigPdf.signed_file_url;
+    }
+
+    // Se já estiver em estados avançados de assinatura e já possui o link do PDF, retorna diretamente
+    if (['assinado', 'pagamento_gerado', 'aprovada', 'emitida', 'ativa'].includes(cotacao.status) && existingPdf) {
       return Response.json({
         ok: true,
         status: cotacao.status,
         assinado: true,
-        contratoPdf: parseJsonbField<Record<string, any>>(cotacao.client_data).contratoPdf || ''
+        contratoPdf: existingPdf
       });
     }
-
-    const clientData = parseJsonbField<Record<string, any>>(cotacao.client_data);
-    const docToken = clientData.contratoToken;
 
     if (!docToken) {
       return Response.json({
         ok: true,
         status: cotacao.status,
-        assinado: false,
-        error: 'Nenhum contrato gerado para esta cotação'
+        assinado: ['assinado', 'pagamento_gerado', 'aprovada', 'emitida', 'ativa'].includes(cotacao.status),
+        contratoPdf: existingPdf || '',
+        error: ['assinado', 'pagamento_gerado', 'aprovada', 'emitida', 'ativa'].includes(cotacao.status)
+          ? undefined
+          : 'Nenhum contrato gerado para esta cotação'
       });
     }
 

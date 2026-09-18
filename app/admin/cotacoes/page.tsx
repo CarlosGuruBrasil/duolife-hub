@@ -272,8 +272,24 @@ export default async function AdminCotacoesPage({
                   const clientData = parseClientData(cotacao.client_data);
                   const planoNome = String(clientData.nomePlano || clientData.tipoDePlano || cotacao.product_name || 'RC Advogados');
                   const cobertura = String(clientData.valorCobertura || (cotacao.importancia_segurada ? formatCurrency(cotacao.importancia_segurada) : ''));
-                  const linkBoleto = safeExternalUrl(clientData.linkBoleto);
-                  const signUrl = safeExternalUrl(clientData.signUrl);
+                  const linkBoleto = safeExternalUrl(clientData.linkBoleto as string | undefined);
+                  const contratoUrl = safeExternalUrl(
+                    (clientData.contratoPdf as string | undefined) ||
+                    (clientData.signedFileUrl as string | undefined) ||
+                    (clientData.linkContrato as string | undefined) ||
+                    (clientData.signUrl as string | undefined) ||
+                    (clientData.contratoToken ? `https://app.zapsign.com.br/verificar/${clientData.contratoToken}` : undefined) ||
+                    (clientData.tokenZapsign ? `https://app.zapsign.com.br/verificar/${clientData.tokenZapsign}` : undefined)
+                  );
+                  const isContratoAssinado = [
+                    'assinado',
+                    'signed',
+                    'pagamento_gerado',
+                    'aprovada',
+                    'emitida',
+                    'ativa',
+                    'active',
+                  ].includes(String(cotacao.status || '').toLowerCase()) || Boolean(clientData.contratoPdf || clientData.signedFileUrl || clientData.assinadoEm);
                   const oab = String(clientData.oab || '');
 
                   return (
@@ -351,15 +367,15 @@ export default async function AdminCotacoesPage({
                             <span className="text-xs text-slate-400 font-normal">—</span>
                           )}
 
-                          {signUrl && (
+                          {contratoUrl && (
                             <a
-                              href={signUrl}
+                              href={contratoUrl}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200/80 px-2.5 py-1 rounded-lg transition-colors"
-                              title="Ver Contrato ZapSign"
+                              title={isContratoAssinado ? 'Abrir Contrato Assinado' : 'Ver Contrato ZapSign'}
                             >
-                              ✍️ Contrato <ExternalLink size={10} />
+                              {isContratoAssinado ? '📄 Contrato' : '✍️ Contrato'} <ExternalLink size={10} />
                             </a>
                           )}
                         </div>
