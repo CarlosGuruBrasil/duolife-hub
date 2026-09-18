@@ -235,16 +235,23 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
     ''
   ).trim();
 
-  const signedPdfUrl = safeExternalUrl(
+  const rawSignedPdf =
     signatureDoc?.signed_file_url ||
     (clientData.contratoPdf as string | undefined) ||
     (clientData.signedFileUrl as string | undefined) ||
-    (clientData.linkContrato as string | undefined)
-  );
+    (clientData.linkContrato as string | undefined);
 
-  const verifyUrl = docToken ? safeExternalUrl(`https://app.zapsign.com.br/verificar/${docToken}`) : null;
-  const signUrl = safeExternalUrl(signatureDoc?.sign_url || (clientData.signUrl as string | undefined));
-  const contratoUrl = signedPdfUrl || verifyUrl || signUrl;
+  // Garante que não é uma URL quebrada de /verificar/
+  const signedPdfUrl = (rawSignedPdf && !rawSignedPdf.includes('/verificar/'))
+    ? safeExternalUrl(rawSignedPdf)
+    : null;
+
+  const rawSignUrl = signatureDoc?.sign_url || (clientData.signUrl as string | undefined);
+  const signUrl = (rawSignUrl && !rawSignUrl.includes('/verificar/'))
+    ? safeExternalUrl(rawSignUrl)
+    : null;
+
+  const contratoUrl = signedPdfUrl || signUrl;
 
   const dataAssinatura = signatureDoc?.signed_at || (clientData.assinadoEm as string | undefined);
   const dataCriacaoContrato = signatureDoc?.created_at || (clientData.contratoGeradoEm as string | undefined);
@@ -527,33 +534,50 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
 
                 {/* Barra de Ações com botões equilibrados */}
                 <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2">
-                  {contratoUrl ? (
-                    <a
-                      href={contratoUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 bg-purple-700 hover:bg-purple-800 text-white font-bold px-3.5 py-2 rounded-xl text-xs transition-colors shadow-xs shrink-0"
-                      title="Abrir Contrato Assinado"
-                    >
-                      <FileText size={14} className="shrink-0" />
-                      <span>{signedPdfUrl ? 'Abrir Contrato Assinado (PDF)' : 'Ver Contrato no ZapSign'}</span>
-                      <ExternalLink size={12} className="opacity-80 shrink-0" />
-                    </a>
+                  {signedPdfUrl ? (
+                    <>
+                      <a
+                        href={signedPdfUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 bg-purple-700 hover:bg-purple-800 text-white font-bold px-3.5 py-2 rounded-xl text-xs transition-colors shadow-xs shrink-0"
+                        title="Abrir Contrato Assinado (PDF)"
+                      >
+                        <FileText size={14} className="shrink-0" />
+                        <span>Abrir Contrato Assinado (PDF)</span>
+                        <ExternalLink size={12} className="opacity-80 shrink-0" />
+                      </a>
+
+                      {signUrl && signUrl !== signedPdfUrl && (
+                        <a
+                          href={signUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-purple-700 bg-slate-50 hover:bg-purple-50 border border-slate-200 hover:border-purple-200 px-3 py-2 rounded-xl transition-colors shrink-0"
+                          title="Abrir no ZapSign"
+                        >
+                          <span>Ver no ZapSign</span>
+                          <ExternalLink size={11} className="opacity-70 shrink-0" />
+                        </a>
+                      )}
+                    </>
+                  ) : signUrl ? (
+                    <>
+                      <a
+                        href={signUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 bg-purple-700 hover:bg-purple-800 text-white font-bold px-3.5 py-2 rounded-xl text-xs transition-colors shadow-xs shrink-0"
+                        title="Ver Contrato no ZapSign"
+                      >
+                        <FileText size={14} className="shrink-0" />
+                        <span>Ver Contrato no ZapSign</span>
+                        <ExternalLink size={12} className="opacity-80 shrink-0" />
+                      </a>
+                      <VerificarZapSignButton id={cotacao.id} variant="compact" label="Buscar PDF Assinado" />
+                    </>
                   ) : (
                     <VerificarZapSignButton id={cotacao.id} variant="card" label="Buscar PDF na ZapSign" />
-                  )}
-
-                  {signUrl && signUrl !== contratoUrl && (
-                    <a
-                      href={signUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-purple-700 bg-slate-50 hover:bg-purple-50 border border-slate-200 hover:border-purple-200 px-3 py-2 rounded-xl transition-colors shrink-0"
-                      title="Página de Assinatura"
-                    >
-                      <span>✍️ Link de Assinatura</span>
-                      <ExternalLink size={11} className="opacity-70 shrink-0" />
-                    </a>
                   )}
                 </div>
               </div>

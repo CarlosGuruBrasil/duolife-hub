@@ -273,14 +273,14 @@ export default async function AdminCotacoesPage({
                   const planoNome = String(clientData.nomePlano || clientData.tipoDePlano || cotacao.product_name || 'RC Advogados');
                   const cobertura = String(clientData.valorCobertura || (cotacao.importancia_segurada ? formatCurrency(cotacao.importancia_segurada) : ''));
                   const linkBoleto = safeExternalUrl(clientData.linkBoleto as string | undefined);
-                  const contratoUrl = safeExternalUrl(
+                  const rawContrato =
                     (clientData.contratoPdf as string | undefined) ||
                     (clientData.signedFileUrl as string | undefined) ||
                     (clientData.linkContrato as string | undefined) ||
-                    (clientData.signUrl as string | undefined) ||
-                    (clientData.contratoToken ? `https://app.zapsign.com.br/verificar/${clientData.contratoToken}` : undefined) ||
-                    (clientData.tokenZapsign ? `https://app.zapsign.com.br/verificar/${clientData.tokenZapsign}` : undefined)
-                  );
+                    (clientData.signUrl as string | undefined);
+                  const contratoUrl = (rawContrato && !rawContrato.includes('/verificar/'))
+                    ? safeExternalUrl(rawContrato)
+                    : null;
                   const isContratoAssinado = [
                     'assinado',
                     'signed',

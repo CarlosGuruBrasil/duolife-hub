@@ -57,7 +57,8 @@ export async function POST(
       }
     }
 
-    let existingPdf = String(clientData.contratoPdf || clientData.signedFileUrl || clientData.linkContrato || '').trim();
+    let rawPdfCandidate = String(clientData.contratoPdf || clientData.signedFileUrl || clientData.linkContrato || '').trim();
+    let existingPdf = rawPdfCandidate && !rawPdfCandidate.includes('/verificar/') ? rawPdfCandidate : '';
     if (!existingPdf) {
       const [sigPdf] = await sql<{ signed_file_url: string | null }[]>`
         SELECT signed_file_url
@@ -66,10 +67,12 @@ export async function POST(
         ORDER BY created_at DESC
         LIMIT 1
       `;
-      if (sigPdf?.signed_file_url) existingPdf = sigPdf.signed_file_url;
+      if (sigPdf?.signed_file_url && !sigPdf.signed_file_url.includes('/verificar/')) {
+        existingPdf = sigPdf.signed_file_url;
+      }
     }
 
-    // Se já estiver em estados avançados de assinatura e já possui o link do PDF, retorna diretamente
+    // Se já estiver em estados avançados de assinatura e já possui o link legítimo do PDF, retorna diretamente
     if (['assinado', 'pagamento_gerado', 'aprovada', 'emitida', 'ativa'].includes(cotacao.status) && existingPdf) {
       return Response.json({
         ok: true,
@@ -124,9 +127,15 @@ export async function POST(
     const isSigned = resJson.status === 'completed' || resJson.signers?.every((s: any) => s.status === 'signed');
 
     if (isSigned) {
-      const pdfLink = resJson.signed_file_url || `https://app.zapsign.com.br/verificar/${docToken}`;
+      const pdfLink = resJson.signed_file_url || null;
+      const signerSignUrl = resJson.signers?.[0]?.sign_url || null;
       
-      clientData.contratoPdf = pdfLink;
+      if (pdfLink) {
+        clientData.contratoPdf = pdfLink;
+      }
+      if (signerSignUrl) {
+        clientData.signUrl = signerSignUrl;
+      }
       clientData.assinadoEm = clientData.assinadoEm || new Date().toISOString();
 
       const canAdvanceToAssinado = ['contrato_gerado', 'enviada', 'rascunho'].includes(cotacao.status);
@@ -155,7 +164,8 @@ export async function POST(
         UPDATE signature_documents
         SET
           status = 'signed',
-          signed_file_url = ${pdfLink},
+          signed_file_url = COALESCE(${pdfLink}, signed_file_url),
+          sign_url = COALESCE(${signerSignUrl}, sign_url),
           signed_at = COALESCE(signed_at, NOW()),
           raw_payload = ${JSON.stringify(resJson)}::jsonb,
           updated_at = NOW()
