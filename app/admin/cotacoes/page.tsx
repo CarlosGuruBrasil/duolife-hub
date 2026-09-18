@@ -367,13 +367,13 @@ export default async function AdminCotacoesPage({
                             <span className="text-xs text-slate-400 font-normal">—</span>
                           )}
 
-                          {contratoUrl && (
+                          {(isContratoAssinado || contratoUrl) && (
                             <a
-                              href={contratoUrl}
+                              href={isContratoAssinado ? `/api/cotacoes/${cotacao.id}/contrato-pdf?download=true` : (contratoUrl || `/api/cotacoes/${cotacao.id}/contrato-pdf`)}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200/80 px-2.5 py-1 rounded-lg transition-colors"
-                              title={isContratoAssinado ? 'Abrir Contrato Assinado' : 'Ver Contrato ZapSign'}
+                              title={isContratoAssinado ? 'Baixar Contrato Assinado (PDF)' : 'Ver Contrato ZapSign'}
                             >
                               {isContratoAssinado ? '📄 Contrato' : '✍️ Contrato'} <ExternalLink size={10} />
                             </a>

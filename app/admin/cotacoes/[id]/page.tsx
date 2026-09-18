@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
-import { ArrowLeft, ExternalLink, FileText, UserCheck, CreditCard, ShieldCheck, FileCheck, Play, CheckCircle2, Clock } from 'lucide-react';
+import { ArrowLeft, ExternalLink, FileText, UserCheck, CreditCard, ShieldCheck, FileCheck, Play, CheckCircle2, Clock, Download, Eye } from 'lucide-react';
 import { verifyAuth, isInternalUser, isDevUser } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { PagamentosPanel } from './_pagamentos-client';
@@ -538,52 +538,41 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
                   </div>
                 </div>
 
-                {/* Barra de Ações com botões equilibrados */}
+                {/* Barra de Ações com download direto e visualização */}
                 <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2">
-                  {signedPdfUrl ? (
-                    <>
-                      <a
-                        href={signedPdfUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 bg-purple-700 hover:bg-purple-800 text-white font-bold px-3.5 py-2 rounded-xl text-xs transition-colors shadow-xs shrink-0"
-                        title="Abrir Contrato Assinado (PDF)"
-                      >
-                        <FileText size={14} className="shrink-0" />
-                        <span>Abrir Contrato Assinado (PDF)</span>
-                        <ExternalLink size={12} className="opacity-80 shrink-0" />
-                      </a>
+                  <a
+                    href={`/api/cotacoes/${cotacao.id}/contrato-pdf?download=true`}
+                    download
+                    className="inline-flex items-center gap-1.5 bg-purple-700 hover:bg-purple-800 text-white font-bold px-3.5 py-2 rounded-xl text-xs transition-colors shadow-xs shrink-0 cursor-pointer"
+                    title="Baixar Contrato Assinado (PDF) para arquivamento"
+                  >
+                    <Download size={14} className="shrink-0" />
+                    <span>Baixar Contrato (PDF)</span>
+                  </a>
 
-                      {signUrl && signUrl !== signedPdfUrl && (
-                        <a
-                          href={signUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-xs font-medium text-slate-600 hover:text-purple-700 bg-slate-50 hover:bg-purple-50 border border-slate-200 hover:border-purple-200 px-3 py-2 rounded-xl transition-colors shrink-0"
-                          title="Abrir no ZapSign"
-                        >
-                          <span>Ver no ZapSign</span>
-                          <ExternalLink size={11} className="opacity-70 shrink-0" />
-                        </a>
-                      )}
-                    </>
-                  ) : signUrl ? (
-                    <>
-                      <a
-                        href={signUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 bg-purple-700 hover:bg-purple-800 text-white font-bold px-3.5 py-2 rounded-xl text-xs transition-colors shadow-xs shrink-0"
-                        title="Ver Contrato no ZapSign"
-                      >
-                        <FileText size={14} className="shrink-0" />
-                        <span>Ver Contrato no ZapSign</span>
-                        <ExternalLink size={12} className="opacity-80 shrink-0" />
-                      </a>
-                      <VerificarZapSignButton id={cotacao.id} variant="compact" label="Buscar PDF Assinado" />
-                    </>
-                  ) : (
-                    <VerificarZapSignButton id={cotacao.id} variant="card" label="Buscar PDF na ZapSign" />
+                  <a
+                    href={`/api/cotacoes/${cotacao.id}/contrato-pdf?download=false`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 hover:text-purple-700 bg-slate-100 hover:bg-purple-50 border border-slate-200 hover:border-purple-200 px-3 py-2 rounded-xl transition-colors shrink-0"
+                    title="Visualizar Contrato Assinado (PDF) em nova aba"
+                  >
+                    <Eye size={13} className="shrink-0" />
+                    <span>Visualizar PDF</span>
+                    <ExternalLink size={11} className="opacity-70 shrink-0" />
+                  </a>
+
+                  {signUrl && (
+                    <a
+                      href={signUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-purple-700 px-2.5 py-2 transition-colors shrink-0"
+                      title="Abrir no ZapSign"
+                    >
+                      <span>Ver no ZapSign</span>
+                      <ExternalLink size={11} className="opacity-70 shrink-0" />
+                    </a>
                   )}
                 </div>
               </div>
@@ -630,6 +619,17 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
                     >
                       <span>✍️ Abrir Link de Assinatura</span>
                       <ExternalLink size={12} className="opacity-80 shrink-0" />
+                    </a>
+                  )}
+                  {docToken && (
+                    <a
+                      href={`/api/cotacoes/${cotacao.id}/contrato-pdf?download=true`}
+                      download
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 hover:text-amber-800 bg-slate-100 hover:bg-amber-50 border border-slate-200 hover:border-amber-200 px-3 py-2 rounded-xl transition-colors shrink-0"
+                      title="Baixar minuta do contrato em PDF"
+                    >
+                      <Download size={13} className="shrink-0" />
+                      <span>Baixar Minuta (PDF)</span>
                     </a>
                   )}
                   <VerificarZapSignButton id={cotacao.id} variant="card" label="Verificar se já Assinou" />
