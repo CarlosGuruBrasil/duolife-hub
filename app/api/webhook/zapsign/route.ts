@@ -214,8 +214,8 @@ export async function POST(req: NextRequest) {
 
         // Dispara gatilho de Contrato Assinado
         try {
-          const [cotacaoCompleta] = await sql<{ client_id: string | null; partner_id: string; client_name: string; premio_final: number; importancia_segurada: number }[]>`
-            SELECT client_id, partner_id, client_name, premio_final, importancia_segurada
+          const [cotacaoCompleta] = await sql<{ client_id: string | null; partner_id: string; partner_user_id: string | null; client_name: string; premio_final: number; importancia_segurada: number }[]>`
+            SELECT client_id, partner_id, partner_user_id, client_name, premio_final, importancia_segurada
             FROM cotacoes
             WHERE id = ${document.cotacao_id}
             LIMIT 1
@@ -223,6 +223,14 @@ export async function POST(req: NextRequest) {
 
           const [clientRow] = cotacaoCompleta?.client_id ? await sql<{ full_name: string; email: string; document_number: string; phone: string }[]>`
             SELECT full_name, email, document_number, phone FROM insurance_clients WHERE id = ${cotacaoCompleta.client_id} LIMIT 1
+          ` : [];
+
+          // Busca vendedor responsável pela proposta (partner_users)
+          const [vendedorRow] = cotacaoCompleta?.partner_user_id ? await sql<{ id: string; nome: string; email: string }[]>`
+            SELECT id, name AS nome, email
+            FROM partner_users
+            WHERE id = ${cotacaoCompleta.partner_user_id}
+            LIMIT 1
           ` : [];
 
           const [partnerRow] = cotacaoCompleta?.partner_id ? await sql<{ nome: string; email: string; codigo_venda?: string }[]>`
@@ -246,6 +254,19 @@ export async function POST(req: NextRequest) {
               documento: clientRow?.document_number || clientData.cpf || clientData.cnpj,
               telefone: clientRow?.phone || clientData.telefone,
             },
+            vendedor: vendedorRow
+              ? {
+                  id: vendedorRow.id,
+                  nome: vendedorRow.nome,
+                  email: vendedorRow.email,
+                }
+              : partnerRow
+              ? {
+                  id: cotacaoCompleta.partner_user_id || cotacaoCompleta.partner_id,
+                  nome: partnerRow.nome,
+                  email: partnerRow.email,
+                }
+              : undefined,
             parceiro: partnerRow ? {
               id: cotacaoCompleta.partner_id,
               nome: partnerRow.nome,

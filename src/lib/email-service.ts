@@ -342,6 +342,51 @@ export async function ensureDefaultEmailTemplates(): Promise<void> {
       variables: ['nome', 'cotacao_id'],
     },
     {
+      code: 'contrato_assinado_vendedor',
+      name: 'Notificação ao Vendedor — Contrato Assinado',
+      subject: 'Contrato Assinado pelo Cliente — Proposta #{{cotacao_id}}',
+      body_html: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f7faf9; color: #1e293b; margin: 0; padding: 24px; }
+    .container { max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+    .header { background: #0e4a5a; color: #ffffff; padding: 24px; text-align: center; }
+    .content { padding: 32px 24px; line-height: 1.6; }
+    .card-info { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 20px 0; }
+    .badge-success { display: inline-block; background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; border-radius: 6px; padding: 6px 12px; font-weight: bold; font-size: 13px; margin-bottom: 12px; }
+    .footer { font-size: 12px; color: #64748b; text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h2 style="margin:0;">Notificação de Venda — DuoLife Hub</h2>
+    </div>
+    <div class="content">
+      <span class="badge-success">&check; Contrato Assinado via ZapSign</span>
+      <p>Olá, <strong>{{nome|Vendedor}}</strong>!</p>
+      <p>Ótima notícia: o cliente <strong>{{cliente_nome|Cliente}}</strong> concluiu com sucesso a assinatura eletrônica do contrato referente à proposta <strong>#{{cotacao_id}}</strong>.</p>
+      <div class="card-info">
+        <p style="margin: 4px 0;"><strong>Segurado:</strong> {{cliente_nome|Cliente}}</p>
+        <p style="margin: 4px 0;"><strong>Produto:</strong> {{produto_nome|Seguro RC Profissional}}</p>
+        <p style="margin: 4px 0;"><strong>Importância Segurada:</strong> R$ {{cobertura|100.000,00}}</p>
+        <p style="margin: 4px 0;"><strong>Prêmio:</strong> R$ {{valor|0,00}}</p>
+        <p style="margin: 4px 0;"><strong>Corretora / Parceiro:</strong> {{parceiro_nome|DuoLife}}</p>
+      </div>
+      <p>O documento assinado já está arquivado no sistema e o link da fatura/cobrança Asaas foi gerado para liquidação do segurado.</p>
+      <p style="margin-top: 24px;">Atenciosamente,<br><strong>DuoLife Hub</strong></p>
+    </div>
+    <div class="footer">
+      DuoLife Hub &bull; Notificação automática de produção em {{-data-}} às {{-hora-}}
+    </div>
+  </div>
+</body>
+</html>`,
+      variables: ['nome', 'cliente_nome', 'cotacao_id', 'produto_nome', 'cobertura', 'valor', 'parceiro_nome'],
+    },
+    {
       code: 'fatura_gerada',
       name: 'Fatura e Boleto para Pagamento',
       subject: 'Fatura Disponível para Pagamento — Proposta #{{cotacao_id}}',

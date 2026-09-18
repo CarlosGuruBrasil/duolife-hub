@@ -91,11 +91,29 @@ export async function dispatchDomainEvent(
                     nome: context.usuario.nome || 'Usuário',
                   });
                 }
-              } else if (d.destinatario_tipo === 'PARCEIRO' && context.parceiro?.email) {
-                recipientsToDispatch.push({
-                  email: context.parceiro.email,
-                  nome: context.parceiro.nome || 'Parceiro',
-                });
+              } else if (d.destinatario_tipo === 'VENDEDOR') {
+                const vendEmail = context.vendedor?.email || context.parceiro?.email;
+                const vendNome = context.vendedor?.nome || context.parceiro?.nome || 'Vendedor';
+                if (vendEmail) {
+                  recipientsToDispatch.push({
+                    email: vendEmail,
+                    nome: vendNome,
+                  });
+                }
+              } else if (d.destinatario_tipo === 'PARCEIRO') {
+                if (context.parceiro?.email) {
+                  recipientsToDispatch.push({
+                    email: context.parceiro.email,
+                    nome: context.parceiro.nome || 'Parceiro',
+                  });
+                }
+                // Se a proposta possuir vendedor específico com e-mail diferente, garante entrega também para o vendedor
+                if (context.vendedor?.email && context.vendedor.email !== context.parceiro?.email) {
+                  recipientsToDispatch.push({
+                    email: context.vendedor.email,
+                    nome: context.vendedor.nome || 'Vendedor',
+                  });
+                }
               } else if (d.destinatario_tipo === 'ADMIN') {
                 recipientsToDispatch.push({
                   email: d.destinatario_email || process.env.BOOTSTRAP_ADMIN_EMAIL || 'admin@duolife.com.br',
@@ -119,8 +137,12 @@ export async function dispatchDomainEvent(
 
             // Variáveis formatadas para o template
             const templateVars: Record<string, any> = {
-              nome: context.usuario?.nome || context.cliente?.nome || context.parceiro?.nome || 'Cliente',
-              email: context.usuario?.email || context.cliente?.email || context.parceiro?.email || '',
+              nome: context.usuario?.nome || context.cliente?.nome || context.vendedor?.nome || context.parceiro?.nome || 'Cliente',
+              email: context.usuario?.email || context.cliente?.email || context.vendedor?.email || context.parceiro?.email || '',
+              cliente_nome: context.cliente?.nome || 'Cliente',
+              cliente_email: context.cliente?.email || '',
+              vendedor_nome: context.vendedor?.nome || context.parceiro?.nome || 'Vendedor',
+              vendedor_email: context.vendedor?.email || context.parceiro?.email || '',
               documento: context.cliente?.documento,
               telefone: context.cliente?.telefone,
               cotacao_id: context.cotacao?.id,
@@ -148,7 +170,11 @@ export async function dispatchDomainEvent(
                 templateCode,
                 to: r.email,
                 toName: r.nome,
-                variables: templateVars,
+                variables: {
+                  ...templateVars,
+                  nome: r.nome,
+                  email: r.email,
+                },
                 metadata: {
                   triggerId: trigger.id,
                   nodeId: actionNode.id,
@@ -318,7 +344,7 @@ export async function ensureDefaultTriggers(): Promise<void> {
     {
       code: 'trigger_contrato_assinado',
       name: 'Fluxo Padrão — Contrato Assinado ZapSign',
-      description: 'Dispara confirmação de assinatura quando o contrato é assinado',
+      description: 'Dispara confirmação de assinatura para o cliente e notificação para o vendedor/parceiro',
       event_type: 'CONTRATO_ASSINADO',
       tree_definition: {
         nos: [
@@ -336,16 +362,33 @@ export async function ensureDefaultTriggers(): Promise<void> {
           {
             id: 'action-email-contrato',
             tipo: 'ACAO_EMAIL',
-            titulo: 'Enviar Confirmação de Assinatura',
-            subtitulo: 'Dispara template de contrato assinado',
+            titulo: 'Enviar Confirmação ao Cliente',
+            subtitulo: 'Dispara template de contrato assinado ao segurado',
             parentId: 'root-contrato',
             ativo: true,
-            posicaoX: 500,
+            posicaoX: 340,
             posicaoY: 220,
             configuracao: {
               template_id: 'contrato_assinado',
               destinatarios: [
                 { destinatario_tipo: 'CLIENTE', destinatario_email: '', destinatario_nome: '' },
+              ],
+            },
+          },
+          {
+            id: 'action-email-vendedor',
+            tipo: 'ACAO_EMAIL',
+            titulo: 'Notificar Vendedor da Assinatura',
+            subtitulo: 'Dispara aviso de contrato assinado para o consultor/corretora',
+            parentId: 'root-contrato',
+            ativo: true,
+            posicaoX: 660,
+            posicaoY: 220,
+            configuracao: {
+              template_id: 'contrato_assinado_vendedor',
+              destinatarios: [
+                { destinatario_tipo: 'VENDEDOR', destinatario_email: '', destinatario_nome: '' },
+                { destinatario_tipo: 'PARCEIRO', destinatario_email: '', destinatario_nome: '' },
               ],
             },
           },
@@ -478,5 +521,50 @@ export async function ensureDefaultTriggers(): Promise<void> {
       )
       ON CONFLICT (code) DO NOTHING
     `;
+  }
+
+  // Migração idempotente: enriquece a árvore ativa de CONTRATO_ASSINADO com o nó de notificação ao vendedor/parceiro
+  try {
+    const [activeTrigger] = await sql<AutomationTriggerRecord[]>`
+      SELECT id, tree_definition FROM automation_triggers WHERE code = 'trigger_contrato_assinado' LIMIT 1
+    `;
+    if (activeTrigger && activeTrigger.tree_definition?.nos) {
+      const nos: NoArvore[] = activeTrigger.tree_definition.nos;
+      const hasVendedorAction = nos.some(
+        (n) =>
+          n.id === 'action-email-vendedor' ||
+          n.configuracao?.template_id === 'contrato_assinado_vendedor' ||
+          n.configuracao?.destinatarios?.some((d) => d.destinatario_tipo === 'VENDEDOR')
+      );
+
+      if (!hasVendedorAction) {
+        const rootNode = nos.find((n) => n.tipo === 'GATILHO') || nos[0];
+        nos.push({
+          id: 'action-email-vendedor',
+          tipo: 'ACAO_EMAIL',
+          titulo: 'Notificar Vendedor da Assinatura',
+          subtitulo: 'Dispara aviso de contrato assinado para o consultor/corretora',
+          parentId: rootNode ? rootNode.id : null,
+          ativo: true,
+          posicaoX: 660,
+          posicaoY: 220,
+          configuracao: {
+            template_id: 'contrato_assinado_vendedor',
+            destinatarios: [
+              { destinatario_tipo: 'VENDEDOR', destinatario_email: '', destinatario_nome: '' },
+              { destinatario_tipo: 'PARCEIRO', destinatario_email: '', destinatario_nome: '' },
+            ],
+          },
+        });
+
+        await sql`
+          UPDATE automation_triggers
+          SET tree_definition = ${sql.json({ nos } as any)}, updated_at = NOW()
+          WHERE id = ${activeTrigger.id}
+        `;
+      }
+    }
+  } catch (migErr) {
+    logger.error({ migErr }, 'Falha na migracao de trigger_contrato_assinado para o vendedor');
   }
 }

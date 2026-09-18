@@ -46,6 +46,15 @@ export async function POST(
         `
       : [];
 
+    const [vendedorRow] = cotacao.partner_user_id
+      ? await sql<{ id: string; nome: string; email: string }[]>`
+          SELECT id, name AS nome, email
+          FROM partner_users
+          WHERE id = ${cotacao.partner_user_id}
+          LIMIT 1
+        `
+      : [];
+
     const clientName = clientRow?.full_name || cotacao.client_name || clientData.nome || 'Cliente';
     const clientEmail = clientRow?.email || cotacao.client_email || clientData.email;
     const clientDoc = clientRow?.document_number || cotacao.client_cpf_cnpj || clientData.cpf || clientData.cnpj || '';
@@ -164,6 +173,15 @@ export async function POST(
           email: partnerRow.email,
           codigoVenda: partnerRow.codigo_venda,
         } : undefined,
+        vendedor: vendedorRow ? {
+          id: vendedorRow.id,
+          nome: vendedorRow.nome,
+          email: vendedorRow.email,
+        } : (partnerRow ? {
+          id: cotacao.partner_user_id || cotacao.partner_id,
+          nome: partnerRow.nome,
+          email: partnerRow.email,
+        } : undefined),
         dados: {
           checkoutId,
           link_fatura: linkBoleto,

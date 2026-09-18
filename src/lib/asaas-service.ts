@@ -462,6 +462,16 @@ export async function generateAsaasPaymentForQuote(
           `
         : [];
 
+      // Busca vendedor responsável pela proposta (partner_users)
+      const [vendedorRow] = cotacao.partner_user_id
+        ? await sql<{ id: string; nome: string; email: string }[]>`
+            SELECT id, name AS nome, email
+            FROM partner_users
+            WHERE id = ${cotacao.partner_user_id}
+            LIMIT 1
+          `
+        : [];
+
       const formattedDueDate = dueDateStr.split('-').reverse().join('/');
 
       await dispatchDomainEvent('FATURA_GERADA', {
@@ -488,6 +498,19 @@ export async function generateAsaasPaymentForQuote(
           forma_pagamento: 'BOLETO',
           status: 'PENDING',
         },
+        vendedor: vendedorRow
+          ? {
+              id: vendedorRow.id,
+              nome: vendedorRow.nome,
+              email: vendedorRow.email,
+            }
+          : partnerRow
+          ? {
+              id: cotacao.partner_user_id || cotacao.partner_id,
+              nome: partnerRow.nome,
+              email: partnerRow.email,
+            }
+          : undefined,
         parceiro: partnerRow ? {
           id: cotacao.partner_id,
           nome: partnerRow.nome,

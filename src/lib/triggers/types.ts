@@ -24,7 +24,7 @@ export type EventoDominio =
   | 'RECUPERAR_SENHA';
 
 export interface DestinatarioConfig {
-  destinatario_tipo: 'CLIENTE' | 'PARCEIRO' | 'ADMIN' | 'PERSONALIZADO';
+  destinatario_tipo: 'CLIENTE' | 'PARCEIRO' | 'VENDEDOR' | 'ADMIN' | 'PERSONALIZADO';
   destinatario_email?: string;
   destinatario_nome?: string;
   destinatario_admin_id?: string;
@@ -143,6 +143,11 @@ export interface TriggerEvaluationContext {
     nome?: string;
     email?: string;
     codigoVenda?: string;
+  };
+  vendedor?: {
+    id?: string;
+    nome?: string;
+    email?: string;
   };
   cotacao?: {
     id?: string;

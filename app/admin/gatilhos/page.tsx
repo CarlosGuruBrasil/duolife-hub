@@ -1253,7 +1253,8 @@ export default function AdminGatilhosPage() {
                       className="rounded-lg border border-gray-300 p-2 bg-white"
                     >
                       <option value="CLIENTE">Cliente Segurado (E-mail cadastrado)</option>
-                      <option value="PARCEIRO">Corretora Parceira (E-mail do parceiro)</option>
+                      <option value="VENDEDOR">Vendedor / Consultor da Proposta (E-mail do vendedor)</option>
+                      <option value="PARCEIRO">Corretora Parceira (E-mail da empresa parceira)</option>
                       <option value="ADMIN">Operação DuoLife (E-mail interno)</option>
                     </select>
                   </div>
