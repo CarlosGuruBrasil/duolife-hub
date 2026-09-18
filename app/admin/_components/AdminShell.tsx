@@ -28,6 +28,7 @@ import {
   Mail,
   GitFork,
   FileSpreadsheet,
+  MailCheck,
 } from 'lucide-react';
 import type { AuthUser } from '@/lib/auth';
 import { roleIsDev } from '@/lib/roles';
@@ -124,6 +125,12 @@ export default function AdminShell({ children, user }: AdminShellProps) {
                 icon: FileSpreadsheet,
                 description: 'Importação de base de clientes e vendas.',
               },
+              {
+                href: '/admin/auditoria-emails',
+                label: 'Auditoria de E-mails',
+                icon: MailCheck,
+                description: 'Rastreamento, logs de envio e depuração.',
+              },
             ],
           },
         ]
@@ -157,6 +164,8 @@ export default function AdminShell({ children, user }: AdminShellProps) {
     currentPathLabel = 'Comparativo Wix (Teste)';
   } else if (pathname === '/admin/importar-csv') {
     currentPathLabel = 'Importar CSV (Clientes & Vendas)';
+  } else if (pathname === '/admin/auditoria-emails') {
+    currentPathLabel = 'Auditoria de E-mails (Logs & Diagnóstico)';
   } else if (pathname.startsWith('/admin/produtos/novo')) {
     currentPathLabel = 'Produtos / Novo Produto';
   } else if (pathname.startsWith('/admin/produtos/')) {
