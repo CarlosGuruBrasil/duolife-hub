@@ -135,28 +135,46 @@ export async function dispatchDomainEvent(
               });
             }
 
+            // URL base da aplicação
+            const appBaseUrl = (
+              process.env.NEXT_PUBLIC_APP_URL ||
+              process.env.APP_URL ||
+              'https://duolife.com.br'
+            ).replace(/\/$/, '');
+
+            const resolvedLinkProposta =
+              context.dados?.link_proposta ||
+              context.dados?.proposta_url ||
+              (context.cotacao?.id ? `${appBaseUrl}/contratar/${context.cotacao.id}` : '');
+
             // Variáveis formatadas para o template
             const templateVars: Record<string, any> = {
               nome: context.usuario?.nome || context.cliente?.nome || context.vendedor?.nome || context.parceiro?.nome || 'Cliente',
               email: context.usuario?.email || context.cliente?.email || context.vendedor?.email || context.parceiro?.email || '',
               cliente_nome: context.cliente?.nome || 'Cliente',
               cliente_email: context.cliente?.email || '',
+              cliente_documento: context.cliente?.documento,
+              cliente_telefone: context.cliente?.telefone,
               vendedor_nome: context.vendedor?.nome || context.parceiro?.nome || 'Vendedor',
               vendedor_email: context.vendedor?.email || context.parceiro?.email || '',
               documento: context.cliente?.documento,
               telefone: context.cliente?.telefone,
               cotacao_id: context.cotacao?.id,
+              apolice_numero: context.dados?.apolice_numero || context.dados?.policyNumber || (context.cotacao?.id ? `DL-RC-${context.cotacao.id.slice(0, 8).toUpperCase()}` : ''),
               valor: context.cotacao?.premio_final
                 ? context.cotacao.premio_final.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
                 : context.transacao?.valor
                 ? context.transacao.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
                 : '0,00',
+              valor_parcela: context.dados?.valorParcela || (context.transacao?.valor ? context.transacao.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) : undefined),
               cobertura: context.cotacao?.cobertura
                 ? context.cotacao.cobertura.toLocaleString('pt-BR', { minimumFractionDigits: 2 })
                 : '100.000,00',
               produto_nome: context.cotacao?.produto_nome || 'Seguro RC Profissional',
+              link_proposta: resolvedLinkProposta,
               link_fatura: context.transacao?.link_fatura || '',
               vencimento: context.transacao?.vencimento || '',
+              data_vencimento: context.transacao?.vencimento || '',
               parceiro_nome: context.parceiro?.nome || 'DuoLife',
               codigo_venda: context.parceiro?.codigoVenda || '',
               link_reset: context.dados?.link_reset || context.dados?.reset_url || '',

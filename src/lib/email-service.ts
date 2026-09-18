@@ -55,6 +55,108 @@ function escapeHtml(str: string): string {
     .replace(/'/g, '&#39;');
 }
 
+function formatCpfCnpjIfRaw(v: unknown): string {
+  if (typeof v !== 'string') return v ? String(v) : '';
+  const digits = v.replace(/\D/g, '');
+  if (digits.length === 11) {
+    return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+  }
+  if (digits.length === 14) {
+    return digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
+  }
+  return v;
+}
+
+/**
+ * Normaliza e enriquece dicionário de variáveis com aliases bidirecionais,
+ * garantindo compatibilidade entre templates de diferentes módulos e autores.
+ */
+export function normalizeEmailVariables(rawVars: Record<string, any> = {}): Record<string, any> {
+  const norm: Record<string, any> = { ...rawVars };
+
+  // 1. Cliente: nome e email
+  const clienteNome = norm.cliente_nome || norm.nome || norm['cliente.nome'];
+  if (clienteNome && !norm.cliente_nome) norm.cliente_nome = clienteNome;
+  if (clienteNome && !norm.nome) norm.nome = clienteNome;
+
+  const clienteEmail = norm.cliente_email || norm.email || norm['cliente.email'];
+  if (clienteEmail && !norm.cliente_email) norm.cliente_email = clienteEmail;
+  if (clienteEmail && !norm.email) norm.email = clienteEmail;
+
+  // 2. Documento do cliente (com e sem máscara)
+  const doc = norm.cliente_documento || norm.documento || norm.cpf || norm.cnpj || norm['cliente.documento'];
+  if (doc) {
+    const formattedDoc = formatCpfCnpjIfRaw(doc);
+    norm.cliente_documento = formattedDoc;
+    norm.documento = formattedDoc;
+    norm.cpf_cnpj = formattedDoc;
+  }
+
+  // 3. Telefone
+  const tel = norm.cliente_telefone || norm.telefone || norm.celular || norm['cliente.telefone'];
+  if (tel) {
+    if (!norm.cliente_telefone) norm.cliente_telefone = tel;
+    if (!norm.telefone) norm.telefone = tel;
+  }
+
+  // 4. Vencimento
+  const venc = norm.data_vencimento || norm.vencimento;
+  if (venc) {
+    if (!norm.data_vencimento) norm.data_vencimento = venc;
+    if (!norm.vencimento) norm.vencimento = venc;
+  }
+
+  // 5. Valores financeiros
+  const val = norm.valor || norm.valor_parcela || norm.premio_atual || norm.premio_final;
+  if (val !== undefined && val !== null) {
+    if (norm.valor === undefined) norm.valor = val;
+    if (norm.valor_parcela === undefined) norm.valor_parcela = val;
+    if (norm.premio_atual === undefined) norm.premio_atual = val;
+  }
+
+  // 6. Links de Fatura, Proposta e Redefinição
+  const linkFatura = norm.link_fatura || norm.fatura_url || norm.link_boleto || norm.invoice_url;
+  if (linkFatura) {
+    if (!norm.link_fatura) norm.link_fatura = linkFatura;
+    if (!norm.fatura_url) norm.fatura_url = linkFatura;
+    if (!norm.link_boleto) norm.link_boleto = linkFatura;
+  }
+
+  const linkProposta = norm.link_proposta || norm.proposta_url || norm.quote_url;
+  if (linkProposta) {
+    if (!norm.link_proposta) norm.link_proposta = linkProposta;
+    if (!norm.proposta_url) norm.proposta_url = linkProposta;
+  }
+
+  const linkReset = norm.link_reset || norm.reset_url;
+  if (linkReset) {
+    if (!norm.link_reset) norm.link_reset = linkReset;
+    if (!norm.reset_url) norm.reset_url = linkReset;
+  }
+
+  // 7. Apólice e Cotação
+  const apolice = norm.apolice_numero || norm.numero_apolice || norm.policy_number;
+  if (apolice) {
+    if (!norm.apolice_numero) norm.apolice_numero = apolice;
+    if (!norm.numero_apolice) norm.numero_apolice = apolice;
+  }
+
+  const cotacaoId = norm.cotacao_id || norm.proposta_id || norm.quote_id;
+  if (cotacaoId) {
+    if (!norm.cotacao_id) norm.cotacao_id = cotacaoId;
+    if (!norm.proposta_id) norm.proposta_id = cotacaoId;
+  }
+
+  // 8. Parceiro e Vendedor
+  const parcNome = norm.parceiro_nome || norm.corretor_nome || norm['parceiro.nome'];
+  if (parcNome) {
+    if (!norm.parceiro_nome) norm.parceiro_nome = parcNome;
+    if (!norm.corretor_nome) norm.corretor_nome = parcNome;
+  }
+
+  return norm;
+}
+
 function resolveNestedVariable(obj: Record<string, any>, path: string): any {
   if (obj[path] !== undefined) return obj[path];
   const parts = path.split('.');
@@ -95,6 +197,7 @@ export function renderTemplateString(
   variables: Record<string, any> = {},
   isHtml = false
 ): string {
+  const normalizedVars = normalizeEmailVariables(variables);
   const now = new Date();
   const dataHoje = now.toLocaleDateString('pt-BR');
   const horaHoje = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -116,7 +219,7 @@ export function renderTemplateString(
     }
 
     // Variáveis informadas no contexto (direta ou por notação de ponto)
-    const resolvedVal = resolveNestedVariable(variables, key);
+    const resolvedVal = resolveNestedVariable(normalizedVars, key);
     if (resolvedVal !== undefined && resolvedVal !== null) {
       let strVal = typeof resolvedVal === 'object' ? JSON.stringify(resolvedVal) : String(resolvedVal);
       // Se for template HTML e não for link/url de reset ou fatura, escapa entidades HTML
@@ -164,12 +267,12 @@ export async function sendTemplatedEmail({
     };
   }
 
-  // 2. Mescla variáveis com nome/email padrão se não informados
-  const mergedVars: Record<string, any> = {
+  // 2. Mescla variáveis com nome/email padrão se não informados e normaliza aliases
+  const mergedVars: Record<string, any> = normalizeEmailVariables({
     nome: toName || variables.nome || 'Cliente',
     email: to,
     ...variables,
-  };
+  });
 
   const renderedSubject = renderTemplateString(template.subject, mergedVars, false);
   const renderedHtml = renderTemplateString(template.body_html, mergedVars, true);

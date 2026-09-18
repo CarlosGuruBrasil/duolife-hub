@@ -297,17 +297,99 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Failed to process sale' }, { status: 500 });
       }
     } else if (isOverdueEvent(event) && installment?.cotacao_id) {
-      // Dispara gatilho de fatura vencida
+      // Dispara gatilho de fatura vencida com contexto completo
       try {
+        const [cotacao] = await sql<any[]>`
+          SELECT id, partner_id, client_id, client_name, client_email, client_cpf_cnpj, client_phone,
+                 partner_user_id, premio_final, importancia_segurada, client_data
+          FROM cotacoes
+          WHERE id = ${installment.cotacao_id}
+          LIMIT 1
+        `;
+
+        let clientRow: any = null;
+        if (cotacao?.client_id) {
+          const [c] = await sql<any[]>`
+            SELECT full_name, email, document_number, phone
+            FROM insurance_clients
+            WHERE id = ${cotacao.client_id}
+            LIMIT 1
+          `;
+          clientRow = c;
+        }
+
+        let partnerRow: any = null;
+        if (cotacao?.partner_id) {
+          const [p] = await sql<any[]>`
+            SELECT
+              COALESCE(p.nome_fantasia, p.razao_social) AS nome,
+              COALESCE(NULLIF(p.email, ''), pu.email) AS email,
+              p.metadata->'whiteLabel'->>'wixCode' AS codigo_venda
+            FROM partners p
+            LEFT JOIN partner_users pu ON pu.partner_id = p.id AND pu.is_active = true
+            WHERE p.id = ${cotacao.partner_id}
+            ORDER BY pu.created_at ASC
+            LIMIT 1
+          `;
+          partnerRow = p;
+        }
+
+        let vendedorRow: any = null;
+        if (cotacao?.partner_user_id) {
+          const [v] = await sql<any[]>`
+            SELECT id, name AS nome, email
+            FROM partner_users
+            WHERE id = ${cotacao.partner_user_id}
+            LIMIT 1
+          `;
+          vendedorRow = v;
+        }
+
+        const [saleRow] = await sql<any[]>`
+          SELECT policy_number FROM sales WHERE cotacao_id = ${installment.cotacao_id} LIMIT 1
+        `;
+
+        const clientData = (cotacao?.client_data as Record<string, any>) || {};
+        const clientName = clientRow?.full_name || cotacao?.client_name || clientData.nome || 'Cliente';
+        const clientEmail = clientRow?.email || cotacao?.client_email || clientData.email;
+        const clientDoc = clientRow?.document_number || cotacao?.client_cpf_cnpj || clientData.cpf || clientData.cnpj || '';
+        const clientPhone = clientRow?.phone || cotacao?.client_phone || clientData.celular || clientData.telefone || '';
+
         await dispatchDomainEvent('FATURA_VENCIDA', {
           eventType: 'FATURA_VENCIDA',
           contextId: installment.cotacao_id,
+          cliente: {
+            nome: clientName,
+            email: clientEmail,
+            documento: clientDoc,
+            telefone: clientPhone,
+          },
+          parceiro: partnerRow ? {
+            id: cotacao.partner_id,
+            nome: partnerRow.nome,
+            email: partnerRow.email,
+            codigoVenda: partnerRow.codigo_venda,
+          } : undefined,
+          vendedor: vendedorRow ? {
+            id: vendedorRow.id,
+            nome: vendedorRow.nome,
+            email: vendedorRow.email,
+          } : undefined,
+          cotacao: cotacao ? {
+            id: cotacao.id,
+            premio_final: Number(cotacao.premio_final) || undefined,
+            cobertura: Number(cotacao.importancia_segurada) || undefined,
+            produto_nome: 'Seguro RC Profissional',
+          } : undefined,
           transacao: {
             id: payment.id,
             valor: Number(payment.value) || 0,
             vencimento: payment.dueDate,
             forma_pagamento: payment.billingType,
             link_fatura: payment.invoiceUrl,
+          },
+          dados: {
+            apolice_numero: saleRow?.policy_number,
           },
         });
       } catch (overdueErr) {

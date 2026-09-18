@@ -129,26 +129,49 @@ export default function AdminEmailsPage() {
     const dataHoje = now.toLocaleDateString('pt-BR');
     const horaHoje = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
-    return html.replace(/\{\{([a-zA-Z0-9_-]+)(?:\|([^}]+))?\}\}/g, (_, key: string, fallback?: string) => {
-      if (key === '-data-') return dataHoje;
-      if (key === '-hora-') return horaHoje;
-      if (key === '-data_hora-') return `${dataHoje} ${horaHoje}`;
-      if (key === '-ano-') return String(now.getFullYear());
-      if (key === '-aplicativo-') return 'DuoLife Hub';
+    const previewData: Record<string, string> = {
+      '-data-': dataHoje,
+      '-hora-': horaHoje,
+      '-data_hora-': `${dataHoje} ${horaHoje}`,
+      '-ano-': String(now.getFullYear()),
+      '-aplicativo-': 'DuoLife Hub',
+      nome: 'Dr. Carlos Eduardo',
+      cliente_nome: 'Dr. Carlos Eduardo',
+      email: 'carlos@exemplo.com.br',
+      cliente_email: 'carlos@exemplo.com.br',
+      cliente_documento: '123.456.789-00',
+      documento: '123.456.789-00',
+      cliente_telefone: '(47) 99123-4567',
+      telefone: '(47) 99123-4567',
+      vendedor_nome: 'Consultor DuoLife',
+      vendedor_email: 'consultor@duolife.com.br',
+      cotacao_id: 'COT-2026-8942',
+      apolice_numero: 'DL-RC-8942',
+      produto_nome: 'Seguro RC Profissional Advogado',
+      cobertura: '200.000,00',
+      valor: '1.250,00',
+      valor_parcela: '104,17',
+      premio_atual: '1.250,00',
+      parcela_info: '1 de 12',
+      data_vencimento: '25/09/2026',
+      vencimento: '25/09/2026',
+      dias_vencimento: '3',
+      dias_atraso: '5',
+      data_expiracao: '30/10/2026',
+      dias_restantes: '30',
+      janela_label: 'D-30',
+      parceiro_nome: 'Harmonia Corretora de Seguros',
+      codigo_venda: 'HARMONIA_VIP',
+      link_proposta: 'https://duolife.com.br/contratar/demo',
+      link_fatura: 'https://duolife.com.br/pagamento/demo',
+      link_renovacao: 'https://duolife.com.br/portal/cotacoes/nova?renovacao=true',
+      link_reset: 'https://duolife.com.br/login/redefinir-senha?token=demo',
+      reset_url: 'https://duolife.com.br/login/redefinir-senha?token=demo',
+      tempo_expiracao: '1 hora',
+    };
 
-      // Dados de simulação
-      if (key === 'nome') return 'Dr. Carlos Eduardo';
-      if (key === 'email') return 'carlos@exemplo.com.br';
-      if (key === 'telefone') return '(47) 99123-4567';
-      if (key === 'cotacao_id') return 'COT-2026-8942';
-      if (key === 'produto_nome') return 'Seguro RC Profissional Advogado';
-      if (key === 'cobertura') return '200.000,00';
-      if (key === 'valor') return '1.250,00';
-      if (key === 'parceiro_nome') return 'Harmonia Corretora de Seguros';
-      if (key === 'codigo_venda') return 'HARMONIA_VIP';
-      if (key === 'link_proposta') return 'https://duolife.com.br/contratar/demo';
-      if (key === 'link_fatura') return 'https://duolife.com.br/pagamento/demo';
-
+    return html.replace(/\{\{([a-zA-Z0-9_.-]+)(?:\|([^}]+))?\}\}/g, (_, key: string, fallback?: string) => {
+      if (previewData[key] !== undefined) return previewData[key];
       if (fallback) return fallback;
       return `[${key}]`;
     });
@@ -844,15 +867,21 @@ export default function AdminEmailsPage() {
                       {[
                         'nome',
                         'email',
-                        'telefone',
+                        'cliente_nome',
+                        'cliente_documento',
+                        'cliente_telefone',
                         'cotacao_id',
+                        'apolice_numero',
                         'produto_nome',
                         'valor',
                         'cobertura',
                         'parceiro_nome',
                         'codigo_venda',
+                        'data_vencimento',
+                        'parcela_info',
                         'link_proposta',
                         'link_fatura',
+                        'link_renovacao',
                         'link_reset',
                         'tempo_expiracao',
                         '-data-',

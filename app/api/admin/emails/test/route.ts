@@ -30,19 +30,41 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: 'Operador autenticado não possui e-mail cadastrado para teste' }, { status: 400 });
     }
 
-    // Variáveis de simulação padrão
+    // Variáveis de simulação completas para testes de qualquer template
     const simulationVars: Record<string, any> = {
-      nome: user.name || 'Carlos Augusto',
+      nome: user.name || 'Dr. Carlos Eduardo',
       email: targetEmail,
-      telefone: '(11) 99999-9999',
+      cliente_nome: 'Dr. Carlos Eduardo',
+      cliente_email: targetEmail,
+      cliente_documento: '123.456.789-00',
+      documento: '123.456.789-00',
+      cliente_telefone: '(47) 99123-4567',
+      telefone: '(47) 99123-4567',
+      vendedor_nome: 'Consultoria DuoLife',
+      vendedor_email: 'contato@duolife.com.br',
       cotacao_id: 'COT-89421',
+      apolice_numero: 'DL-RC-89421',
       produto_nome: 'Seguro RC Profissional Advogado',
       valor: '1.250,00',
+      valor_parcela: '104,17',
       cobertura: '200.000,00',
+      premio_atual: '1.250,00',
+      parcela_info: '1 de 12',
+      data_vencimento: '25/09/2026',
+      vencimento: '25/09/2026',
+      dias_vencimento: 3,
+      dias_atraso: 5,
+      data_expiracao: '30/10/2026',
+      dias_restantes: 30,
+      janela_label: 'D-30',
       parceiro_nome: 'Corretora Modelo DuoLife',
       codigo_venda: 'CORRETORA_VIP',
       link_proposta: 'https://duolife.com.br/contratar/demo',
       link_fatura: 'https://duolife.com.br/pagamento/demo',
+      link_renovacao: 'https://duolife.com.br/portal/cotacoes/nova?renovacao=true',
+      link_reset: 'https://duolife.com.br/login/redefinir-senha?token=demo123456',
+      reset_url: 'https://duolife.com.br/login/redefinir-senha?token=demo123456',
+      tempo_expiracao: '1 hora',
       ...(customVariables || {}),
     };
 
