@@ -284,6 +284,7 @@ export async function sendTemplatedEmail({
     subject: renderedSubject,
     html: renderedHtml,
     templateId: template.external_id,
+    variables: mergedVars,
   });
 
   const status = result.success ? (result.mock ? 'mocked' : 'sent') : 'failed';

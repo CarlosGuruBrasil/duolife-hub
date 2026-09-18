@@ -10,6 +10,8 @@ export interface Net4LifeSendEmailOptions {
   subject: string;
   html: string;
   templateId?: string | null;
+  /** Variáveis de substituição enviadas à API (usadas quando templateId está presente) */
+  variables?: Record<string, any>;
 }
 
 export interface Net4LifeSendResult {
@@ -145,6 +147,21 @@ async function callNet4LifeApi<T = any>(
 }
 
 /**
+ * Converte o dicionário de variáveis em um objeto plano de strings aceito pela API.
+ */
+function flattenVariablesForNet4Life(vars?: Record<string, any>): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!vars) return out;
+  for (const [key, value] of Object.entries(vars)) {
+    if (!/^[a-zA-Z0-9_]+$/.test(key)) continue;
+    if (value === undefined || value === null) continue;
+    if (typeof value === 'object') continue;
+    out[key] = String(value);
+  }
+  return out;
+}
+
+/**
  * Dispara e-mail transacional ou em lote usando a API Net4Life Info (/enviaremail).
  */
 export async function sendEmailViaNet4Life(
@@ -169,6 +186,14 @@ export async function sendEmailViaNet4Life(
 
     if (options.templateId) {
       payload.template_id = options.templateId;
+    }
+
+    // A API ignora `corpo` quando `template_id` é informado e substitui as tags
+    // do template remoto com `variaveis` + campos do destinatário. Enviamos apenas
+    // valores escalares (a substituição remota só aceita chaves [a-zA-Z0-9_]).
+    const variaveis = flattenVariablesForNet4Life(options.variables);
+    if (Object.keys(variaveis).length > 0) {
+      payload.variaveis = variaveis;
     }
 
     if (config.senderEmail) {

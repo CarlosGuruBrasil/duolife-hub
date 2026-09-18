@@ -9,6 +9,7 @@ export interface SendMailOptions {
   subject: string;
   html: string;
   templateId?: string | null;
+  variables?: Record<string, any>;
 }
 
 export interface SendMailResult {
@@ -25,6 +26,7 @@ export async function sendMail({
   subject,
   html,
   templateId,
+  variables,
 }: SendMailOptions): Promise<SendMailResult> {
   const isDev = process.env.NODE_ENV !== 'production';
 
@@ -38,6 +40,7 @@ export async function sendMail({
       subject,
       html,
       templateId,
+      variables,
     });
 
     if (net4lifeResult.success) {
