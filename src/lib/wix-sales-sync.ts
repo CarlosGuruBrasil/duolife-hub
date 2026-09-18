@@ -1245,7 +1245,7 @@ export async function syncWixTokensToContracts(): Promise<WixTokenSyncResult> {
     if (!token) continue;
 
     const urls = extractWixUrls(raw);
-    const signedUrl = urls.signedFileUrl || `https://app.zapsign.com.br/verificar/${token}`;
+    const signedUrl: string | null = urls.signedFileUrl || null;
     const rawDateStr =
       parseFlexibleDate(raw._createdDate) ||
       extractWixCreationDate(raw, { id: item.id });

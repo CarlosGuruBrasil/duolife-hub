@@ -124,10 +124,10 @@ export async function POST(
     const resJson = await response.json();
     
     // ZapSign considera o documento finalizado/assinado se status for "completed"
-    const isSigned = resJson.status === 'completed' || resJson.signers?.every((s: any) => s.status === 'signed');
+    const isSigned = resJson.status === 'signed' || resJson.status === 'completed' || (Array.isArray(resJson.signers) && resJson.signers.length > 0 && resJson.signers.every((s: any) => s.status === 'signed'));
 
     if (isSigned) {
-      const pdfLink = resJson.signed_file_url || null;
+      const pdfLink = resJson.signed_file || resJson.signed_file_url || null;
       const signerSignUrl = resJson.signers?.[0]?.sign_url || null;
       
       if (pdfLink) {

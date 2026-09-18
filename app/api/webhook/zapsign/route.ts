@@ -57,8 +57,11 @@ function extractExternalId(payload: any) {
 
 function extractSignedFileUrl(payload: any) {
   return (
+    payload?.signed_file ||
     payload?.signed_file_url ||
+    payload?.document?.signed_file ||
     payload?.document?.signed_file_url ||
+    payload?.doc?.signed_file ||
     payload?.doc?.signed_file_url ||
     null
   );

@@ -211,10 +211,13 @@ export async function reconcileZapSignDocuments(
             zapDoc.signers.length > 0 &&
             zapDoc.signers.every((s: { status?: string }) => s.status === 'signed'));
 
-        const signedUrl =
+        // A API da ZapSign retorna `signed_file` / `original_file` (não `*_url`).
+        const signedUrl: string | null =
+          zapDoc.signed_file ||
           zapDoc.signed_file_url ||
+          zapDoc.original_file ||
           zapDoc.original_file_url ||
-          `https://app.zapsign.com.br/verificar/${docToken}`;
+          null;
 
         const signedAtStr =
           zapDoc.signed_at ||
@@ -257,7 +260,7 @@ export async function reconcileZapSignDocuments(
                 ${doc.client_id},
                 'zapsign',
                 ${docToken},
-                ${signedUrl},
+                ${zapDoc.signers?.[0]?.sign_url || null},
                 ${signedUrl},
                 'signed',
                 ${signedAtStr}::timestamptz,
@@ -280,8 +283,10 @@ export async function reconcileZapSignDocuments(
           // Atualiza cotação
           const clientData = parseJsonbField<Record<string, unknown>>(doc.client_data);
           clientData.contratoToken = docToken;
-          clientData.contratoPdf = signedUrl;
-          clientData.urlAssinado = signedUrl;
+          if (signedUrl) {
+            clientData.contratoPdf = signedUrl;
+            clientData.urlAssinado = signedUrl;
+          }
           clientData.assinadoEm = clientData.assinadoEm || signedAtStr;
 
           // Se a cotação estava antes de assinado, avança

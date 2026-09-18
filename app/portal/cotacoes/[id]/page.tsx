@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { CopiarLinkAssinaturaButton } from '@/components/cotacao/CopiarLinkAssinaturaButton';
 import { notFound, redirect } from 'next/navigation';
 import { ArrowLeft, ExternalLink, FileText, CreditCard, ShieldCheck, FileCheck, Play, CheckCircle2, Clock, Download, Eye } from 'lucide-react';
 import { verifyPartnerAuth, getPartnerAccessContext } from '@/lib/auth';
@@ -603,17 +604,20 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
                 </div>
 
                 {/* Barra de Ações */}
-                <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2">
-                  {signUrl && (
-                    <a
-                      href={signUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold px-3.5 py-2 rounded-xl text-xs transition-colors shadow-xs"
-                    >
-                      <span>✍️ Abrir Link de Assinatura</span>
-                      <ExternalLink size={12} className="opacity-80 shrink-0" />
-                    </a>
+                <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2">{signUrl && (
+                    <>
+                      <CopiarLinkAssinaturaButton signUrl={signUrl} />
+                      <a
+                        href={signUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700 hover:text-amber-800 bg-slate-100 hover:bg-amber-50 border border-slate-200 hover:border-amber-200 px-3 py-2 rounded-xl transition-colors shrink-0"
+                        title="Abrir link de assinatura em nova aba"
+                      >
+                        <span>✍️ Abrir Link</span>
+                        <ExternalLink size={11} className="opacity-70 shrink-0" />
+                      </a>
+                    </>
                   )}
                   {docToken && (
                     <a
