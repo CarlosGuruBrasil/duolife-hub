@@ -217,6 +217,20 @@ Transformar a DuoLife em um portal/admin operacional estável, com banco isolado
   - `npx tsc --noEmit`: 0 erros.
   - `npm run build`: 66 rotas compiladas com sucesso no Turbopack.
 
-
-
-
+## Sistema de Auditoria de Envio de E-mails no Menu Desenvolvimento em 2026-09-18
+- Mudanças aplicadas:
+  - Nova API de Auditoria (`app/api/admin/emails/auditoria/route.ts`):
+    - Rota `GET` protegida com `verifyAuth` e `roleIsInternal` para consolidação de métricas em tempo real (`totalDispatches`, `sent`, `failed`, `mocked`, taxa de sucesso percentual e distribuição por provedor).
+    - Status de conectividade em tempo real dos provedores no ecossistema (`Net4Life Info / FluxoSend` e `Nodemailer SMTP`).
+    - Consulta paginada em `email_dispatch_logs` com suporte a busca textual reativa por destinatário, nome, assunto ou template, além de filtros combinados por status e provedor.
+  - Interface Web (`app/admin/auditoria-emails/page.tsx`):
+    - Cards de Métricas & KPIs: Total de Disparos, Taxa de Sucesso, Falhas/Alertas e Provedor Ativo em tempo real.
+    - Barra de Filtros e Busca dinâmica por texto, seletor de status e seletor de provedor.
+    - Tabela com padrão `TableScrollContainer minWidth="980px"` com rolagem nativa 120fps por hardware (GPU), cabeçalhos sticky e badges visuais de status.
+    - Modal de Inspeção Detalhada: exibe log completo, messageId, mensagem de erro/exceção destacada, assunto renderizado e inspeção profunda do payload JSON (`metadata`, variáveis de interpolação e dados de gatilhos).
+    - Modal de Disparo de Diagnóstico com blindagem anti-open-relay enviando exclusivamente para o operador autenticado.
+  - Menu Desenvolvimento (`app/admin/_components/AdminShell.tsx`):
+    - Adicionado item "Auditoria de E-mails" (`/admin/auditoria-emails`, ícone `MailCheck`) na seção Desenvolvimento.
+- Evidência técnica:
+  - `npx tsc --noEmit`: 0 erros.
+  - `npm run build`: 68 rotas compiladas com sucesso no Turbopack.
