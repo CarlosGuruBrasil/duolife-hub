@@ -9,6 +9,7 @@ import {
   AlertCircle,
   Check
 } from 'lucide-react';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 
 import type { Plano } from './CotacaoFormRC';
 
@@ -53,6 +54,9 @@ export default function DescontoDrawer({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
+
+  // Trava scroll de fundo enquanto o drawer estiver aberto e restaura com segurança
+  useBodyScrollLock(isOpen);
 
   if (!isOpen) return null;
 

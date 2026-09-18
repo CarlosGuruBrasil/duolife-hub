@@ -299,6 +299,7 @@ export default function DynamicCotacaoForm({
   const [contratoAssinado, setContratoAssinado] = useState(false);
   const [verificandoAssinatura, setVerificandoAssinatura] = useState(false);
   const [linkPagamento, setLinkPagamento] = useState('');
+  const [copiedPaymentUrl, setCopiedPaymentUrl] = useState(false);
   const [paymentDueDate, setPaymentDueDate] = useState('');
   const [checkoutId, setCheckoutId] = useState('');
   const [paymentBlockedReason, setPaymentBlockedReason] = useState<string | null>(null);
@@ -1036,6 +1037,17 @@ export default function DynamicCotacaoForm({
       setTimeout(() => setCopiedSignUrl(false), 2500);
     } catch (err) {
       console.warn('Falha ao copiar link ZapSign:', err);
+    }
+  }
+
+  async function handleCopyPaymentUrl() {
+    if (!linkPagamento) return;
+    try {
+      await navigator.clipboard.writeText(linkPagamento);
+      setCopiedPaymentUrl(true);
+      setTimeout(() => setCopiedPaymentUrl(false), 2500);
+    } catch (err) {
+      console.warn('Falha ao copiar link de pagamento:', err);
     }
   }
 
@@ -2299,60 +2311,119 @@ export default function DynamicCotacaoForm({
               </div>
 
               {linkPagamento ? (
-                <div className="space-y-5">
-                  <h3 className="text-lg font-bold text-primary">Pagamento do Seguro (Asaas)</h3>
-
-                  <div className="bg-gray-50 border border-gray-200 rounded-xl p-5 space-y-3">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600 font-medium">Status</span>
-                      <span className="text-emerald-700 font-bold">Fatura Emitida</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600 font-medium">Data de Vencimento</span>
-                      <span className="text-gray-900 font-bold">{formatDateDisplay(paymentDueDate)}</span>
-                    </div>
-                    {checkoutId && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600 font-medium">Checkout ID</span>
-                        <span className="text-gray-900 font-bold">{checkoutId}</span>
+                <div className="space-y-6">
+                  <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs space-y-6">
+                    {/* Cabeçalho do Card */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-gray-100 pb-5">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            Fatura Emitida com Sucesso
+                          </span>
+                        </div>
+                        <h3 className="text-xl font-bold text-gray-900 pt-1">
+                          Pagamento do Seguro
+                        </h3>
+                        <p className="text-xs text-gray-500">
+                          Gateway Oficial Asaas &bull; Suporte a PIX Instantâneo e Boleto Bancário
+                        </p>
                       </div>
-                    )}
-                  </div>
 
-                  <p className="text-sm text-gray-700">
-                    Efetue o pagamento através da fatura oficial abaixo (suporte completo a PIX e Boleto Bancário):
-                  </p>
+                      {checkoutId && (
+                        <div className="text-left sm:text-right bg-gray-50 sm:bg-transparent p-3 sm:p-0 rounded-lg sm:rounded-none border sm:border-0 border-gray-100">
+                          <span className="text-xs text-gray-400 block font-medium">Checkout ID</span>
+                          <span className="text-xs font-mono font-bold text-gray-800">{checkoutId}</span>
+                        </div>
+                      )}
+                    </div>
 
-                  <div className="border border-gray-200 rounded-xl overflow-hidden bg-white h-[550px]">
-                    <iframe
-                      src={linkPagamento}
-                      className="w-full h-full border-0"
-                      title="Fatura Asaas"
-                    />
-                  </div>
+                    {/* Resumo da Cobrança */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                        <span className="text-xs text-gray-500 block font-medium">Data de Vencimento</span>
+                        <span className="text-base font-bold text-gray-900 mt-1 block">
+                          {formatDateDisplay(paymentDueDate) || 'A definir'}
+                        </span>
+                      </div>
+                      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                        <span className="text-xs text-gray-500 block font-medium">Condição Selecionada</span>
+                        <span className="text-base font-bold text-gray-900 mt-1 block">
+                          {parcelaSel ? `${parcelaSel.qtd}x de ${formatCurrencyBRL(parcelaSel.valor)}` : 'À vista'}
+                        </span>
+                      </div>
+                      <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                        <span className="text-xs text-gray-500 block font-medium">Formas de Pagamento</span>
+                        <span className="text-base font-bold text-primary mt-1 block">
+                          PIX e Boleto
+                        </span>
+                      </div>
+                    </div>
 
-                  <div className="flex flex-col md:flex-row gap-3 pt-2">
-                    <a
-                      href={linkPagamento}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn btn-primary flex items-center justify-center space-x-2 text-sm w-full md:w-auto"
-                    >
-                      <ExternalLink className="w-4 h-4" />
-                      <span>Abrir Pagamento em Nova Aba</span>
-                    </a>
+                    {/* Copiar Link Rápido */}
+                    <div className="space-y-2 bg-gray-50 border border-gray-200 rounded-xl p-4">
+                      <label className="text-xs font-semibold text-gray-700 block">
+                        Link Oficial da Fatura:
+                      </label>
+                      <div className="flex flex-col sm:flex-row items-stretch gap-2">
+                        <input
+                          type="text"
+                          readOnly
+                          value={linkPagamento}
+                          onClick={(e) => (e.target as HTMLInputElement).select()}
+                          className="form-input text-xs font-mono bg-white text-gray-800 py-2.5 px-3 select-all flex-1 border border-gray-300 rounded-lg focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleCopyPaymentUrl}
+                          className="btn btn-secondary py-2.5 px-4 text-xs flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer font-semibold"
+                        >
+                          {copiedPaymentUrl ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                          <span>{copiedPaymentUrl ? 'Link Copiado!' : 'Copiar Link'}</span>
+                        </button>
+                      </div>
+                      <p className="text-[11px] text-gray-500">
+                        Você pode copiar e enviar este link diretamente ao segurado via WhatsApp ou e-mail.
+                      </p>
+                    </div>
 
-                    {!publicToken && (
-                      <button
-                        onClick={() => {
-                          router.push('/portal/cotacoes');
-                          router.refresh();
-                        }}
-                        className="btn btn-secondary text-sm w-full md:w-auto cursor-pointer"
+                    {/* Aviso de Segurança e Conexão Bancária */}
+                    <div className="bg-emerald-50/70 border border-emerald-200 p-4 rounded-xl flex items-start gap-3 text-xs text-emerald-900">
+                      <ShieldCheck className="w-5 h-5 text-emerald-700 flex-shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <p className="font-semibold text-emerald-950">
+                          Ambiente Seguro Certificado Asaas
+                        </p>
+                        <p className="text-emerald-800 leading-relaxed">
+                          Por diretrizes de segurança bancária do Asaas, o ambiente de pagamento oficial é aberto em uma página segura com suporte a PIX QR Code instantâneo, código Copia e Cola e emissão de Boleto Bancário registrado.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Botões de Ação */}
+                    <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                      <a
+                        href={linkPagamento}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="btn btn-primary flex items-center justify-center space-x-2 text-sm w-full sm:w-auto py-3 px-6 shadow-sm cursor-pointer"
                       >
-                        Voltar para Cotações
-                      </button>
-                    )}
+                        <ExternalLink className="w-4 h-4" />
+                        <span>Abrir Fatura e Pagar no Asaas</span>
+                      </a>
+
+                      {!publicToken && (
+                        <button
+                          onClick={() => {
+                            router.push('/portal/cotacoes');
+                            router.refresh();
+                          }}
+                          className="btn btn-secondary text-sm w-full sm:w-auto py-3 px-5 cursor-pointer"
+                        >
+                          Voltar para Cotações
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ) : (

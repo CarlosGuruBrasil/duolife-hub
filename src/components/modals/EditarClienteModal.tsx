@@ -12,6 +12,7 @@ import {
   formatDateToInput,
   cleanDigits,
 } from './masks';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 
 export interface EditarClienteModalProps {
   isOpen: boolean;
@@ -51,19 +52,7 @@ export default function EditarClienteModal({
     setMounted(true);
   }, []);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isOpen, onClose]);
+  useBodyScrollLock(isOpen);
 
   // Estados dos campos
   const [fullName, setFullName] = useState('');
@@ -124,16 +113,6 @@ export default function EditarClienteModal({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  // Trava scroll do body enquanto o modal estiver aberto
-  useEffect(() => {
-    if (isOpen) {
-      const originalOverflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = originalOverflow;
-      };
-    }
-  }, [isOpen]);
 
   if (!isOpen) return null;
 

@@ -23,6 +23,7 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 
 interface EmailDispatchLog {
   id: string;
@@ -90,6 +91,9 @@ export default function AuditoriaEmailsPage() {
   const [testSubject, setTestSubject] = useState('Diagnóstico de Conectividade SMTP / Net4Life');
   const [testSending, setTestSending] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  // Bloqueio seguro de scroll durante exibição do drawer/modal de inspeção ou teste
+  useBodyScrollLock(!!selectedLog || testModalOpen);
 
   const [isPending, startTransition] = useTransition();
 

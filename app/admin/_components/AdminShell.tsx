@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import type { AuthUser } from '@/lib/auth';
 import { roleIsDev } from '@/lib/roles';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 
 interface AdminShellProps {
   children: React.ReactNode;
@@ -146,6 +147,9 @@ export default function AdminShell({ children, user }: AdminShellProps) {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Trava segura de scroll quando o menu mobile estiver aberto
+  useBodyScrollLock(open);
 
   const initials = user?.name
     ? user.name

@@ -25,6 +25,7 @@ import {
   ExternalLink,
   Sparkles,
 } from 'lucide-react';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import type { AuthUser } from '@/lib/auth';
 
 interface Vendedor {
@@ -99,6 +100,9 @@ export default function EquipeClient({ user }: { user: AuthUser }) {
   const [passwordModalSeller, setPasswordModalSeller] = useState<Vendedor | null>(null);
   const [newPasswordInput, setNewPasswordInput] = useState('');
   const [passwordSubmitting, setPasswordSubmitting] = useState(false);
+
+  // Bloqueio seguro de scroll durante exibição de modais de equipe
+  useBodyScrollLock(showModal || !!passwordModalSeller);
 
   // Feedbacks
   const [feedback, setFeedback] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);

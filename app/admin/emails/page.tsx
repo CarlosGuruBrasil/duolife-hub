@@ -26,6 +26,7 @@ import {
 import type { EmailTemplate, EmailDispatchLog } from '@/lib/email-service';
 import { EmailVisualEditor } from '@/components/admin/EmailVisualEditor/EmailVisualEditor';
 import { syncHtmlToEmailDesign } from '@/components/admin/EmailVisualEditor/emailHtmlParser';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 
 export default function AdminEmailsPage() {
   const [activeTab, setActiveTab] = useState<'templates' | 'logs'>('templates');
@@ -80,6 +81,9 @@ export default function AdminEmailsPage() {
   const [previewTemplate, setPreviewTemplate] = useState<EmailTemplate | null>(null);
   const [testEmailAddress, setTestEmailAddress] = useState('');
   const [testStatusMsg, setTestStatusMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  // Bloqueio seguro de scroll de fundo durante exibição do drawer do editor ou modal
+  useBodyScrollLock(isEditorOpen || !!previewTemplate);
 
   const editorTextareaRef = useRef<HTMLTextAreaElement>(null);
   const iframePreviewRef = useRef<HTMLIFrameElement>(null);

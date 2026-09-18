@@ -15,6 +15,7 @@ import {
   Info,
   DollarSign,
 } from 'lucide-react';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 
 export interface PartnerUserOption {
   id: string;
@@ -84,21 +85,17 @@ export default function TransferirParceiroModal({
     setMounted(true);
   }, []);
 
-  // Bloqueio de scroll da página quando modal está aberto
+  // Bloqueio seguro de scroll da página quando modal está aberto
+  useBodyScrollLock(isOpen);
+
+  // Fecha ao pressionar ESC
   useEffect(() => {
     if (!isOpen) return;
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !submitting) onClose();
     };
     window.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      window.removeEventListener('keydown', handleKeyDown);
-    };
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose, submitting]);
 
   // Carrega a lista de parceiros ao abrir o modal

@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import type { WixComparisonResult, ComparedClientRow, MatchStatus, FieldDiff, WixSyncResult } from '@/lib/wix-compare';
 import type { WixSalesSyncResult } from '@/lib/wix-sales-sync';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 
 interface Props {
   initialData: WixComparisonResult;
@@ -98,6 +99,9 @@ export default function WixComparisonClient({ initialData }: Props) {
 
   // Estados de Truncamento do Banco Local
   const [truncateModalOpen, setTruncateModalOpen] = useState(false);
+
+  // Bloqueio seguro de scroll de fundo ao abrir inspeção ou modal
+  useBodyScrollLock(!!selectedRow || truncateModalOpen);
   const [truncateConfirmText, setTruncateConfirmText] = useState('');
   const [truncateIncludeLeads, setTruncateIncludeLeads] = useState(false);
   const [truncating, setTruncating] = useState(false);

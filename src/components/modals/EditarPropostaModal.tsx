@@ -27,6 +27,7 @@ import {
   parseCurrencyToNumber,
 } from './masks';
 import { formatAtuacao, parseAtuacaoList } from '@/lib/format';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 
 export interface EditarPropostaModalProps {
   isOpen: boolean;
@@ -92,19 +93,7 @@ export default function EditarPropostaModal({
     setMounted(true);
   }, []);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [isOpen, onClose]);
+  useBodyScrollLock(isOpen);
 
   // Aba ativa: 'cliente' | 'proposta'
   const [activeTab, setActiveTab] = useState<'cliente' | 'proposta'>('cliente');
@@ -215,16 +204,6 @@ export default function EditarPropostaModal({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  // Trava scroll do body
-  useEffect(() => {
-    if (isOpen) {
-      const originalOverflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = originalOverflow;
-      };
-    }
-  }, [isOpen]);
 
   if (!isOpen) return null;
 
