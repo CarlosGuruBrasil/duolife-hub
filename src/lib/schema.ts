@@ -808,6 +808,7 @@ async function runRuntimeSchemaSetup(): Promise<void> {
       recipient_email TEXT NOT NULL,
       recipient_name  TEXT,
       subject         TEXT NOT NULL,
+      body_html       TEXT,
       status          TEXT NOT NULL DEFAULT 'sent',
       provider        TEXT NOT NULL DEFAULT 'nodemailer_smtp',
       error_message   TEXT,
@@ -815,6 +816,7 @@ async function runRuntimeSchemaSetup(): Promise<void> {
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
+  await sql`ALTER TABLE email_dispatch_logs ADD COLUMN IF NOT EXISTS body_html TEXT;`;
   await sql`CREATE INDEX IF NOT EXISTS idx_email_dispatch_logs_template ON email_dispatch_logs (template_code)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_email_dispatch_logs_created ON email_dispatch_logs (created_at DESC)`;
 

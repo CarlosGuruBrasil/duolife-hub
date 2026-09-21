@@ -24,6 +24,7 @@ export interface EmailDispatchLog {
   recipient_email: string;
   recipient_name: string | null;
   subject: string;
+  body_html?: string | null;
   status: 'sent' | 'failed' | 'mocked';
   provider: string;
   error_message: string | null;
@@ -295,17 +296,18 @@ export async function sendTemplatedEmail({
   try {
     const [log] = await sql<EmailDispatchLog[]>`
       INSERT INTO email_dispatch_logs (
-        template_code, recipient_email, recipient_name, subject, status, provider, error_message, metadata
+        template_code, recipient_email, recipient_name, subject, body_html, status, provider, error_message, metadata
       ) VALUES (
         ${normalizedCode},
         ${to},
         ${toName || null},
         ${renderedSubject},
+        ${renderedHtml},
         ${status},
         ${provider},
         ${errorMessage},
         ${sql.json({ ...metadata, variables: mergedVars, externalTemplateId: template.external_id })}
-      ) RETURNING id, template_code, recipient_email, recipient_name, subject, status, provider, error_message, metadata, created_at
+      ) RETURNING id, template_code, recipient_email, recipient_name, subject, body_html, status, provider, error_message, metadata, created_at
     `;
 
     return {
@@ -322,6 +324,48 @@ export async function sendTemplatedEmail({
       error: errorMessage || undefined,
     };
   }
+}
+
+/**
+ * Resolve o conteúdo HTML final de um log de disparo de e-mail para auditoria/visualização.
+ * Se o HTML já foi persistido no banco, retorna diretamente.
+ * Se for um log anterior (legado) que não possui body_html gravado,
+ * reconstrói dinamicamente com base no template_code e variáveis do metadata.
+ */
+export async function resolveEmailLogHtml(log: EmailDispatchLog): Promise<string> {
+  if (log.body_html && log.body_html.trim().length > 0) {
+    return log.body_html;
+  }
+
+  // Tenta reconstruir a partir do template cadastrado
+  if (log.template_code) {
+    const [template] = await sql<EmailTemplate[]>`
+      SELECT body_html FROM email_templates WHERE code = ${log.template_code} LIMIT 1
+    `;
+
+    if (template && template.body_html) {
+      const vars = (log.metadata?.variables as Record<string, any>) || {};
+      return renderTemplateString(template.body_html, vars, true);
+    }
+  }
+
+  // Fallback elegante caso não haja template nem body_html
+  const recipient = log.recipient_name
+    ? `${log.recipient_name} &lt;${log.recipient_email}&gt;`
+    : log.recipient_email;
+
+  return `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; color: #1e293b; max-width: 600px; margin: 0 auto; line-height: 1.5;">
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+        <h3 style="margin: 0 0 8px 0; color: #0e4a5a; font-size: 16px;">${log.subject || 'E-mail do Sistema'}</h3>
+        <p style="margin: 0; font-size: 13px; color: #64748b;"><strong>Destinatário:</strong> ${recipient}</p>
+        <p style="margin: 4px 0 0 0; font-size: 12px; color: #94a3b8;"><strong>Provedor:</strong> ${log.provider} | <strong>Status:</strong> ${log.status}</p>
+      </div>
+      <p style="color: #64748b; font-size: 14px; font-style: italic;">
+        O corpo HTML original deste registro legado não pôde ser reconstruído automaticamente pois o template associado não foi encontrado.
+      </p>
+    </div>
+  `;
 }
 
 /**
