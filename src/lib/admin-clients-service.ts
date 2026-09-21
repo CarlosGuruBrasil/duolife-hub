@@ -272,7 +272,11 @@ export async function getAdminClientsList(
           JOIN partners p ON p.id = c.partner_id
           WHERE (c.client_id = ic.id OR (c.client_cpf_cnpj = ic.document_number AND COALESCE(ic.document_number, '') != ''))
             AND c.partner_id IS NOT NULL
-          ORDER BY COALESCE(c.updated_at, c.created_at) DESC, c.created_at DESC
+          ORDER BY
+            CASE WHEN p.status = 'active' THEN 0 ELSE 1 END ASC,
+            CASE WHEN c.is_renewal = true THEN 0 ELSE 1 END ASC,
+            COALESCE(c.client_data->>'dataInicioVigencia', c.client_data->>'fimVigencia', '') DESC,
+            c.created_at DESC
           LIMIT 1
         ),
         ic.metadata->>'partnerName',
