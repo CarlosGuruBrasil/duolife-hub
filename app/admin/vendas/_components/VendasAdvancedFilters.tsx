@@ -33,7 +33,9 @@ export function VendasAdvancedFilters({
   const currentStatus = searchParams.get('status') || '';
   const currentProduct = searchParams.get('productId') || '';
   const currentPartner = searchParams.get('partnerId') || '';
-  const currentPreset = (searchParams.get('periodPreset') as PeriodPreset) || 'all';
+  const currentPreset: PeriodPreset =
+    (searchParams.get('periodPreset') as PeriodPreset) ||
+    (searchParams.get('startDate') || searchParams.get('endDate') ? 'custom' : '30d');
   const currentStart = searchParams.get('startDate') || '';
   const currentEnd = searchParams.get('endDate') || '';
 
@@ -53,14 +55,8 @@ export function VendasAdvancedFilters({
 
   const handleDatePresetChange = (preset: string) => {
     const params = new URLSearchParams(searchParams.toString());
-    if (preset && preset !== 'all') {
-      params.set('periodPreset', preset);
-      if (preset !== 'custom') {
-        params.delete('startDate');
-        params.delete('endDate');
-      }
-    } else {
-      params.delete('periodPreset');
+    params.set('periodPreset', preset);
+    if (preset !== 'custom') {
       params.delete('startDate');
       params.delete('endDate');
     }
@@ -92,9 +88,10 @@ export function VendasAdvancedFilters({
     params.delete('status');
     params.delete('productId');
     params.delete('partnerId');
-    params.delete('periodPreset');
     params.delete('startDate');
     params.delete('endDate');
+    // Volta para o período padrão dos últimos 30 dias
+    params.set('periodPreset', '30d');
     params.set('page', '1');
 
     startTransition(() => {

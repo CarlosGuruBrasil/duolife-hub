@@ -3,7 +3,7 @@
 import React, { useTransition } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { X } from 'lucide-react';
-import { DATE_PRESET_OPTIONS, formatDateBR } from '@/lib/date-filters';
+import { DATE_PRESET_OPTIONS, formatDateBR, PeriodPreset } from '@/lib/date-filters';
 
 interface Option {
   id: string;
@@ -80,8 +80,12 @@ export function VendasActiveBadges({
     });
   }
 
-  if (periodPreset && periodPreset !== 'all') {
-    if (periodPreset === 'custom') {
+  const rawPeriodPreset = searchParams.get('periodPreset');
+  const effectivePreset: PeriodPreset =
+    (rawPeriodPreset as PeriodPreset) || (startDate || endDate ? 'custom' : '30d');
+
+  if (effectivePreset !== 'all') {
+    if (effectivePreset === 'custom') {
       let dateLabel = 'Período: Personalizado';
       if (startDate && endDate) {
         dateLabel = `Período: ${formatDateBR(startDate)} até ${formatDateBR(endDate)}`;
@@ -92,15 +96,47 @@ export function VendasActiveBadges({
       }
       badges.push({
         label: dateLabel,
-        onRemove: () => removeParam(['periodPreset', 'startDate', 'endDate']),
+        onRemove: () => {
+          const params = new URLSearchParams(searchParams.toString());
+          params.set('periodPreset', 'all');
+          params.delete('startDate');
+          params.delete('endDate');
+          params.set('page', '1');
+          startTransition(() => {
+            router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+          });
+        },
       });
     } else {
-      const preset = DATE_PRESET_OPTIONS.find((o) => o.value === periodPreset);
+      const preset = DATE_PRESET_OPTIONS.find((o) => o.value === effectivePreset);
       badges.push({
-        label: `Período: ${preset ? preset.label : periodPreset}`,
-        onRemove: () => removeParam(['periodPreset', 'startDate', 'endDate']),
+        label: `Período: ${preset ? preset.label : effectivePreset}`,
+        onRemove: () => {
+          const params = new URLSearchParams(searchParams.toString());
+          params.set('periodPreset', 'all');
+          params.delete('startDate');
+          params.delete('endDate');
+          params.set('page', '1');
+          startTransition(() => {
+            router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+          });
+        },
       });
     }
+  } else if (rawPeriodPreset === 'all') {
+    badges.push({
+      label: 'Período: Todo o histórico',
+      onRemove: () => {
+        const params = new URLSearchParams(searchParams.toString());
+        params.delete('periodPreset');
+        params.delete('startDate');
+        params.delete('endDate');
+        params.set('page', '1');
+        startTransition(() => {
+          router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+        });
+      },
+    });
   }
 
   if (badges.length === 0) return null;

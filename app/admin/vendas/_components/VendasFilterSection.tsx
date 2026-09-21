@@ -31,7 +31,7 @@ export function VendasFilterSection({
     searchParams.get('status'),
     searchParams.get('productId'),
     searchParams.get('partnerId'),
-    searchParams.get('periodPreset') && searchParams.get('periodPreset') !== 'all',
+    searchParams.get('periodPreset') === 'custom' || searchParams.get('startDate') || searchParams.get('endDate'),
   ].filter(Boolean).length;
 
   return (
@@ -40,6 +40,7 @@ export function VendasFilterSection({
         activeFiltersCount={activeFiltersCount}
         isOpenAdvanced={isOpenAdvanced}
         onToggleAdvanced={() => setIsOpenAdvanced((prev) => !prev)}
+        onOpenAdvanced={() => setIsOpenAdvanced(true)}
         pageSize={pageSize}
       />
 

@@ -6,7 +6,7 @@ import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { PortalVendasFilterSection } from './_components/PortalVendasFilterSection';
 import { PortalVendasPagination } from './_components/PortalVendasPagination';
-import { PeriodPreset, resolveDateRange } from '@/lib/date-filters';
+import { PeriodPreset, resolveDateRange, getPeriodLabel } from '@/lib/date-filters';
 import { formatCurrency, formatDate, formatStatusLabel } from '@/lib/format';
 import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
 
@@ -14,18 +14,19 @@ export const dynamic = 'force-dynamic';
 
 interface VendaRow {
   id: string;
-  policy_number: string | null;
-  premio_total: string;
-  commission_rate: string | null;
-  commission_amount: string | null;
+  policy_number: string;
+  premio_total: number;
+  commission_amount: number;
+  commission_rate: number | null;
   status: string;
-  issue_date: string;
-  expiry_date: string;
+  issue_date: string | null;
+  expiry_date: string | null;
+  created_at: string;
+  client_name: string;
   product_id: string;
   product_name: string;
-  client_name: string;
+  partner_name: string;
   client_cpf_cnpj: string | null;
-  partner_name?: string | null;
 }
 
 const statusLabel: Record<string, string> = {
@@ -50,7 +51,7 @@ const statusColor: Record<string, string> = {
   suspended: 'bg-slate-100 text-slate-700 border-slate-200',
 };
 
-export default async function VendasPage({
+export default async function PortalVendasPage({
   searchParams,
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -69,9 +70,12 @@ export default async function VendasPage({
   const status = statusLabel[rawStatus] ? rawStatus : '';
   const q = (typeof params.q === 'string' ? params.q : '').trim().slice(0, 120);
   const productId = typeof params.productId === 'string' ? params.productId : '';
-  const periodPreset = typeof params.periodPreset === 'string' ? (params.periodPreset as PeriodPreset) : undefined;
+  const rawPeriodPreset = typeof params.periodPreset === 'string' ? (params.periodPreset as PeriodPreset) : undefined;
   const startDate = typeof params.startDate === 'string' ? params.startDate : undefined;
   const endDate = typeof params.endDate === 'string' ? params.endDate : undefined;
+  const periodPreset: PeriodPreset = rawPeriodPreset ?? (startDate || endDate ? 'custom' : '30d');
+  const periodLabel = getPeriodLabel(periodPreset, startDate, endDate);
+  const isFilteredPeriod = periodPreset !== 'all';
   const pageSize = [10, 25, 50, 100].includes(Number(params.pageSize)) ? Number(params.pageSize) : 25;
   const page = Math.max(1, Number(typeof params.page === 'string' ? params.page : '1') || 1);
 
@@ -178,7 +182,7 @@ export default async function VendasPage({
     OFFSET ${offset}
   `;
 
-  const hasActiveFilters = Boolean(q || status || productId || (periodPreset && periodPreset !== 'all'));
+  const hasActiveFilters = Boolean(q || status || productId || periodPreset !== '30d');
 
   return (
     <div className="space-y-6">
@@ -208,14 +212,23 @@ export default async function VendasPage({
         <div className="card bg-white border border-gray-200 shadow-2xs">
           <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Apólices</div>
           <div className="mt-2 text-2xl font-black text-[#0e4a5a]">{totalRecords}</div>
+          <div className="mt-1 text-xs text-gray-400">
+            {isFilteredPeriod ? `apólices (${periodLabel.toLowerCase()})` : 'acumulado total'}
+          </div>
         </div>
         <div className="card bg-white border border-gray-200 shadow-2xs">
           <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Volume em Prêmios</div>
           <div className="mt-2 text-2xl font-black text-[#0e4a5a]">{formatCurrency(totalPremios)}</div>
+          <div className="mt-1 text-xs text-gray-400">
+            {isFilteredPeriod ? `emitido (${periodLabel.toLowerCase()})` : 'acumulado total'}
+          </div>
         </div>
         <div className="card bg-white border border-gray-200 shadow-2xs">
           <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Comissões Geradas</div>
           <div className="mt-2 text-2xl font-black text-emerald-700">{formatCurrency(totalComissoes)}</div>
+          <div className="mt-1 text-xs text-emerald-600/80">
+            {isFilteredPeriod ? `repasse (${periodLabel.toLowerCase()})` : 'acumulado total'}
+          </div>
         </div>
       </div>
 

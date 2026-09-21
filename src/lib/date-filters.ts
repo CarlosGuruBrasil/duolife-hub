@@ -30,11 +30,30 @@ export function formatDateBR(dateStr: string): string {
   return dateStr;
 }
 
+export function getPeriodLabel(preset?: string, startDate?: string, endDate?: string): string {
+  if (!preset || preset === '30d') return 'Últimos 30 dias';
+  if (preset === 'all') return 'Todo o período';
+  if (preset === 'today') return 'Hoje';
+  if (preset === 'yesterday') return 'Ontem';
+  if (preset === '7d') return 'Últimos 7 dias';
+  if (preset === 'this_month') return 'Este mês';
+  if (preset === 'last_month') return 'Mês passado';
+  if (preset === 'this_year') return 'Este ano';
+  if (preset === 'custom') {
+    if (startDate && endDate) return `${formatDateBR(startDate)} até ${formatDateBR(endDate)}`;
+    if (startDate) return `A partir de ${formatDateBR(startDate)}`;
+    if (endDate) return `Até ${formatDateBR(endDate)}`;
+    return 'Personalizado';
+  }
+  return preset;
+}
+
 export function resolveDateRange(preset?: string, startDate?: string, endDate?: string) {
   const now = new Date();
   if (preset === 'today') {
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
-    return { start: start.toISOString(), end: now.toISOString() };
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    return { start: start.toISOString(), end: end.toISOString() };
   }
   if (preset === 'yesterday') {
     const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 0, 0, 0);
@@ -42,16 +61,19 @@ export function resolveDateRange(preset?: string, startDate?: string, endDate?: 
     return { start: start.toISOString(), end: end.toISOString() };
   }
   if (preset === '7d') {
-    const start = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    return { start: start.toISOString(), end: now.toISOString() };
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7, 0, 0, 0);
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    return { start: start.toISOString(), end: end.toISOString() };
   }
   if (preset === '30d') {
-    const start = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    return { start: start.toISOString(), end: now.toISOString() };
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 30, 0, 0, 0);
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    return { start: start.toISOString(), end: end.toISOString() };
   }
   if (preset === 'this_month') {
     const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
-    return { start: start.toISOString(), end: now.toISOString() };
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    return { start: start.toISOString(), end: end.toISOString() };
   }
   if (preset === 'last_month') {
     const start = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0);
@@ -60,7 +82,8 @@ export function resolveDateRange(preset?: string, startDate?: string, endDate?: 
   }
   if (preset === 'this_year') {
     const start = new Date(now.getFullYear(), 0, 1, 0, 0, 0);
-    return { start: start.toISOString(), end: now.toISOString() };
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    return { start: start.toISOString(), end: end.toISOString() };
   }
   if (startDate || endDate) {
     const start = startDate ? new Date(`${startDate}T00:00:00`).toISOString() : null;

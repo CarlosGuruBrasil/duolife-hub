@@ -2,12 +2,14 @@
 
 import React, { useState, useEffect, useTransition, useRef } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { Search, X, SlidersHorizontal, Loader2 } from 'lucide-react';
+import { Search, X, SlidersHorizontal, Loader2, Calendar, ChevronDown } from 'lucide-react';
+import { DATE_PRESET_OPTIONS, PeriodPreset } from '@/lib/date-filters';
 
 interface PortalVendasFilterBarProps {
   activeFiltersCount: number;
   isOpenAdvanced: boolean;
   onToggleAdvanced: () => void;
+  onOpenAdvanced?: () => void;
   pageSize: number;
 }
 
@@ -15,6 +17,7 @@ export function PortalVendasFilterBar({
   activeFiltersCount,
   isOpenAdvanced,
   onToggleAdvanced,
+  onOpenAdvanced,
   pageSize,
 }: PortalVendasFilterBarProps) {
   const router = useRouter();
@@ -26,6 +29,11 @@ export function PortalVendasFilterBar({
   const [searchValue, setSearchValue] = useState(currentSearch);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isFocusedRef = useRef(false);
+
+  // Determina o preset atual: fallback para '30d' se não houver parâmetro e nem datas customizadas
+  const currentPreset: PeriodPreset =
+    (searchParams.get('periodPreset') as PeriodPreset) ||
+    (searchParams.get('startDate') || searchParams.get('endDate') ? 'custom' : '30d');
 
   // Sincroniza o input APENAS se o usuário NÃO estiver com foco nele (evita apagar o texto durante a digitação)
   useEffect(() => {
@@ -80,6 +88,27 @@ export function PortalVendasFilterBar({
     });
   };
 
+  const handlePeriodPresetChange = (newPreset: string) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (newPreset === 'custom') {
+      params.set('periodPreset', 'custom');
+      if (onOpenAdvanced) onOpenAdvanced();
+    } else if (newPreset === '30d') {
+      params.set('periodPreset', '30d');
+      params.delete('startDate');
+      params.delete('endDate');
+    } else {
+      params.set('periodPreset', newPreset);
+      params.delete('startDate');
+      params.delete('endDate');
+    }
+    params.set('page', '1');
+
+    startTransition(() => {
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    });
+  };
+
   const handleClearAll = () => {
     if (debounceTimerRef.current) {
       clearTimeout(debounceTimerRef.current);
@@ -99,10 +128,11 @@ export function PortalVendasFilterBar({
     });
   };
 
-  const hasAnyFilter = Boolean(searchValue || activeFiltersCount > 0);
+  const isPeriodModified = currentPreset !== '30d';
+  const hasAnyFilter = Boolean(searchValue || activeFiltersCount > 0 || isPeriodModified);
 
   return (
-    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
       {/* Campo de Busca Reativa */}
       <div className="relative flex-1 max-w-xl">
         <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3.5 text-gray-400">
@@ -139,10 +169,33 @@ export function PortalVendasFilterBar({
 
       {/* Ações da Barra */}
       <div className="flex flex-wrap items-center gap-2">
+        {/* Seletor Rápido de Período com Ícone */}
+        <div className="relative inline-flex items-center">
+          <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[#0e4a5a]">
+            <Calendar className="h-3.5 w-3.5" />
+          </div>
+          <select
+            value={currentPreset}
+            onChange={(e) => handlePeriodPresetChange(e.target.value)}
+            aria-label="Selecionar período"
+            className="h-[38px] appearance-none rounded-xl border border-gray-200 bg-white pl-8.5 pr-8 text-xs font-semibold text-gray-800 shadow-2xs hover:border-[#0e4a5a] focus:border-[#0e4a5a] focus:outline-hidden focus:ring-2 focus:ring-[#0e4a5a]/15 cursor-pointer transition-all"
+          >
+            {DATE_PRESET_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2.5 text-gray-400">
+            <ChevronDown className="h-3 w-3" />
+          </div>
+        </div>
+
+        {/* Botão de Filtros Avançados */}
         <button
           type="button"
           onClick={onToggleAdvanced}
-          className={`inline-flex items-center gap-2 rounded-xl border px-3.5 py-2.5 text-xs font-semibold transition-all cursor-pointer shadow-2xs ${
+          className={`inline-flex items-center gap-2 rounded-xl border h-[38px] px-3.5 text-xs font-semibold transition-all cursor-pointer shadow-2xs ${
             isOpenAdvanced || activeFiltersCount > 0
               ? 'border-[#0e4a5a] bg-[#0e4a5a]/5 text-[#0e4a5a]'
               : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
@@ -157,23 +210,26 @@ export function PortalVendasFilterBar({
           )}
         </button>
 
+        {/* Botão de Limpar Filtros */}
         {hasAnyFilter && (
           <button
             type="button"
             onClick={handleClearAll}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-rose-600 hover:bg-rose-50 hover:border-rose-200 transition-all cursor-pointer shadow-2xs"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white h-[38px] px-3 text-xs font-semibold text-rose-600 hover:bg-rose-50 hover:border-rose-200 transition-all cursor-pointer shadow-2xs"
+            title="Voltar para a visualização padrão dos últimos 30 dias"
           >
             <X className="h-3.5 w-3.5" />
-            <span>Limpar filtros</span>
+            <span className="hidden sm:inline">Limpar filtros</span>
           </button>
         )}
 
+        {/* Seletor de Tamanho de Página */}
         <div className="flex items-center gap-1.5 pl-1 border-l border-gray-200 text-xs text-gray-500">
           <span className="hidden sm:inline">Exibir:</span>
           <select
             value={pageSize}
             onChange={(e) => handlePageSizeChange(e.target.value)}
-            className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700 font-medium focus:border-[#0e4a5a] focus:outline-hidden cursor-pointer"
+            className="h-[38px] rounded-lg border border-gray-200 bg-white px-2 text-xs text-gray-700 font-medium focus:border-[#0e4a5a] focus:outline-hidden cursor-pointer"
           >
             <option value="10">10</option>
             <option value="25">25</option>

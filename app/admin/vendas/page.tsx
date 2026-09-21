@@ -7,7 +7,7 @@ import { ensureSchema } from '@/lib/schema';
 import WixSalesSyncButton from './_sync-button';
 import { VendasFilterSection } from './_components/VendasFilterSection';
 import { VendasPagination } from './_components/VendasPagination';
-import { PeriodPreset, resolveDateRange } from '@/lib/date-filters';
+import { PeriodPreset, resolveDateRange, getPeriodLabel } from '@/lib/date-filters';
 import { formatCurrency, formatDate, formatStatusLabel } from '@/lib/format';
 import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
 
@@ -68,9 +68,14 @@ export default async function AdminVendasPage({
   const q = (typeof params.q === 'string' ? params.q : '').trim().slice(0, 120);
   const productId = typeof params.productId === 'string' ? params.productId : '';
   const partnerId = typeof params.partnerId === 'string' ? params.partnerId : '';
-  const periodPreset = typeof params.periodPreset === 'string' ? (params.periodPreset as PeriodPreset) : undefined;
+  const rawPeriodPreset = typeof params.periodPreset === 'string' ? (params.periodPreset as PeriodPreset) : undefined;
   const startDate = typeof params.startDate === 'string' ? params.startDate : undefined;
   const endDate = typeof params.endDate === 'string' ? params.endDate : undefined;
+  // Período padrão: se o usuário não definiu periodPreset e nem data customizada, assume '30d' (últimos 30 dias).
+  // Se selecionou 'all', visualiza todas as apólices sem filtro de data.
+  const periodPreset: PeriodPreset = rawPeriodPreset ?? (startDate || endDate ? 'custom' : '30d');
+  const periodLabel = getPeriodLabel(periodPreset, startDate, endDate);
+  const isFilteredPeriod = periodPreset !== 'all';
   const pageSize = [10, 25, 50, 100].includes(Number(params.pageSize)) ? Number(params.pageSize) : 25;
   const page = Math.max(1, Number(typeof params.page === 'string' ? params.page : '1') || 1);
 
@@ -178,7 +183,7 @@ export default async function AdminVendasPage({
     OFFSET ${offset}
   `;
 
-  const hasActiveFilters = Boolean(q || status || productId || partnerId || (periodPreset && periodPreset !== 'all'));
+  const hasActiveFilters = Boolean(q || status || productId || partnerId || periodPreset !== '30d');
 
   return (
     <div className="space-y-6">
@@ -197,19 +202,25 @@ export default async function AdminVendasPage({
         <div className="admin-metric-card">
           <div className="admin-metric-label">Total Vendas</div>
           <div className="admin-metric-value">{totalRecords}</div>
-          <div className="admin-metric-hint">apólices encontradas</div>
+          <div className="admin-metric-hint">
+            {isFilteredPeriod ? `apólices (${periodLabel.toLowerCase()})` : 'apólices acumuladas (todo o período)'}
+          </div>
         </div>
 
         <div className="admin-metric-card">
           <div className="admin-metric-label">Volume Total</div>
           <div className="admin-metric-value">{formatCurrency(totalPremios)}</div>
-          <div className="admin-metric-hint">prêmio emitido acumulado</div>
+          <div className="admin-metric-hint">
+            {isFilteredPeriod ? `prêmio emitido (${periodLabel.toLowerCase()})` : 'prêmio emitido acumulado'}
+          </div>
         </div>
 
         <div className="admin-metric-card tone-success">
           <div className="admin-metric-label">Comissões Geradas</div>
           <div className="admin-metric-value">{formatCurrency(totalComissoes)}</div>
-          <div className="admin-metric-hint">repasse parceiros</div>
+          <div className="admin-metric-hint">
+            {isFilteredPeriod ? `repasse parceiros (${periodLabel.toLowerCase()})` : 'repasse parceiros acumulado'}
+          </div>
         </div>
       </section>
 

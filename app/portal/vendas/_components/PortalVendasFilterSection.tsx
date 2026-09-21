@@ -28,7 +28,7 @@ export function PortalVendasFilterSection({
   const activeFiltersCount = [
     searchParams.get('status'),
     searchParams.get('productId'),
-    searchParams.get('periodPreset') && searchParams.get('periodPreset') !== 'all',
+    searchParams.get('periodPreset') === 'custom' || searchParams.get('startDate') || searchParams.get('endDate'),
   ].filter(Boolean).length;
 
   return (
@@ -37,6 +37,7 @@ export function PortalVendasFilterSection({
         activeFiltersCount={activeFiltersCount}
         isOpenAdvanced={isOpenAdvanced}
         onToggleAdvanced={() => setIsOpenAdvanced((prev) => !prev)}
+        onOpenAdvanced={() => setIsOpenAdvanced(true)}
         pageSize={pageSize}
       />
 
