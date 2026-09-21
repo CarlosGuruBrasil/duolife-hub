@@ -121,7 +121,7 @@ export function ClientesCardMobile({
           <div className="truncate mt-0.5">{client.email || client.phone || '-'}</div>
         </div>
         <div>
-          <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Parceiro</span>
+          <span className="block text-[10px] font-bold uppercase tracking-wider text-gray-400">Parceiro (Atual)</span>
           <div className="truncate mt-0.5 font-medium">{client.partner_names || '-'}</div>
         </div>
       </div>

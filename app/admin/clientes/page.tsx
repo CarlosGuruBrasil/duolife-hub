@@ -206,7 +206,7 @@ export default async function AdminClientesPage({
                         Contato
                       </ClientesSortHeader>
                       <ClientesSortHeader field="partner_names" currentSort={sort} currentDirection={direction} className="border-b border-gray-200">
-                        Parceiros
+                        Parceiro (Atual)
                       </ClientesSortHeader>
                       <ClientesSortHeader field="products_count" currentSort={sort} currentDirection={direction} align="center" className="border-b border-gray-200">
                         Produtos

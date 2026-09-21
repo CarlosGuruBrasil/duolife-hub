@@ -265,11 +265,18 @@ export async function getAdminClientsList(
       ic.email,
       ic.phone,
       ic.created_at::text,
-      (
-        SELECT string_agg(DISTINCT COALESCE(p.nome_fantasia, p.razao_social), ', ')
-        FROM cotacoes c
-        JOIN partners p ON p.id = c.partner_id
-        WHERE c.client_id = ic.id
+      COALESCE(
+        (
+          SELECT COALESCE(p.nome_fantasia, p.razao_social)
+          FROM cotacoes c
+          JOIN partners p ON p.id = c.partner_id
+          WHERE (c.client_id = ic.id OR (c.client_cpf_cnpj = ic.document_number AND COALESCE(ic.document_number, '') != ''))
+            AND c.partner_id IS NOT NULL
+          ORDER BY COALESCE(c.updated_at, c.created_at) DESC, c.created_at DESC
+          LIMIT 1
+        ),
+        ic.metadata->>'partnerName',
+        ic.metadata->'wix'->>'parceiro'
       ) AS partner_names,
       (
         SELECT COUNT(DISTINCT c.product_id)::int
