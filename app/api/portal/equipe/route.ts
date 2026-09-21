@@ -234,6 +234,15 @@ export async function POST(req: NextRequest) {
       RETURNING id, name, email, role, is_active, created_at
     `;
 
+    // Concede acesso imediato a todos os produtos ativos da plataforma
+    await sql`
+      INSERT INTO partner_product_availability (partner_id, product_id, is_active)
+      SELECT ${newPartner.id}, id, true
+      FROM products
+      WHERE is_active = true
+      ON CONFLICT (partner_id, product_id) DO NOTHING
+    `;
+
     // Dispara e-mail de convite se solicitado
     let emailEnviado = false;
     if (sendInviteEmail) {

@@ -42,7 +42,25 @@ export default async function NovaCotacaoPage({
     effectivePartnerId = p?.id || null;
   }
 
-  if (!effectivePartnerId) redirect('/portal');
+  if (!effectivePartnerId) {
+    return (
+      <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center max-w-xl mx-auto my-12 shadow-sm">
+        <ClipboardList className="mx-auto mb-3 text-primary" size={36} />
+        <h2 className="text-lg font-bold text-gray-900">Cadastre seu primeiro vendedor</h2>
+        <p className="mt-2 text-sm text-gray-600">
+          Como administrador da corretora, você precisa ter pelo menos um corretor ou vendedor credenciado na sua equipe para emitir cotações e propostas.
+        </p>
+        <div className="mt-6">
+          <Link
+            href="/portal/equipe"
+            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 bg-[#00d4e0] text-[#072a33] font-bold rounded-xl text-xs uppercase tracking-wider shadow-xs hover:bg-[#00b8c4] transition-all"
+          >
+            Cadastrar Vendedor em Minha Equipe
+          </Link>
+        </div>
+      </div>
+    );
+  }
   const { product: paramProductId, cotacaoId, cpf, clientCpfCnpj, renovacao } = await searchParams;
 
   const targetCpf = cpf || clientCpfCnpj;

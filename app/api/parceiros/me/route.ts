@@ -47,6 +47,56 @@ export async function GET() {
   try {
     await ensureSchema();
 
+    // Se o usuário for gestor de corretora (sem partnerId próprio)
+    if (!user.partnerId && user.corretoraId) {
+      const [corretora] = await sql<
+        Array<{
+          id: string;
+          razao_social: string;
+          nome_fantasia: string;
+          cnpj: string | null;
+          susep: string | null;
+          email: string;
+          phone: string | null;
+          address: Record<string, unknown> | null;
+          status: string;
+          metadata: Record<string, unknown>;
+          created_at: string;
+        }>
+      >`
+        SELECT id, razao_social, nome_fantasia, cnpj, susep, email, phone, address, status, metadata, created_at
+        FROM corretoras
+        WHERE id = ${user.corretoraId}
+      `;
+
+      if (!corretora) {
+        return Response.json({ error: 'Corretora não encontrada' }, { status: 404 });
+      }
+
+      const whiteLabel = getWhiteLabelConfig(corretora.metadata);
+      const [firstPartner] = await sql`
+        SELECT id FROM partners WHERE corretora_id = ${corretora.id} AND status = 'active' ORDER BY created_at ASC LIMIT 1
+      `;
+      const saleLink = firstPartner ? await getOrCreatePartnerSaleLink(firstPartner.id) : {
+        id: '',
+        token: whiteLabel.slug || 'corretora',
+        url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://duolife.com.br'}/?ref=${whiteLabel.slug || 'corretora'}`,
+        directUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://duolife.com.br'}/contratar/${whiteLabel.slug || 'corretora'}`,
+        refUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://duolife.com.br'}/?ref=${whiteLabel.slug || 'corretora'}`,
+        code: whiteLabel.slug || 'corretora',
+      };
+
+      return Response.json({
+        partner: {
+          ...corretora,
+          cpf: null,
+          person_type: 'pj',
+        },
+        whiteLabel,
+        saleLink,
+      });
+    }
+
     const [partner] = await sql<
       Array<{
         id: string;
@@ -81,7 +131,7 @@ export async function GET() {
       saleLink,
     });
   } catch (err) {
-    logger.error({ err, partnerId: user.partnerId }, 'partners.me.get.failed');
+    logger.error({ err, partnerId: user.partnerId, corretoraId: user.corretoraId }, 'partners.me.get.failed');
     return Response.json({ error: 'Erro interno' }, { status: 500 });
   }
 }
@@ -104,6 +154,80 @@ export async function PUT(req: NextRequest) {
     }
 
     const data = parsed.data;
+
+    // Caso seja gestor de corretora atualizando os dados da empresa corretora
+    if (!user.partnerId && user.corretoraId) {
+      const [currentCorretora] = await sql<
+        Array<{
+          id: string;
+          metadata: Record<string, unknown>;
+        }>
+      >`
+        SELECT id, metadata
+        FROM corretoras
+        WHERE id = ${user.corretoraId}
+        LIMIT 1
+      `;
+
+      if (!currentCorretora) {
+        return Response.json({ error: 'Corretora não encontrada' }, { status: 404 });
+      }
+
+      const address = {
+        city: data.city || '',
+        state: data.state || '',
+        street: data.street || '',
+      };
+
+      const whiteLabelPatch = {
+        ...(data.slug !== undefined ? { slug: data.slug.toLowerCase().trim() } : {}),
+        ...(data.companyName !== undefined ? { companyName: data.companyName } : {}),
+        ...(data.companySlogan !== undefined ? { companySlogan: data.companySlogan } : {}),
+        ...(data.companyPhone !== undefined ? { companyPhone: data.companyPhone } : {}),
+        ...(data.companyEmail !== undefined ? { companyEmail: data.companyEmail.toLowerCase() } : {}),
+        ...(data.companyWebsite !== undefined ? { companyWebsite: data.companyWebsite } : {}),
+        ...(data.logoUrl !== undefined ? { logoUrl: data.logoUrl } : {}),
+        ...(data.primaryColor !== undefined ? { primaryColor: data.primaryColor } : {}),
+        ...(data.secondaryColor !== undefined ? { secondaryColor: data.secondaryColor } : {}),
+        ...(data.accentColor !== undefined ? { accentColor: data.accentColor } : {}),
+        ...(data.publicTitle !== undefined ? { publicTitle: data.publicTitle } : {}),
+        ...(data.publicDescription !== undefined ? { publicDescription: data.publicDescription } : {}),
+      };
+
+      const nextMetadata = mergeWhiteLabelConfig(currentCorretora.metadata, whiteLabelPatch);
+
+      const [updatedCorretora] = await sql`
+        UPDATE corretoras
+        SET
+          nome_fantasia = ${data.nomeFantasia},
+          email = ${data.email.toLowerCase()},
+          phone = ${data.phone || null},
+          address = ${JSON.stringify(address)}::jsonb,
+          metadata = ${JSON.stringify(nextMetadata)}::jsonb,
+          updated_at = NOW()
+        WHERE id = ${user.corretoraId}
+        RETURNING id, razao_social, nome_fantasia, cnpj, susep, email, phone, address, status, metadata, updated_at
+      `;
+
+      const whiteLabel = getWhiteLabelConfig(updatedCorretora.metadata);
+      const [firstPartner] = await sql`
+        SELECT id FROM partners WHERE corretora_id = ${updatedCorretora.id} AND status = 'active' ORDER BY created_at ASC LIMIT 1
+      `;
+      const saleLink = firstPartner ? await getOrCreatePartnerSaleLink(firstPartner.id) : null;
+
+      logger.info({ corretoraId: user.corretoraId }, 'corretoras.me.updated');
+
+      return Response.json({
+        ok: true,
+        partner: {
+          ...updatedCorretora,
+          cpf: null,
+          person_type: 'pj',
+        },
+        whiteLabel,
+        saleLink,
+      });
+    }
 
     // 1. Busca dados atuais do parceiro para mesclar metadata
     const [current] = await sql<

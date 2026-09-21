@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { NextResponse } from 'next/server';
 import { verifyPartnerAuth } from '@/lib/auth';
+import { roleIsCorretora } from '@/lib/roles';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
 
@@ -18,10 +19,16 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'Dados inválidos. A nova senha deve ter pelo menos 6 caracteres.' }, { status: 400 });
     }
 
-    // Busca o hash atual do usuário
-    const [dbUser] = await sql<{ password_hash: string }[]>`
-      SELECT password_hash FROM partner_users WHERE id = ${user.userId}
-    `;
+    const isCorretora = roleIsCorretora(user.role);
+
+    // Busca o hash atual do usuário na tabela correspondente
+    const [dbUser] = isCorretora
+      ? await sql<{ password_hash: string }[]>`
+          SELECT password_hash FROM corretora_users WHERE id = ${user.userId}
+        `
+      : await sql<{ password_hash: string }[]>`
+          SELECT password_hash FROM partner_users WHERE id = ${user.userId}
+        `;
 
     if (!dbUser) {
       return NextResponse.json({ error: 'Usuário não encontrado' }, { status: 404 });
@@ -38,11 +45,19 @@ export async function PUT(req: Request) {
 
     // Atualiza para a nova senha e revoga tokens antigos
     await sql.begin(async (tx) => {
-      await tx`
-        UPDATE partner_users 
-        SET password_hash = ${newHash} 
-        WHERE id = ${user.userId}
-      `;
+      if (isCorretora) {
+        await tx`
+          UPDATE corretora_users 
+          SET password_hash = ${newHash}, updated_at = NOW()
+          WHERE id = ${user.userId}
+        `;
+      } else {
+        await tx`
+          UPDATE partner_users 
+          SET password_hash = ${newHash}, updated_at = NOW()
+          WHERE id = ${user.userId}
+        `;
+      }
       await tx`
         UPDATE refresh_tokens
         SET revoked = true
@@ -50,7 +65,7 @@ export async function PUT(req: Request) {
       `;
     });
 
-    logger.info({ userId: user.userId }, 'User changed password successfully');
+    logger.info({ userId: user.userId, isCorretora }, 'User changed password successfully');
     
     return NextResponse.json({ success: true });
   } catch (err) {

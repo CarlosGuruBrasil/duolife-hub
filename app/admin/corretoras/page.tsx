@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Building, CheckCircle, Clock, XCircle, Plus, Users, Briefcase, ExternalLink, ShieldCheck, Phone, Mail, MapPin } from 'lucide-react';
+import { Building, CheckCircle, Clock, XCircle, Plus, Users, Briefcase, ExternalLink, ShieldCheck, Phone, Mail, MapPin, Copy, Check } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import type { WhiteLabelConfig } from '@/lib/white-label';
 import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
@@ -40,6 +40,10 @@ const FORM_VAZIO = {
   primaryColor: '#004172',
   secondaryColor: '#00a0af',
   logoUrl: '',
+  admin_name: '',
+  admin_email: '',
+  admin_password: '',
+  send_invite_email: true,
 };
 
 function formatarCnpj(cnpj: string | null): string {
@@ -62,7 +66,8 @@ export default function AdminCorretorasPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(FORM_VAZIO);
   const [saving, setSaving] = useState(false);
-  const [feedback, setFeedback] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
+  const [feedback, setFeedback] = useState<{ tipo: 'ok' | 'erro'; texto: string; senhaProvisoria?: string; emailLogin?: string } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -86,6 +91,7 @@ export default function AdminCorretorasPage() {
     e.preventDefault();
     setSaving(true);
     setFeedback(null);
+    setCopied(false);
 
     try {
       const res = await fetch('/api/admin/corretoras', {
@@ -100,7 +106,12 @@ export default function AdminCorretorasPage() {
         return;
       }
 
-      setFeedback({ tipo: 'ok', texto: `Corretora "${data.corretora.nome_fantasia}" cadastrada com sucesso!` });
+      setFeedback({
+        tipo: 'ok',
+        texto: `Corretora "${data.corretora.nome_fantasia}" cadastrada com sucesso!`,
+        senhaProvisoria: data.temporaryPassword,
+        emailLogin: data.adminUser?.email || data.corretora.email,
+      });
       setForm(FORM_VAZIO);
       setShowForm(false);
       load();
@@ -109,6 +120,12 @@ export default function AdminCorretorasPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function handleCopyCredentials(email: string, pass: string) {
+    navigator.clipboard.writeText(`Acesso Corretora DuoLife Hub\nLogin: ${email}\nSenha: ${pass}`);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 3000);
   }
 
   return (
@@ -141,19 +158,40 @@ export default function AdminCorretorasPage() {
               : 'bg-red-50 border-red-200 text-red-800'
           }`}
         >
-          {feedback.texto}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <p className="font-semibold">{feedback.texto}</p>
+              {feedback.senhaProvisoria && (
+                <div className="mt-1 text-xs text-emerald-700 flex flex-wrap items-center gap-2">
+                  <span>Login: <strong>{feedback.emailLogin}</strong></span>
+                  <span>•</span>
+                  <span>Senha Provisória: <code className="bg-emerald-100/80 px-1.5 py-0.5 rounded font-mono font-bold text-emerald-900">{feedback.senhaProvisoria}</code></span>
+                </div>
+              )}
+            </div>
+            {feedback.senhaProvisoria && feedback.emailLogin && (
+              <button
+                type="button"
+                onClick={() => handleCopyCredentials(feedback.emailLogin!, feedback.senhaProvisoria!)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors self-start sm:self-auto shrink-0"
+              >
+                {copied ? <Check size={14} /> : <Copy size={14} />}
+                {copied ? 'Copiado!' : 'Copiar Credenciais'}
+              </button>
+            )}
+          </div>
         </div>
       )}
 
       {/* Formulário de Cadastro Expansível */}
       {showForm && (
-        <form onSubmit={handleSubmit} className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-4">
+        <form onSubmit={handleSubmit} className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-5">
           <div className="flex items-center justify-between border-b border-gray-100 pb-3">
             <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
               <Building size={18} className="text-primary" />
               Cadastrar Nova Corretora Master
             </h2>
-            <span className="text-xs text-gray-500">Preencha os dados institucionais e regulatórios</span>
+            <span className="text-xs text-gray-500">Preencha os dados institucionais, regulatórios e de acesso</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -258,6 +296,64 @@ export default function AdminCorretorasPage() {
                 placeholder="SC"
                 className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
               />
+            </div>
+          </div>
+
+          {/* Seção: Acesso do Administrador Master da Corretora */}
+          <div className="border-t border-gray-200/80 pt-4 mt-2">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5 mb-1">
+              <ShieldCheck size={16} className="text-emerald-600" /> Acesso do Administrador Master da Corretora
+            </h3>
+            <p className="text-xs text-gray-500 mb-3">
+              Credenciais para o gestor da corretora fazer login no portal e gerenciar seus próprios vendedores e cotações.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Nome do Administrador</label>
+                <input
+                  type="text"
+                  value={form.admin_name}
+                  onChange={(e) => setForm({ ...form, admin_name: e.target.value })}
+                  placeholder="Se vazio, usa o Nome Fantasia"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">E-mail de Login do Gestor</label>
+                <input
+                  type="email"
+                  value={form.admin_email}
+                  onChange={(e) => setForm({ ...form, admin_email: e.target.value })}
+                  placeholder="Se vazio, usa o e-mail institucional"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Senha Inicial / Provisória</label>
+                <input
+                  type="text"
+                  value={form.admin_password}
+                  onChange={(e) => setForm({ ...form, admin_password: e.target.value })}
+                  placeholder="Vazio = gera senha aleatória"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="mt-3 flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="send_invite_email"
+                checked={form.send_invite_email}
+                onChange={(e) => setForm({ ...form, send_invite_email: e.target.checked })}
+                className="w-4 h-4 text-primary rounded border-gray-300 focus:ring-primary cursor-pointer"
+              />
+              <label htmlFor="send_invite_email" className="text-xs font-medium text-gray-700 cursor-pointer">
+                Enviar e-mail automático com dados de acesso e link do portal para o administrador
+              </label>
             </div>
           </div>
 

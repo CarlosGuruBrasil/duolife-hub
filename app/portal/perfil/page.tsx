@@ -3,6 +3,7 @@ import PartnerProfileForm from '@/components/portal/PartnerProfileForm';
 import PartnerTeamManager from '@/components/portal/PartnerTeamManager';
 import ChangePasswordForm from '@/components/portal/ChangePasswordForm';
 import { canManageOwnCompany, verifyPartnerAuth } from '@/lib/auth';
+import { roleIsCorretora } from '@/lib/roles';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { getWhiteLabelConfig } from '@/lib/white-label';
@@ -61,40 +62,131 @@ export default async function PerfilPage() {
 
   await ensureSchema();
 
-  const [partner] = await sql<PartnerRow[]>`
-    SELECT id, razao_social, nome_fantasia, cnpj, cpf, person_type, email, phone, address, status, metadata, created_at
-    FROM partners
-    WHERE id = ${user.partnerId!}
-  `;
+  const isCorretoraUser = roleIsCorretora(user.role) || (Boolean(user.corretoraId) && !user.partnerId);
 
-  if (!partner) redirect('/login');
+  let partner: PartnerRow;
+  let saleLink: any;
+  let teamUsers: TeamUserRow[] = [];
 
-  const [saleLink, teamUsers] = await Promise.all([
-    getOrCreatePartnerSaleLink(partner.id),
-    canManageCompany
-      ? sql<TeamUserRow[]>`
-          SELECT
-            id,
-            name,
-            email,
-            role,
-            manager_user_id,
-            is_active,
-            last_login_at,
-            created_at
-          FROM partner_users
-          WHERE partner_id = ${user.partnerId!}
-          ORDER BY
-            CASE role
-              WHEN 'director' THEN 1
-              WHEN 'manager' THEN 2
-              WHEN 'broker' THEN 3
-              ELSE 4
-            END,
-            created_at ASC
-        `
-      : Promise.resolve([]),
-  ]);
+  if (isCorretoraUser && user.corretoraId) {
+    const [corretora] = await sql<
+      Array<{
+        id: string;
+        razao_social: string;
+        nome_fantasia: string;
+        cnpj: string | null;
+        susep: string | null;
+        email: string;
+        phone: string | null;
+        address: Record<string, unknown> | null;
+        status: string;
+        metadata: Record<string, unknown>;
+        created_at: string;
+      }>
+    >`
+      SELECT id, razao_social, nome_fantasia, cnpj, susep, email, phone, address, status, metadata, created_at
+      FROM corretoras
+      WHERE id = ${user.corretoraId}
+    `;
+
+    if (!corretora) redirect('/login');
+
+    partner = {
+      id: corretora.id,
+      razao_social: corretora.razao_social,
+      nome_fantasia: corretora.nome_fantasia,
+      cnpj: corretora.cnpj,
+      cpf: null,
+      person_type: 'pj',
+      email: corretora.email,
+      phone: corretora.phone,
+      address: typeof corretora.address === 'object' && corretora.address !== null ? (corretora.address as any) : null,
+      status: corretora.status,
+      metadata: corretora.metadata || {},
+      created_at: corretora.created_at,
+    };
+
+    const [firstPartner, team] = await Promise.all([
+      sql`SELECT id FROM partners WHERE corretora_id = ${corretora.id} AND status = 'active' ORDER BY created_at ASC LIMIT 1`,
+      sql<TeamUserRow[]>`
+        SELECT
+          pu.id,
+          pu.name,
+          pu.email,
+          pu.role,
+          pu.manager_user_id,
+          pu.is_active,
+          pu.last_login_at,
+          pu.created_at
+        FROM partner_users pu
+        JOIN partners p ON p.id = pu.partner_id
+        WHERE p.corretora_id = ${corretora.id}
+        ORDER BY
+          CASE pu.role
+            WHEN 'director' THEN 1
+            WHEN 'manager' THEN 2
+            WHEN 'broker' THEN 3
+            ELSE 4
+          END,
+          pu.created_at ASC
+      `,
+    ]);
+
+    teamUsers = team;
+    if (firstPartner.length > 0) {
+      saleLink = await getOrCreatePartnerSaleLink(firstPartner[0].id);
+    } else {
+      const whiteLabel = getWhiteLabelConfig(corretora.metadata);
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://duolife.com.br';
+      const refCode = whiteLabel.slug || 'corretora';
+      saleLink = {
+        token: refCode,
+        url: `${appUrl}/?ref=${refCode}`,
+        directUrl: `${appUrl}/contratar/${refCode}`,
+        refUrl: `${appUrl}/?ref=${refCode}`,
+        code: refCode,
+      };
+    }
+  } else {
+    const [p] = await sql<PartnerRow[]>`
+      SELECT id, razao_social, nome_fantasia, cnpj, cpf, person_type, email, phone, address, status, metadata, created_at
+      FROM partners
+      WHERE id = ${user.partnerId!}
+    `;
+
+    if (!p) redirect('/login');
+    partner = p;
+
+    const [sLink, tUsers] = await Promise.all([
+      getOrCreatePartnerSaleLink(p.id),
+      canManageCompany
+        ? sql<TeamUserRow[]>`
+            SELECT
+              id,
+              name,
+              email,
+              role,
+              manager_user_id,
+              is_active,
+              last_login_at,
+              created_at
+            FROM partner_users
+            WHERE partner_id = ${user.partnerId!}
+            ORDER BY
+              CASE role
+                WHEN 'director' THEN 1
+                WHEN 'manager' THEN 2
+                WHEN 'broker' THEN 3
+                ELSE 4
+              END,
+              created_at ASC
+          `
+        : Promise.resolve([]),
+    ]);
+
+    saleLink = sLink;
+    teamUsers = tUsers;
+  }
 
   const whiteLabel = getWhiteLabelConfig(partner.metadata);
 
