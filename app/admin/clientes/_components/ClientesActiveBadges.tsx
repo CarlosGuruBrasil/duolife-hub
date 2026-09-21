@@ -132,7 +132,7 @@ export function ClientesActiveBadges({ products, partners }: ClientesActiveBadge
   if (signatureStatus) {
     badges.push({
       id: 'signatureStatus',
-      label: `Assinatura: ${statusLabel[signatureStatus] || signatureStatus}`,
+      label: `Status: ${statusLabel[signatureStatus] || signatureStatus}`,
       onRemove: () => removeFilter('signatureStatus'),
     });
   }

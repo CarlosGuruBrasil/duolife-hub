@@ -202,7 +202,21 @@ export function extractWixInstallments(raw: Record<string, unknown> | null | und
 
   const situacao = String(raw.situacaoPagamento || raw.situacao_pagamento || raw.statusPagamento || '').toLowerCase();
   let paidCount = 0;
-  if (situacao.includes('todas') || situacao.includes('total') || situacao.includes('pago') || situacao === 'ativa') {
+  if (
+    situacao.includes('todas') ||
+    situacao.includes('total') ||
+    situacao.includes('pago') ||
+    situacao.includes('paga') ||
+    situacao.includes('confirmad') ||
+    situacao.includes('confirmed') ||
+    situacao.includes('recebid') ||
+    situacao.includes('received') ||
+    situacao.includes('cartao') ||
+    situacao.includes('cartão') ||
+    situacao.includes('credit_card') ||
+    situacao === 'ativa' ||
+    situacao === 'ativo'
+  ) {
     paidCount = count;
   } else {
     const matchPagas = situacao.match(/(\d+)\s*parcela.*paga/i);
@@ -298,7 +312,17 @@ export function classifyWixStatus(statusRaw: unknown): 'fechado' | 'pendente' | 
     s === 'ativa' ||
     s === 'ativo' ||
     s === 'pago' ||
-    s === 'fechado'
+    s === 'paga' ||
+    s === 'fechado' ||
+    s === 'confirmado' ||
+    s === 'confirmada' ||
+    s.includes('confirmad') ||
+    s.includes('confirmed') ||
+    s.includes('cartao') ||
+    s.includes('cartão') ||
+    s.includes('credit_card') ||
+    s.includes('recebido') ||
+    s.includes('received')
   ) {
     return 'fechado';
   }

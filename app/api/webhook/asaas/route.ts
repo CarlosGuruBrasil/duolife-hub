@@ -183,7 +183,7 @@ export async function POST(req: NextRequest) {
     if (isPaidEvent(event)) {
       
       // 1. Encontra a cotação vinculada a este pagamento
-      const [cotacao] = await sql<{
+      let [cotacao] = await sql<{
         id: string;
         client_id: string | null;
         partner_id: string;
@@ -212,10 +212,64 @@ export async function POST(req: NextRequest) {
         LIMIT 1
       `;
 
+      // Fallback resiliente: se não encontrou cotação pelo ID exato da cobrança,
+      // busca pela identificação do cliente no Asaas (customer ID) ou documento
+      if (!cotacao && (payment.customer || payment.cpfCnpj)) {
+        const [fallbackCotacao] = await sql<{
+          id: string;
+          client_id: string | null;
+          partner_id: string;
+          product_id: string;
+          importancia_segurada: number;
+          status: string;
+          premio_final: number | null;
+          premio_calculado: number | null;
+        }[]>`
+          SELECT c.id, c.client_id, c.partner_id, c.product_id, c.importancia_segurada, c.status, c.premio_final, c.premio_calculado
+          FROM cotacoes c
+          LEFT JOIN insurance_clients ic ON ic.id = c.client_id
+          LEFT JOIN payment_orders po ON po.cotacao_id = c.id
+          WHERE (
+            (${payment.customer || null}::text IS NOT NULL AND (
+              c.client_data->>'clienteId' = ${payment.customer}
+              OR c.client_data->>'asaasCustomerId' = ${payment.customer}
+              OR po.provider_customer_id = ${payment.customer}
+              OR ic.metadata->>'asaasCustomerId' = ${payment.customer}
+            ))
+            OR (${payment.cpfCnpj || null}::text IS NOT NULL AND (
+              c.client_cpf_cnpj = ${payment.cpfCnpj}
+              OR ic.document_number = ${payment.cpfCnpj}
+              OR regexp_replace(c.client_cpf_cnpj, '\\D', '', 'g') = regexp_replace(${payment.cpfCnpj}, '\\D', '', 'g')
+            ))
+          )
+          AND c.status NOT IN ('cancelada', 'recusada', 'expirada')
+          ORDER BY c.created_at DESC
+          LIMIT 1
+        `;
+
+        if (fallbackCotacao) {
+          cotacao = fallbackCotacao;
+          logger.info({ paymentId: payment.id, cotacaoId: cotacao.id, customer: payment.customer }, 'Asaas Webhook: cotação localizada por fallback de cliente/CPF');
+        }
+      }
+
       if (!cotacao) {
         logger.info({ paymentId: payment.id }, 'Asaas webhook ignored: No matching quote found');
         return NextResponse.json({ success: true, ignored: true });
       }
+
+      // Garante que a ordem de pagamento reflita a quitação no banco local
+      await sql`
+        UPDATE payment_orders
+        SET
+          status = 'paid',
+          paid_installments = COALESCE(installment_count, 1),
+          paid_amount = COALESCE(amount_total, ${Number(payment.value) || 0}),
+          external_payment_id = COALESCE(external_payment_id, ${payment.id}),
+          updated_at = NOW()
+        WHERE cotacao_id = ${cotacao.id}
+          AND status != 'paid'
+      `;
 
       // Obtém o valor total da apólice (nunca apenas da parcela individual)
       const [orderRow] = await sql<{ amount_total: number }[]>`

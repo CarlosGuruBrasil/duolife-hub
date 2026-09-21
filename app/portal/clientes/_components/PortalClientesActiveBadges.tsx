@@ -106,7 +106,7 @@ export function PortalClientesActiveBadges({ products }: PortalClientesActiveBad
   if (signatureStatus) {
     badges.push({
       id: 'signatureStatus',
-      label: `Assinatura: ${statusLabel[signatureStatus] || signatureStatus}`,
+      label: `Status: ${statusLabel[signatureStatus] || signatureStatus}`,
       onRemove: () => removeFilter('signatureStatus'),
     });
   }

@@ -18,10 +18,12 @@ import {
   HelpCircle,
   FileSignature,
   FileCheck,
+  CreditCard,
 } from 'lucide-react';
 import { formatDateTime } from '@/lib/format';
 import type { WixCollectionStatusInfo, WixPullResult, WixPullEntitiesSelection } from '@/lib/wix-pull';
 import type { ZapSignSyncSummary } from '@/lib/zapsign-sync';
+import type { AsaasSyncSummary, AsaasBatchReconcileResult } from '@/lib/asaas-sync';
 
 interface Props {
   collectionsCount: number;
@@ -30,6 +32,7 @@ interface Props {
   wixEnabled: boolean;
   initialCollections?: WixCollectionStatusInfo[];
   initialZapSignStatus?: ZapSignSyncSummary;
+  initialAsaasStatus?: AsaasSyncSummary;
 }
 
 export default function WixPullClient({
@@ -39,6 +42,7 @@ export default function WixPullClient({
   wixEnabled,
   initialCollections = [],
   initialZapSignStatus = { totalTokens: 0, signedTokens: 0, pendingTokens: 0 },
+  initialAsaasStatus = { totalOrders: 0, paidOrders: 0, pendingOrders: 0 },
 }: Props) {
   // Estado das Coleções
   const [collections, setCollections] = useState<WixCollectionStatusInfo[]>(initialCollections);
@@ -97,6 +101,13 @@ export default function WixPullClient({
     notFoundOrError?: number;
     durationMs?: number;
   } | null>(null);
+
+  // Módulo de Reconciliação Financeira Asaas
+  const [asaasStatus, setAsaasStatus] = useState<AsaasSyncSummary>(initialAsaasStatus);
+  const [runningAsaas, setRunningAsaas] = useState(false);
+  const [asaasOnlyPending, setAsaasOnlyPending] = useState(true);
+  const [asaasMessage, setAsaasMessage] = useState('');
+  const [asaasResult, setAsaasResult] = useState<AsaasBatchReconcileResult | null>(null);
 
   // Alternar seleção de coleção
   function toggleCollection(id: string) {
@@ -275,6 +286,43 @@ export default function WixPullClient({
       setZapMessage('Falha de rede ao sincronizar tokens do Wix.');
     } finally {
       setRunningWixTokens(false);
+    }
+  }
+
+  async function runAsaasSync() {
+    setRunningAsaas(true);
+    setAsaasMessage('Consultando API do Asaas e reconciliando pagamentos confirmados/recebidos...');
+    setAsaasResult(null);
+
+    try {
+      const response = await fetch('/api/admin/sync/asaas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ onlyPending: asaasOnlyPending, limit: 500, concurrency: 4 }),
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        setAsaasMessage(data.error || 'Falha ao reconciliar pagamentos com o Asaas.');
+        setRunningAsaas(false);
+        return;
+      }
+
+      setAsaasResult(data.result);
+      setAsaasMessage(
+        `Reconciliação Asaas concluída! ${data.result.updatedToPaid} ordem(ns) de pagamento quitada(s), ${data.result.alreadyPaid} já estavam quitadas e ${data.result.stillPending} pendente(s).`
+      );
+
+      // Atualiza contadores
+      const statusRes = await fetch('/api/admin/sync/asaas');
+      const statusData = await statusRes.json();
+      if (statusData.ok && statusData.status) {
+        setAsaasStatus(statusData.status);
+      }
+    } catch {
+      setAsaasMessage('Falha de rede ao conectar com a API do Asaas.');
+    } finally {
+      setRunningAsaas(false);
     }
   }
 
@@ -971,6 +1019,114 @@ export default function WixPullClient({
               <div className="rounded-xl border border-gray-200 bg-white p-3">
                 <div className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Erros / Não Achados</div>
                 <div className="mt-1 text-xl font-black text-gray-900">{zapResult.notFoundOrError ?? 0}</div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* CARD QUATERNÁRIO: RECONCILIAÇÃO FINANCEIRA ASAAS */}
+      <div className="card space-y-5 bg-white border border-gray-200">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-200 pb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <CreditCard size={18} className="text-primary" />
+              <h2 className="text-lg font-black text-gray-900">Reconciliação Financeira Asaas</h2>
+            </div>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Consulta a API oficial do Asaas para identificar pagamentos confirmados (Cartão de Crédito) ou recebidos (Boleto/Pix), quitando ordens financeiras e promovendo cotações para &quot;Aprovada&quot;.
+            </p>
+          </div>
+        </div>
+
+        {/* Contadores Asaas */}
+        <div className="grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Total de Ordens de Pagamento</div>
+            <div className="mt-1 text-2xl font-black text-primary">{asaasStatus.totalOrders}</div>
+            <div className="text-[11px] text-gray-400 mt-0.5">ordens registradas</div>
+          </div>
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Quitadas / Pagas</div>
+            <div className="mt-1 text-2xl font-black text-emerald-800">{asaasStatus.paidOrders}</div>
+            <div className="text-[11px] text-emerald-600 mt-0.5">status &quot;paid&quot; confirmado</div>
+          </div>
+          <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4">
+            <div className="text-xs font-semibold uppercase tracking-wide text-amber-700">Pendentes no Sistema</div>
+            <div className="mt-1 text-2xl font-black text-amber-800">{asaasStatus.pendingOrders}</div>
+            <div className="text-[11px] text-amber-600 mt-0.5">aguardando confirmação Asaas</div>
+          </div>
+        </div>
+
+        {/* Controles de Disparo */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              className="btn-primary flex items-center gap-2"
+              onClick={runAsaasSync}
+              disabled={runningAsaas}
+              title="Consulta pagamentos confirmados no Asaas e quita as ordens financeiras locais."
+            >
+              {runningAsaas ? (
+                <>
+                  <RefreshCw size={15} className="animate-spin" />
+                  <span>Reconciliando Asaas...</span>
+                </>
+              ) : (
+                <>
+                  <CreditCard size={15} />
+                  <span>Sincronizar Pagamentos Asaas</span>
+                </>
+              )}
+            </button>
+
+            <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-gray-700">
+              <input
+                type="checkbox"
+                checked={asaasOnlyPending}
+                onChange={(e) => setAsaasOnlyPending(e.target.checked)}
+                className="accent-[#0e4a5a]"
+              />
+              <span>Apenas cotações pendentes de pagamento</span>
+            </label>
+          </div>
+
+          <div className="text-xs text-gray-500">
+            {asaasMessage || 'Reconcilia pagamentos via Cartão de Crédito (CONFIRMED) e Boleto/Pix (RECEIVED).'}
+          </div>
+        </div>
+
+        {/* Resultados Asaas */}
+        {asaasResult && (
+          <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/60 space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-emerald-900 font-bold text-sm">
+                <CheckCircle2 size={16} className="text-emerald-600" />
+                <span>Reconciliação Financeira Asaas Concluída!</span>
+              </div>
+              <div className="text-xs font-semibold text-emerald-700 flex items-center gap-1">
+                <Clock size={13} />
+                {((asaasResult.durationMs || 0) / 1000).toFixed(2)}s decorridos
+              </div>
+            </div>
+
+            <div className="grid gap-3 grid-cols-2 sm:grid-cols-4">
+              <div className="rounded-xl border border-gray-200 bg-white p-3">
+                <div className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold">Processados</div>
+                <div className="mt-1 text-xl font-black text-gray-900">{asaasResult.totalProcessed ?? 0}</div>
+              </div>
+              <div className="rounded-xl border border-emerald-200 bg-white p-3">
+                <div className="text-[11px] uppercase tracking-wide text-emerald-700 font-bold">Atualizados p/ Pago</div>
+                <div className="mt-1 text-xl font-black text-emerald-800">{asaasResult.updatedToPaid ?? 0}</div>
+              </div>
+              <div className="rounded-xl border border-teal-200 bg-white p-3">
+                <div className="text-[11px] uppercase tracking-wide text-teal-700 font-bold">Já Quitados</div>
+                <div className="mt-1 text-xl font-black text-teal-800">{asaasResult.alreadyPaid ?? 0}</div>
+              </div>
+              <div className="rounded-xl border border-amber-200 bg-white p-3">
+                <div className="text-[11px] uppercase tracking-wide text-amber-700 font-bold">Ainda Pendentes</div>
+                <div className="mt-1 text-xl font-black text-amber-800">{asaasResult.stillPending ?? 0}</div>
               </div>
             </div>
           </div>

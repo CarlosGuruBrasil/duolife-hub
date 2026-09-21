@@ -67,7 +67,25 @@ export function ClientesCardMobile({
     .map((n) => n[0].toUpperCase())
     .join('');
 
-  const sigStatus = client.last_signature_status || client.last_quote_status;
+  const sigStatus = (() => {
+    const quoteSt = String(client.last_quote_status || '').toLowerCase();
+    const sigSt = String(client.last_signature_status || '').toLowerCase();
+    const paySt = String(client.last_payment_status || '').toLowerCase();
+
+    if (['emitida', 'ativa'].includes(quoteSt)) return 'emitida';
+    if (['aprovada', 'approved'].includes(quoteSt)) return 'aprovada';
+    if (['paid', 'confirmed', 'received'].includes(paySt) && (client.paid_installments ?? 0) >= (client.total_installments || 1)) {
+      return 'aprovada';
+    }
+    if (['assinado', 'signed'].includes(sigSt) || ['assinado', 'signed'].includes(quoteSt)) {
+      return 'assinado';
+    }
+    if (quoteSt === 'pagamento_gerado') return 'pagamento_gerado';
+    if (['contrato_gerado', 'pending'].includes(sigSt) || quoteSt === 'contrato_gerado') {
+      return 'contrato_gerado';
+    }
+    return client.last_quote_status || client.last_signature_status || null;
+  })();
   const payStatus = client.last_payment_status;
 
   return (
@@ -84,7 +102,7 @@ export function ClientesCardMobile({
           </div>
         </div>
 
-        {/* Badge de Assinatura / Proposta */}
+        {/* Badge de Status */}
         {sigStatus && (
           <span
             className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${

@@ -135,10 +135,10 @@ export function PortalClientesAdvancedFilters({ products, isOpen }: PortalClient
           </select>
         </div>
 
-        {/* 2. Assinatura ZapSign */}
+        {/* 2. Status da Operação */}
         <div>
           <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
-            Assinatura
+            Status
           </label>
           <select
             value={signatureStatus}
@@ -148,11 +148,15 @@ export function PortalClientesAdvancedFilters({ products, isOpen }: PortalClient
             }}
             className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none cursor-pointer"
           >
-            <option value="">Todas as situações</option>
+            <option value="">Todos os status</option>
+            <option value="aprovada">Aprovada / Emitida</option>
             <option value="signed">Assinado</option>
             <option value="assinado">Assinado (Cotação)</option>
+            <option value="pagamento_gerado">Cobrança Gerada</option>
             <option value="pending">Aguardando Assinatura</option>
             <option value="contrato_gerado">Contrato Gerado</option>
+            <option value="enviada">Enviada</option>
+            <option value="rascunho">Rascunho</option>
             <option value="cancelled">Cancelado</option>
             <option value="refused">Recusado</option>
           </select>

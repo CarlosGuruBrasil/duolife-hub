@@ -215,7 +215,7 @@ export default async function AdminClientesPage({
                         Cotações
                       </ClientesSortHeader>
                       <ClientesSortHeader field="last_signature_status" currentSort={sort} currentDirection={direction} className="border-b border-gray-200">
-                        Assinatura
+                        Status
                       </ClientesSortHeader>
                       <ClientesSortHeader field="paid_installments" currentSort={sort} currentDirection={direction} className="border-b border-gray-200">
                         Parcelas
@@ -233,7 +233,25 @@ export default async function AdminClientesPage({
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {clients.map((client) => {
-                      const sigStatus = client.last_signature_status || client.last_quote_status;
+                      const sigStatus = (() => {
+                        const quoteSt = String(client.last_quote_status || '').toLowerCase();
+                        const sigSt = String(client.last_signature_status || '').toLowerCase();
+                        const paySt = String(client.last_payment_status || '').toLowerCase();
+
+                        if (['emitida', 'ativa'].includes(quoteSt)) return 'emitida';
+                        if (['aprovada', 'approved'].includes(quoteSt)) return 'aprovada';
+                        if (['paid', 'confirmed', 'received'].includes(paySt) && (client.paid_installments ?? 0) >= (client.total_installments || 1)) {
+                          return 'aprovada';
+                        }
+                        if (['assinado', 'signed'].includes(sigSt) || ['assinado', 'signed'].includes(quoteSt)) {
+                          return 'assinado';
+                        }
+                        if (quoteSt === 'pagamento_gerado') return 'pagamento_gerado';
+                        if (['contrato_gerado', 'pending'].includes(sigSt) || quoteSt === 'contrato_gerado') {
+                          return 'contrato_gerado';
+                        }
+                        return client.last_quote_status || client.last_signature_status || null;
+                      })();
                       const payStatus = client.last_payment_status;
 
                       return (
@@ -269,7 +287,7 @@ export default async function AdminClientesPage({
                             </span>
                           </td>
 
-                          {/* Assinatura */}
+                          {/* Status */}
                           <td className="px-6 py-4 text-gray-600 border-b border-gray-100">
                             {sigStatus ? (
                               <span

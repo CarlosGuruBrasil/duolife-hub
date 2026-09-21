@@ -820,7 +820,17 @@ function classifyWixStatus(statusRaw: unknown): 'fechado' | 'pendente' | 'cancel
     s === 'ativa' ||
     s === 'ativo' ||
     s === 'pago' ||
-    s === 'fechado'
+    s === 'paga' ||
+    s === 'fechado' ||
+    s === 'confirmado' ||
+    s === 'confirmada' ||
+    s.includes('confirmad') ||
+    s.includes('confirmed') ||
+    s.includes('cartao') ||
+    s.includes('cartão') ||
+    s.includes('credit_card') ||
+    s.includes('recebido') ||
+    s.includes('received')
   ) {
     return 'fechado';
   }

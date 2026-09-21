@@ -8,6 +8,7 @@ import { formatDateTime } from '@/lib/format';
 import { isWixIntegrationEnabled } from '@/lib/system-settings';
 import { listWixCollectionsStatus } from '@/lib/wix-pull';
 import { getZapSignSyncStatus } from '@/lib/zapsign-sync';
+import { getAsaasSyncStatus } from '@/lib/asaas-sync';
 
 export const dynamic = 'force-dynamic';
 
@@ -60,6 +61,11 @@ export default async function AdminSyncPage() {
     signedTokens: 0,
     pendingTokens: 0,
   }));
+  const initialAsaasStatus = await getAsaasSyncStatus().catch(() => ({
+    totalOrders: 0,
+    paidOrders: 0,
+    pendingOrders: 0,
+  }));
 
   return (
     <div>
@@ -78,6 +84,7 @@ export default async function AdminSyncPage() {
         wixEnabled={wixEnabled}
         initialCollections={initialCollections}
         initialZapSignStatus={initialZapSignStatus}
+        initialAsaasStatus={initialAsaasStatus}
       />
 
       <div className="mb-6 grid gap-4 md:grid-cols-4">

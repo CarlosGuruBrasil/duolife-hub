@@ -5,6 +5,7 @@ import { RefreshCw } from 'lucide-react';
 import { formatCurrency, formatDate, formatStatusLabel } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
 import { ExcluirBoletoButton } from '@/components/dev/ExcluirBoletoButton';
+import { SincronizarAsaasButton } from '@/components/cotacao/SincronizarAsaasButton';
 
 interface Installment {
   id: string;
@@ -190,13 +191,35 @@ export function PagamentosPanel({
   return (
     <div className="space-y-5">
       {orders.length === 0 ? (
-        <p className="text-sm text-gray-500">Nenhuma cobrança gerada para esta cotação ainda.</p>
+        <div className="flex items-center justify-between">
+          <p className="text-sm text-gray-500">Nenhuma cobrança gerada para esta cotação no banco local ainda.</p>
+          <SincronizarAsaasButton
+            id={cotacaoId}
+            isAdmin={liveAsaas}
+            variant="compact"
+            label="Verificar Pagamento Asaas"
+            onSuccess={refreshData}
+          />
+        </div>
       ) : (
-        orders.map((order) => (
-          <div key={order.id} className="text-sm text-gray-700">
-            Cobrança por <strong>{billingTypeLabel[order.billing_type] || order.billing_type}</strong> — {formatCurrency(order.amount_total)} em {order.installment_count}x — status <strong>{formatStatusLabel(order.status)}</strong>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="space-y-1">
+            {orders.map((order) => (
+              <div key={order.id} className="text-sm text-gray-700">
+                Cobrança por <strong>{billingTypeLabel[order.billing_type] || order.billing_type}</strong> — {formatCurrency(order.amount_total)} em {order.installment_count}x — status <strong>{formatStatusLabel(order.status)}</strong>
+              </div>
+            ))}
           </div>
-        ))
+          {orders.some((o) => o.status !== 'paid') && (
+            <SincronizarAsaasButton
+              id={cotacaoId}
+              isAdmin={liveAsaas}
+              variant="compact"
+              label="Sincronizar Asaas"
+              onSuccess={refreshData}
+            />
+          )}
+        </div>
       )}
 
       {liveAsaas && (
@@ -213,15 +236,24 @@ export function PagamentosPanel({
                 )}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={loadAsaas}
-              disabled={asaasLoading}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50 transition-colors min-h-[36px]"
-            >
-              <RefreshCw size={13} className={asaasLoading ? 'animate-spin' : ''} />
-              Atualizar
-            </button>
+            <div className="flex items-center gap-2">
+              <SincronizarAsaasButton
+                id={cotacaoId}
+                isAdmin={true}
+                variant="compact"
+                label="Sincronizar com Banco"
+                onSuccess={refreshData}
+              />
+              <button
+                type="button"
+                onClick={loadAsaas}
+                disabled={asaasLoading}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50 transition-colors min-h-[36px]"
+              >
+                <RefreshCw size={13} className={asaasLoading ? 'animate-spin' : ''} />
+                Atualizar
+              </button>
+            </div>
           </div>
 
           {asaasError && (

@@ -247,10 +247,10 @@ export function ClientesAdvancedFilters({ products, partners, isOpen }: Clientes
           </select>
         </div>
 
-        {/* 4. Assinatura ZapSign */}
+        {/* 4. Status / Assinatura */}
         <div>
           <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
-            Assinatura
+            Status / Assinatura
           </label>
           <select
             value={signatureStatus}
