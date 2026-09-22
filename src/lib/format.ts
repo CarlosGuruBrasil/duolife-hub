@@ -28,7 +28,30 @@ export function parseCurrencyToNumber(value: unknown, fallback = 0): number {
     return Number.isFinite(n) ? n : fallback;
   }
 
-  // Se tem apenas pontos ou dígitos normais (ex: 103.33 ou 720)
+  // Se NÃO tem vírgula:
+  // Caso 1: múltiplos pontos (ex: 1.000.000 ou 10.000.000) -> pontos são separadores de milhar
+  if ((clean.match(/\./g) || []).length > 1) {
+    const normalized = clean.replace(/\./g, '');
+    const n = parseFloat(normalized);
+    return Number.isFinite(n) ? n : fallback;
+  }
+
+  // Caso 2: ponto único (ex: 100000.00 ou 361.67 vs 100.000)
+  if (clean.includes('.')) {
+    const parts = clean.split('.');
+    // Se a parte decimal tem exatamente 3 dígitos e a parte inteira tem até 3 dígitos (ex: 100.000, 500.000, 1.000)
+    // trata como separador de milhar brasileiro sem centavos
+    if (parts[1].length === 3 && parts[0].length >= 1 && parts[0].length <= 3) {
+      const normalized = clean.replace(/\./g, '');
+      const n = parseFloat(normalized);
+      return Number.isFinite(n) ? n : fallback;
+    }
+    // Caso padrão de float / banco de dados (ex: 100000.00, 361.67, 100.5, 680.00)
+    const n = parseFloat(clean);
+    return Number.isFinite(n) ? n : fallback;
+  }
+
+  // Se tem apenas dígitos normais (ex: 720 ou 100000)
   const n = parseFloat(clean);
   return Number.isFinite(n) ? n : fallback;
 }

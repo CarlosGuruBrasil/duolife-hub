@@ -84,13 +84,47 @@ export function formatDateToInput(dateValue?: string | Date | null): string {
 }
 
 export function parseCurrencyToNumber(value: string | number | null | undefined): number {
-  if (typeof value === 'number') return isNaN(value) ? 0 : value;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
   if (!value) return 0;
-  const str = String(value).trim();
-  // Se for no formato 1.234,56 ou R$ 1.234,56
-  const clean = str.replace(/[^\d,-]/g, '').replace(',', '.');
-  const num = parseFloat(clean);
-  return isNaN(num) ? 0 : num;
+  const str = String(value)
+    .replace(/R\$/gi, '')
+    .replace(/\s+/g, '')
+    .trim();
+  if (!str) return 0;
+
+  // Se tem vírgula (formato brasileiro: ex. 100.000,00 ou 1.250,50 ou 680,00)
+  if (str.includes(',')) {
+    const clean = str.replace(/\./g, '').replace(',', '.');
+    const num = parseFloat(clean);
+    return Number.isFinite(num) ? num : 0;
+  }
+
+  // Se NÃO tem vírgula:
+  // Caso 1: múltiplos pontos (ex: 1.000.000 ou 10.000.000) -> pontos são separadores de milhar
+  if ((str.match(/\./g) || []).length > 1) {
+    const clean = str.replace(/\./g, '');
+    const num = parseFloat(clean);
+    return Number.isFinite(num) ? num : 0;
+  }
+
+  // Caso 2: ponto único (ex: 100000.00 ou 361.67 vs 100.000)
+  if (str.includes('.')) {
+    const parts = str.split('.');
+    // Se a parte decimal tem exatamente 3 dígitos e a parte inteira tem até 3 dígitos (ex: 100.000, 500.000, 1.000)
+    // trata como separador de milhar brasileiro sem centavos
+    if (parts[1].length === 3 && parts[0].length >= 1 && parts[0].length <= 3) {
+      const clean = str.replace(/\./g, '');
+      const num = parseFloat(clean);
+      return Number.isFinite(num) ? num : 0;
+    }
+    // Caso padrão de float / banco de dados (ex: 100000.00, 361.67, 100.5, 680.00)
+    const num = parseFloat(str);
+    return Number.isFinite(num) ? num : 0;
+  }
+
+  // Caso 3: apenas dígitos
+  const num = parseFloat(str);
+  return Number.isFinite(num) ? num : 0;
 }
 
 export function formatCurrencyBRL(value: number | string | null | undefined): string {

@@ -9,6 +9,8 @@ import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
 import { getZapSignConfig, sanitizeApiToken } from '@/lib/system-settings';
 import { parseAtuacaoList } from '@/lib/atuacao';
 import { rateLimit, rateLimitResponse } from '@/lib/rate-limit';
+import { gerarContratoPdfBuffer } from '@/lib/pdf-contract-generator';
+import { criarDocumentoZapSignDireto } from '@/lib/zapsign-direct-docs';
 
 export async function POST(
   req: NextRequest,
@@ -94,8 +96,12 @@ export async function POST(
       });
     }
 
-    // 2. Determina o template do ZapSign
+    // 2. Determina modo e template do ZapSign
     const zapConfig = await getZapSignConfig();
+    const isDynamicPdf =
+      zapConfig.docGenerationMode === 'dynamic_pdf' ||
+      req.nextUrl.searchParams.get('modo') === 'dynamic_pdf';
+
     const isRenovacao =
       clientData.isRenovacao === 'Sim' ||
       clientData.renovacao === true ||
@@ -113,7 +119,7 @@ export async function POST(
         ? zapConfig.template100k
         : zapConfig.templateOficial;
 
-    if (!templateId) {
+    if (!isDynamicPdf && !templateId) {
       return Response.json({ error: 'Template do ZapSign não configurado' }, { status: 422 });
     }
 
@@ -303,62 +309,83 @@ export async function POST(
       para: para === undefined || para === null || para === '' ? ' ' : String(para)
     }));
 
-    // 6. Faz o POST para o ZapSign
-    const sandbox = zapConfig.isSandbox;
-    const payload = {
-      template_id: templateId,
-      signer_name: cotacao.client_name,
-      signer_email: cotacao.client_email || 'suporte@duolife.net.br',
-      send_automatic_email: false,
-      send_automatic_whatsapp: false,
-      sandbox,
-      lang: "pt-br",
-      data: dataArray,
-      external_id: cotacao.id
-    };
+    let docToken = '';
+    let signUrl = '';
+    let resJson: any = null;
 
-    const token = sanitizeApiToken(zapConfig.apiToken);
-    const baseUrl = zapConfig.baseUrl;
+    if (isDynamicPdf) {
+      // 6a. Geração de contrato dinâmico em PDF com marca e dados da corretora (novo modo)
+      const pdfData = await gerarContratoPdfBuffer(cotacao.id);
+      const directDoc = await criarDocumentoZapSignDireto({
+        base64Pdf: pdfData.base64,
+        docName: pdfData.docName,
+        externalId: cotacao.id,
+        signatario: {
+          nome: pdfData.signatario.nome,
+          email: pdfData.signatario.email,
+          phone: pdfData.signatario.phone,
+        },
+      });
+      docToken = directDoc.docToken;
+      signUrl = directDoc.signUrl;
+      resJson = directDoc.rawPayload;
+    } else {
+      // 6b. POST para o ZapSign via modelo pré-configurado (fluxo padrão existente mantido 100% inalterado)
+      const sandbox = zapConfig.isSandbox;
+      const payload = {
+        template_id: templateId,
+        signer_name: cotacao.client_name,
+        signer_email: cotacao.client_email || 'suporte@duolife.net.br',
+        send_automatic_email: false,
+        send_automatic_whatsapp: false,
+        sandbox,
+        lang: "pt-br",
+        data: dataArray,
+        external_id: cotacao.id
+      };
 
-    if (!token) {
-      return Response.json({ error: 'Token da ZapSign não configurado' }, { status: 500 });
-    }
+      const token = sanitizeApiToken(zapConfig.apiToken);
+      const baseUrl = zapConfig.baseUrl;
 
-    const response = await fetch(`${baseUrl}/models/create-doc/`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify(payload)
-    });
-
-    const responseText = await response.text();
-
-    if (!response.ok) {
-      logger.error({ status: response.status, body: responseText }, 'api.portal.gerar-contrato.zapsign_failed');
-      let friendlyError = `Falha na API da ZapSign: ${responseText}`;
-      if (responseText.includes('API token not found') || responseText.includes('Token da API não encontrado')) {
-        const ambAtual = zapConfig.isSandbox ? 'Sandbox (Testes)' : 'Produção Real';
-        friendlyError = `Falha de autenticação na ZapSign: O Token de API informado não foi localizado no ambiente ${ambAtual}. Verifique no painel administrativo (/admin/chaves-api) se o ambiente selecionado corresponde à conta onde o token foi gerado (app.zapsign.com.br para Produção ou sandbox.app.zapsign.com.br para Sandbox).`;
+      if (!token) {
+        return Response.json({ error: 'Token da ZapSign não configurado' }, { status: 500 });
       }
-      return Response.json({ error: friendlyError }, { status: 400 });
-    }
 
-    const resJson = JSON.parse(responseText);
-    // A resposta real de /models/create-doc/ traz o identificador do documento em "token",
-    // não "doc_token" (esse último é usado em outros payloads da ZapSign, ex. webhooks).
-    const docToken = resJson.token;
-    if (!docToken) {
-      logger.error({ cotacaoId: cotacao.id, body: responseText }, 'api.portal.gerar-contrato.zapsign_sem_token');
-      return Response.json({ error: 'Resposta inesperada da ZapSign ao criar documento' }, { status: 502 });
+      const response = await fetch(`${baseUrl}/models/create-doc/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const responseText = await response.text();
+
+      if (!response.ok) {
+        logger.error({ status: response.status, body: responseText }, 'api.portal.gerar-contrato.zapsign_failed');
+        let friendlyError = `Falha na API da ZapSign: ${responseText}`;
+        if (responseText.includes('API token not found') || responseText.includes('Token da API não encontrado')) {
+          const ambAtual = zapConfig.isSandbox ? 'Sandbox (Testes)' : 'Produção Real';
+          friendlyError = `Falha de autenticação na ZapSign: O Token de API informado não foi localizado no ambiente ${ambAtual}. Verifique no painel administrativo (/admin/chaves-api) se o ambiente selecionado corresponde à conta onde o token foi gerado (app.zapsign.com.br para Produção ou sandbox.app.zapsign.com.br para Sandbox).`;
+        }
+        return Response.json({ error: friendlyError }, { status: 400 });
+      }
+
+      resJson = JSON.parse(responseText);
+      docToken = resJson.token;
+      if (!docToken) {
+        logger.error({ cotacaoId: cotacao.id, body: responseText }, 'api.portal.gerar-contrato.zapsign_sem_token');
+        return Response.json({ error: 'Resposta inesperada da ZapSign ao criar documento' }, { status: 502 });
+      }
+      signUrl = resJson.signers?.[0]?.sign_url || '';
     }
-    const signUrl = resJson.signers?.[0]?.sign_url || '';
 
     // 7. Atualiza a cotação no Banco
     clientData.contratoToken = docToken;
     clientData.signUrl = signUrl;
     clientData.contratoGeradoEm = new Date().toISOString();
+    clientData.contratoModo = isDynamicPdf ? 'dynamic_pdf' : 'template';
 
     await sql`
       UPDATE cotacoes
@@ -396,7 +423,7 @@ export async function POST(
         ${cotacao.client_id || null},
         'zapsign',
         ${docToken},
-        ${templateId},
+        ${isDynamicPdf ? 'dynamic_pdf' : templateId},
         ${signUrl || null},
         'pending',
         ${JSON.stringify(resJson)}::jsonb,

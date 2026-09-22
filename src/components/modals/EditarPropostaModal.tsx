@@ -77,6 +77,23 @@ const AREAS_ATUACAO_SUGESTOES = [
   'Geral / Múltiplas Áreas',
 ];
 
+const PLANOS_SUGESTOES = [
+  '100k',
+  '200k',
+  '300k',
+  '500k',
+  '1M',
+  '2M',
+  '3M',
+  'Plano 100 Mil',
+  'Plano 200 Mil',
+  'Plano 300 Mil',
+  'Plano 500 Mil',
+  'Plano 1 Milhão',
+  'Plano 2 Milhões',
+  'Plano 3 Milhões',
+];
+
 export default function EditarPropostaModal({
   isOpen,
   onClose,
