@@ -94,8 +94,14 @@ button {
 }
 
 ::selection {
-  background: var(--accent-soft);
-  color: var(--primary-dark);
+  background: var(--primary);
+  color: #ffffff;
+}
+
+input::selection,
+textarea::selection {
+  background: var(--primary);
+  color: #ffffff;
 }
 
 /* Apple HIG Utilities */
