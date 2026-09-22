@@ -228,6 +228,57 @@ function formatDateDisplay(dStr: string): string {
   return dStr;
 }
 
+/**
+ * Rola suavemente para o topo do formulário / página ao mudar de etapa.
+ * Suporta contêineres com rolagem interna (PortalShell e AdminShell com overflow-y-auto)
+ * e também rolagem padrão de janela (Window / Document na jornada pública de contratação).
+ */
+function scrollToFormTop(targetElement?: HTMLElement | null) {
+  if (typeof window === 'undefined') return;
+
+  // 1. Rola contêineres ancestrais que possuem rolagem vertical própria
+  let current: HTMLElement | null = targetElement?.parentElement || null;
+  while (current && current !== document.body && current !== document.documentElement) {
+    try {
+      const style = window.getComputedStyle(current);
+      if (style.overflowY === 'auto' || style.overflowY === 'scroll') {
+        current.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    } catch {
+      current.scrollTop = 0;
+    }
+    current = current.parentElement;
+  }
+
+  // 2. Rola a janela global e elementos raiz
+  try {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch {
+    window.scrollTo(0, 0);
+  }
+
+  try {
+    document.documentElement.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch {
+    document.documentElement.scrollTop = 0;
+  }
+
+  try {
+    document.body.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch {
+    document.body.scrollTop = 0;
+  }
+
+  // 3. Fallback complementar via scrollIntoView
+  if (targetElement && typeof targetElement.scrollIntoView === 'function') {
+    try {
+      targetElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch {
+      targetElement.scrollIntoView(true);
+    }
+  }
+}
+
 export default function DynamicCotacaoForm({
   adminSelectedPartnerId,
   publicToken,
@@ -255,6 +306,20 @@ export default function DynamicCotacaoForm({
 
   // Estado do Fluxo de 6 Passos
   const [step, setStep] = useState<number>(1);
+  const formTopRef = useRef<HTMLDivElement>(null);
+  const prevStepRef = useRef<number>(1);
+
+  // Scroll up automático a cada transição de etapa
+  useEffect(() => {
+    if (prevStepRef.current !== step) {
+      prevStepRef.current = step;
+      const timer = setTimeout(() => {
+        scrollToFormTop(formTopRef.current);
+      }, 40);
+      return () => clearTimeout(timer);
+    }
+  }, [step]);
+
   const [form, setForm] = useState<DynamicFormState>(initialFormState);
   const [planos, setPlanos] = useState<Plano[]>([]);
   const [cargosPpe, setCargosPpe] = useState<CargoPPE[]>(CARGOS_PPE_PADRAO);
@@ -902,11 +967,13 @@ export default function DynamicCotacaoForm({
     }
 
     setStep((prev) => Math.min(6, prev + 1));
+    scrollToFormTop(formTopRef.current);
   }
 
   function handleBack() {
     setError('');
     setStep((prev) => Math.max(1, prev - 1));
+    scrollToFormTop(formTopRef.current);
   }
 
   // ------------------------------------------------------------------
@@ -1023,6 +1090,7 @@ export default function DynamicCotacaoForm({
         setSignUrl(zapData.signUrl);
         setDocToken(zapData.docToken);
         setStep(6);
+        scrollToFormTop(formTopRef.current);
       } else {
         setError(zapData.error || 'Erro ao gerar o contrato no ZapSign.');
       }
@@ -1149,7 +1217,7 @@ export default function DynamicCotacaoForm({
   // RENDERIZAÇÃO PRINCIPAL DO COMPONENTE
   // ------------------------------------------------------------------
   return (
-    <div className="max-w-4xl mx-auto">
+    <div ref={formTopRef} className="max-w-4xl mx-auto scroll-mt-24">
       {/* Indicador de Passos da Esteira */}
       <div className="flex justify-between items-center mb-8 border-b border-gray-200 pb-4">
         {[
@@ -1161,22 +1229,42 @@ export default function DynamicCotacaoForm({
           { num: 6, label: 'Assinatura', icon: CreditCard },
         ].map((s) => {
           const Icon = s.icon;
+          const isCurrent = step === s.num;
+          const isCompleted = step > s.num;
+
           return (
-            <div key={s.num} className="flex items-center space-x-2">
+            <div
+              key={s.num}
+              onClick={() => {
+                if (isCompleted) {
+                  setError('');
+                  setStep(s.num);
+                  scrollToFormTop(formTopRef.current);
+                }
+              }}
+              className={`flex items-center space-x-2 select-none transition-all ${
+                isCompleted ? 'cursor-pointer group' : ''
+              }`}
+              title={isCompleted ? `Voltar para a etapa ${s.num}: ${s.label}` : undefined}
+            >
               <div
                 className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-all ${
-                  step === s.num
+                  isCurrent
                     ? 'bg-primary text-white shadow-sm ring-2 ring-primary/20'
-                    : step > s.num
-                    ? 'bg-emerald-600 text-white'
+                    : isCompleted
+                    ? 'bg-emerald-600 text-white group-hover:bg-emerald-700 group-hover:scale-105 shadow-2xs'
                     : 'bg-gray-100 text-gray-400 border border-gray-200'
                 }`}
               >
-                {step > s.num ? <Check className="w-4 h-4" /> : s.num}
+                {isCompleted ? <Check className="w-4 h-4" /> : s.num}
               </div>
               <span
                 className={`hidden md:inline text-xs font-semibold ${
-                  step === s.num ? 'text-primary font-bold' : 'text-gray-500'
+                  isCurrent
+                    ? 'text-primary font-bold'
+                    : isCompleted
+                    ? 'text-emerald-700 font-medium group-hover:underline'
+                    : 'text-gray-500'
                 }`}
               >
                 {s.label}
