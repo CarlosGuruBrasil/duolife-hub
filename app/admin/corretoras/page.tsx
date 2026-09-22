@@ -3,8 +3,9 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Building, CheckCircle, Clock, XCircle, Plus, Users, Briefcase, ExternalLink, ShieldCheck, Phone, Mail, MapPin, Copy, Check } from 'lucide-react';
+import { Building, CheckCircle, Clock, XCircle, Plus, Users, Briefcase, ExternalLink, ShieldCheck, Phone, Mail, MapPin, Copy, Check, Eye, EyeOff } from 'lucide-react';
 import { formatDate } from '@/lib/format';
+import { maskCnpj, maskPhone } from '@/components/modals/masks';
 import type { WhiteLabelConfig } from '@/lib/white-label';
 import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
 
@@ -68,6 +69,7 @@ export default function AdminCorretorasPage() {
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ tipo: 'ok' | 'erro'; texto: string; senhaProvisoria?: string; emailLogin?: string } | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -93,11 +95,33 @@ export default function AdminCorretorasPage() {
     setFeedback(null);
     setCopied(false);
 
+    const payload = {
+      ...form,
+      razao_social: form.razao_social.trim(),
+      nome_fantasia: form.nome_fantasia.trim(),
+      cnpj: form.cnpj.trim(),
+      susep: form.susep.trim() || undefined,
+      email: form.email.trim(),
+      phone: form.phone.trim(),
+      street: form.street.trim() || undefined,
+      neighborhood: form.neighborhood.trim() || undefined,
+      city: form.city.trim() || undefined,
+      state: form.state.trim() || undefined,
+      slug: form.slug.trim() || undefined,
+      primaryColor: form.primaryColor.trim() || undefined,
+      secondaryColor: form.secondaryColor.trim() || undefined,
+      logoUrl: form.logoUrl.trim() || undefined,
+      admin_name: form.admin_name.trim() || undefined,
+      admin_email: form.admin_email.trim() || undefined,
+      admin_password: form.admin_password.trim() || undefined,
+      send_invite_email: form.send_invite_email,
+    };
+
     try {
       const res = await fetch('/api/admin/corretoras', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
 
@@ -113,6 +137,7 @@ export default function AdminCorretorasPage() {
         emailLogin: data.adminUser?.email || data.corretora.email,
       });
       setForm(FORM_VAZIO);
+      setShowPassword(false);
       setShowForm(false);
       load();
     } catch {
@@ -142,7 +167,7 @@ export default function AdminCorretorasPage() {
         {canManage && (
           <button
             onClick={() => { setShowForm(!showForm); setFeedback(null); }}
-            className="admin-btn-primary flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors"
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#0e4a5a] hover:bg-[#072a33] text-white font-semibold text-sm shadow-sm hover:shadow-md transition-all cursor-pointer"
           >
             <Plus size={16} strokeWidth={2.5} />
             {showForm ? 'Fechar Cadastro' : 'Nova Corretora'}
@@ -223,8 +248,9 @@ export default function AdminCorretorasPage() {
                 type="text"
                 required
                 value={form.cnpj}
-                onChange={(e) => setForm({ ...form, cnpj: e.target.value })}
+                onChange={(e) => setForm({ ...form, cnpj: maskCnpj(e.target.value) })}
                 placeholder="00.000.000/0000-00"
+                maxLength={18}
                 className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
               />
             </div>
@@ -258,8 +284,9 @@ export default function AdminCorretorasPage() {
                 type="text"
                 required
                 value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                onChange={(e) => setForm({ ...form, phone: maskPhone(e.target.value) })}
                 placeholder="(00) 00000-0000"
+                maxLength={15}
                 className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
               />
             </div>
@@ -333,13 +360,24 @@ export default function AdminCorretorasPage() {
 
               <div>
                 <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Senha Inicial / Provisória</label>
-                <input
-                  type="text"
-                  value={form.admin_password}
-                  onChange={(e) => setForm({ ...form, admin_password: e.target.value })}
-                  placeholder="Vazio = gera senha aleatória"
-                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary font-mono"
-                />
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={form.admin_password}
+                    onChange={(e) => setForm({ ...form, admin_password: e.target.value })}
+                    placeholder="Vazio = gera senha aleatória"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg pl-3 pr-10 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 p-1 focus:outline-none cursor-pointer transition-colors"
+                    title={showPassword ? 'Ocultar senha' : 'Exibir senha'}
+                    aria-label={showPassword ? 'Ocultar senha' : 'Exibir senha'}
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -361,14 +399,14 @@ export default function AdminCorretorasPage() {
             <button
               type="button"
               onClick={() => setShowForm(false)}
-              className="px-4 py-2 border border-gray-200 text-gray-700 rounded-lg text-sm hover:bg-gray-50 font-medium"
+              className="px-5 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors cursor-pointer"
             >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={saving}
-              className="admin-btn-primary px-5 py-2 rounded-lg text-sm font-medium transition-opacity disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-[#0e4a5a] hover:bg-[#072a33] text-white font-bold text-sm shadow-md hover:shadow-lg transition-all disabled:opacity-50 cursor-pointer"
             >
               {saving ? 'Cadastrando...' : 'Confirmar Cadastro'}
             </button>

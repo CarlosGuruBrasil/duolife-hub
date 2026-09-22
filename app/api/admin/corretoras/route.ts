@@ -57,24 +57,32 @@ export async function GET(req: NextRequest) {
   }
 }
 
+const emptyToUndefined = (val: unknown) => {
+  if (typeof val === 'string' && val.trim() === '') return undefined;
+  return val;
+};
+
 const createCorretoraSchema = z.object({
   razao_social: z.string().trim().min(2, 'Informe a Razão Social'),
   nome_fantasia: z.string().trim().min(2, 'Informe o Nome Fantasia'),
   cnpj: z.string().trim().min(14, 'Informe o CNPJ'),
-  susep: z.string().trim().optional(),
+  susep: z.preprocess(emptyToUndefined, z.string().trim().optional()),
   email: z.string().trim().email('E-mail institucional inválido'),
   phone: z.string().trim().min(8, 'Informe o telefone'),
-  street: z.string().trim().optional(),
-  neighborhood: z.string().trim().optional(),
-  city: z.string().trim().optional(),
-  state: z.string().trim().max(2).optional(),
-  slug: z.string().trim().min(2).regex(/^[a-z0-9_-]+$/, 'Slug deve ter apenas letras minúsculas, números e hífens').optional(),
-  primaryColor: z.string().trim().optional(),
-  secondaryColor: z.string().trim().optional(),
-  logoUrl: z.string().trim().optional(),
-  admin_name: z.string().trim().min(2, 'Informe o nome do administrador').optional(),
-  admin_email: z.string().trim().email('E-mail do administrador inválido').optional(),
-  admin_password: z.string().trim().min(6, 'A senha deve ter no mínimo 6 caracteres').optional(),
+  street: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+  neighborhood: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+  city: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+  state: z.preprocess(emptyToUndefined, z.string().trim().max(2).optional()),
+  slug: z.preprocess(
+    emptyToUndefined,
+    z.string().trim().min(2, 'Slug deve ter no mínimo 2 caracteres').regex(/^[a-z0-9_-]+$/, 'Slug deve ter apenas letras minúsculas, números e hífens').optional()
+  ),
+  primaryColor: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+  secondaryColor: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+  logoUrl: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+  admin_name: z.preprocess(emptyToUndefined, z.string().trim().min(2, 'Informe o nome do administrador').optional()),
+  admin_email: z.preprocess(emptyToUndefined, z.string().trim().email('E-mail do administrador inválido').optional()),
+  admin_password: z.preprocess(emptyToUndefined, z.string().trim().min(6, 'A senha deve ter no mínimo 6 caracteres').optional()),
   send_invite_email: z.boolean().default(true),
 }).superRefine((data, ctx) => {
   const cnpjLimpo = somenteDigitos(data.cnpj);
