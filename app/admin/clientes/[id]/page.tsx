@@ -266,8 +266,14 @@ export default async function AdminClienteDetalhePage({ params }: { params: Prom
                     <td className="px-6 py-4 text-gray-600">{formatStatusLabel(quote.status)}</td>
                     <td className="px-6 py-4 text-gray-600">
                       <div>{formatStatusLabel(quote.signature_status)}</div>
-                      {safeExternalUrl(quote.signed_file_url) ? (
-                        <a href={safeExternalUrl(quote.signed_file_url)} target="_blank" rel="noreferrer" className="text-xs font-medium text-sky-700 underline">
+                      {(quote.signed_file_url || ['signed', 'completed', 'assinado'].includes(String(quote.signature_status || '').toLowerCase())) ? (
+                        <a
+                          href={`/api/cotacoes/${quote.id}/contrato-pdf?download=false`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-xs font-medium text-purple-700 hover:text-purple-900 underline inline-flex items-center gap-1 mt-0.5"
+                          title="Abrir contrato em nova aba"
+                        >
                           Abrir contrato
                         </a>
                       ) : null}

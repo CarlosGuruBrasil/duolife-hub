@@ -386,8 +386,14 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
                   <td className="px-5 py-4">{formatStatusLabel(quote.status)}</td>
                   <td className="px-5 py-4">
                     <div>{formatStatusLabel(quote.signature_status)}</div>
-                    {safeExternalUrl(quote.signed_file_url) ? (
-                      <a href={safeExternalUrl(quote.signed_file_url)} target="_blank" className="text-xs font-medium text-sky-700 underline" rel="noreferrer">
+                    {(quote.signed_file_url || ['signed', 'completed', 'assinado'].includes(String(quote.signature_status || '').toLowerCase())) ? (
+                      <a
+                        href={`/api/portal/cotacoes/${quote.id}/contrato-pdf?download=false`}
+                        target="_blank"
+                        className="text-xs font-medium text-purple-700 hover:text-purple-900 underline inline-flex items-center gap-1 mt-0.5"
+                        rel="noreferrer"
+                        title="Abrir contrato em nova aba"
+                      >
                         Abrir contrato
                       </a>
                     ) : null}

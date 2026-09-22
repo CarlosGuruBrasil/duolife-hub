@@ -241,10 +241,21 @@ export async function handleContratoPdfRequest(
       });
     }
     logger.warn({ id: cotacao.id, status: fileRes.status }, 'api.cotacoes.contrato-pdf.file_not_ok');
+    if (fileRes.status === 403 || fileRes.status === 401) {
+      return textResponse(
+        'O link do contrato expirou na nuvem. Recarregue a página para que o sistema renove o acesso na ZapSign.',
+        410
+      );
+    }
+    return textResponse(
+      `O provedor de arquivos retornou status ${fileRes.status}. Tente novamente em instantes.`,
+      502
+    );
   } catch (err) {
     logger.warn({ err, id: cotacao.id }, 'api.cotacoes.contrato-pdf.streaming_failed');
+    return textResponse(
+      'Tempo limite ou falha de conexão ao baixar o contrato da ZapSign. Tente novamente em instantes.',
+      504
+    );
   }
-
-  // Fallback: redireciona para a URL do arquivo
-  return Response.redirect(pdfUrl, 307);
 }
