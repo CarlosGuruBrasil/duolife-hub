@@ -6,7 +6,7 @@ import { sql } from '@/lib/pg';
 import { PagamentosPanel } from './_pagamentos-client';
 import { GerarBoletoButton } from '../_gerar-boleto-button';
 import { EnviarFaturaEmailButton } from '@/components/cotacao/EnviarFaturaEmailButton';
-import { formatCurrency, formatDate, formatDateTime, formatAtuacao } from '@/lib/format';
+import { formatCurrency, formatDate, formatDateTime, formatAtuacao, sanitizePlanFinancials } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
 import { isDateBeforeToday, calculateBillingDueDate } from '@/lib/business-days';
 import EditarPropostaButton from '@/components/modals/EditarPropostaButton';
@@ -129,18 +129,29 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
   const clientData = parseClientData(cotacao.client_data);
 
   const planoNome = String(clientData.nomePlano || clientData.tipoDePlano || 'RC Advogados');
-  const cobertura = String(clientData.valorCobertura || (cotacao.importancia_segurada ? formatCurrency(cotacao.importancia_segurada) : ''));
-  const franquia = String(clientData.planoFranquia || 'R$ 1.000,00');
 
-  const totalAmountNum = paymentOrder?.amount_total
+  let rawTotalAmountNum = paymentOrder?.amount_total
     ? parseFloat(paymentOrder.amount_total)
     : (clientData.valor !== undefined && clientData.valor !== null
         ? Number(clientData.valor)
         : Number(cotacao.premio_final ?? cotacao.premio_calculado ?? 0));
 
+  const { cobertura: sanitizedCobNum, premio: sanitizedPremNum } = sanitizePlanFinancials({
+    planoNome,
+    cobertura: clientData.valorCobertura || cotacao.importancia_segurada,
+    premio: rawTotalAmountNum,
+  });
+
+  const cobertura = sanitizedCobNum > 0
+    ? formatCurrency(sanitizedCobNum)
+    : String(clientData.valorCobertura || (cotacao.importancia_segurada ? formatCurrency(cotacao.importancia_segurada) : ''));
+  const franquia = String(clientData.planoFranquia || 'R$ 1.000,00');
+
+  const totalAmountNum = (sanitizedPremNum > 0 && rawTotalAmountNum >= 10000) ? sanitizedPremNum : rawTotalAmountNum;
+
   const valorTotalCalculado = totalAmountNum > 0
     ? formatCurrency(totalAmountNum)
-    : formatCurrency(cotacao.premio_final ?? cotacao.premio_calculado);
+    : formatCurrency(sanitizedPremNum || cotacao.premio_final || cotacao.premio_calculado);
 
   const rawParcelas =
     paymentOrder?.installment_count ??
