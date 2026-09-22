@@ -267,17 +267,20 @@ async function runRuntimeSchemaSetup(): Promise<void> {
     )
   `;
 
-  // Refresh tokens de sessão
+  // Refresh tokens de sessão (compatível com parceiros e gestores de corretoras)
   await sql`
     CREATE TABLE IF NOT EXISTS refresh_tokens (
       id              TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
-      partner_user_id TEXT NOT NULL REFERENCES partner_users(id),
+      partner_user_id TEXT NOT NULL,
       token_hash      TEXT UNIQUE NOT NULL,
       expires_at      TIMESTAMPTZ NOT NULL,
       revoked         BOOLEAN NOT NULL DEFAULT false,
       created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
+  await sql`ALTER TABLE refresh_tokens DROP CONSTRAINT IF EXISTS refresh_tokens_partner_user_id_fkey`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_partner_user_id ON refresh_tokens(partner_user_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token_hash ON refresh_tokens(token_hash)`;
 
   // Tokens para recuperação de senha ("Esqueci minha senha")
   await sql`

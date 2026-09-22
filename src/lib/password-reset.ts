@@ -5,7 +5,7 @@ import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
 import { sendTemplatedEmail } from '@/lib/email-service';
 import { logger } from '@/lib/logger';
 
-type ResetUserType = 'partner' | 'admin';
+type ResetUserType = 'partner' | 'admin' | 'corretora';
 type ResetMailPurpose = 'reset' | 'invite';
 
 interface IssueResetOptions {

@@ -43,7 +43,10 @@ export async function POST(req: Request) {
 
     // Atualiza a senha na tabela correta, marca o token como usado e revoga sessões ativas atomicamente
     await sql.begin(async (tx) => {
-      if (resetRecord.user_type === 'partner') {
+      if (resetRecord.user_type === 'corretora') {
+        await tx`UPDATE corretora_users SET password_hash = ${newHash}, updated_at = NOW() WHERE id = ${resetRecord.user_id}`;
+        await tx`UPDATE refresh_tokens SET revoked = true WHERE partner_user_id = ${resetRecord.user_id}`;
+      } else if (resetRecord.user_type === 'partner') {
         await tx`UPDATE partner_users SET password_hash = ${newHash} WHERE id = ${resetRecord.user_id}`;
         await tx`UPDATE refresh_tokens SET revoked = true WHERE partner_user_id = ${resetRecord.user_id}`;
       } else if (resetRecord.user_type === 'admin') {

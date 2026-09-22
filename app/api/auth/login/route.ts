@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     const [admin] = await sql`
       SELECT id, name, email, password_hash, role
       FROM admin_users
-      WHERE email = ${email.toLowerCase()} AND is_active = true
+      WHERE LOWER(TRIM(email)) = ${email.toLowerCase()} AND is_active = true
     `;
 
     if (admin) {
@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
              c.status as corretora_status, c.nome_fantasia as corretora_nome
       FROM corretora_users cu
       JOIN corretoras c ON c.id = cu.corretora_id
-      WHERE cu.email = ${email.toLowerCase()} AND cu.is_active = true
+      WHERE LOWER(TRIM(cu.email)) = ${email.toLowerCase()} AND cu.is_active = true
     `;
 
     if (corretoraUser) {
@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
       FROM partner_users pu
       JOIN partners p ON p.id = pu.partner_id
       LEFT JOIN corretoras c ON c.id = p.corretora_id
-      WHERE pu.email = ${email.toLowerCase()} AND pu.is_active = true
+      WHERE LOWER(TRIM(pu.email)) = ${email.toLowerCase()} AND pu.is_active = true
     `;
 
     if (!user) return Response.json({ error: 'E-mail ou senha inválidos' }, { status: 401 });

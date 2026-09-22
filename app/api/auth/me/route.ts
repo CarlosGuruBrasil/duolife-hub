@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { cookies } from 'next/headers';
 import { z } from 'zod';
-import { verifyAuth, isInternalUser, unauthorized, type AuthUser } from '@/lib/auth';
+import { verifyAuth, isInternalUser, roleIsCorretora, unauthorized, type AuthUser } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
 import { getJwtSecret } from '@/lib/secrets';
@@ -35,6 +35,26 @@ export async function GET() {
           role: adminRow.role,
           userType: 'admin',
           createdAt: adminRow.created_at,
+        },
+      });
+    }
+
+    if (roleIsCorretora(user.role)) {
+      const [corretoraUserRow] = await sql<{ id: string; name: string; email: string; role: string; corretora_id: string; created_at: string }[]>`
+        SELECT id, name, email, role, corretora_id, created_at
+        FROM corretora_users
+        WHERE id = ${user.userId}
+      `;
+      if (!corretoraUserRow) return unauthorized();
+      return Response.json({
+        user: {
+          id: corretoraUserRow.id,
+          name: corretoraUserRow.name,
+          email: corretoraUserRow.email,
+          role: corretoraUserRow.role,
+          corretoraId: corretoraUserRow.corretora_id,
+          userType: 'corretora',
+          createdAt: corretoraUserRow.created_at,
         },
       });
     }
@@ -77,12 +97,14 @@ export async function PATCH(req: NextRequest) {
     const { name, email, currentPassword, newPassword } = parsed.data;
     const lowerEmail = email.toLowerCase();
     const isInternal = isInternalUser(user);
+    const isCorretora = roleIsCorretora(user.role);
 
     // 1. Valida se o e-mail mudou e já está em uso por outro usuário
     if (lowerEmail !== user.email.toLowerCase()) {
       const [existingAdmin] = await sql`SELECT id FROM admin_users WHERE email = ${lowerEmail} AND id != ${user.userId}`;
       const [existingPartnerUser] = await sql`SELECT id FROM partner_users WHERE email = ${lowerEmail} AND id != ${user.userId}`;
-      if (existingAdmin || existingPartnerUser) {
+      const [existingCorretoraUser] = await sql`SELECT id FROM corretora_users WHERE email = ${lowerEmail} AND id != ${user.userId}`;
+      if (existingAdmin || existingPartnerUser || existingCorretoraUser) {
         return Response.json({ error: 'Este e-mail já está sendo utilizado por outra conta.' }, { status: 400 });
       }
     }
@@ -94,9 +116,10 @@ export async function PATCH(req: NextRequest) {
         return Response.json({ error: 'Informe sua senha atual para definir uma nova senha.' }, { status: 400 });
       }
 
-      const table = isInternal ? 'admin_users' : 'partner_users';
       const [dbRow] = isInternal
         ? await sql<{ password_hash: string }[]>`SELECT password_hash FROM admin_users WHERE id = ${user.userId}`
+        : isCorretora
+        ? await sql<{ password_hash: string }[]>`SELECT password_hash FROM corretora_users WHERE id = ${user.userId}`
         : await sql<{ password_hash: string }[]>`SELECT password_hash FROM partner_users WHERE id = ${user.userId}`;
 
       if (!dbRow) return unauthorized();
@@ -120,6 +143,20 @@ export async function PATCH(req: NextRequest) {
         await sql`
           UPDATE admin_users
           SET name = ${name}, email = ${lowerEmail}
+          WHERE id = ${user.userId}
+        `;
+      }
+    } else if (isCorretora) {
+      if (newHash) {
+        await sql`
+          UPDATE corretora_users
+          SET name = ${name}, email = ${lowerEmail}, password_hash = ${newHash}, updated_at = NOW()
+          WHERE id = ${user.userId}
+        `;
+      } else {
+        await sql`
+          UPDATE corretora_users
+          SET name = ${name}, email = ${lowerEmail}, updated_at = NOW()
           WHERE id = ${user.userId}
         `;
       }

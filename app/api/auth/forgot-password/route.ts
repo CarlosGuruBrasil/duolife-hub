@@ -19,27 +19,38 @@ export async function POST(req: Request) {
     const emailLimit = rateLimit(`forgot-password:email:${email.toLowerCase().trim()}`, 3, 15 * 60 * 1000); // 3 tentativas por e-mail a cada 15 min
     if (!emailLimit.ok) return rateLimitResponse(emailLimit.retryAfter);
 
-    // Procura o usuário primeiro em partner_users, depois em admin_users
+    // Procura o usuário primeiro em corretora_users, depois partner_users ou admin_users
     let userId = '';
-    let userType = '';
+    let userType: 'corretora' | 'partner' | 'admin' = 'partner';
     let userName = '';
+    const normalizedEmail = email.toLowerCase().trim();
 
-    const [partner] = await sql<{ id: string, name: string }[]>`
-      SELECT id, name FROM partner_users WHERE email = ${email} LIMIT 1
+    const [corretoraUser] = await sql<{ id: string, name: string }[]>`
+      SELECT id, name FROM corretora_users WHERE LOWER(TRIM(email)) = ${normalizedEmail} AND is_active = true LIMIT 1
     `;
 
-    if (partner) {
-      userId = partner.id;
-      userType = 'partner';
-      userName = partner.name;
+    if (corretoraUser) {
+      userId = corretoraUser.id;
+      userType = 'corretora';
+      userName = corretoraUser.name;
     } else {
-      const [admin] = await sql<{ id: string, name: string }[]>`
-        SELECT id, name FROM admin_users WHERE email = ${email} LIMIT 1
+      const [partner] = await sql<{ id: string, name: string }[]>`
+        SELECT id, name FROM partner_users WHERE LOWER(TRIM(email)) = ${normalizedEmail} AND is_active = true LIMIT 1
       `;
-      if (admin) {
-        userId = admin.id;
-        userType = 'admin';
-        userName = admin.name;
+
+      if (partner) {
+        userId = partner.id;
+        userType = 'partner';
+        userName = partner.name;
+      } else {
+        const [admin] = await sql<{ id: string, name: string }[]>`
+          SELECT id, name FROM admin_users WHERE LOWER(TRIM(email)) = ${normalizedEmail} AND is_active = true LIMIT 1
+        `;
+        if (admin) {
+          userId = admin.id;
+          userType = 'admin';
+          userName = admin.name;
+        }
       }
     }
 
@@ -52,8 +63,8 @@ export async function POST(req: Request) {
 
     await issuePasswordResetEmail({
       userId,
-      userType: userType as 'partner' | 'admin',
-      email,
+      userType,
+      email: normalizedEmail,
       userName,
       purpose: 'reset',
     });
