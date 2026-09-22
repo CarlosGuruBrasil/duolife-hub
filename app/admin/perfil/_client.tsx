@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCircle2, AlertCircle, User, KeyRound, ShieldCheck, Loader2 } from 'lucide-react';
 import { formatDate } from '@/lib/format';
+import { toast } from '@/components/ui/toast';
 
 interface PerfilClientProps {
   initialUser: {
@@ -26,25 +27,21 @@ export default function PerfilClient({ initialUser }: PerfilClientProps) {
   });
 
   const [loading, setLoading] = useState(false);
-  const [successMsg, setSuccessMsg] = useState('');
-  const [errorMsg, setErrorMsg] = useState('');
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSuccessMsg('');
-    setErrorMsg('');
 
     if (form.newPassword) {
       if (!form.currentPassword) {
-        setErrorMsg('Informe sua senha atual para alterar a senha.');
+        toast.error('Informe sua senha atual para alterar a senha.');
         return;
       }
       if (form.newPassword.length < 6) {
-        setErrorMsg('A nova senha deve ter pelo menos 6 caracteres.');
+        toast.error('A nova senha deve ter pelo menos 6 caracteres.');
         return;
       }
       if (form.newPassword !== form.confirmPassword) {
-        setErrorMsg('A confirmação da senha não coincide com a nova senha.');
+        toast.error('A confirmação da senha não coincide com a nova senha.');
         return;
       }
     }
@@ -69,9 +66,9 @@ export default function PerfilClient({ initialUser }: PerfilClientProps) {
       const data = await res.json();
 
       if (!res.ok) {
-        setErrorMsg(data.error || 'Falha ao atualizar o perfil');
+        toast.error(data.error || 'Falha ao atualizar o perfil');
       } else {
-        setSuccessMsg(data.message || 'Dados atualizados com sucesso!');
+        toast.success(data.message || 'Dados atualizados com sucesso!');
         setForm((prev) => ({
           ...prev,
           currentPassword: '',
@@ -81,7 +78,7 @@ export default function PerfilClient({ initialUser }: PerfilClientProps) {
         router.refresh();
       }
     } catch {
-      setErrorMsg('Erro de conexão ao salvar alterações.');
+      toast.error('Erro de conexão ao salvar alterações.');
     } finally {
       setLoading(false);
     }
@@ -108,20 +105,6 @@ export default function PerfilClient({ initialUser }: PerfilClientProps) {
 
   return (
     <div className="space-y-6">
-      {successMsg && (
-        <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-800">
-          <CheckCircle2 size={18} className="shrink-0 text-emerald-600" />
-          <span>{successMsg}</span>
-        </div>
-      )}
-
-      {errorMsg && (
-        <div className="flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">
-          <AlertCircle size={18} className="shrink-0 text-red-600" />
-          <span>{errorMsg}</span>
-        </div>
-      )}
-
       <form onSubmit={handleSaveProfile} className="space-y-6">
         {/* Card 1: Dados Pessoais e Cadastrais */}
         <div className="card">

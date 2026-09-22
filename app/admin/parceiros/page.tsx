@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Building2, CheckCircle, Clock, XCircle, Plus, UserPlus } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
+import { toast } from '@/components/ui/toast';
 
 interface Parceiro {
   id: string;
@@ -70,7 +71,6 @@ function AdminParceirosInner() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(FORM_VAZIO);
   const [saving, setSaving] = useState(false);
-  const [feedback, setFeedback] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
 
   async function load() {
     setLoading(true);
@@ -103,7 +103,6 @@ function AdminParceirosInner() {
   async function criarParceiro(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    setFeedback(null);
     try {
       const res = await fetch('/api/admin/parceiros', {
         method: 'POST',
@@ -115,15 +114,13 @@ function AdminParceirosInner() {
         const texto = Array.isArray(data.issues) && data.issues.length > 1
           ? data.issues.join(' · ')
           : (data.error || 'Não foi possível cadastrar.');
-        setFeedback({ tipo: 'erro', texto });
+        toast.error(texto);
         return;
       }
-      setFeedback({
-        tipo: 'ok',
-        texto: data.inviteSent
-          ? `${data.partner.razao_social} cadastrada. Convite enviado para ${data.director.email}.`
-          : `${data.partner.razao_social} cadastrada, mas o convite não saiu. Reenvie na tela do parceiro.`,
-      });
+      const textoOk = data.inviteSent
+        ? `${data.partner.razao_social} cadastrada. Convite enviado para ${data.director.email}.`
+        : `${data.partner.razao_social} cadastrada, mas o convite não saiu. Reenvie na tela do parceiro.`;
+      toast.success(textoOk);
       setForm(FORM_VAZIO);
       setShowForm(false);
       await load();
@@ -144,9 +141,10 @@ function AdminParceirosInner() {
         body: JSON.stringify({ parceiro_id: id, status }),
       });
       if (!response.ok) {
-        window.alert('Não foi possível atualizar o parceiro. Tente novamente.');
+        toast.error('Não foi possível atualizar o parceiro. Tente novamente.');
         return;
       }
+      toast.success(`Parceiro ${action === 'suspender' ? 'suspenso' : 'ativado'} com sucesso!`);
       await load();
     } finally {
       setUpdating(null);
@@ -167,25 +165,13 @@ function AdminParceirosInner() {
         {canManageStatus && (
           <button
             type="button"
-            onClick={() => { setShowForm((v) => !v); setFeedback(null); }}
+            onClick={() => setShowForm((v) => !v)}
             className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#00d4e0] text-[#072a33] font-black rounded-xl shadow-xs hover:bg-[#00b8c4] transition-all text-xs uppercase tracking-wider shrink-0"
           >
             <Plus size={16} strokeWidth={2.5} /> {showForm ? 'Fechar' : 'Novo Parceiro'}
           </button>
         )}
       </section>
-
-      {feedback && (
-        <div
-          className="rounded-2xl border px-5 py-3.5 text-sm font-semibold"
-          role="status"
-          style={feedback.tipo === 'ok'
-            ? { background: '#e6f4f1', borderColor: '#a9d8d0', color: '#0f766e' }
-            : { background: '#fceceb', borderColor: '#f0bdb9', color: '#b3261e' }}
-        >
-          {feedback.texto}
-        </div>
-      )}
 
       {showForm && canManageStatus && (
         <form onSubmit={criarParceiro} className="card space-y-5">

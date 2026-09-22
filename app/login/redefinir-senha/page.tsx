@@ -3,6 +3,7 @@ import { useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
+import { toast } from '@/components/ui/toast';
 
 function RedefinirSenhaForm() {
   const searchParams = useSearchParams();
@@ -11,7 +12,6 @@ function RedefinirSenhaForm() {
 
   const [form, setForm] = useState({ newPassword: '', confirmPassword: '' });
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [message, setMessage] = useState('');
 
   if (!token) {
     return (
@@ -29,18 +29,17 @@ function RedefinirSenhaForm() {
     
     if (form.newPassword !== form.confirmPassword) {
       setStatus('error');
-      setMessage('As senhas não coincidem.');
+      toast.error('As senhas não coincidem.');
       return;
     }
 
     if (form.newPassword.length < 6) {
       setStatus('error');
-      setMessage('A senha deve ter pelo menos 6 caracteres.');
+      toast.error('A senha deve ter pelo menos 6 caracteres.');
       return;
     }
 
     setStatus('loading');
-    setMessage('');
 
     try {
       const res = await fetch('/api/auth/reset-password', {
@@ -52,18 +51,18 @@ function RedefinirSenhaForm() {
       
       if (!res.ok) {
         setStatus('error');
-        setMessage(data.error || 'Erro ao redefinir a senha');
+        toast.error(data.error || 'Erro ao redefinir a senha');
         return;
       }
       
       setStatus('success');
-      setMessage('Senha alterada com sucesso! Redirecionando para o login...');
+      toast.success('Senha alterada com sucesso! Redirecionando para o login...');
       setTimeout(() => {
         router.push('/login');
-      }, 3000);
+      }, 2500);
     } catch {
       setStatus('error');
-      setMessage('Erro de conexão. Tente novamente.');
+      toast.error('Erro de conexão. Tente novamente.');
     }
   }
 
@@ -75,7 +74,9 @@ function RedefinirSenhaForm() {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
           </svg>
         </div>
-        <p className="text-emerald-700 font-medium mb-6">{message}</p>
+        <p className="text-emerald-700 font-medium mb-6">
+          Senha alterada com sucesso! Redirecionando para o login...
+        </p>
         <Link href="/login" className="btn-primary inline-flex justify-center px-8">
           Ir para Login
         </Link>
@@ -109,12 +110,6 @@ function RedefinirSenhaForm() {
           minLength={6}
         />
       </div>
-
-      {message && (
-        <p className={`text-sm ${status === 'error' ? 'text-red-500' : 'text-emerald-600'}`}>
-          {message}
-        </p>
-      )}
 
       <button type="submit" disabled={status === 'loading'} className="btn-primary w-full justify-center py-4 text-base mt-2">
         {status === 'loading' ? 'Redefinindo...' : 'Salvar Nova Senha'}

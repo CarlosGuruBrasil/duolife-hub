@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { toast } from '@/components/ui/toast';
 import {
   GitFork,
   GitBranch,
@@ -54,8 +55,14 @@ export default function AdminGatilhosPage() {
   const [activeViewTab, setActiveViewTab] = useState<'canvas' | 'logs'>('canvas');
   const [loading, setLoading] = useState(true);
   const [salvando, setSalvando] = useState(false);
-  const [mensagemSucesso, setMensagemSucesso] = useState<string | null>(null);
-  const [mensagemErro, setMensagemErro] = useState<string | null>(null);
+
+  const setMensagemSucesso = useCallback((msg: string | null) => {
+    if (msg) toast.success(msg);
+  }, []);
+
+  const setMensagemErro = useCallback((msg: string | null) => {
+    if (msg) toast.error(msg);
+  }, []);
 
   // Catálogo de eventos e templates
   const [eventosDisponiveis, setEventosDisponiveis] = useState<EventoInfo[]>([]);
@@ -267,7 +274,7 @@ export default function AdminGatilhosPage() {
     if (!arvoreAtivaId) return;
     const no = nosAtuais.find((n) => n.id === noId);
     if (no?.tipo === 'GATILHO') {
-      alert('O Nó Raiz (Gatilho) não pode ser removido.');
+      toast.error('O Nó Raiz (Gatilho) não pode ser removido.');
       return;
     }
 
@@ -561,22 +568,6 @@ export default function AdminGatilhosPage() {
           )}
         </div>
       </div>
-
-      {/* Alertas */}
-      {mensagemSucesso && (
-        <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800 text-sm">
-          <CheckCircle2 className="size-5 shrink-0 text-emerald-600 mt-0.5" />
-          <div className="flex-1 font-medium">{mensagemSucesso}</div>
-          <button onClick={() => setMensagemSucesso(null)} className="font-bold">&times;</button>
-        </div>
-      )}
-      {mensagemErro && (
-        <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800 text-sm">
-          <AlertCircle className="size-5 shrink-0 text-red-600 mt-0.5" />
-          <div className="flex-1 font-medium">{mensagemErro}</div>
-          <button onClick={() => setMensagemErro(null)} className="font-bold">&times;</button>
-        </div>
-      )}
 
       {/* Navegação por Abas */}
       <div className="flex items-center border-b border-gray-200 gap-6">

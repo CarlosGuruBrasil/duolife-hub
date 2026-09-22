@@ -26,6 +26,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
+import { toast } from '@/components/ui/toast';
 
 function parseCurrency(str: string): number {
   if (!str) return 0;
@@ -139,7 +140,6 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<PlanData | null>(null);
   const [savingPlan, setSavingPlan] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Porcentagens do Split de Distribuição de Verba (Planilha Oficial DuoLife & KEV Seguros)
   const [splitKev, setSplitKev] = useState<number>(41.39);
@@ -201,9 +201,10 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
           setCouponModalOpen(false);
           setEditingCouponId(null);
           await loadData();
+          toast.success('Cupom atualizado com sucesso!');
         } else {
-          const data = await res.json();
-          alert(data.error || 'Erro ao atualizar cupom');
+          const data = await res.json().catch(() => ({}));
+          toast.error(data.error || 'Erro ao atualizar cupom');
         }
       } else {
         const res = await fetch('/api/admin/produtos/cupons', {
@@ -220,13 +221,15 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
           setCouponModalOpen(false);
           setCouponForm({ codigo: '', desconto: 10, validade: '', cupomAtivo: true });
           await loadData();
+          toast.success('Cupom criado com sucesso!');
         } else {
-          const data = await res.json();
-          alert(data.error || 'Erro ao criar cupom');
+          const data = await res.json().catch(() => ({}));
+          toast.error(data.error || 'Erro ao criar cupom');
         }
       }
     } catch (err) {
       console.error('Erro ao salvar cupom:', err);
+      toast.error('Erro inesperado ao salvar cupom');
     } finally {
       setSavingCoupon(false);
     }
@@ -241,11 +244,13 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
 
       if (res.ok) {
         await loadData();
+        toast.success(`Cupom "${codigo}" excluído com sucesso!`);
       } else {
-        alert('Erro ao excluir cupom');
+        toast.error('Erro ao excluir cupom');
       }
     } catch (err) {
       console.error('Erro ao excluir cupom:', err);
+      toast.error('Erro inesperado ao excluir cupom');
     }
   }
 
@@ -290,7 +295,6 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
   function startEditPlan(plan: PlanData) {
     setEditingPlanId(plan.id);
     setEditForm({ ...plan });
-    setSaveSuccess(false);
   }
 
   function cancelEditPlan() {
@@ -310,14 +314,17 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
       });
 
       if (res.ok) {
-        setSaveSuccess(true);
+        toast.success('Alterações no plano salvas com sucesso!');
         setEditingPlanId(null);
         setEditForm(null);
         await loadData();
-        setTimeout(() => setSaveSuccess(false), 3000);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        toast.error(errData.error || 'Erro ao salvar alterações no plano');
       }
     } catch (err) {
       console.error('Erro ao salvar plano:', err);
+      toast.error('Erro de comunicação ao salvar plano');
     } finally {
       setSavingPlan(false);
     }
@@ -462,12 +469,6 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
               Acompanhe e edite os valores das 7 faixas de cobertura (R$ 100k até R$ 3 Milhões), franquia e parcelamento integrado.
             </p>
           </div>
-
-          {saveSuccess && (
-            <div className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 border border-emerald-200 px-3.5 py-1.5 text-xs font-extrabold text-emerald-800">
-              <CheckCircle2 className="h-4 w-4 text-emerald-600" /> Alterações salvas com sucesso!
-            </div>
-          )}
         </div>
 
         {/* Tabela de Planos no Padrão do Sistema */}

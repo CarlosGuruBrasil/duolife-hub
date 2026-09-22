@@ -2,16 +2,15 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { toast } from '@/components/ui/toast';
 
 export default function EsqueciASenha() {
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [message, setMessage] = useState('');
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setStatus('loading');
-    setMessage('');
 
     try {
       const res = await fetch('/api/auth/forgot-password', {
@@ -23,16 +22,16 @@ export default function EsqueciASenha() {
       
       if (!res.ok) {
         setStatus('error');
-        setMessage(data.error || 'Erro ao solicitar recuperação');
+        toast.error(data.error || 'Erro ao solicitar recuperação');
         return;
       }
       
       setStatus('success');
-      setMessage('Instruções enviadas! Verifique sua caixa de entrada.');
+      toast.success('Instruções enviadas! Verifique sua caixa de entrada.');
       setEmail('');
     } catch {
       setStatus('error');
-      setMessage('Erro de conexão. Tente novamente.');
+      toast.error('Erro de conexão. Tente novamente.');
     }
   }
 
@@ -75,12 +74,6 @@ export default function EsqueciASenha() {
                 placeholder="seu@email.com" 
               />
             </div>
-
-            {message && (
-              <p className={`text-sm ${status === 'error' ? 'text-red-500' : 'text-emerald-600 font-medium'}`}>
-                {message}
-              </p>
-            )}
 
             <button type="submit" disabled={status === 'loading'} className="btn-primary w-full justify-center py-4 text-base mt-2">
               {status === 'loading' ? 'Enviando...' : 'Enviar link de recuperação'}

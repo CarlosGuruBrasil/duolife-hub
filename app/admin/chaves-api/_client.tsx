@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { toast } from '@/components/ui/toast';
 import {
   Key,
   LockKeyhole,
@@ -112,7 +113,6 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
   } | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('visao-geral');
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
   async function handleTestZapSign() {
@@ -189,14 +189,13 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
       });
       const data = await res.json();
       setCronResult(data);
-      setFeedback({
-        type: data.ok ? 'success' : 'error',
-        message: data.ok
-          ? `Varredura de lifecycle concluída (${dryRun ? 'Modo Simulação' : 'Disparos Efetuados'})!`
-          : `Varredura concluída com avisos: ${data.errors?.join('; ') || 'Consulte os detalhes abaixo'}`,
-      });
+      if (data.ok) {
+        toast.success(`Varredura de lifecycle concluída (${dryRun ? 'Modo Simulação' : 'Disparos Efetuados'})!`);
+      } else {
+        toast.error(`Varredura concluída com avisos: ${data.errors?.join('; ') || 'Consulte os detalhes'}`);
+      }
     } catch (err: any) {
-      setFeedback({ type: 'error', message: `Erro ao acionar varredura: ${err?.message || err}` });
+      toast.error(`Erro ao acionar varredura: ${err?.message || err}`);
     } finally {
       setRunningCron(false);
     }
@@ -208,23 +207,16 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
 
   async function fetchSettings() {
     setLoading(true);
-    setFeedback(null);
     try {
       const res = await fetch('/api/admin/chaves-api');
       const data = await res.json();
       if (res.ok && data.settings) {
         setSettings((prev) => ({ ...prev, ...data.settings }));
       } else {
-        setFeedback({
-          type: 'error',
-          message: data.error || 'Falha ao carregar configurações de API',
-        });
+        toast.error(data.error || 'Falha ao carregar configurações de API');
       }
     } catch {
-      setFeedback({
-        type: 'error',
-        message: 'Erro de conexão ao carregar configurações de API',
-      });
+      toast.error('Erro de conexão ao carregar configurações de API');
     } finally {
       setLoading(false);
     }
@@ -242,6 +234,7 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
     if (typeof navigator !== 'undefined' && navigator.clipboard) {
       navigator.clipboard.writeText(text);
       setCopiedKey(keyName);
+      toast.success(`Chave ${keyName} copiada para a área de transferência!`);
       setTimeout(() => setCopiedKey(null), 2500);
     }
   };
@@ -249,7 +242,6 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
   async function handleSave(e?: React.FormEvent) {
     if (e) e.preventDefault();
     setSaving(true);
-    setFeedback(null);
     try {
       const res = await fetch('/api/admin/chaves-api', {
         method: 'POST',
@@ -258,21 +250,12 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
       });
       const data = await res.json();
       if (res.ok) {
-        setFeedback({
-          type: 'success',
-          message: 'As configurações de API e credenciais foram salvas com sucesso!',
-        });
+        toast.success('As configurações de API e credenciais foram salvas com sucesso!');
       } else {
-        setFeedback({
-          type: 'error',
-          message: data.error || 'Falha ao salvar as configurações.',
-        });
+        toast.error(data.error || 'Falha ao salvar as configurações.');
       }
     } catch {
-      setFeedback({
-        type: 'error',
-        message: 'Erro de comunicação com o servidor ao salvar.',
-      });
+      toast.error('Erro de comunicação com o servidor ao salvar.');
     } finally {
       setSaving(false);
     }
@@ -404,24 +387,6 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
         </span>
       </div>
 
-      {/* Alertas de Feedback (Apple HIG Status Toast) */}
-      {feedback && (
-        <div
-          className={`flex items-center gap-3 p-4 rounded-2xl border text-xs font-bold animate-in fade-in duration-200 ${
-            feedback.type === 'success'
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-              : 'bg-red-50 border-red-200 text-red-800'
-          }`}
-        >
-          {feedback.type === 'success' ? (
-            <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
-          ) : (
-            <AlertCircle className="h-5 w-5 text-red-600 shrink-0" />
-          )}
-          <span className="text-sm font-semibold">{feedback.message}</span>
-        </div>
-      )}
-
       {/* 3. Barra de Navegação em Abas (Apple HIG Segmented Tab Bar) */}
       <div className="border border-gray-200 bg-white rounded-2xl p-2 shadow-xs">
         <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
@@ -432,10 +397,7 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
               <button
                 key={tab.id}
                 type="button"
-                onClick={() => {
-                  setActiveTab(tab.id);
-                  setFeedback(null);
-                }}
+                onClick={() => setActiveTab(tab.id)}
                 className={`flex items-center gap-2.5 px-4 py-2.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                   isActive
                     ? 'bg-[#0e4a5a] text-white shadow-sm'

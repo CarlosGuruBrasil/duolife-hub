@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { formatDateTime } from '@/lib/format';
+import { toast } from '@/components/ui/toast';
 
 type TeamUser = {
   id: string;
@@ -34,7 +35,6 @@ export default function PartnerTeamManager({ users }: Props) {
     managerUserId: '',
   });
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState('');
 
   const managers = users.filter((user) => user.is_active && (user.role === 'director' || user.role === 'manager'));
 
@@ -68,14 +68,13 @@ export default function PartnerTeamManager({ users }: Props) {
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
-    setMessage('');
 
     try {
       const response = await fetch('/api/parceiros/usuarios', {
-        method: 'POST',
+        method: form.id ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: form.id || undefined,
+          userId: form.id || undefined,
           name: form.name,
           email: form.email,
           password: form.password || undefined,
@@ -85,23 +84,22 @@ export default function PartnerTeamManager({ users }: Props) {
       });
       const data = await response.json();
       if (!response.ok) {
-        setMessage(data.error || 'Não foi possível salvar o colaborador.');
+        toast.error(data.error || 'Não foi possível salvar o colaborador.');
         setSaving(false);
         return;
       }
 
-      setMessage('Colaborador salvo. Atualize a página para refletir a estrutura atual.');
+      toast.success('Colaborador salvo com sucesso! Atualize a página para refletir a estrutura atual.');
       setSaving(false);
       resetForm();
     } catch {
-      setMessage('Erro de conexão ao salvar colaborador.');
+      toast.error('Erro de conexão ao salvar colaborador.');
       setSaving(false);
     }
   }
 
   async function toggle(userId: string, isActive: boolean) {
     setSaving(true);
-    setMessage('');
 
     try {
       const response = await fetch('/api/parceiros/usuarios', {
@@ -111,10 +109,14 @@ export default function PartnerTeamManager({ users }: Props) {
       });
       const data = await response.json();
       setSaving(false);
-      setMessage(response.ok ? 'Status atualizado. Atualize a página para refletir a mudança.' : (data.error || 'Não foi possível atualizar o status.'));
+      if (response.ok) {
+        toast.success('Status do colaborador atualizado com sucesso!');
+      } else {
+        toast.error(data.error || 'Não foi possível atualizar o status.');
+      }
     } catch {
       setSaving(false);
-      setMessage('Erro de conexão ao atualizar o status.');
+      toast.error('Erro de conexão ao atualizar o status.');
     }
   }
 
@@ -172,8 +174,6 @@ export default function PartnerTeamManager({ users }: Props) {
           </button>
         </div>
       </form>
-
-      {message ? <p className="text-sm text-gray-600">{message}</p> : null}
 
       <div className="overflow-x-auto rounded-2xl border border-gray-200">
         <table className="w-full min-w-[820px] text-left text-sm">

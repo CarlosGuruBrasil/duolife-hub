@@ -29,6 +29,7 @@ import {
 import type { WixComparisonResult, ComparedClientRow, MatchStatus, FieldDiff, WixSyncResult } from '@/lib/wix-compare';
 import type { WixSalesSyncResult } from '@/lib/wix-sales-sync';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
+import { toast } from '@/components/ui/toast';
 
 interface Props {
   initialData: WixComparisonResult;
@@ -95,7 +96,6 @@ export default function WixComparisonClient({ initialData }: Props) {
   const [viewMode, setViewMode] = useState<'unified' | 'side-by-side'>('unified');
   const [selectedRow, setSelectedRow] = useState<ComparedClientRow | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [refreshError, setRefreshError] = useState<string | null>(null);
 
   // Estados de Truncamento do Banco Local
   const [truncateModalOpen, setTruncateModalOpen] = useState(false);
@@ -120,7 +120,6 @@ export default function WixComparisonClient({ initialData }: Props) {
 
   async function handleRefresh() {
     setLoading(true);
-    setRefreshError(null);
     try {
       const res = await fetch('/api/admin/comparativo-wix', {
         method: 'GET',
@@ -129,11 +128,12 @@ export default function WixComparisonClient({ initialData }: Props) {
       const json = await res.json();
       if (json.ok && json.data) {
         setData(json.data);
+        toast.success('Comparativo Wix atualizado com sucesso!');
       } else {
-        setRefreshError(json.error || 'Falha ao atualizar dados do Wix.');
+        toast.error(json.error || 'Falha ao atualizar dados do Wix.');
       }
-    } catch (err) {
-      setRefreshError('Erro de conexão ao buscar dados atualizados.');
+    } catch {
+      toast.error('Erro de conexão ao buscar dados atualizados.');
     } finally {
       setLoading(false);
     }
@@ -141,7 +141,7 @@ export default function WixComparisonClient({ initialData }: Props) {
 
   async function handleImportOnlyNew() {
     if (data.summary.onlyWix === 0) {
-      window.alert('Não há novos clientes no Wix para importar. Todos os registros já constam no banco local.');
+      toast.warning('Não há novos clientes no Wix para importar. Todos os registros já constam no banco local.');
       return;
     }
 
@@ -157,7 +157,6 @@ export default function WixComparisonClient({ initialData }: Props) {
     }
 
     setSyncingNew(true);
-    setRefreshError(null);
     setSyncResult(null);
 
     try {
@@ -178,11 +177,12 @@ export default function WixComparisonClient({ initialData }: Props) {
         if (json.data) {
           setData(json.data);
         }
+        toast.success('Importação de novos clientes concluída com sucesso!');
       } else {
-        setRefreshError(json.error || 'Falha ao importar novos registros do Wix.');
+        toast.error(json.error || 'Falha ao importar novos registros do Wix.');
       }
-    } catch (err) {
-      setRefreshError('Erro de conexão durante a importação de novos clientes do Wix.');
+    } catch {
+      toast.error('Erro de conexão durante a importação de novos clientes do Wix.');
     } finally {
       setSyncingNew(false);
     }
@@ -200,7 +200,6 @@ export default function WixComparisonClient({ initialData }: Props) {
     }
 
     setSyncing(true);
-    setRefreshError(null);
     setSyncResult(null);
 
     try {
@@ -220,11 +219,12 @@ export default function WixComparisonClient({ initialData }: Props) {
         if (json.data) {
           setData(json.data);
         }
+        toast.success('Sincronização com o Wix concluída com sucesso!');
       } else {
-        setRefreshError(json.error || 'Falha ao executar sincronização do Wix.');
+        toast.error(json.error || 'Falha ao executar sincronização do Wix.');
       }
-    } catch (err) {
-      setRefreshError('Erro de conexão durante a sincronização com o banco local.');
+    } catch {
+      toast.error('Erro de conexão durante a sincronização com o banco local.');
     } finally {
       setSyncing(false);
     }
@@ -252,13 +252,18 @@ export default function WixComparisonClient({ initialData }: Props) {
         setTruncateModalOpen(false);
         setTruncateResult(json);
         setTruncateConfirmText('');
+        toast.success('Banco local truncado com sucesso!');
         // Recarrega o comparativo para refletir o banco vazio imediatamente
         await handleRefresh();
       } else {
-        setTruncateError(json.error || 'Falha ao truncar tabelas locais.');
+        const errMsg = json.error || 'Falha ao truncar tabelas locais.';
+        setTruncateError(errMsg);
+        toast.error(errMsg);
       }
-    } catch (err) {
-      setTruncateError('Erro de conexão ao executar truncamento.');
+    } catch {
+      const errMsg = 'Erro de conexão ao executar truncamento.';
+      setTruncateError(errMsg);
+      toast.error(errMsg);
     } finally {
       setTruncating(false);
     }
@@ -267,6 +272,7 @@ export default function WixComparisonClient({ initialData }: Props) {
   function handleCopyJson(text: string, key: string) {
     navigator.clipboard.writeText(text);
     setCopiedKey(key);
+    toast.success('JSON copiado para a área de transferência!');
     setTimeout(() => setCopiedKey(null), 2000);
   }
 
@@ -533,13 +539,6 @@ export default function WixComparisonClient({ initialData }: Props) {
             Última checagem: {formatDateTime(data.generatedAt)}
           </div>
         </div>
-
-        {refreshError && (
-          <div className="mt-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
-            <span>{refreshError}</span>
-          </div>
-        )}
       </section>
 
       {/* 2. Metric KPI Cards */}

@@ -4,6 +4,7 @@ import { useEffect, useState, use } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Building, ShieldCheck, Mail, Phone, MapPin, Users, Briefcase, ExternalLink, Globe, Save, CheckCircle } from 'lucide-react';
 import type { WhiteLabelConfig } from '@/lib/white-label';
+import { toast } from '@/components/ui/toast';
 
 interface CorretoraDetail {
   id: string;
@@ -47,7 +48,6 @@ export default function AdminCorretoraDetailPage({ params }: { params: Promise<{
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
 
   // Form de edição
   const [form, setForm] = useState({
@@ -57,7 +57,7 @@ export default function AdminCorretoraDetailPage({ params }: { params: Promise<{
     email: '',
     phone: '',
     primaryColor: '#004172',
-    secondaryColor: '#00a0af',
+    secondaryColor: '#002B4D',
   });
 
   async function load() {
@@ -65,20 +65,20 @@ export default function AdminCorretoraDetailPage({ params }: { params: Promise<{
     try {
       const res = await fetch(`/api/admin/corretoras/${id}`);
       const data = await res.json();
-      if (data.corretora) {
-        setCorretora(data.corretora);
-        setParceiros(data.parceiros || []);
-        setStats(data.stats || null);
-        setForm({
-          razao_social: data.corretora.razao_social || '',
-          nome_fantasia: data.corretora.nome_fantasia || '',
-          susep: data.corretora.susep || '',
-          email: data.corretora.email || '',
-          phone: data.corretora.phone || '',
-          primaryColor: data.corretora.whiteLabel?.primaryColor || '#004172',
-          secondaryColor: data.corretora.whiteLabel?.secondaryColor || '#00a0af',
-        });
-      }
+      if (!res.ok) throw new Error(data.error);
+
+      setCorretora(data.corretora);
+      setParceiros(data.parceiros ?? []);
+      setStats(data.stats ?? null);
+      setForm({
+        razao_social: data.corretora.razao_social,
+        nome_fantasia: data.corretora.nome_fantasia || '',
+        susep: data.corretora.susep || '',
+        email: data.corretora.email,
+        phone: data.corretora.phone || '',
+        primaryColor: data.corretora.whiteLabel?.primaryColor || '#004172',
+        secondaryColor: data.corretora.whiteLabel?.secondaryColor || '#002B4D',
+      });
     } catch {
       setCorretora(null);
     } finally {
@@ -93,7 +93,6 @@ export default function AdminCorretoraDetailPage({ params }: { params: Promise<{
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    setMessage(null);
 
     try {
       const res = await fetch(`/api/admin/corretoras/${id}`, {
@@ -114,14 +113,14 @@ export default function AdminCorretoraDetailPage({ params }: { params: Promise<{
 
       const data = await res.json();
       if (!res.ok) {
-        setMessage({ tipo: 'erro', texto: data.error || 'Erro ao salvar alterações' });
+        toast.error(data.error || 'Erro ao salvar alterações');
         return;
       }
 
-      setMessage({ tipo: 'ok', texto: 'Configurações da corretora atualizadas com sucesso!' });
+      toast.success('Configurações da corretora atualizadas com sucesso!');
       load();
     } catch {
-      setMessage({ tipo: 'erro', texto: 'Erro de conexão ao salvar' });
+      toast.error('Erro de conexão ao salvar');
     } finally {
       setSaving(false);
     }
@@ -236,18 +235,6 @@ export default function AdminCorretoraDetailPage({ params }: { params: Promise<{
           <div className="text-xs text-gray-500 mt-1">Produção total gerada</div>
         </div>
       </div>
-
-      {message && (
-        <div
-          className={`p-4 rounded-xl border text-sm font-medium ${
-            message.tipo === 'ok'
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-              : 'bg-red-50 border-red-200 text-red-800'
-          }`}
-        >
-          {message.texto}
-        </div>
-      )}
 
       {/* Seções em 2 colunas: Parceiros Vinculados & Configurações da Corretora */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useTransition } from 'react';
+import React, { useState, useEffect, useTransition, useCallback } from 'react';
+import { toast } from '@/components/ui/toast';
 import {
   MailCheck,
   Search,
@@ -78,7 +79,10 @@ export default function AuditoriaEmailsPage() {
   const [stats, setStats] = useState<AuditoriaStats | null>(null);
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+
+  const setError = useCallback((msg: string | null) => {
+    if (msg) toast.error(msg);
+  }, []);
 
   // Filtros
   const [search, setSearch] = useState('');
@@ -380,17 +384,6 @@ export default function AuditoriaEmailsPage() {
           </div>
         </div>
       </div>
-
-      {/* Alerta de Erro */}
-      {error && (
-        <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 flex items-start gap-3">
-          <XCircle className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
-          <div>
-            <p className="font-semibold">Erro na consulta de auditoria</p>
-            <p className="mt-0.5">{error}</p>
-          </div>
-        </div>
-      )}
 
       {/* Barra de Filtros e Busca */}
       <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-xs space-y-3">

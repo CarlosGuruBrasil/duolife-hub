@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { Plus_Jakarta_Sans } from 'next/font/google';
 import ReferralTracker from '@/components/public/ReferralTracker';
+import { ToastContainer } from '@/components/ui/toast';
 import './globals.css';
 
 const jakarta = Plus_Jakarta_Sans({
@@ -84,6 +85,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Suspense fallback={null}>
           <ReferralTracker />
         </Suspense>
+        <ToastContainer />
         {children}
       </body>
     </html>

@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Receipt, Loader2 } from 'lucide-react';
+import { toast } from '@/components/ui/toast';
 
 interface GerarBoletoButtonProps {
   id: string;
@@ -31,14 +32,14 @@ export function GerarBoletoButton({ id, clientName, variant = 'table' }: GerarBo
       const body = await res.json().catch(() => ({}));
 
       if (!res.ok || !body.ok) {
-        alert(body.error || 'Erro ao gerar fatura/boleto no Asaas. Verifique as configurações e tente novamente.');
+        toast.error(body.error || 'Erro ao gerar fatura/boleto no Asaas. Verifique as configurações e tente novamente.');
         return;
       }
 
-      alert('Boleto / fatura gerado com sucesso no Asaas!');
-      window.location.reload();
-    } catch (err) {
-      alert('Erro de comunicação ao tentar gerar cobrança no Asaas.');
+      toast.success('Boleto / fatura gerado com sucesso no Asaas!');
+      setTimeout(() => window.location.reload(), 1200);
+    } catch {
+      toast.error('Erro de comunicação ao tentar gerar cobrança no Asaas.');
     } finally {
       setLoading(false);
     }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { toast } from '@/components/ui/toast';
 
 export default function ChangePasswordForm() {
   const [form, setForm] = useState({
@@ -9,7 +10,6 @@ export default function ChangePasswordForm() {
     confirmPassword: '',
   });
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [message, setMessage] = useState('');
 
   function updateField(field: keyof typeof form, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -20,18 +20,17 @@ export default function ChangePasswordForm() {
     
     if (form.newPassword !== form.confirmPassword) {
       setStatus('error');
-      setMessage('A nova senha e a confirmação não coincidem.');
+      toast.error('A nova senha e a confirmação não coincidem.');
       return;
     }
 
     if (form.newPassword.length < 6) {
       setStatus('error');
-      setMessage('A nova senha deve ter pelo menos 6 caracteres.');
+      toast.error('A nova senha deve ter pelo menos 6 caracteres.');
       return;
     }
 
     setStatus('saving');
-    setMessage('');
 
     try {
       const res = await fetch('/api/parceiros/me/password', {
@@ -46,16 +45,16 @@ export default function ChangePasswordForm() {
 
       if (!res.ok) {
         setStatus('error');
-        setMessage(data.error || 'Não foi possível alterar a senha.');
+        toast.error(data.error || 'Não foi possível alterar a senha.');
         return;
       }
 
       setStatus('saved');
-      setMessage('Senha alterada com sucesso.');
+      toast.success('Senha alterada com sucesso.');
       setForm({ currentPassword: '', newPassword: '', confirmPassword: '' }); // Limpa o formulário
     } catch {
       setStatus('error');
-      setMessage('Erro de conexão. Tente novamente.');
+      toast.error('Erro de conexão. Tente novamente.');
     }
   }
 
@@ -106,14 +105,8 @@ export default function ChangePasswordForm() {
         </label>
       </div>
 
-      {message && (
-        <p className={`text-sm ${status === 'error' ? 'text-red-600' : 'text-emerald-700'}`}>
-          {message}
-        </p>
-      )}
-
       <div className="flex justify-end">
-        <button type="submit" disabled={status === 'saving'} className="btn-primary justify-center px-6 py-3">
+        <button type="submit" disabled={status === 'saving'} className="btn-primary justify-center px-6 py-3 cursor-pointer">
           {status === 'saving' ? 'Alterando...' : 'Alterar senha'}
         </button>
       </div>

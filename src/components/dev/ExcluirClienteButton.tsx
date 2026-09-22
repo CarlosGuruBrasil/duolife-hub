@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { Trash2, AlertTriangle, Loader2 } from 'lucide-react';
+import { toast } from '@/components/ui/toast';
 
 interface ExcluirClienteButtonProps {
   clientId: string;
@@ -23,7 +24,6 @@ export function ExcluirClienteButton({
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -41,7 +41,6 @@ export function ExcluirClienteButton({
 
   async function handleConfirm() {
     setLoading(true);
-    setError('');
 
     try {
       const res = await fetch(`/api/admin/clientes/${encodeURIComponent(clientId)}`, {
@@ -54,6 +53,7 @@ export function ExcluirClienteButton({
         throw new Error(data.error || 'Erro ao excluir o cliente.');
       }
 
+      toast.success('Cliente excluído com sucesso!');
       setIsOpen(false);
       if (redirectTo) {
         router.push(redirectTo);
@@ -63,7 +63,7 @@ export function ExcluirClienteButton({
         router.refresh();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha na exclusão do cliente.');
+      toast.error(err instanceof Error ? err.message : 'Falha na exclusão do cliente.');
     } finally {
       setLoading(false);
     }
@@ -103,12 +103,6 @@ export function ExcluirClienteButton({
               <li>Histórico de assinaturas ZapSign e apólices serão eliminados.</li>
             </ul>
           </div>
-
-          {error && (
-            <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs text-rose-800">
-              {error}
-            </div>
-          )}
 
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
             <button

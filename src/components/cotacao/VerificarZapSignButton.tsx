@@ -1,7 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { RefreshCw, Loader2 } from 'lucide-react';
+import { toast } from '@/components/ui/toast';
 
 interface VerificarZapSignButtonProps {
   id: string;
@@ -14,6 +16,7 @@ export function VerificarZapSignButton({
   variant = 'outline',
   label,
 }: VerificarZapSignButtonProps) {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
 
   async function handleVerificar(e: React.MouseEvent) {
@@ -30,18 +33,20 @@ export function VerificarZapSignButton({
       const body = await res.json().catch(() => ({}));
 
       if (!res.ok || !body.ok) {
-        alert(body.error || 'Erro ao consultar ZapSign. Verifique a chave de API ou se o documento ainda existe.');
+        toast.error(body.error || 'Erro ao consultar ZapSign. Verifique a chave de API ou se o documento ainda existe.');
         return;
       }
 
       if (body.assinado) {
-        alert('Contrato confirmado como ASSINADO no ZapSign!');
+        toast.success('Contrato confirmado como ASSINADO no ZapSign!');
       } else {
-        alert('O contrato ainda consta como PENDENTE de assinatura no ZapSign.');
+        toast.warning('O contrato ainda consta como PENDENTE de assinatura no ZapSign.');
       }
-      window.location.reload();
+      setTimeout(() => {
+        router.refresh();
+      }, 1000);
     } catch {
-      alert('Erro de comunicação ao tentar verificar assinatura no ZapSign.');
+      toast.error('Erro de comunicação ao tentar verificar assinatura no ZapSign.');
     } finally {
       setLoading(false);
     }

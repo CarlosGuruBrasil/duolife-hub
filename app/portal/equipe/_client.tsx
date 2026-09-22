@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import type { AuthUser } from '@/lib/auth';
+import { toast } from '@/components/ui/toast';
 
 interface Vendedor {
   partner_id: string;
@@ -104,8 +105,6 @@ export default function EquipeClient({ user }: { user: AuthUser }) {
   // Bloqueio seguro de scroll durante exibição de modais de equipe
   useBodyScrollLock(showModal || !!passwordModalSeller);
 
-  // Feedbacks
-  const [feedback, setFeedback] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   async function loadData() {
@@ -119,10 +118,10 @@ export default function EquipeClient({ user }: { user: AuthUser }) {
         setCorretora(data.corretora || null);
         setStats(data.stats || null);
       } else {
-        setFeedback({ tipo: 'erro', texto: data.error || 'Erro ao carregar vendedores' });
+        toast.error(data.error || 'Erro ao carregar vendedores');
       }
     } catch {
-      setFeedback({ tipo: 'erro', texto: 'Erro de conexão com o servidor' });
+      toast.error('Erro de conexão com o servidor');
     } finally {
       setLoading(false);
     }
@@ -161,16 +160,13 @@ export default function EquipeClient({ user }: { user: AuthUser }) {
       });
       const data = await res.json();
       if (res.ok) {
-        setFeedback({
-          tipo: 'ok',
-          texto: `Vendedor ${vendedor.razao_social} ${novoStatus ? 'ativado' : 'desativado'} com sucesso.`,
-        });
+        toast.success(`Vendedor ${vendedor.razao_social} ${novoStatus ? 'ativado' : 'desativado'} com sucesso.`);
         loadData();
       } else {
-        setFeedback({ tipo: 'erro', texto: data.error || 'Erro ao atualizar status' });
+        toast.error(data.error || 'Erro ao atualizar status');
       }
     } catch {
-      setFeedback({ tipo: 'erro', texto: 'Falha de comunicação' });
+      toast.error('Falha de comunicação');
     } finally {
       setActionLoadingId(null);
     }
@@ -189,15 +185,12 @@ export default function EquipeClient({ user }: { user: AuthUser }) {
       });
       const data = await res.json();
       if (res.ok) {
-        setFeedback({
-          tipo: 'ok',
-          texto: `Convite de acesso enviado para ${vendedor.email} com sucesso!`,
-        });
+        toast.success(`Convite de acesso enviado para ${vendedor.email} com sucesso!`);
       } else {
-        setFeedback({ tipo: 'erro', texto: data.error || 'Falha ao reenviar convite' });
+        toast.error(data.error || 'Falha ao reenviar convite');
       }
     } catch {
-      setFeedback({ tipo: 'erro', texto: 'Falha ao disparar convite' });
+      toast.error('Falha ao disparar convite');
     } finally {
       setActionLoadingId(null);
     }
@@ -207,7 +200,6 @@ export default function EquipeClient({ user }: { user: AuthUser }) {
   async function handleCreateVendedor(e: React.FormEvent) {
     e.preventDefault();
     setSubmitting(true);
-    setFeedback(null);
 
     try {
       const res = await fetch('/api/portal/equipe', {
@@ -218,12 +210,9 @@ export default function EquipeClient({ user }: { user: AuthUser }) {
       const data = await res.json();
 
       if (res.ok) {
-        setFeedback({
-          tipo: 'ok',
-          texto: `Vendedor "${formData.name}" cadastrado com sucesso! ${
-            data.emailSent ? 'Convite enviado por e-mail.' : `Senha gerada: ${data.passwordGenerated}`
-          }`,
-        });
+        toast.success(`Vendedor "${formData.name}" cadastrado com sucesso! ${
+          data.emailSent ? 'Convite enviado por e-mail.' : `Senha gerada: ${data.passwordGenerated}`
+        }`);
         setShowModal(false);
         setFormData({
           name: '',
@@ -237,10 +226,10 @@ export default function EquipeClient({ user }: { user: AuthUser }) {
         });
         loadData();
       } else {
-        setFeedback({ tipo: 'erro', texto: data.error || 'Erro ao cadastrar vendedor' });
+        toast.error(data.error || 'Erro ao cadastrar vendedor');
       }
     } catch {
-      setFeedback({ tipo: 'erro', texto: 'Erro de conexão com o servidor' });
+      toast.error('Erro de conexão com o servidor');
     } finally {
       setSubmitting(false);
     }
@@ -260,17 +249,14 @@ export default function EquipeClient({ user }: { user: AuthUser }) {
       });
       const data = await res.json();
       if (res.ok) {
-        setFeedback({
-          tipo: 'ok',
-          texto: `Senha de ${passwordModalSeller.razao_social} redefinida com sucesso!`,
-        });
+        toast.success(`Senha de ${passwordModalSeller.razao_social} redefinida com sucesso!`);
         setPasswordModalSeller(null);
         setNewPasswordInput('');
       } else {
-        setFeedback({ tipo: 'erro', texto: data.error || 'Erro ao redefinir senha' });
+        toast.error(data.error || 'Erro ao redefinir senha');
       }
     } catch {
-      setFeedback({ tipo: 'erro', texto: 'Erro de conexão' });
+      toast.error('Erro de conexão');
     } finally {
       setPasswordSubmitting(false);
     }
@@ -294,7 +280,6 @@ export default function EquipeClient({ user }: { user: AuthUser }) {
         <button
           onClick={() => {
             setShowModal(true);
-            setFeedback(null);
           }}
           className="inline-flex items-center justify-center gap-2 bg-[#0e4a5a] text-white hover:bg-[#072a33] px-5 py-2.5 rounded-xl font-bold text-sm shadow-md transition-all hover:scale-[1.01]"
         >
@@ -303,30 +288,7 @@ export default function EquipeClient({ user }: { user: AuthUser }) {
         </button>
       </div>
 
-      {/* 2. Feedback de Notificação */}
-      {feedback && (
-        <div
-          className={`flex items-center justify-between p-4 rounded-xl border text-sm font-medium ${
-            feedback.tipo === 'ok'
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-              : 'bg-red-50 border-red-200 text-red-800'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            {feedback.tipo === 'ok' ? (
-              <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
-            ) : (
-              <AlertCircle className="h-5 w-5 text-red-600 shrink-0" />
-            )}
-            <span>{feedback.texto}</span>
-          </div>
-          <button onClick={() => setFeedback(null)} className="p-1 hover:opacity-75">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-
-      {/* 3. Cards de Indicadores da Equipe */}
+      {/* 2. Cards de Indicadores da Equipe */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-xs">
           <div className="flex items-center justify-between">

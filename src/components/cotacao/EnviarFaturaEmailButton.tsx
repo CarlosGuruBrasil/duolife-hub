@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Mail, Loader2, CheckCircle2, AlertCircle, X, Clock } from 'lucide-react';
+import { toast } from '@/components/ui/toast';
 
 interface EnviarFaturaEmailButtonProps {
   cotacaoId: string;
@@ -25,7 +26,6 @@ export function EnviarFaturaEmailButton({
   const [modalOpen, setModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
-  const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -41,18 +41,9 @@ export function EnviarFaturaEmailButton({
     };
   }, [cooldown]);
 
-  // Limpa feedback após 8 segundos
-  useEffect(() => {
-    if (feedback) {
-      const t = setTimeout(() => setFeedback(null), 8000);
-      return () => clearTimeout(t);
-    }
-  }, [feedback]);
-
   async function handleConfirmarEnvio() {
     setModalOpen(false);
     setLoading(true);
-    setFeedback(null);
     setCooldown(20); // Trava o botão imediatamente por 20 segundos
 
     try {
@@ -64,22 +55,13 @@ export function EnviarFaturaEmailButton({
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok || !data.ok) {
-        setFeedback({
-          type: 'error',
-          message: data.error || 'Erro ao enviar e-mail com a fatura. Tente novamente.',
-        });
+        toast.error(data.error || 'Erro ao enviar e-mail com a fatura. Tente novamente.');
         return;
       }
 
-      setFeedback({
-        type: 'success',
-        message: data.message || `E-mail com a fatura enviado com sucesso para ${clientEmail || 'o cliente'}!`,
-      });
-    } catch (err: unknown) {
-      setFeedback({
-        type: 'error',
-        message: 'Erro de conexão com o servidor ao solicitar o envio do e-mail.',
-      });
+      toast.success(data.message || `E-mail com a fatura enviado com sucesso para ${clientEmail || 'o cliente'}!`);
+    } catch {
+      toast.error('Erro de conexão com o servidor ao solicitar o envio do e-mail.');
     } finally {
       setLoading(false);
     }
@@ -139,24 +121,6 @@ export function EnviarFaturaEmailButton({
             </>
           )}
         </button>
-
-        {/* Feedback visual inline de envio */}
-        {feedback && (
-          <div
-            className={`flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-lg border animate-in fade-in duration-200 mt-0.5 ${
-              feedback.type === 'success'
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                : 'bg-red-50 text-red-800 border-red-200'
-            }`}
-          >
-            {feedback.type === 'success' ? (
-              <CheckCircle2 size={12} className="text-emerald-600 shrink-0" />
-            ) : (
-              <AlertCircle size={12} className="text-red-600 shrink-0" />
-            )}
-            <span className="font-medium">{feedback.message}</span>
-          </div>
-        )}
       </div>
 
       {/* Modal de Confirmação em Tema Claro (Design System) */}

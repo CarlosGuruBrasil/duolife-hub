@@ -8,6 +8,7 @@ import { formatDate } from '@/lib/format';
 import { maskCnpj, maskPhone } from '@/components/modals/masks';
 import type { WhiteLabelConfig } from '@/lib/white-label';
 import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
+import { toast } from '@/components/ui/toast';
 
 interface Corretora {
   id: string;
@@ -67,7 +68,6 @@ export default function AdminCorretorasPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(FORM_VAZIO);
   const [saving, setSaving] = useState(false);
-  const [feedback, setFeedback] = useState<{ tipo: 'ok' | 'erro'; texto: string; senhaProvisoria?: string; emailLogin?: string } | null>(null);
   const [copied, setCopied] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
@@ -92,7 +92,6 @@ export default function AdminCorretorasPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    setFeedback(null);
     setCopied(false);
 
     const payload = {
@@ -126,22 +125,36 @@ export default function AdminCorretorasPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setFeedback({ tipo: 'erro', texto: data.error || 'Erro ao cadastrar corretora' });
+        toast.error(data.error || 'Erro ao cadastrar corretora');
         return;
       }
 
-      setFeedback({
-        tipo: 'ok',
-        texto: `Corretora "${data.corretora.nome_fantasia}" cadastrada com sucesso!`,
-        senhaProvisoria: data.temporaryPassword,
-        emailLogin: data.adminUser?.email || data.corretora.email,
-      });
+      const emailLogin = data.adminUser?.email || data.corretora.email;
+      const senhaProvisoria = data.temporaryPassword;
+
+      if (senhaProvisoria && emailLogin) {
+        toast.success(`Corretora "${data.corretora.nome_fantasia}" cadastrada com sucesso!`, {
+          description: (
+            <div className="mt-1 flex flex-col gap-1 text-xs">
+              <div>Login: <strong>{emailLogin}</strong></div>
+              <div>Senha provisória: <code className="rounded bg-emerald-100 px-1.5 py-0.5 font-mono font-bold text-emerald-900">{senhaProvisoria}</code></div>
+            </div>
+          ),
+          action: {
+            label: 'Copiar Credenciais',
+            onClick: () => handleCopyCredentials(emailLogin, senhaProvisoria),
+          },
+        });
+      } else {
+        toast.success(`Corretora "${data.corretora.nome_fantasia}" cadastrada com sucesso!`);
+      }
+
       setForm(FORM_VAZIO);
       setShowPassword(false);
       setShowForm(false);
       load();
     } catch {
-      setFeedback({ tipo: 'erro', texto: 'Erro de conexão ao cadastrar corretora' });
+      toast.error('Erro de conexão ao cadastrar corretora');
     } finally {
       setSaving(false);
     }
@@ -150,6 +163,7 @@ export default function AdminCorretorasPage() {
   function handleCopyCredentials(email: string, pass: string) {
     navigator.clipboard.writeText(`Acesso Corretora DuoLife Hub\nLogin: ${email}\nSenha: ${pass}`);
     setCopied(true);
+    toast.success('Credenciais de acesso copiadas para a área de transferência!');
     setTimeout(() => setCopied(false), 3000);
   }
 
@@ -166,7 +180,7 @@ export default function AdminCorretorasPage() {
         </div>
         {canManage && (
           <button
-            onClick={() => { setShowForm(!showForm); setFeedback(null); }}
+            onClick={() => setShowForm(!showForm)}
             className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#0e4a5a] hover:bg-[#072a33] text-white font-semibold text-sm shadow-sm hover:shadow-md transition-all cursor-pointer"
           >
             <Plus size={16} strokeWidth={2.5} />
@@ -174,39 +188,6 @@ export default function AdminCorretorasPage() {
           </button>
         )}
       </div>
-
-      {feedback && (
-        <div
-          className={`p-4 rounded-xl border text-sm font-medium ${
-            feedback.tipo === 'ok'
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-              : 'bg-red-50 border-red-200 text-red-800'
-          }`}
-        >
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <p className="font-semibold">{feedback.texto}</p>
-              {feedback.senhaProvisoria && (
-                <div className="mt-1 text-xs text-emerald-700 flex flex-wrap items-center gap-2">
-                  <span>Login: <strong>{feedback.emailLogin}</strong></span>
-                  <span>•</span>
-                  <span>Senha Provisória: <code className="bg-emerald-100/80 px-1.5 py-0.5 rounded font-mono font-bold text-emerald-900">{feedback.senhaProvisoria}</code></span>
-                </div>
-              )}
-            </div>
-            {feedback.senhaProvisoria && feedback.emailLogin && (
-              <button
-                type="button"
-                onClick={() => handleCopyCredentials(feedback.emailLogin!, feedback.senhaProvisoria!)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs transition-colors self-start sm:self-auto shrink-0"
-              >
-                {copied ? <Check size={14} /> : <Copy size={14} />}
-                {copied ? 'Copiado!' : 'Copiar Credenciais'}
-              </button>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Formulário de Cadastro Expansível */}
       {showForm && (

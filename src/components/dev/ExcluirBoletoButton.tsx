@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { Trash2, AlertTriangle, Loader2 } from 'lucide-react';
+import { toast } from '@/components/ui/toast';
 
 interface ExcluirBoletoButtonProps {
   /** ID interno da parcela ou ID externo Asaas (pay_...) */
@@ -22,7 +23,6 @@ export function ExcluirBoletoButton({
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -40,7 +40,6 @@ export function ExcluirBoletoButton({
 
   async function handleConfirm() {
     setLoading(true);
-    setError('');
 
     try {
       const res = await fetch(`/api/admin/boletos/${encodeURIComponent(id)}`, {
@@ -53,6 +52,7 @@ export function ExcluirBoletoButton({
         throw new Error(data.error || 'Erro ao excluir o boleto.');
       }
 
+      toast.success('Boleto excluído com sucesso!');
       setIsOpen(false);
       if (onDeleted) {
         onDeleted();
@@ -60,7 +60,7 @@ export function ExcluirBoletoButton({
         router.refresh();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha na exclusão do boleto.');
+      toast.error(err instanceof Error ? err.message : 'Falha na exclusão do boleto.');
     } finally {
       setLoading(false);
     }
@@ -97,12 +97,6 @@ export function ExcluirBoletoButton({
               Cobranças que já foram pagas/compensadas não podem ser canceladas no Asaas. Apenas cobranças pendentes ou vencidas serão excluídas.
             </p>
           </div>
-
-          {error && (
-            <div className="bg-rose-50 border border-rose-200 rounded-xl p-3 text-xs text-rose-800">
-              {error}
-            </div>
-          )}
 
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
             <button

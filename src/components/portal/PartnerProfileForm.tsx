@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Copy, Check, ExternalLink, Link2, Palette, Building, Share2 } from 'lucide-react';
 import type { WhiteLabelConfig } from '@/lib/white-label';
+import { toast } from '@/components/ui/toast';
 
 interface SaleLinkInfo {
   token: string;
@@ -85,7 +86,6 @@ export default function PartnerProfileForm({
 
   const [activeTab, setActiveTab] = useState<'links' | 'cadastral' | 'whitelabel'>('links');
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [message, setMessage] = useState('');
   const [copiedDirect, setCopiedDirect] = useState(false);
   const [copiedRef, setCopiedRef] = useState(false);
 
@@ -103,13 +103,13 @@ export default function PartnerProfileForm({
         setCopiedRef(true);
         setTimeout(() => setCopiedRef(false), 2500);
       }
+      toast.success('Link copiado para a área de transferência!');
     } catch {}
   }
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setStatus('saving');
-    setMessage('');
 
     try {
       const res = await fetch('/api/parceiros/me', {
@@ -121,15 +121,15 @@ export default function PartnerProfileForm({
 
       if (!res.ok) {
         setStatus('error');
-        setMessage(data.error || 'Não foi possível salvar as configurações.');
+        toast.error(data.error || 'Não foi possível salvar as configurações.');
         return;
       }
 
       setStatus('saved');
-      setMessage('Configurações e perfil atualizados com sucesso.');
+      toast.success('Configurações e perfil atualizados com sucesso.');
     } catch {
       setStatus('error');
-      setMessage('Erro de conexão. Tente novamente.');
+      toast.error('Erro de conexão. Tente novamente.');
     }
   }
 
@@ -519,18 +519,6 @@ export default function PartnerProfileForm({
                 />
               </label>
             </div>
-          </div>
-        )}
-
-        {message && (
-          <div
-            className={`p-4 rounded-xl text-sm border ${
-              status === 'error'
-                ? 'bg-red-50 border-red-200 text-red-700'
-                : 'bg-emerald-50 border-emerald-200 text-emerald-800'
-            }`}
-          >
-            {message}
           </div>
         )}
 

@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { toast } from '@/components/ui/toast';
 import {
   Mail,
   Plus,
@@ -37,9 +38,15 @@ export default function AdminEmailsPage() {
   const [sendingTest, setSendingTest] = useState(false);
   const [syncingAll, setSyncingAll] = useState(false);
   const [search, setSearch] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+
+  const setError = useCallback((msg: string | null) => {
+    if (msg) toast.error(msg);
+  }, []);
+
+  const setSuccess = useCallback((msg: string | null) => {
+    if (msg) toast.success(msg);
+  }, []);
 
   async function handleSyncAll() {
     setSyncingAll(true);
@@ -450,23 +457,6 @@ export default function AdminEmailsPage() {
           </button>
         </div>
       </div>
-
-      {/* Alertas */}
-      {error && (
-        <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-red-800 text-sm">
-          <AlertCircle className="size-5 shrink-0 text-red-600 mt-0.5" />
-          <div className="flex-1">{error}</div>
-          <button onClick={() => setError(null)} className="text-red-600 hover:text-red-900 font-bold">&times;</button>
-        </div>
-      )}
-
-      {success && (
-        <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-800 text-sm">
-          <CheckCircle2 className="size-5 shrink-0 text-emerald-600 mt-0.5" />
-          <div className="flex-1">{success}</div>
-          <button onClick={() => setSuccess(null)} className="text-emerald-600 hover:text-emerald-900 font-bold">&times;</button>
-        </div>
-      )}
 
       {/* Navegação por Abas */}
       <div className="flex items-center border-b border-gray-200 gap-6">

@@ -8,6 +8,7 @@ import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { formatDate } from '@/lib/format';
 import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
+import { ToastOnMount } from '@/components/ui/toast';
 
 export const dynamic = 'force-dynamic';
 
@@ -189,13 +190,16 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
           </div>
         </form>
         {error && (
-          <p className="mt-3 text-sm text-red-600">
-            {error === 'invalid'
-              ? editing
-                ? 'Preencha nome e e-mail. A senha é opcional na edição, obrigatória no cadastro novo.'
-                : 'Preencha nome, e-mail e senha com no mínimo 8 caracteres.'
-              : 'Ação não permitida.'}
-          </p>
+          <ToastOnMount
+            type="error"
+            message={
+              error === 'invalid'
+                ? editing
+                  ? 'Preencha nome e e-mail. A senha é opcional na edição, obrigatória no cadastro novo.'
+                  : 'Preencha nome, e-mail e senha com no mínimo 8 caracteres.'
+                : 'Ação não permitida.'
+            }
+          />
         )}
         <p className="mt-3 text-xs text-gray-500">
           A senha atual não pode ser exibida. Para alterar, preencha uma nova senha acima.

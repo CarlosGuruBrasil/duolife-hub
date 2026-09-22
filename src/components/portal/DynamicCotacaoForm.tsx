@@ -28,6 +28,7 @@ import {
 import { parseAtuacaoList } from '@/lib/atuacao';
 import ClienteSearchSelector, { type ClienteBuscaResult, type RenewalData } from '@/components/portal/ClienteSearchSelector';
 import DescontoDrawer from '@/components/portal/DescontoDrawer';
+import { toast } from '@/components/ui/toast';
 import {
   getRamoConfig,
   rcAdvogadosConfig,
@@ -288,9 +289,15 @@ export default function DynamicCotacaoForm({
   // Status de Processos e Loading
   const [loading, setLoading] = useState(false);
   const [loadingPlanos, setLoadingPlanos] = useState(true);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [cotacaoId, setCotacaoId] = useState('');
+
+  const setError = useCallback((msg: string) => {
+    if (msg) toast.error(msg);
+  }, []);
+
+  const setSuccess = useCallback((msg: string) => {
+    if (msg) toast.success(msg);
+  }, []);
 
   // ZapSign & Asaas links
   const [signUrl, setSignUrl] = useState('');
@@ -1178,21 +1185,6 @@ export default function DynamicCotacaoForm({
           );
         })}
       </div>
-
-      {/* Alertas de Erro e Sucesso */}
-      {error && (
-        <div className="bg-rose-50 border border-rose-200 text-rose-800 p-4 rounded-xl mb-6 flex items-center space-x-3">
-          <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0" />
-          <span className="text-sm font-medium">{error}</span>
-        </div>
-      )}
-
-      {success && (
-        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-4 rounded-xl mb-6 flex items-center space-x-3">
-          <CheckCircle className="w-5 h-5 text-emerald-600 flex-shrink-0" />
-          <span className="text-sm font-medium">{success}</span>
-        </div>
-      )}
 
       {/* ================================================================== */}
       {/* PASSO 1: PLANOS E COBERTURAS DO RAMO                               */}

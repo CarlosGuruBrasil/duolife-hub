@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { RefreshCw, Loader2, CreditCard } from 'lucide-react';
+import { toast } from '@/components/ui/toast';
 
 interface SincronizarAsaasButtonProps {
   id: string;
@@ -38,21 +39,24 @@ export function SincronizarAsaasButton({
       const body = await res.json().catch(() => ({}));
 
       if (!res.ok || !body.ok) {
-        alert(body.error || 'Erro ao sincronizar cobranças com o Asaas. Verifique a chave de API.');
+        toast.error(body.error || 'Erro ao sincronizar cobranças com o Asaas. Verifique a chave de API.');
         return;
       }
 
       if (body.paid) {
-        alert(`Pagamento CONFIRMADO no Asaas! Cotação atualizada para ${body.statusAfter?.toUpperCase() || 'APROVADA'}.`);
-        if (onSuccess) onSuccess();
-        else window.location.reload();
+        toast.success(`Pagamento CONFIRMADO no Asaas! Cotação atualizada para ${body.statusAfter?.toUpperCase() || 'APROVADA'}.`);
+        if (onSuccess) {
+          onSuccess();
+        } else {
+          setTimeout(() => window.location.reload(), 1200);
+        }
       } else if (body.chargesFound > 0) {
-        alert(`Foram localizadas ${body.chargesFound} cobrança(s) no Asaas, porém nenhuma consta como paga/confirmada.`);
+        toast.warning(`Foram localizadas ${body.chargesFound} cobrança(s) no Asaas, porém nenhuma consta como paga/confirmada.`);
       } else {
-        alert('Nenhuma cobrança localizada no Asaas para este cliente ou cotação.');
+        toast.info('Nenhuma cobrança localizada no Asaas para este cliente ou cotação.');
       }
     } catch {
-      alert('Erro de comunicação ao tentar sincronizar com o Asaas.');
+      toast.error('Erro de comunicação ao tentar sincronizar com o Asaas.');
     } finally {
       setLoading(false);
     }

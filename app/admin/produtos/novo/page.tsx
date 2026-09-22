@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, PackagePlus, CheckCircle2, AlertCircle, ShieldCheck, Sparkles, Building2 } from 'lucide-react';
+import { toast } from '@/components/ui/toast';
 
 type Partner = { id: string; razao_social: string; nome_fantasia: string | null };
 
@@ -37,7 +38,6 @@ export default function NovoProdutoPage() {
   const [partners, setPartners] = useState<Partner[]>([]);
   const [form, setForm] = useState(initial);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   useEffect(() => {
     async function loadPartners() {
@@ -64,7 +64,6 @@ export default function NovoProdutoPage() {
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setSaving(true);
-    setMessage(null);
 
     try {
       const res = await fetch('/api/admin/produtos', {
@@ -86,17 +85,17 @@ export default function NovoProdutoPage() {
       setSaving(false);
 
       if (!res.ok) {
-        setMessage({ type: 'error', text: data.error || 'Não foi possível cadastrar o produto.' });
+        toast.error(data.error || 'Não foi possível cadastrar o produto.');
         return;
       }
 
-      setMessage({ type: 'success', text: `Produto "${data.product.name}" cadastrado com sucesso!` });
+      toast.success(`Produto "${data.product.name}" cadastrado com sucesso!`);
       setTimeout(() => {
         router.push('/admin/produtos');
       }, 1200);
     } catch {
       setSaving(false);
-      setMessage({ type: 'error', text: 'Erro de conexão ao tentar salvar o produto.' });
+      toast.error('Erro de conexão ao tentar salvar o produto.');
     }
   }
 
@@ -125,24 +124,6 @@ export default function NovoProdutoPage() {
           </div>
         </div>
       </div>
-
-      {/* Alertas de Retorno */}
-      {message && (
-        <div
-          className={`flex items-center gap-3 p-4 rounded-2xl border text-sm font-semibold animate-in fade-in duration-200 ${
-            message.type === 'success'
-              ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-              : 'bg-rose-50 border-rose-200 text-rose-800'
-          }`}
-        >
-          {message.type === 'success' ? (
-            <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
-          ) : (
-            <AlertCircle className="h-5 w-5 text-rose-600 shrink-0" />
-          )}
-          <span>{message.text}</span>
-        </div>
-      )}
 
       {/* Formulário Principal em Seções Lógicas (Apple HIG Standard) */}
       <form onSubmit={handleSubmit} className="space-y-6">

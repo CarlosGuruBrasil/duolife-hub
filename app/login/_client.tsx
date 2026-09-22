@@ -5,18 +5,17 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Eye, EyeOff } from 'lucide-react';
+import { toast } from '@/components/ui/toast';
 
 export default function LoginClient() {
   const router = useRouter();
   const [form, setForm] = useState({ email: '', password: '' });
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
-    setError('');
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
@@ -25,7 +24,7 @@ export default function LoginClient() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || 'Erro ao autenticar');
+        toast.error(data.error || 'Erro ao autenticar');
         return;
       }
       if (data.user?.role?.startsWith('duolife_')) {
@@ -34,7 +33,7 @@ export default function LoginClient() {
         router.push('/portal');
       }
     } catch {
-      setError('Erro de conexão. Tente novamente.');
+      toast.error('Erro de conexão. Tente novamente.');
     } finally {
       setLoading(false);
     }
@@ -139,8 +138,6 @@ export default function LoginClient() {
                     </button>
                   </div>
                 </div>
-
-                {error && <p className="text-sm font-medium text-red-500">{error}</p>}
 
                 <button
                   type="submit"
