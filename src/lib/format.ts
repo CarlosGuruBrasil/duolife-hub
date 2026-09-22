@@ -146,3 +146,53 @@ export function formatStatusLabel(status: string | null | undefined, fallback = 
 
 export { formatAtuacao, parseAtuacaoList, AREAS_ATUACAO_MAP } from './atuacao';
 
+/**
+ * Detecta e corrige automaticamente valores de cobertura e prêmio corrompidos
+ * pela multiplicação indevida por 100 (antiga remoção ingênua do separador decimal).
+ */
+export function sanitizePlanFinancials(options: {
+  planoNome?: string | null;
+  cobertura?: unknown;
+  premio?: unknown;
+}): { cobertura: number; premio: number } {
+  let cobertura = parseCurrencyToNumber(options.cobertura, 0);
+  let premio = parseCurrencyToNumber(options.premio, 0);
+
+  const planoLower = String(options.planoNome || '').toLowerCase().trim();
+
+  // Mapeamento de LMI esperado por nome de plano
+  let expectedLmi: number | null = null;
+  if (planoLower.includes('100k') || planoLower.includes('100 mil') || planoLower.includes('100.000')) {
+    expectedLmi = 100000;
+  } else if (planoLower.includes('200k') || planoLower.includes('200 mil') || planoLower.includes('200.000')) {
+    expectedLmi = 200000;
+  } else if (planoLower.includes('300k') || planoLower.includes('300 mil') || planoLower.includes('300.000')) {
+    expectedLmi = 300000;
+  } else if (planoLower.includes('500k') || planoLower.includes('500 mil') || planoLower.includes('500.000')) {
+    expectedLmi = 500000;
+  } else if (planoLower.includes('1m') || planoLower.includes('1 milhão') || planoLower.includes('1.000.000')) {
+    expectedLmi = 1000000;
+  } else if (planoLower.includes('2m') || planoLower.includes('2 milhões') || planoLower.includes('2.000.000')) {
+    expectedLmi = 2000000;
+  } else if (planoLower.includes('3m') || planoLower.includes('3 milhões') || planoLower.includes('3.000.000')) {
+    expectedLmi = 3000000;
+  }
+
+  // Se cobertura for exatamente 100x o LMI esperado ou se for >= 10 milhões para plano <= 500k
+  if (expectedLmi !== null) {
+    if (Math.round(cobertura) === expectedLmi * 100 || (expectedLmi <= 500000 && cobertura >= 10000000)) {
+      cobertura = expectedLmi;
+    }
+  }
+
+  // Se o prêmio tiver sido multiplicado por 100 (ex: 36167 quando era 361.67)
+  if (premio >= 10000 && (expectedLmi === null || expectedLmi <= 500000)) {
+    const divided = Math.round(premio) / 100;
+    if (divided >= 100 && divided <= 6000) {
+      premio = divided;
+    }
+  }
+
+  return { cobertura, premio };
+}
+
