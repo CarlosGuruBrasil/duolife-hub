@@ -4,6 +4,7 @@ import { getAccessibleQuoteById } from '@/lib/access';
 import { upsertInsuranceClient } from '@/lib/insurance-ops';
 import { parseJsonbField } from '@/lib/json-safe';
 import { calcularPrecoServidor } from '@/lib/pricing';
+import { parseCurrencyToNumber, sanitizePlanFinancials } from '@/lib/format';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
 
@@ -203,16 +204,14 @@ export async function PATCH(
     const rawImportancia = proposal.importanciaSegurada ?? payload.importancia_segurada ?? payload.importanciaSegurada ?? (isFinancialMutable ? sanitizedInputClientData.valorCobertura : undefined);
     let importanciaSegurada: number | null = cotacao.importancia_segurada !== null ? Number(cotacao.importancia_segurada) : null;
     if (isFinancialMutable && rawImportancia !== undefined) {
-      const num = typeof rawImportancia === 'number'
-        ? rawImportancia
-        : Number(String(rawImportancia).replace(/\D/g, '')) / (String(rawImportancia).includes(',') ? 100 : 1);
-      if (!isNaN(num) && num > 0) importanciaSegurada = num;
+      const num = parseCurrencyToNumber(rawImportancia, 0);
+      if (num > 0) importanciaSegurada = num;
     }
 
     const rawPlanoNome = proposal.planoNome ?? payload.plano_nome ?? payload.nomePlano ?? sanitizedInputClientData.nomePlano;
-    const planoNome = isFinancialMutable && rawPlanoNome !== undefined
+    const planoNome: string = isFinancialMutable && rawPlanoNome !== undefined
       ? String(rawPlanoNome)
-      : (currentClientData.nomePlano || currentClientData.tipoDePlano || currentClientData.tipo || 'RC Advogados');
+      : String(currentClientData.nomePlano || currentClientData.tipoDePlano || currentClientData.tipo || 'RC Advogados');
 
     const rawFranquia = proposal.franquia ?? payload.planoFranquia ?? payload.franquia ?? sanitizedInputClientData.planoFranquia;
     const franquia = rawFranquia !== undefined
@@ -260,6 +259,19 @@ export async function PATCH(
       } else if (user.role !== 'duolife_admin' && !cotacao.premio_final) {
         return Response.json({ error: 'Não foi possível calcular o preço oficial do plano selecionado' }, { status: 422 });
       }
+    }
+
+    // Auto-cura de valores inflados (* 100) decorrentes de bugs legados
+    const sanitizedFinancials = sanitizePlanFinancials({
+      planoNome,
+      cobertura: importanciaSegurada,
+      premio: premioFinal,
+    });
+    if (sanitizedFinancials.cobertura > 0) {
+      importanciaSegurada = sanitizedFinancials.cobertura;
+    }
+    if (sanitizedFinancials.premio > 0 && (isFinancialMutable || (premioFinal !== null && premioFinal >= 10000))) {
+      premioFinal = sanitizedFinancials.premio;
     }
 
     // Mesclagem de client_data preservando dados protegidos anteriores (tokens ZapSign, checkoutId, etc.)

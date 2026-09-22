@@ -3,6 +3,7 @@ import { logger } from './logger';
 import { getSystemSetting } from './system-settings';
 import { sendTemplatedEmail } from './email-service';
 import { dispatchDomainEvent } from './triggers/dispatcher';
+import { parseCurrencyToNumber } from './format';
 
 export interface LifecycleConfig {
   renewalWindows: number[];
@@ -54,7 +55,7 @@ function formatCpfCnpj(v: string | null | undefined): string {
 
 function formatCurrency(val: unknown): string {
   if (val === null || val === undefined || val === '') return '0,00';
-  const num = typeof val === 'number' ? val : parseFloat(String(val).replace('R$', '').replace(/\./g, '').replace(',', '.').trim());
+  const num = typeof val === 'number' ? val : parseCurrencyToNumber(val, NaN);
   if (isNaN(num)) return '0,00';
   return num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }

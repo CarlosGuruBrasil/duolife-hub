@@ -12,6 +12,7 @@ import {
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 
 import type { Plano } from './CotacaoFormRC';
+import { parseCurrencyToNumber } from '@/lib/format';
 
 interface DescontoDrawerProps {
   isOpen: boolean;
@@ -25,9 +26,7 @@ interface DescontoDrawerProps {
 }
 
 function parseMoneyToNumber(v?: string | null): number {
-  if (!v) return 0;
-  const clean = String(v).replace('R$', '').replace(/\./g, '').replace(',', '.').trim();
-  return parseFloat(clean) || 0;
+  return parseCurrencyToNumber(v, 0);
 }
 
 function formatCurrency(val: number): string {

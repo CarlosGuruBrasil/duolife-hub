@@ -3,6 +3,7 @@ import { verifyAuth, isInternalUser, unauthorized, getPartnerAccessContext } fro
 import { sql } from '@/lib/pg';
 import { parseJsonbField } from '@/lib/json-safe';
 import { parseAtuacaoList } from '@/lib/atuacao';
+import { parseCurrencyToNumber } from '@/lib/format';
 
 function escapeLike(value: string): string {
   return value.replace(/([\\%_])/g, '\\$1');
@@ -13,10 +14,6 @@ function formatDateToIso(dateVal: unknown): string {
   try {
     const s = String(dateVal).trim();
     if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
-      const [d, m, y] = s.split('/');
-      return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
-    }
     const d = new Date(s);
     if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
   } catch {
@@ -38,7 +35,7 @@ function formatCpfCnpj(v: string) {
 
 function formatCurrency(val: unknown): string {
   if (val === null || val === undefined || val === '') return '';
-  const num = typeof val === 'number' ? val : parseFloat(String(val).replace('R$', '').replace(/\./g, '').replace(',', '.').trim());
+  const num = typeof val === 'number' ? val : parseCurrencyToNumber(val, NaN);
   if (isNaN(num)) return typeof val === 'string' ? val : '';
   return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }

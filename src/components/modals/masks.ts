@@ -83,14 +83,14 @@ export function formatDateToInput(dateValue?: string | Date | null): string {
   return '';
 }
 
-export function parseCurrencyToNumber(value: string | number | null | undefined): number {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : 0;
-  if (!value) return 0;
+export function parseCurrencyToNumber(value: string | number | null | undefined, fallback = 0): number {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : fallback;
+  if (!value) return fallback;
   const str = String(value)
     .replace(/R\$/gi, '')
     .replace(/\s+/g, '')
     .trim();
-  if (!str) return 0;
+  if (!str) return fallback;
 
   // Se tem vírgula (formato brasileiro: ex. 100.000,00 ou 1.250,50 ou 680,00)
   if (str.includes(',')) {

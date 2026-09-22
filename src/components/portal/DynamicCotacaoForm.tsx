@@ -26,6 +26,7 @@ import {
   UserCheck
 } from 'lucide-react';
 import { parseAtuacaoList } from '@/lib/atuacao';
+import { sanitizePlanFinancials } from '@/lib/format';
 import ClienteSearchSelector, { type ClienteBuscaResult, type RenewalData } from '@/components/portal/ClienteSearchSelector';
 import DescontoDrawer from '@/components/portal/DescontoDrawer';
 import { toast } from '@/components/ui/toast';
@@ -214,11 +215,7 @@ function formatMoneyInput(raw: string): string {
 }
 
 function parseMoneyToFloat(val?: string | number | null): number {
-  if (typeof val === 'number') return isNaN(val) ? 0 : val;
-  if (!val) return 0;
-  const clean = String(val).replace('R$', '').replace(/\./g, '').replace(',', '.').trim();
-  const n = parseFloat(clean);
-  return isNaN(n) ? 0 : n;
+  return parseCurrencyToNumber(val, 0);
 }
 
 function formatDateDisplay(dStr: string): string {
@@ -600,10 +597,18 @@ export default function DynamicCotacaoForm({
             if (planoEncontrado) {
               setPlanoSel(planoEncontrado);
             } else {
+              const { cobertura: sanitizedCob } = sanitizePlanFinancials({
+                planoNome: cd.nomePlano || cd.tipo,
+                cobertura: cd.valorCobertura || c.importancia_segurada,
+              });
+              const cobDisplay = sanitizedCob > 0
+                ? formatCurrencyBRL(sanitizedCob)
+                : (cd.valorCobertura || (c.importancia_segurada ? formatCurrencyBRL(c.importancia_segurada) : 'R$ 100.000,00'));
+
               setPlanoSel({
                 tipoDePlano: cd.tipo,
                 nomeExibido: cd.nomePlano || cd.tipo,
-                cobertura: cd.valorCobertura || (c.importancia_segurada ? formatCurrencyBRL(c.importancia_segurada) : 'R$ 100.000,00'),
+                cobertura: cobDisplay,
                 franquia: cd.planoFranquia || 'R$ 1.000,00',
                 ordem: 1,
                 parcela: String(cd.valor || '0'),
@@ -1050,6 +1055,12 @@ export default function DynamicCotacaoForm({
       delete payloadClientData.cpfCnpj;
       delete payloadClientData.isRenovacao;
 
+      const { cobertura: cleanCob } = sanitizePlanFinancials({
+        planoNome: planoSel.nomeExibido || planoSel.tipoDePlano,
+        cobertura: planoSel.cobertura,
+        premio: valorTotal,
+      });
+
       const payload = {
         cotacaoId: cotacaoId || undefined,
         clientName: form.nome,
@@ -1057,7 +1068,7 @@ export default function DynamicCotacaoForm({
         clientEmail: form.email,
         clientPhone: form.celular,
         productId: productId || resolvedRamoConfig.ramoId,
-        importanciaSegurada: parseMoneyToFloat(planoSel.cobertura),
+        importanciaSegurada: cleanCob > 0 ? cleanCob : parseMoneyToFloat(planoSel.cobertura),
         clientData: payloadClientData,
         adminSelectedPartnerId,
       };

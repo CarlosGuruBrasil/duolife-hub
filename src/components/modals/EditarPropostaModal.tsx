@@ -26,7 +26,7 @@ import {
   formatCurrencyBRL,
   parseCurrencyToNumber,
 } from './masks';
-import { formatAtuacao, parseAtuacaoList } from '@/lib/format';
+import { formatAtuacao, parseAtuacaoList, sanitizePlanFinancials } from '@/lib/format';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 
 export interface EditarPropostaModalProps {
@@ -183,19 +183,28 @@ export default function EditarPropostaModal({
       setDataInicioVigencia(
         formatDateToInput(cd.dataInicioVigencia || cd.vigencia || cd.dataVigencia || '')
       );
-      setNomePlano(String(cd.nomePlano || cd.tipoDePlano || 'RC Advogados'));
+      const planoLoaded = String(cd.nomePlano || cd.tipoDePlano || cd.tipo || 'RC Advogados');
+      setNomePlano(planoLoaded);
 
-      // Valores
-      const coberturaNum = cotacao.importancia_segurada ?? cd.valorCobertura;
+      // Valores com saneamento inteligente contra multiplicação indevida (* 100)
+      const rawCob = cotacao.importancia_segurada ?? cd.valorCobertura;
+      const rawPrem = cotacao.premio_final ?? cd.valor;
+      const sanitized = sanitizePlanFinancials({
+        planoNome: planoLoaded,
+        cobertura: rawCob,
+        premio: rawPrem,
+      });
+
       setImportanciaSegurada(
-        coberturaNum !== undefined && coberturaNum !== null
-          ? String(coberturaNum)
-          : ''
+        sanitized.cobertura > 0
+          ? String(sanitized.cobertura)
+          : (rawCob !== undefined && rawCob !== null ? String(rawCob) : '')
       );
 
-      const premioNum = cotacao.premio_final ?? cd.valor;
       setPremioFinal(
-        premioNum !== undefined && premioNum !== null ? String(premioNum) : ''
+        sanitized.premio > 0
+          ? String(sanitized.premio)
+          : (rawPrem !== undefined && rawPrem !== null ? String(rawPrem) : '')
       );
 
       setPlanoFranquia(String(cd.planoFranquia || 'R$ 1.000,00'));
@@ -253,6 +262,32 @@ export default function EditarPropostaModal({
         // Usuário segue preenchendo manualmente
       } finally {
         setLoadingCep(false);
+      }
+    }
+  };
+
+  const handlePlanoChange = (novoPlano: string) => {
+    setNomePlano(novoPlano);
+    if (!isFinancialLocked) {
+      const lower = novoPlano.toLowerCase().trim();
+      if (lower.includes('100k') || lower.includes('100 mil') || lower.includes('100.000')) {
+        setImportanciaSegurada('100000');
+        setPlanoFranquia('R$ 1.000,00');
+      } else if (lower.includes('200k') || lower.includes('200 mil') || lower.includes('200.000')) {
+        setImportanciaSegurada('200000');
+        setPlanoFranquia('R$ 2.000,00');
+      } else if (lower.includes('300k') || lower.includes('300 mil') || lower.includes('300.000')) {
+        setImportanciaSegurada('300000');
+        setPlanoFranquia('R$ 3.000,00');
+      } else if (lower.includes('500k') || lower.includes('500 mil') || lower.includes('500.000')) {
+        setImportanciaSegurada('500000');
+        setPlanoFranquia('R$ 5.000,00');
+      } else if (lower.includes('1m') || lower.includes('1 milhão') || lower.includes('1.000.000')) {
+        setImportanciaSegurada('1000000');
+      } else if (lower.includes('2m') || lower.includes('2 milhões') || lower.includes('2.000.000')) {
+        setImportanciaSegurada('2000000');
+      } else if (lower.includes('3m') || lower.includes('3 milhões') || lower.includes('3.000.000')) {
+        setImportanciaSegurada('3000000');
       }
     }
   };
@@ -342,8 +377,13 @@ export default function EditarPropostaModal({
 
       // Só altera valores financeiros se liberado
       if (!isFinancialLocked) {
-        const parsedCobertura = parseCurrencyToNumber(importanciaSegurada);
-        const parsedPremio = parseCurrencyToNumber(premioFinal);
+        const rawCobParsed = parseCurrencyToNumber(importanciaSegurada);
+        const rawPremParsed = parseCurrencyToNumber(premioFinal);
+        const { cobertura: parsedCobertura, premio: parsedPremio } = sanitizePlanFinancials({
+          planoNome: nomePlano,
+          cobertura: rawCobParsed,
+          premio: rawPremParsed,
+        });
 
         if (parsedCobertura > 0) {
           payload.importancia_segurada = parsedCobertura;
@@ -794,11 +834,17 @@ export default function EditarPropostaModal({
                       </label>
                       <input
                         type="text"
+                        list="planos-sugestoes"
                         value={nomePlano}
-                        onChange={(e) => setNomePlano(e.target.value)}
+                        onChange={(e) => handlePlanoChange(e.target.value)}
                         placeholder="RC Advogados Essencial"
                         className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all"
                       />
+                      <datalist id="planos-sugestoes">
+                        {PLANOS_SUGESTOES.map((p) => (
+                          <option key={p} value={p} />
+                        ))}
+                      </datalist>
                     </div>
 
                     {/* Cobertura / Importância Segurada */}
@@ -818,11 +864,16 @@ export default function EditarPropostaModal({
                         disabled={isFinancialLocked}
                         value={
                           isFinancialLocked
-                            ? formatCurrencyBRL(importanciaSegurada)
+                            ? formatCurrencyBRL(
+                                sanitizePlanFinancials({
+                                  planoNome: nomePlano,
+                                  cobertura: importanciaSegurada,
+                                }).cobertura || importanciaSegurada
+                              )
                             : importanciaSegurada
                         }
                         onChange={(e) => setImportanciaSegurada(e.target.value)}
-                        placeholder="R$ 500.000,00"
+                        placeholder="R$ 100.000,00"
                         className={`w-full rounded-xl border px-3.5 py-2.5 text-sm font-semibold transition-all ${
                           isFinancialLocked
                             ? 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed'
@@ -847,10 +898,17 @@ export default function EditarPropostaModal({
                         type="text"
                         disabled={isFinancialLocked}
                         value={
-                          isFinancialLocked ? formatCurrencyBRL(premioFinal) : premioFinal
+                          isFinancialLocked
+                            ? formatCurrencyBRL(
+                                sanitizePlanFinancials({
+                                  planoNome: nomePlano,
+                                  premio: premioFinal,
+                                }).premio || premioFinal
+                              )
+                            : premioFinal
                         }
                         onChange={(e) => setPremioFinal(e.target.value)}
-                        placeholder="R$ 1.500,00"
+                        placeholder="R$ 361,67"
                         className={`w-full rounded-xl border px-3.5 py-2.5 text-sm font-semibold transition-all ${
                           isFinancialLocked
                             ? 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed'

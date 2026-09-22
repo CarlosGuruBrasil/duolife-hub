@@ -928,6 +928,66 @@ async function runRuntimeSchemaSetup(): Promise<void> {
   `;
   await sql`CREATE INDEX IF NOT EXISTS idx_lifecycle_cron_logs_created_at ON lifecycle_cron_logs (created_at DESC)`;
 
+  // Reparo idempotente de registros com valores financeiros inflados (* 100) legados
+  try {
+    await sql`
+      UPDATE cotacoes
+      SET importancia_segurada = 100000.00
+      WHERE importancia_segurada = 10000000.00
+        AND (
+          client_data->>'tipo' ILIKE '%100k%'
+          OR client_data->>'tipoDePlano' ILIKE '%100k%'
+          OR client_data->>'nomePlano' ILIKE '%100k%'
+          OR client_data->>'nomePlano' ILIKE '%100 mil%'
+          OR client_data->>'planoNome' ILIKE '%100k%'
+        )
+    `;
+    await sql`
+      UPDATE cotacoes
+      SET importancia_segurada = 200000.00
+      WHERE importancia_segurada = 20000000.00
+        AND (
+          client_data->>'tipo' ILIKE '%200k%'
+          OR client_data->>'tipoDePlano' ILIKE '%200k%'
+          OR client_data->>'nomePlano' ILIKE '%200k%'
+          OR client_data->>'nomePlano' ILIKE '%200 mil%'
+        )
+    `;
+    await sql`
+      UPDATE cotacoes
+      SET importancia_segurada = 300000.00
+      WHERE importancia_segurada = 30000000.00
+        AND (
+          client_data->>'tipo' ILIKE '%300k%'
+          OR client_data->>'tipoDePlano' ILIKE '%300k%'
+          OR client_data->>'nomePlano' ILIKE '%300k%'
+          OR client_data->>'nomePlano' ILIKE '%300 mil%'
+        )
+    `;
+    await sql`
+      UPDATE cotacoes
+      SET importancia_segurada = 500000.00
+      WHERE importancia_segurada = 50000000.00
+        AND (
+          client_data->>'tipo' ILIKE '%500k%'
+          OR client_data->>'tipoDePlano' ILIKE '%500k%'
+          OR client_data->>'nomePlano' ILIKE '%500k%'
+          OR client_data->>'nomePlano' ILIKE '%500 mil%'
+        )
+    `;
+    await sql`
+      UPDATE cotacoes
+      SET premio_final = ROUND(premio_final / 100.0, 2)
+      WHERE premio_final >= 10000.00
+        AND premio_final <= 100000.00
+        AND (
+          client_data->>'tipo' ILIKE ANY (ARRAY['%100k%', '%200k%', '%300k%', '%500k%'])
+          OR client_data->>'nomePlano' ILIKE ANY (ARRAY['%100k%', '%200k%', '%300k%', '%500k%', '%100 mil%', '%200 mil%', '%300 mil%', '%500 mil%'])
+        )
+    `;
+  } catch {
+    // Silencia se tabelas estiverem em criação
+  }
 }
 
 export async function seedInitialData(): Promise<void> {
