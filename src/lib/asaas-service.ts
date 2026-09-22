@@ -5,7 +5,14 @@ import { calcularPrecoServidor } from './pricing';
 import { ESTADOS_TERMINAIS } from './cotacao-status';
 import { getAsaasConfig } from './system-settings';
 import { dispatchDomainEvent } from './triggers/dispatcher';
-import { addBusinessDays, isDateBeforeToday, parseDateSafe, getTodayISODate, formatToISODate } from './business-days';
+import {
+  addBusinessDays,
+  isDateBeforeToday,
+  parseDateSafe,
+  getTodayISODate,
+  formatToISODate,
+  calculateBillingDueDate,
+} from './business-days';
 
 export interface GeneratePaymentOptions {
   isManualAdmin?: boolean;
@@ -200,33 +207,50 @@ export async function generateAsaasPaymentForQuote(
     }
 
     // Regra de Data de Vencimento e Permissão:
-    // Se a data de vigência for igual ou superior à data atual: Data de vigência do contrato + 2 dias úteis.
-    // Se a data de vigência for anterior à data atual:
-    //   - Parceiro / automação: Não pode gerar cobrança (bloqueado com erro orientativo).
-    //   - Admin: Pode emitir com vencimento na Data atual + 2 dias úteis.
-    const rawVigencia = clientData.dataInicioVigencia || clientData.vigencia || clientData.dataVigencia;
-    const vigenciaDate = parseDateSafe(rawVigencia) || parseDateSafe(cotacao.created_at) || parseDateSafe(getTodayISODate())!;
-    const isPastVigencia = isDateBeforeToday(vigenciaDate);
-
-    let dueDateStr: string;
-
-    if (isPastVigencia) {
-      if (!options?.isManualAdmin) {
-        logger.warn(
-          { cotacaoId: cotacao.id, vigencia: formatToISODate(vigenciaDate) },
-          'asaas.payment.blocked_past_vigencia_for_partner'
-        );
-        return {
-          ok: false,
-          error: 'A data de vigência do contrato é anterior à data atual. Apenas administradores podem emitir esta cobrança.',
-        };
+    // 1. Vigência >= hoje: Data de vigência + 2 dias úteis.
+    // 2. Vigência no passado (< hoje):
+    //    - Se contrato assinado em até 2 dias úteis após a vigência:
+    //      Permitido para vendedor, vencimento = Data da Assinatura + 2 dias úteis.
+    //    - Se ultrapassou o prazo de 2 dias úteis (ou não assinado):
+    //      Bloqueado para parceiro/vendedor. Apenas Admin pode emitir (vencimento: Data atual + 2 dias úteis).
+    let rawAssinatura = clientData.assinadoEm || clientData.dataAssinatura || clientData.signedAt;
+    if (!rawAssinatura) {
+      const [sigDoc] = await sql<{ signed_at: string | Date | null }[]>`
+        SELECT signed_at
+        FROM signature_documents
+        WHERE cotacao_id = ${cotacao.id} AND provider = 'zapsign' AND signed_at IS NOT NULL
+        ORDER BY created_at DESC
+        LIMIT 1
+      `;
+      if (sigDoc?.signed_at) {
+        rawAssinatura = sigDoc.signed_at;
       }
-      // Se for Admin: Data atual + 2 dias úteis
-      dueDateStr = addBusinessDays(getTodayISODate(), 2);
-    } else {
-      // Vigência igual ou posterior à data atual: Data de vigência + 2 dias úteis
-      dueDateStr = addBusinessDays(vigenciaDate, 2);
     }
+
+    const dueDateCalc = calculateBillingDueDate({
+      rawVigencia: clientData.dataInicioVigencia || clientData.vigencia || clientData.dataVigencia,
+      rawAssinatura,
+      createdAt: cotacao.created_at,
+      isManualAdmin: options?.isManualAdmin,
+    });
+
+    if (!dueDateCalc.ok || !dueDateCalc.dueDate) {
+      logger.warn(
+        {
+          cotacaoId: cotacao.id,
+          vigencia: dueDateCalc.vigenciaIso,
+          assinatura: dueDateCalc.assinaturaIso,
+          reason: dueDateCalc.reason,
+        },
+        'asaas.payment.blocked_by_due_date_rule'
+      );
+      return {
+        ok: false,
+        error: dueDateCalc.error || 'Não foi possível calcular a data de vencimento da cobrança.',
+      };
+    }
+
+    const dueDateStr = dueDateCalc.dueDate;
 
     const descricao = `Seguro RC Advogado - Plano ${tipoDePlano || ''}`;
 

@@ -183,3 +183,155 @@ export function compareDatesOnly(dateA: Date | string, dateB: Date | string): nu
 export function isDateBeforeToday(date: Date | string): boolean {
   return compareDatesOnly(date, getTodayISODate()) < 0;
 }
+
+export interface CalculateBillingDueDateParams {
+  rawVigencia?: Date | string | null;
+  rawAssinatura?: Date | string | null;
+  createdAt?: Date | string | null;
+  isManualAdmin?: boolean;
+  todayDate?: string; // Formato YYYY-MM-DD para testes/simulações
+}
+
+export interface CalculateBillingDueDateResult {
+  ok: boolean;
+  dueDate?: string;
+  error?: string;
+  isPastVigencia: boolean;
+  isAssinadoNoPrazo: boolean;
+  vigenciaIso: string;
+  assinaturaIso?: string;
+  maxAssinaturaToleradaIso: string;
+  reason:
+    | 'normal'
+    | 'late_signed_on_time'
+    | 'admin_override'
+    | 'blocked_late_signature'
+    | 'blocked_not_signed'
+    | 'blocked_expired_due_date';
+}
+
+/**
+ * Calcula a data de vencimento e permissão de emissão de cobrança:
+ *
+ * 1. Regra Padrão (Vigência futura ou presente >= hoje):
+ *    - Vencimento = Data de Vigência + 2 dias úteis.
+ *    - Permitido tanto para Vendedor quanto para Administrador.
+ *
+ * 2. Nova Regra para Contratos com Vigência no Passado (< hoje):
+ *    - Se o contrato foi assinado em no máximo 2 dias úteis após a vigência:
+ *      - Vendedor PODE gerar a cobrança.
+ *      - Vencimento = Data da Assinatura + 2 dias úteis.
+ *    - Se o contrato NÃO foi assinado no prazo tolerado (ou ainda não foi assinado):
+ *      - Vendedor NÃO pode gerar (bloqueado com erro orientativo).
+ *      - Administrador PODE emitir manualmente com vencimento na Data Atual + 2 dias úteis.
+ */
+export function calculateBillingDueDate(
+  params: CalculateBillingDueDateParams
+): CalculateBillingDueDateResult {
+  const todayStr = params.todayDate || getTodayISODate();
+  const todayDate = parseDateSafe(todayStr)!;
+
+  const rawVigencia = params.rawVigencia || params.createdAt || todayStr;
+  const vigenciaDate = parseDateSafe(rawVigencia) || todayDate;
+  const vigenciaIso = formatToISODate(vigenciaDate);
+
+  const isPastVigencia = compareDatesOnly(vigenciaDate, todayStr) < 0;
+  const maxAssinaturaToleradaIso = addBusinessDays(vigenciaDate, 2);
+
+  const rawAssinatura = params.rawAssinatura;
+  const assinaturaDate = parseDateSafe(rawAssinatura);
+  const assinaturaIso = assinaturaDate ? formatToISODate(assinaturaDate) : undefined;
+
+  // Assinatura é considerada no prazo tolerado se ocorreu em até 2 dias úteis após a vigência
+  const isAssinadoNoPrazo = Boolean(
+    assinaturaDate && compareDatesOnly(assinaturaDate, maxAssinaturaToleradaIso) <= 0
+  );
+
+  // 1. Cenário Normal: Vigência igual ou posterior à data atual
+  if (!isPastVigencia) {
+    const dueDate = addBusinessDays(vigenciaDate, 2);
+    return {
+      ok: true,
+      dueDate,
+      isPastVigencia: false,
+      isAssinadoNoPrazo: !!isAssinadoNoPrazo,
+      vigenciaIso,
+      assinaturaIso,
+      maxAssinaturaToleradaIso,
+      reason: 'normal',
+    };
+  }
+
+  // 2. Cenário Vigência no Passado + Assinado dentro de 2 dias úteis da vigência
+  if (isAssinadoNoPrazo && assinaturaDate) {
+    const vencimentoPorAssinatura = addBusinessDays(assinaturaDate, 2);
+
+    // Salvaguarda: a API do Asaas não permite gerar cobrança com vencimento anterior à data de hoje
+    if (compareDatesOnly(vencimentoPorAssinatura, todayStr) < 0) {
+      if (!params.isManualAdmin) {
+        return {
+          ok: false,
+          error: `O contrato foi assinado em ${assinaturaIso}, mas a data de vencimento da fatura correspondente (${vencimentoPorAssinatura}) já expirou. Solicite a um administrador a emissão da cobrança.`,
+          isPastVigencia: true,
+          isAssinadoNoPrazo: true,
+          vigenciaIso,
+          assinaturaIso,
+          maxAssinaturaToleradaIso,
+          reason: 'blocked_expired_due_date',
+        };
+      }
+      // Se for Admin emitindo manualmente, ajusta para Hoje + 2 dias úteis
+      return {
+        ok: true,
+        dueDate: addBusinessDays(todayStr, 2),
+        isPastVigencia: true,
+        isAssinadoNoPrazo: true,
+        vigenciaIso,
+        assinaturaIso,
+        maxAssinaturaToleradaIso,
+        reason: 'admin_override',
+      };
+    }
+
+    return {
+      ok: true,
+      dueDate: vencimentoPorAssinatura,
+      isPastVigencia: true,
+      isAssinadoNoPrazo: true,
+      vigenciaIso,
+      assinaturaIso,
+      maxAssinaturaToleradaIso,
+      reason: 'late_signed_on_time',
+    };
+  }
+
+  // 3. Cenário Vigência no Passado + Fora do prazo tolerado (ou sem assinatura)
+  if (!params.isManualAdmin) {
+    const error = assinaturaDate
+      ? `A data de vigência do contrato (${vigenciaIso}) já passou e a assinatura (${assinaturaIso}) ultrapassou o limite de 2 dias úteis após a vigência (limite tolerado: ${maxAssinaturaToleradaIso}). Apenas administradores podem emitir esta cobrança.`
+      : `A data de vigência do contrato (${vigenciaIso}) é anterior à data atual. A cobrança só pode ser gerada pelo vendedor se o contrato for assinado em até 2 dias úteis após a vigência (limite tolerado: ${maxAssinaturaToleradaIso}).`;
+
+    return {
+      ok: false,
+      error,
+      isPastVigencia: true,
+      isAssinadoNoPrazo: false,
+      vigenciaIso,
+      assinaturaIso,
+      maxAssinaturaToleradaIso,
+      reason: assinaturaDate ? 'blocked_late_signature' : 'blocked_not_signed',
+    };
+  }
+
+  // 4. Cenário Vigência no Passado + Admin emitindo com override
+  return {
+    ok: true,
+    dueDate: addBusinessDays(todayStr, 2),
+    isPastVigencia: true,
+    isAssinadoNoPrazo: false,
+    vigenciaIso,
+    assinaturaIso,
+    maxAssinaturaToleradaIso,
+    reason: 'admin_override',
+  };
+}

@@ -8,7 +8,7 @@ import { GerarBoletoButton } from '../_gerar-boleto-button';
 import { EnviarFaturaEmailButton } from '@/components/cotacao/EnviarFaturaEmailButton';
 import { formatCurrency, formatDate, formatDateTime, formatAtuacao } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
-import { isDateBeforeToday } from '@/lib/business-days';
+import { isDateBeforeToday, calculateBillingDueDate } from '@/lib/business-days';
 import EditarPropostaButton from '@/components/modals/EditarPropostaButton';
 import TransferirParceiroCotacaoButton from '@/components/modals/TransferirParceiroCotacaoButton';
 import { ExcluirCotacaoButton, ExcluirBoletoButton } from '@/components/dev';
@@ -213,6 +213,12 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
   const dataCriacaoContrato = signatureDoc?.created_at || (clientData.contratoGeradoEm as string | undefined);
   const rawVigencia = clientData.dataInicioVigencia || clientData.vigencia || clientData.dataVigencia;
   const isPastVigencia = rawVigencia ? isDateBeforeToday(String(rawVigencia)) : false;
+  const billingDueDateCheck = calculateBillingDueDate({
+    rawVigencia,
+    rawAssinatura: dataAssinatura,
+    createdAt: cotacao.created_at,
+    isManualAdmin: false,
+  });
 
   return (
     <div className="space-y-6 max-w-[1100px] mx-auto">
@@ -468,11 +474,30 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
                 <p className="text-xs text-slate-500 font-medium">Nenhuma fatura do Asaas foi gerada para esta cotação ainda.</p>
                 {cotacao.status === 'assinado' && (
                   <div className="pt-1 space-y-2">
-                    {isPastVigencia && (
-                      <div className="text-xs bg-amber-50 border border-amber-200 text-amber-900 p-3 rounded-xl">
-                        <strong className="block font-bold mb-0.5">⚠️ Vigência anterior à data atual:</strong>
+                    {billingDueDateCheck.isPastVigencia && (
+                      <div
+                        className={`text-xs p-3 rounded-xl border ${
+                          billingDueDateCheck.ok
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                            : 'bg-amber-50 border-amber-200 text-amber-900'
+                        }`}
+                      >
+                        <strong className="block font-bold mb-0.5">
+                          {billingDueDateCheck.ok
+                            ? 'ℹ️ Vigência anterior à data atual (Assinatura no Prazo Tolerado):'
+                            : '⚠️ Vigência anterior à data atual:'}
+                        </strong>
                         <span>
-                          A geração automática foi retida para parceiros. Como administrador, ao gerar a cobrança agora o vencimento será calculado automaticamente para a <strong>data atual + 2 dias úteis</strong>.
+                          {billingDueDateCheck.ok ? (
+                            <>
+                              O contrato foi assinado em até 2 dias úteis após a vigência. O vencimento da cobrança será calculado para a <strong>data da assinatura + 2 dias úteis ({formatDate(billingDueDateCheck.dueDate || '')})</strong>.
+                            </>
+                          ) : (
+                            <>
+                              {billingDueDateCheck.error}{' '}
+                              Como administrador, ao gerar a cobrança agora o vencimento será calculado automaticamente para a <strong>data atual + 2 dias úteis</strong>.
+                            </>
+                          )}
                         </span>
                       </div>
                     )}
