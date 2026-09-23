@@ -152,6 +152,14 @@ export interface DynamicFormState {
   [key: string]: any;
 }
 
+function getTodayIsoDate(): string {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 const initialFormState: DynamicFormState = {
   nome: '',
   cpfCnpj: '',
@@ -190,7 +198,7 @@ const initialFormState: DynamicFormState = {
   ppeRepresenta: 'Não',
   ppeCargoSelect: [],
   isRenovacao: 'Não',
-  dataInicioVigencia: '',
+  dataInicioVigencia: getTodayIsoDate(),
   seguradora: '',
   vigencia: '',
   limite: '',
@@ -323,7 +331,20 @@ export default function DynamicCotacaoForm({
     }
   }, [step]);
 
-  const [form, setForm] = useState<DynamicFormState>(initialFormState);
+  const [form, setForm] = useState<DynamicFormState>(() => ({
+    ...initialFormState,
+    dataInicioVigencia: initialFormState.dataInicioVigencia || getTodayIsoDate(),
+  }));
+
+  // Garante que a data de início da vigência seja sempre a data atual em novos cadastros
+  useEffect(() => {
+    setForm((prev) => {
+      if (!prev.dataInicioVigencia) {
+        return { ...prev, dataInicioVigencia: getTodayIsoDate() };
+      }
+      return prev;
+    });
+  }, []);
   const [planos, setPlanos] = useState<Plano[]>([]);
   const [cargosPpe, setCargosPpe] = useState<CargoPPE[]>(CARGOS_PPE_PADRAO);
   const [planoSel, setPlanoSel] = useState<Plano | null>(null);
@@ -937,6 +958,10 @@ export default function DynamicCotacaoForm({
 
     // Passo 3: Perfil e Atuação
     if (step === 3) {
+      if (!form.dataInicioVigencia) {
+        updateField('dataInicioVigencia', getTodayIsoDate());
+      }
+
       if (!isPlano100k) {
         if (resolvedRamoConfig.hasFaturamento) {
           if (!form.faturamentoAntes || !form.faturamentoDepois) {
@@ -1032,8 +1057,8 @@ export default function DynamicCotacaoForm({
         cpf: form.cpfCnpj.replace(/\D/g, ''),
         dataNascto: formatDateForIso(form.dataNascto),
         dataAtividade: formatDateForIso(form.dataAtividade),
-        dataInicioVigencia: form.dataInicioVigencia ? formatDateForIso(form.dataInicioVigencia) : null,
-        vigencia: form.vigencia ? formatDateForIso(form.vigencia) : (form.dataInicioVigencia ? formatDateForIso(form.dataInicioVigencia) : null),
+        dataInicioVigencia: formatDateForIso(form.dataInicioVigencia || getTodayIsoDate()),
+        vigencia: form.vigencia ? formatDateForIso(form.vigencia) : formatDateForIso(form.dataInicioVigencia || getTodayIsoDate()),
         dataRetroativa: form.dataRetroativa ? formatDateForIso(form.dataRetroativa) : null,
         renovacao: form.isRenovacao === 'Sim',
         isRenovacao: form.isRenovacao,
@@ -1894,11 +1919,12 @@ export default function DynamicCotacaoForm({
               <input
                 type="date"
                 required
-                value={form.dataInicioVigencia}
+                value={form.dataInicioVigencia || getTodayIsoDate()}
                 onChange={(e) => {
-                  updateField('dataInicioVigencia', e.target.value);
+                  const val = e.target.value;
+                  updateField('dataInicioVigencia', val);
                   if (form.isRenovacao === 'Sim' && !form.vigencia) {
-                    updateField('vigencia', e.target.value);
+                    updateField('vigencia', val);
                   }
                 }}
                 className="form-input mt-2"
