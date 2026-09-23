@@ -23,6 +23,7 @@ export interface CotacaoFormRCProps {
   initialCpf?: string;
   initialRenovacao?: boolean;
   ramoConfigOverride?: RamoConfig;
+  initialDiscountPercent?: number;
 }
 
 export default function CotacaoFormRC({
@@ -33,6 +34,7 @@ export default function CotacaoFormRC({
   initialCpf,
   initialRenovacao,
   ramoConfigOverride,
+  initialDiscountPercent,
 }: CotacaoFormRCProps) {
   return (
     <DynamicCotacaoForm
@@ -43,6 +45,7 @@ export default function CotacaoFormRC({
       initialCpf={initialCpf}
       initialRenovacao={initialRenovacao}
       ramoConfigOverride={ramoConfigOverride}
+      initialDiscountPercent={initialDiscountPercent}
     />
   );
 }

@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Copy, Check, ExternalLink, Link2, Palette, Building, Share2 } from 'lucide-react';
+import { Copy, Check, ExternalLink, Link2, Palette, Building, Share2, Tag } from 'lucide-react';
 import type { WhiteLabelConfig } from '@/lib/white-label';
 import { toast } from '@/components/ui/toast';
+import GerarLinkClienteButton from '@/components/portal/GerarLinkClienteButton';
 
 interface SaleLinkInfo {
   token: string;
@@ -29,6 +30,7 @@ interface PartnerProfileFormProps {
   whiteLabel: WhiteLabelConfig;
   saleLink: SaleLinkInfo;
   canEdit: boolean;
+  products?: Array<{ id: string; name: string; code?: string | null }>;
 }
 
 interface FormState {
@@ -60,6 +62,7 @@ export default function PartnerProfileForm({
   whiteLabel,
   saleLink,
   canEdit,
+  products,
 }: PartnerProfileFormProps) {
   const [form, setForm] = useState<FormState>({
     nomeFantasia: partner.nome_fantasia || '',
@@ -88,6 +91,41 @@ export default function PartnerProfileForm({
   const [status, setStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [copiedDirect, setCopiedDirect] = useState(false);
   const [copiedRef, setCopiedRef] = useState(false);
+
+  // Links exclusivos com desconto pré-aplicado
+  const [customLinks, setCustomLinks] = useState<any[]>([]);
+  const [loadingCustomLinks, setLoadingCustomLinks] = useState(false);
+  const [copiedCustomToken, setCopiedCustomToken] = useState<string | null>(null);
+
+  const fetchCustomLinks = async () => {
+    setLoadingCustomLinks(true);
+    try {
+      const res = await fetch('/api/portal/links');
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.links)) {
+        setCustomLinks(data.links);
+      }
+    } catch {
+      // silent
+    } finally {
+      setLoadingCustomLinks(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchCustomLinks();
+  }, []);
+
+  const copyCustomLink = async (url: string, token: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedCustomToken(token);
+      toast.success('Link exclusivo copiado!');
+      setTimeout(() => setCopiedCustomToken(null), 2500);
+    } catch {
+      toast.error('Erro ao copiar link.');
+    }
+  };
 
   function updateField(field: keyof FormState, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -238,6 +276,100 @@ export default function PartnerProfileForm({
               </button>
             </div>
           </div>
+        </div>
+
+        {/* Seção 3: Links Exclusivos com Desconto Pré-Aplicado */}
+        <div className="pt-6 border-t border-gray-100 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                <Tag size={16} className="text-emerald-600" />
+                <span>Links Exclusivos para Clientes (com Desconto Pré-Aplicado)</span>
+              </h3>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Gere links personalizados para campanhas ou clientes específicos onde o desconto comercial já é aplicado previamente.
+              </p>
+            </div>
+            <GerarLinkClienteButton
+              products={products || [{ id: 'prod-rc-001', name: 'RC Profissional Advogados' }]}
+              onLinkCreated={fetchCustomLinks}
+              buttonText="Gerar Novo Link Exclusivo"
+              variant="outline"
+            />
+          </div>
+
+          {loadingCustomLinks && customLinks.length === 0 ? (
+            <div className="p-4 text-center text-xs text-gray-500 bg-white rounded-xl border border-gray-200">
+              Carregando links exclusivos...
+            </div>
+          ) : customLinks.length === 0 ? (
+            <div className="p-5 text-center text-xs text-gray-500 bg-white rounded-xl border border-dashed border-gray-300 space-y-1.5">
+              <p className="font-semibold text-gray-700">Você ainda não gerou nenhum link exclusivo com desconto.</p>
+              <p className="text-[11px] text-gray-500">
+                Clique no botão &quot;Gerar Novo Link Exclusivo&quot; para definir o desconto comercial pré-aplicado e compartilhar com clientes.
+              </p>
+            </div>
+          ) : (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {customLinks.map((cl) => {
+                const isCopied = copiedCustomToken === cl.token;
+                return (
+                  <div
+                    key={cl.id}
+                    className="p-3.5 rounded-xl border border-gray-200 bg-white space-y-2.5 shadow-2xs hover:border-gray-300 transition-all"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-xs text-gray-900 truncate">
+                            {cl.label || cl.product_name || 'Link de Autocadastro'}
+                          </span>
+                          {cl.discount_percent > 0 ? (
+                            <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                              -{cl.discount_percent}% OFF
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-600 shrink-0">
+                              Tabela Normal
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-gray-500 mt-0.5 truncate">
+                          {cl.product_name || 'RC Profissional'} • {cl.total_cotacoes || 0} cotaç{cl.total_cotacoes === 1 ? 'ão' : 'ões'}
+                        </p>
+                      </div>
+                      <a
+                        href={cl.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-[#0e4a5a] hover:underline inline-flex items-center gap-1 font-medium shrink-0"
+                      >
+                        Abrir <ExternalLink size={11} />
+                      </a>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={cl.url}
+                        className="form-input text-xs font-mono bg-gray-50 text-gray-700 py-1.5 px-2 select-all flex-1"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => copyCustomLink(cl.url, cl.token)}
+                        className="btn btn-secondary py-1.5 px-2.5 text-xs flex items-center gap-1 whitespace-nowrap cursor-pointer"
+                        title="Copiar URL exclusiva"
+                      >
+                        {isCopied ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
+                        <span>{isCopied ? 'Copiado!' : 'Copiar'}</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 

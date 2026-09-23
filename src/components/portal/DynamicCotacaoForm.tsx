@@ -72,6 +72,7 @@ export interface DynamicCotacaoFormProps {
   initialCpf?: string;
   initialRenovacao?: boolean;
   ramoConfigOverride?: RamoConfig;
+  initialDiscountPercent?: number;
 }
 
 export interface DynamicFormState {
@@ -285,8 +286,10 @@ export default function DynamicCotacaoForm({
   initialCpf,
   initialRenovacao,
   ramoConfigOverride,
+  initialDiscountPercent,
 }: DynamicCotacaoFormProps) {
   const router = useRouter();
+  const isClientRegistration = Boolean(publicToken);
 
   // Estado do Ramo Configurado
   const [resolvedRamoConfig, setResolvedRamoConfig] = useState<RamoConfig>(() => {
@@ -345,7 +348,9 @@ export default function DynamicCotacaoForm({
   const [cupomError, setCupomError] = useState('');
 
   // Desconto Comercial (Teto de 40%)
-  const [descontoPercentual, setDescontoPercentual] = useState<number>(0);
+  const [descontoPercentual, setDescontoPercentual] = useState<number>(() =>
+    Math.min(40, Math.max(0, initialDiscountPercent || 0))
+  );
   const [isDescontoDrawerOpen, setIsDescontoDrawerOpen] = useState<boolean>(false);
   const [commissionRate, setCommissionRate] = useState<number>(20);
 
@@ -421,6 +426,10 @@ export default function DynamicCotacaoForm({
 
         if (data.commissionRate != null) {
           setCommissionRate(Number(data.commissionRate) || 20);
+        }
+
+        if (data.discountPercent != null && publicToken) {
+          setDescontoPercentual(Math.min(40, Math.max(0, Number(data.discountPercent) || 0)));
         }
 
         if (Array.isArray(data.planos) && data.planos.length > 0) {
@@ -1300,13 +1309,24 @@ export default function DynamicCotacaoForm({
                 </span>
               </div>
               <p className="text-xs text-gray-500 mt-0.5">
-                Selecione o limite de indenização desejado e aplique descontos comerciais autorizados.
+                {isClientRegistration
+                  ? 'Selecione o limite de indenização desejado para sua proteção.'
+                  : 'Selecione o limite de indenização desejado e aplique descontos comerciais autorizados.'}
               </p>
             </div>
 
             {/* Controle de Desconto Comercial */}
             <div className="flex items-center space-x-2">
-              {descontoPercentual > 0 ? (
+              {isClientRegistration ? (
+                descontoPercentual > 0 && (
+                  <div className="flex items-center space-x-1.5 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl shadow-2xs">
+                    <Tag className="w-3.5 h-3.5 text-emerald-600" />
+                    <span className="text-xs font-bold text-emerald-800">
+                      {descontoPercentual}% de desconto exclusivo já aplicado
+                    </span>
+                  </div>
+                )
+              ) : descontoPercentual > 0 ? (
                 <div className="flex items-center space-x-1.5 bg-emerald-50 border border-emerald-200 pl-3 pr-1.5 py-1.5 rounded-xl shadow-2xs">
                   <span className="text-xs font-bold text-emerald-800 flex items-center space-x-1.5">
                     <Tag className="w-3.5 h-3.5 text-emerald-600" />
@@ -1439,19 +1459,21 @@ export default function DynamicCotacaoForm({
                   <span>
                     Desconto de <strong>{descontoPercentual}%</strong> aplicado a todos os planos.
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => setIsDescontoDrawerOpen(true)}
-                    className="underline font-bold hover:text-emerald-950 ml-1 cursor-pointer"
-                  >
-                    Ver Comissão
-                  </button>
+                  {!isClientRegistration && (
+                    <button
+                      type="button"
+                      onClick={() => setIsDescontoDrawerOpen(true)}
+                      className="underline font-bold hover:text-emerald-950 ml-1 cursor-pointer"
+                    >
+                      Ver Comissão
+                    </button>
+                  )}
                 </div>
-              ) : (
+              ) : !isClientRegistration ? (
                 <span className="text-xs text-gray-500">
                   Você pode aplicar até 40% de desconto comercial nesta proposta.
                 </span>
-              )}
+              ) : null}
             </div>
 
             <button
@@ -2200,13 +2222,15 @@ export default function DynamicCotacaoForm({
                 <span className="text-xs text-emerald-900 font-semibold">
                   Desconto de <strong>{descontoPercentual}%</strong> aplicado
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setIsDescontoDrawerOpen(true)}
-                  className="text-xs font-bold text-emerald-700 hover:text-emerald-950 underline ml-1 cursor-pointer"
-                >
-                  Ajustar
-                </button>
+                {!isClientRegistration && (
+                  <button
+                    type="button"
+                    onClick={() => setIsDescontoDrawerOpen(true)}
+                    className="text-xs font-bold text-emerald-700 hover:text-emerald-950 underline ml-1 cursor-pointer"
+                  >
+                    Ajustar
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -2246,36 +2270,40 @@ export default function DynamicCotacaoForm({
             </div>
           )}
 
-          {/* Campo Opcional de Cupom */}
-          <div className="bg-gray-50 border border-gray-200 p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <div className="flex items-center space-x-2">
-              <Tag className="w-4 h-4 text-primary" />
-              <span className="text-xs font-bold text-gray-700">Cupom Promocional</span>
-            </div>
-            <div className="flex items-center space-x-2 w-full sm:w-auto">
-              <input
-                type="text"
-                value={cupomCode}
-                onChange={(e) => setCupomCode(e.target.value.toUpperCase())}
-                placeholder="Código do cupom"
-                disabled={cupomAplicado}
-                className="form-input text-xs py-1.5 px-3 max-w-[160px] uppercase"
-              />
-              <button
-                type="button"
-                onClick={handleValidarCupom}
-                disabled={cupomAplicado || !cupomCode.trim()}
-                className="btn btn-secondary text-xs py-1.5 px-3 cursor-pointer"
-              >
-                {cupomAplicado ? 'Aplicado' : 'Validar'}
-              </button>
-            </div>
-          </div>
-          {cupomError && <p className="text-xs text-rose-600">{cupomError}</p>}
-          {cupomAplicado && (
-            <p className="text-xs text-emerald-700 font-semibold">
-              Cupom aplicado com sucesso: {cupomDesconto}% de desconto!
-            </p>
+          {/* Campo Opcional de Cupom — Exclusivo da venda assistida pelo vendedor */}
+          {!isClientRegistration && (
+            <>
+              <div className="bg-gray-50 border border-gray-200 p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center space-x-2">
+                  <Tag className="w-4 h-4 text-primary" />
+                  <span className="text-xs font-bold text-gray-700">Cupom Promocional</span>
+                </div>
+                <div className="flex items-center space-x-2 w-full sm:w-auto">
+                  <input
+                    type="text"
+                    value={cupomCode}
+                    onChange={(e) => setCupomCode(e.target.value.toUpperCase())}
+                    placeholder="Código do cupom"
+                    disabled={cupomAplicado}
+                    className="form-input text-xs py-1.5 px-3 max-w-[160px] uppercase"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleValidarCupom}
+                    disabled={cupomAplicado || !cupomCode.trim()}
+                    className="btn btn-secondary text-xs py-1.5 px-3 cursor-pointer"
+                  >
+                    {cupomAplicado ? 'Aplicado' : 'Validar'}
+                  </button>
+                </div>
+              </div>
+              {cupomError && <p className="text-xs text-rose-600">{cupomError}</p>}
+              {cupomAplicado && (
+                <p className="text-xs text-emerald-700 font-semibold">
+                  Cupom aplicado com sucesso: {cupomDesconto}% de desconto!
+                </p>
+              )}
+            </>
           )}
 
           <div className="flex justify-between pt-4">
@@ -2572,23 +2600,25 @@ export default function DynamicCotacaoForm({
         </div>
       )}
 
-      {/* Drawer Slide-over de Desconto Comercial e Simulação de Comissão */}
-      <DescontoDrawer
-        isOpen={isDescontoDrawerOpen}
-        onClose={() => setIsDescontoDrawerOpen(false)}
-        descontoPercentual={descontoPercentual}
-        onChangeDesconto={(val) => {
-          setDescontoPercentual(val);
-          setParcelaSel(null);
-        }}
-        planoSel={planoSel}
-        planos={planos}
-        onSelectPlano={(p) => {
-          setPlanoSel(p);
-          setParcelaSel(null);
-        }}
-        commissionRate={commissionRate}
-      />
+      {/* Drawer Slide-over de Desconto Comercial e Simulação de Comissão (Exclusivo para vendedor) */}
+      {!isClientRegistration && (
+        <DescontoDrawer
+          isOpen={isDescontoDrawerOpen}
+          onClose={() => setIsDescontoDrawerOpen(false)}
+          descontoPercentual={descontoPercentual}
+          onChangeDesconto={(val) => {
+            setDescontoPercentual(val);
+            setParcelaSel(null);
+          }}
+          planoSel={planoSel}
+          planos={planos}
+          onSelectPlano={(p) => {
+            setPlanoSel(p);
+            setParcelaSel(null);
+          }}
+          commissionRate={commissionRate}
+        />
+      )}
     </div>
   );
 }

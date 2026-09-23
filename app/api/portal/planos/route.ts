@@ -12,16 +12,18 @@ export async function GET(req: Request) {
 
   let targetPartnerId: string | null = null;
   let linkedProductId: string | null = null;
+  let publicDiscountPercent = 0;
 
   if (publicToken) {
     const [link] = await sql`
-      SELECT partner_id, product_id
+      SELECT partner_id, product_id, COALESCE(discount_percent, 0) AS discount_percent
       FROM public_sale_links
       WHERE token = ${publicToken} AND status = 'active' AND (expires_at IS NULL OR expires_at > NOW())
     `;
     if (!link) return Response.json({ error: 'Token público inválido ou expirado' }, { status: 401 });
     targetPartnerId = link.partner_id;
     linkedProductId = link.product_id;
+    publicDiscountPercent = Number(link.discount_percent || 0);
   } else {
     const user = await verifyAuth();
     if (!user) return unauthorized();
@@ -161,6 +163,8 @@ export async function GET(req: Request) {
       code: productCode,
       category: productCategory,
       productId: effectiveProductId,
+      discountPercent: publicDiscountPercent,
+      isPublicClient: Boolean(publicToken),
     });
   } catch (err) {
     logger.error({ err, partnerId: targetPartnerId }, 'api.portal.planos.failed');

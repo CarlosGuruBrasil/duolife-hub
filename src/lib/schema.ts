@@ -613,10 +613,12 @@ async function runRuntimeSchemaSetup(): Promise<void> {
       used_at           TIMESTAMPTZ,
       metadata          JSONB NOT NULL DEFAULT '{}',
       created_by_user_id TEXT,
+      discount_percent  INT NOT NULL DEFAULT 0,
       created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
+  await sql`ALTER TABLE public_sale_links ADD COLUMN IF NOT EXISTS discount_percent INT NOT NULL DEFAULT 0`;
   await sql`CREATE INDEX IF NOT EXISTS public_sale_links_partner_id ON public_sale_links (partner_id)`;
   await sql`CREATE INDEX IF NOT EXISTS public_sale_links_token      ON public_sale_links (token)`;
 

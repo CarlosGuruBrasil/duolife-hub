@@ -16,6 +16,7 @@ const linkSchema = z.object({
   label: z.preprocess(emptyToUndefined, z.string().trim().min(1).optional()),
   flowType: z.enum(['internal', 'external']).optional(),
   expiresInDays: z.coerce.number().int().positive().max(3650).optional(),
+  discountPercent: z.coerce.number().min(0).max(40).default(0),
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
@@ -39,6 +40,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         pl.label,
         pl.flow_type,
         pl.status,
+        COALESCE(pl.discount_percent, 0) AS discount_percent,
         pl.expires_at,
         pl.used_at,
         pl.created_at,
@@ -87,6 +89,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         flow_type,
         label,
         status,
+        discount_percent,
         expires_at,
         metadata,
         created_by_user_id
@@ -98,11 +101,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         ${parsed.data.flowType || 'external'},
         ${parsed.data.label || null},
         'active',
+        ${parsed.data.discountPercent || 0},
         ${expiresAt},
-        ${JSON.stringify(parsed.data.metadata || {})}::jsonb,
+        ${JSON.stringify({
+          ...(parsed.data.metadata || {}),
+          discountPercent: parsed.data.discountPercent || 0,
+        })}::jsonb,
         ${admin.userId}
       )
-      RETURNING id, token, label, flow_type, status, expires_at, created_at
+      RETURNING id, token, label, flow_type, status, discount_percent, expires_at, created_at
     `;
 
     logger.info({ adminId: admin.userId, partnerId: id, token }, 'admin.partner.publicLink.created');

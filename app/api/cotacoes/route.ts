@@ -133,12 +133,13 @@ export async function POST(req: NextRequest) {
     let sourceToken: string | null = null;
     let flowType = 'internal';
     let publicLinkProductId: string | null = null;
+    let publicLinkDiscountPercent = 0;
     let isInternal = false;
     let canBypassProductAvailability = false;
 
     if (publicToken) {
       const [link] = await sql`
-        SELECT partner_id, id, flow_type, product_id
+        SELECT partner_id, id, flow_type, product_id, COALESCE(discount_percent, 0) AS discount_percent
         FROM public_sale_links
         WHERE token = ${publicToken}
           AND status = 'active'
@@ -149,6 +150,7 @@ export async function POST(req: NextRequest) {
       
       targetPartnerId = link.partner_id;
       publicLinkProductId = link.product_id;
+      publicLinkDiscountPercent = Number(link.discount_percent || 0);
       sourceToken = publicToken;
       flowType = link.flow_type || 'external';
     }
@@ -293,11 +295,19 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Se a cotação veio por link público de autocadastro do cliente (publicToken),
+    // o desconto é estritamente o determinado pelo vendedor na criação do link exclusivo.
+    // Cupons e descontos manuais enviados no corpo da requisição são ignorados para prevenir fraudes.
+    const effectiveDescontoPercent = publicToken
+      ? publicLinkDiscountPercent
+      : (Number(clientDataInput.descontoManualPercent) || 0);
+    const effectiveCupomCodigo = publicToken ? null : (clientDataInput.cupomCodigo as string | null | undefined);
+
     const preco = await calcularPrecoServidor({
       tipoDePlano: (clientDataInput.tipo as string) || (clientDataInput.tipoDePlano as string) || null,
       qtdParcelasSolicitada: Number(clientDataInput.parcela) || 1,
-      cupomCodigo: clientDataInput.cupomCodigo as string | null | undefined,
-      descontoManualPercent: Number(clientDataInput.descontoManualPercent) || 0,
+      cupomCodigo: effectiveCupomCodigo,
+      descontoManualPercent: effectiveDescontoPercent,
       flowKey: product.flow_key,
       productId: product.id,
     });
@@ -312,9 +322,11 @@ export async function POST(req: NextRequest) {
       valorOriginal: preco.valorOriginal,
       valorDesconto: preco.valorDesconto,
       descontoPercentual: preco.descontoPercentual,
-      descontoManualPercent: Number(clientDataInput.descontoManualPercent) || 0,
+      descontoManualPercent: effectiveDescontoPercent,
       valorParcela: preco.valorParcela,
       parcela: preco.qtdParcelas,
+      linkToken: publicToken || null,
+      linkDescontoPreAplicado: publicToken ? publicLinkDiscountPercent : undefined,
     };
     const premioCalculado = preco.valorTotal;
 

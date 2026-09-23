@@ -9,6 +9,7 @@ import { PortalCotacoesFilterSection } from './_components/PortalCotacoesFilterS
 import { PortalCotacoesPagination } from './_components/PortalCotacoesPagination';
 import { PeriodPreset, resolveDateRange } from '@/lib/date-filters';
 import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
+import GerarLinkClienteButton from '@/components/portal/GerarLinkClienteButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -182,7 +183,11 @@ export default async function CotacoesPage({
               : 'Acompanhe os rascunhos e propostas dos seus produtos e serviços.'}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2.5">
+          <GerarLinkClienteButton
+            products={productsList.map((p) => ({ id: p.id, name: p.name }))}
+            buttonText="Gerar Link para Cliente"
+          />
           {isCorretora && (
             <Link href="/portal/equipe" className="btn-outline text-xs py-2">
               Ver Vendedores

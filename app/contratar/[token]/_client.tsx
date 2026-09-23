@@ -17,6 +17,7 @@ type WhiteLabel = {
 type ContractLink = {
   token: string;
   label: string | null;
+  discountPercent?: number;
   partner: {
     id: string;
     razaoSocial: string;
@@ -120,7 +121,11 @@ export default function ContractPageClient({ token }: Props) {
             </div>
             
             <div className="p-2 sm:p-6">
-              <CotacaoFormRC publicToken={token} productId={link.product?.id} />
+              <CotacaoFormRC
+                publicToken={token}
+                productId={link.product?.id}
+                initialDiscountPercent={link.discountPercent}
+              />
             </div>
           </div>
         </div>

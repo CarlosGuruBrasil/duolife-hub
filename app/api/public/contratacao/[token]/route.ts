@@ -12,7 +12,7 @@ async function resolveLink(token: string) {
   const [link] = await sql`
     SELECT
       pl.id, pl.token, pl.partner_id, pl.product_id, pl.flow_type, pl.label, pl.status, pl.expires_at,
-      pl.used_at, pl.metadata, pl.created_at,
+      pl.used_at, pl.metadata, pl.created_at, COALESCE(pl.discount_percent, 0) AS discount_percent,
       p.razao_social, p.nome_fantasia, p.email, p.phone, p.metadata AS partner_metadata,
       pr.name AS product_name, pr.code AS product_code
     FROM public_sale_links pl
@@ -39,6 +39,7 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
         token: link.token,
         label: link.label,
         flowType: link.flow_type,
+        discountPercent: Number(link.discount_percent || 0),
         partner: {
           id: link.partner_id,
           razaoSocial: link.razao_social,

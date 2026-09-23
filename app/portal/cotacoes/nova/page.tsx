@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { ClipboardList, ShieldCheck } from 'lucide-react';
 import CotacaoFormRC from '@/components/portal/CotacaoFormRC';
+import GerarLinkClienteButton from '@/components/portal/GerarLinkClienteButton';
 import { verifyPartnerAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { getRamoConfig } from '@/lib/product-schemas';
@@ -175,6 +176,17 @@ export default async function NovaCotacaoPage({
           {cotacaoId ? 'Revise os dados e avance para finalizar sua proposta.' : 'Preencha as etapas para iniciar sua proposta.'}
         </p>
       </div>
+
+      {!cotacaoId && (
+        <div className="mb-6">
+          <GerarLinkClienteButton
+            products={products.map((p) => ({ id: p.id, name: p.name, code: p.code }))}
+            defaultProductId={product.id}
+            variant="banner"
+          />
+        </div>
+      )}
+
       <CotacaoFormRC
         productId={product.id}
         initialCotacaoId={cotacaoId}

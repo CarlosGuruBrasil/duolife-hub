@@ -221,6 +221,12 @@ export default async function PerfilPage() {
         whiteLabel={whiteLabel}
         saleLink={saleLink}
         canEdit={canManageCompany}
+        products={await sql<{ id: string; name: string; code?: string }[]>`
+          SELECT id, name, code
+          FROM products
+          WHERE is_active = true
+          ORDER BY name ASC
+        `}
       />
 
       {canManageCompany ? (
