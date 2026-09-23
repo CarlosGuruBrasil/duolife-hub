@@ -11,6 +11,7 @@ import { parseAtuacaoList } from '@/lib/atuacao';
 import { rateLimit, rateLimitResponse } from '@/lib/rate-limit';
 import { gerarContratoPdfBuffer } from '@/lib/pdf-contract-generator';
 import { criarDocumentoZapSignDireto } from '@/lib/zapsign-direct-docs';
+import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
 
 export async function POST(
   req: NextRequest,
@@ -436,6 +437,98 @@ export async function POST(
         raw_payload = EXCLUDED.raw_payload,
         updated_at = NOW()
     `;
+
+    // 8. Disparo do Gatilho PROPOSTA_CRIADA para envio automático do e-mail com contrato para assinatura
+    try {
+      const [clientRow] = cotacao.client_id
+        ? await sql<{ full_name: string; email: string; document_number: string; phone: string }[]>`
+            SELECT full_name, email, document_number, phone FROM insurance_clients WHERE id = ${cotacao.client_id} LIMIT 1
+          `
+        : [];
+
+      const [partnerRow] = cotacao.partner_id
+        ? await sql<{ nome: string; email: string; codigo_venda?: string }[]>`
+            SELECT
+              COALESCE(p.nome_fantasia, p.razao_social) AS nome,
+              COALESCE(NULLIF(p.email, ''), pu.email) AS email,
+              p.metadata->'whiteLabel'->>'wixCode' AS codigo_venda
+            FROM partners p
+            LEFT JOIN partner_users pu ON pu.partner_id = p.id AND pu.is_active = true
+            WHERE p.id = ${cotacao.partner_id}
+            ORDER BY pu.created_at ASC
+            LIMIT 1
+          `
+        : [];
+
+      const [vendedorRow] = cotacao.partner_user_id
+        ? await sql<{ id: string; nome: string; email: string }[]>`
+            SELECT id, name AS nome, email
+            FROM partner_users
+            WHERE id = ${cotacao.partner_user_id}
+            LIMIT 1
+          `
+        : [];
+
+      const clientName = clientRow?.full_name || cotacao.client_name || clientData.nome || 'Cliente';
+      const clientEmail = clientRow?.email || cotacao.client_email || clientData.email;
+      const clientDoc = clientRow?.document_number || cotacao.client_cpf_cnpj || clientData.cpf || clientData.cnpj || '';
+      const clientPhone = clientRow?.phone || cotacao.client_phone || clientData.celular || clientData.telefone || '';
+
+      const dispatchContext = {
+        eventType: 'PROPOSTA_CRIADA',
+        contextId: cotacao.id,
+        cliente: {
+          nome: clientName,
+          email: clientEmail,
+          documento: clientDoc,
+          telefone: clientPhone,
+        },
+        parceiro: partnerRow ? {
+          id: cotacao.partner_id,
+          nome: partnerRow.nome,
+          email: partnerRow.email,
+          codigoVenda: partnerRow.codigo_venda,
+        } : undefined,
+        vendedor: vendedorRow ? {
+          id: vendedorRow.id,
+          nome: vendedorRow.nome,
+          email: vendedorRow.email,
+        } : undefined,
+        cotacao: {
+          id: cotacao.id,
+          status: 'contrato_gerado',
+          premio_final: valorTotal,
+          cobertura: Number(cotacao.importancia_segurada) || 100000,
+          produto_codigo: 'RC-001',
+          produto_nome: 'Seguro RC Profissional',
+        },
+        dados: {
+          docToken,
+          signUrl,
+          link_assinatura: signUrl,
+          link_proposta: signUrl,
+          link_contrato: signUrl,
+          valor: valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
+          valor_parcela: valorParcelaContrato.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
+          qtd_parcelas: qtdParcelasContrato,
+          cobertura: (Number(cotacao.importancia_segurada) || 100000).toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
+          parceiro_nome: partnerRow?.nome || 'DuoLife',
+        },
+      };
+
+      const dispatchResult = await dispatchDomainEvent('PROPOSTA_CRIADA', dispatchContext);
+      logger.info(
+        {
+          cotacaoId: cotacao.id,
+          clientEmail,
+          actionsExecuted: dispatchResult.actionsExecutedCount,
+          errors: dispatchResult.errors,
+        },
+        'api.portal.gerar-contrato.trigger_dispatched'
+      );
+    } catch (dispatchErr) {
+      logger.error({ dispatchErr, cotacaoId: cotacao.id }, 'api.portal.gerar-contrato.trigger_failed');
+    }
 
     return Response.json({
       ok: true,

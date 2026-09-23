@@ -29,6 +29,7 @@ import { parseAtuacaoList } from '@/lib/atuacao';
 import { sanitizePlanFinancials } from '@/lib/format';
 import ClienteSearchSelector, { type ClienteBuscaResult, type RenewalData } from '@/components/portal/ClienteSearchSelector';
 import DescontoDrawer from '@/components/portal/DescontoDrawer';
+import { EnviarPropostaEmailButton } from '@/components/cotacao/EnviarPropostaEmailButton';
 import { toast } from '@/components/ui/toast';
 import {
   getRamoConfig,
@@ -2340,22 +2341,34 @@ export default function DynamicCotacaoForm({
                     <p className="text-xs text-gray-600">
                       Copie o link abaixo para enviar ao segurado por WhatsApp ou e-mail, ou conclua a assinatura no quadro interativo a seguir:
                     </p>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        readOnly
-                        value={signUrl}
-                        onClick={(e) => (e.target as HTMLInputElement).select()}
-                        className="form-input text-xs font-mono bg-white text-gray-800 py-2 px-3 select-all flex-1 border border-gray-300 rounded-lg focus:outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={handleCopySignUrl}
-                        className="btn btn-primary py-2 px-3.5 text-xs flex items-center gap-1.5 whitespace-nowrap cursor-pointer shadow-xs font-semibold"
-                      >
-                        {copiedSignUrl ? <Check size={14} className="text-emerald-300" /> : <Copy size={14} />}
-                        <span>{copiedSignUrl ? 'Copiado!' : 'Copiar Link'}</span>
-                      </button>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                      <div className="flex items-center gap-2 flex-1">
+                        <input
+                          type="text"
+                          readOnly
+                          value={signUrl}
+                          onClick={(e) => (e.target as HTMLInputElement).select()}
+                          className="form-input text-xs font-mono bg-white text-gray-800 py-2 px-3 select-all flex-1 border border-gray-300 rounded-lg focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleCopySignUrl}
+                          className="btn btn-primary py-2 px-3.5 text-xs flex items-center gap-1.5 whitespace-nowrap cursor-pointer shadow-xs font-semibold"
+                        >
+                          {copiedSignUrl ? <Check size={14} className="text-emerald-300" /> : <Copy size={14} />}
+                          <span>{copiedSignUrl ? 'Copiado!' : 'Copiar Link'}</span>
+                        </button>
+                      </div>
+                      {cotacaoId && (
+                        <EnviarPropostaEmailButton
+                          cotacaoId={cotacaoId}
+                          clientName={form.nome}
+                          clientEmail={form.email}
+                          valor={planoSel?.parcela}
+                          cobertura={planoSel?.cobertura}
+                          label="Enviar por E-mail"
+                        />
+                      )}
                     </div>
                   </div>
 

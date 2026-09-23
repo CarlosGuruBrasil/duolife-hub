@@ -32,12 +32,27 @@ export async function dispatchDomainEvent(
 
   try {
     // 1. Busca todas as árvores de decisão ativas configuradas para este evento
-    const triggers = await sql<AutomationTriggerRecord[]>`
+    let triggers = await sql<AutomationTriggerRecord[]>`
       SELECT id, code, name, description, event_type, is_active, tree_definition, created_at, updated_at
       FROM automation_triggers
       WHERE event_type = ${eventType} AND is_active = true
       ORDER BY created_at ASC
     `;
+
+    // Se nenhuma árvore for encontrada para este evento, garante a criação das árvores padrões
+    if (triggers.length === 0) {
+      try {
+        await ensureDefaultTriggers();
+        triggers = await sql<AutomationTriggerRecord[]>`
+          SELECT id, code, name, description, event_type, is_active, tree_definition, created_at, updated_at
+          FROM automation_triggers
+          WHERE event_type = ${eventType} AND is_active = true
+          ORDER BY created_at ASC
+        `;
+      } catch {
+        // Silencia falha de inserção
+      }
+    }
 
     result.evaluatedTriggersCount = triggers.length;
 
@@ -142,9 +157,17 @@ export async function dispatchDomainEvent(
               'https://duolife.com.br'
             ).replace(/\/$/, '');
 
+            const resolvedLinkAssinatura =
+              context.dados?.link_assinatura ||
+              context.dados?.signUrl ||
+              context.dados?.sign_url ||
+              context.dados?.link_contrato ||
+              '';
+
             const resolvedLinkProposta =
               context.dados?.link_proposta ||
               context.dados?.proposta_url ||
+              resolvedLinkAssinatura ||
               (context.cotacao?.id ? `${appBaseUrl}/contratar/${context.cotacao.id}` : '');
 
             // Variáveis formatadas para o template
@@ -172,6 +195,9 @@ export async function dispatchDomainEvent(
                 : '100.000,00',
               produto_nome: context.cotacao?.produto_nome || 'Seguro RC Profissional',
               link_proposta: resolvedLinkProposta,
+              link_assinatura: resolvedLinkAssinatura || resolvedLinkProposta,
+              link_contrato: resolvedLinkAssinatura || resolvedLinkProposta,
+              sign_url: resolvedLinkAssinatura || resolvedLinkProposta,
               link_fatura: context.transacao?.link_fatura || '',
               vencimento: context.transacao?.vencimento || '',
               data_vencimento: context.transacao?.vencimento || '',
@@ -516,6 +542,43 @@ export async function ensureDefaultTriggers(): Promise<void> {
             posicaoY: 220,
             configuracao: {
               template_id: 'recuperacao_senha',
+              destinatarios: [
+                { destinatario_tipo: 'CLIENTE', destinatario_email: '', destinatario_nome: '' },
+              ],
+            },
+          },
+        ],
+      },
+    },
+    {
+      code: 'trigger_proposta_criada',
+      name: 'Fluxo Padrão — Proposta Criada / Envio de Contrato',
+      description: 'Dispara e-mail com o link de assinatura digital da ZapSign para o cliente assim que o contrato é gerado',
+      event_type: 'PROPOSTA_CRIADA',
+      tree_definition: {
+        nos: [
+          {
+            id: 'root-proposta',
+            tipo: 'GATILHO',
+            titulo: 'Proposta Criada / Contrato Gerado',
+            subtitulo: 'Evento: PROPOSTA_CRIADA',
+            parentId: null,
+            ativo: true,
+            posicaoX: 500,
+            posicaoY: 60,
+            configuracao: { gatilho_codigo: 'PROPOSTA_CRIADA' },
+          },
+          {
+            id: 'action-email-proposta-cliente',
+            tipo: 'ACAO_EMAIL',
+            titulo: 'Enviar Contrato ao Cliente para Assinatura',
+            subtitulo: 'Dispara template com link de assinatura ZapSign',
+            parentId: 'root-proposta',
+            ativo: true,
+            posicaoX: 500,
+            posicaoY: 220,
+            configuracao: {
+              template_id: 'proposta_criada',
               destinatarios: [
                 { destinatario_tipo: 'CLIENTE', destinatario_email: '', destinatario_nome: '' },
               ],

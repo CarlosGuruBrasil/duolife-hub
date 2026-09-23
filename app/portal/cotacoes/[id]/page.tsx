@@ -10,6 +10,7 @@ import { formatCurrency, formatDate, formatDateTime, formatAtuacao, formatStatus
 import { safeExternalUrl } from '@/lib/safe-url';
 import EditarPropostaButton from '@/components/modals/EditarPropostaButton';
 import { EnviarFaturaEmailButton } from '@/components/cotacao/EnviarFaturaEmailButton';
+import { EnviarPropostaEmailButton } from '@/components/cotacao/EnviarPropostaEmailButton';
 import { VerificarZapSignButton } from '@/components/cotacao/VerificarZapSignButton';
 
 const statusLabel: Record<string, string> = {
@@ -642,6 +643,15 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
                     </a>
                   )}
                   <VerificarZapSignButton id={cotacao.id} variant="card" label="Verificar se já Assinou" />
+                  <EnviarPropostaEmailButton
+                    cotacaoId={cotacao.id}
+                    clientName={cotacao.client_name || String(clientData.nome || '')}
+                    clientEmail={cotacao.client_email || String(clientData.email || '')}
+                    valor={cotacao.premio_final || cotacao.premio_calculado}
+                    cobertura={cotacao.importancia_segurada}
+                    variant="outline"
+                    label="Reenviar por E-mail"
+                  />
                 </div>
               </div>
             ) : (

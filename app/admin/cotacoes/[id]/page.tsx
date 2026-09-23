@@ -14,6 +14,7 @@ import TransferirParceiroCotacaoButton from '@/components/modals/TransferirParce
 import { ExcluirCotacaoButton, ExcluirBoletoButton } from '@/components/dev';
 import { VerificarZapSignButton } from '../_verificar-zapsign-button';
 import { CopiarLinkAssinaturaButton } from '@/components/cotacao/CopiarLinkAssinaturaButton';
+import { EnviarPropostaEmailButton } from '@/components/cotacao/EnviarPropostaEmailButton';
 
 const statusLabel: Record<string, string> = {
   rascunho: 'Rascunho',
@@ -673,6 +674,15 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
                     </a>
                   )}
                   <VerificarZapSignButton id={cotacao.id} variant="card" label="Verificar se já Assinou" />
+                  <EnviarPropostaEmailButton
+                    cotacaoId={cotacao.id}
+                    clientName={cotacao.client_name || String(clientData.nome || '')}
+                    clientEmail={cotacao.client_email || String(clientData.email || '')}
+                    valor={cotacao.premio_final || cotacao.premio_calculado}
+                    cobertura={cotacao.importancia_segurada}
+                    variant="outline"
+                    label="Reenviar por E-mail"
+                  />
                 </div>
               </div>
             ) : (

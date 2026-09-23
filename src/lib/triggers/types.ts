@@ -10,6 +10,8 @@ export type TipoNo =
 
 export type EventoDominio =
   | 'COTACAO_CRIADA'
+  | 'PROPOSTA_CRIADA'
+  | 'CONTRATO_GERADO'
   | 'PROPOSTA_ENVIADA'
   | 'CONTRATO_ASSINADO'
   | 'CONTRATO_RECUSADO'

@@ -13,9 +13,19 @@ import type {
 
 export const EVENTOS_DISPONIVEIS: Array<{ codigo: EventoDominio; nome: string; descricao: string }> = [
   {
+    codigo: 'PROPOSTA_CRIADA',
+    nome: 'Proposta Criada / Contrato Gerado (ZapSign)',
+    descricao: 'Disparado assim que a proposta e o contrato eletrônico são gerados no ZapSign para assinatura do cliente.',
+  },
+  {
     codigo: 'COTACAO_CRIADA',
     nome: 'Cotação Criada',
     descricao: 'Disparado quando um parceiro ou cliente final gera uma nova cotação de seguro no portal.',
+  },
+  {
+    codigo: 'CONTRATO_GERADO',
+    nome: 'Contrato Gerado',
+    descricao: 'Disparado no momento da emissão da minuta/documento digital para formalização.',
   },
   {
     codigo: 'PROPOSTA_ENVIADA',
