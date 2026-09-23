@@ -290,6 +290,8 @@ export default function DynamicCotacaoForm({
 }: DynamicCotacaoFormProps) {
   const router = useRouter();
   const isClientRegistration = Boolean(publicToken);
+  const effectiveInitialCpf = isClientRegistration ? undefined : initialCpf;
+  const effectiveInitialRenovacao = isClientRegistration ? false : initialRenovacao;
 
   // Estado do Ramo Configurado
   const [resolvedRamoConfig, setResolvedRamoConfig] = useState<RamoConfig>(() => {
@@ -1497,18 +1499,20 @@ export default function DynamicCotacaoForm({
             2. Dados do Proponente / {resolvedRamoConfig.registroProfissional ? 'Segurado' : 'Empresa Tomadora'}
           </h3>
 
-          {/* Seletor Inteligente de Clientes */}
-          <ClienteSearchSelector
-            adminSelectedPartnerId={adminSelectedPartnerId}
-            publicToken={publicToken}
-            selectedCliente={selectedCliente}
-            isRenovacaoAtiva={isRenovacaoAtiva}
-            initialCpf={initialCpf}
-            autoApplyRenewal={initialRenovacao}
-            onSelectCliente={handleSelectCliente}
-            onApplyRenewal={handleApplyRenewal}
-            onClearSelection={handleClearClienteSelection}
-          />
+          {/* Seletor Inteligente de Clientes (Disponível exclusivamente para corretores/vendedores no portal ou admin) */}
+          {!isClientRegistration && (
+            <ClienteSearchSelector
+              adminSelectedPartnerId={adminSelectedPartnerId}
+              publicToken={publicToken}
+              selectedCliente={selectedCliente}
+              isRenovacaoAtiva={isRenovacaoAtiva}
+              initialCpf={effectiveInitialCpf}
+              autoApplyRenewal={effectiveInitialRenovacao}
+              onSelectCliente={handleSelectCliente}
+              onApplyRenewal={handleApplyRenewal}
+              onClearSelection={handleClearClienteSelection}
+            />
+          )}
 
           {/* Bloco D&O: Sociedade Tomadora PJ */}
           {!resolvedRamoConfig.registroProfissional && (

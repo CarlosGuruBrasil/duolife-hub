@@ -83,9 +83,9 @@ export default function ClienteSearchSelector({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const initialLoadedRef = useRef(false);
 
-  // Auto-busca e auto-preenchimento caso venha initialCpf (ex: link de renovação da régua)
+  // Auto-busca e auto-preenchimento caso venha initialCpf (ex: link de renovação da régua interna)
   useEffect(() => {
-    if (!initialCpf || selectedCliente || initialLoadedRef.current) return;
+    if (publicToken || !initialCpf || selectedCliente || initialLoadedRef.current) return;
     const cleanDoc = initialCpf.replace(/\D/g, '');
     if (cleanDoc.length < 11) return;
     initialLoadedRef.current = true;
@@ -132,6 +132,7 @@ export default function ClienteSearchSelector({
 
   // Debounced search
   useEffect(() => {
+    if (publicToken) return;
     const trimmed = query.trim();
     if (trimmed.length < 2) {
       setResults([]);
@@ -146,8 +147,6 @@ export default function ClienteSearchSelector({
       setSearched(true);
       try {
         const headers: Record<string, string> = {};
-        if (publicToken) headers['x-public-token'] = publicToken;
-
         const url = new URL('/api/clientes/busca', window.location.origin);
         url.searchParams.set('q', trimmed);
         if (adminSelectedPartnerId) {
@@ -177,6 +176,11 @@ export default function ClienteSearchSelector({
     onSelectCliente(c);
     setShowDropdown(false);
     setQuery('');
+  }
+
+  // Em links públicos de cliente (publicToken presente), NUNCA renderiza ou executa busca de clientes
+  if (publicToken) {
+    return null;
   }
 
   return (

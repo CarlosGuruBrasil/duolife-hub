@@ -42,6 +42,15 @@ function formatCurrency(val: unknown): string {
 
 export async function GET(req: NextRequest) {
   try {
+    // Blindagem de segurança: links públicos de clientes JAMAIS podem buscar ou preencher clientes cadastrados
+    const publicToken = req.headers.get('x-public-token') || req.nextUrl.searchParams.get('token') || req.nextUrl.searchParams.get('publicToken');
+    if (publicToken) {
+      return Response.json(
+        { error: 'Busca de clientes desabilitada em links públicos de contratação' },
+        { status: 403 }
+      );
+    }
+
     const user = await verifyAuth();
     if (!user) return unauthorized();
 
