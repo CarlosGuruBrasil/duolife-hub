@@ -88,6 +88,48 @@ const FALLBACK_PLANOS: PlanoDisponivel[] = (rcAdvogadosConfig.planos || []).map(
   maxParcelas: p.maxParcelas || (p.tipoDePlano === '100k' ? 1 : 6),
 }));
 
+export function findMatchingPlano(
+  planos: PlanoDisponivel[],
+  cdTipo?: string | null,
+  cdNomePlano?: string | null,
+  coberturaNum?: number | null
+): PlanoDisponivel | null {
+  if (!planos || planos.length === 0) return null;
+
+  const tLower = String(cdTipo || '').toLowerCase().trim();
+  const nLower = String(cdNomePlano || '').toLowerCase().trim();
+
+  // 1. Match direto por tipoDePlano (ex: '100k', '200k', '300k', '500k', '1m', '2m')
+  const byTipo = planos.find((p) => p.tipoDePlano.toLowerCase() === tLower);
+  if (byTipo) return byTipo;
+
+  // 2. Match por nomeExibido exato
+  const byNome = planos.find((p) => p.nomeExibido.toLowerCase() === nLower);
+  if (byNome) return byNome;
+
+  // 3. Match se o nome ou tipo contiver a chave do plano (ex: '100k' em 'Plano 100k' ou '100 mil')
+  const bySubTipo = planos.find((p) => {
+    const key = p.tipoDePlano.toLowerCase();
+    const nomeKey = p.nomeExibido.toLowerCase();
+    return (
+      (tLower && (tLower.includes(key) || tLower.includes(nomeKey))) ||
+      (nLower && (nLower.includes(key) || nLower.includes(nomeKey)))
+    );
+  });
+  if (bySubTipo) return bySubTipo;
+
+  // 4. Match por cobertura / importância segurada (regra de ouro de seguros)
+  if (coberturaNum && coberturaNum > 0) {
+    const byCob = planos.find((p) => {
+      const cob = parseCurrencyToNumber(p.cobertura);
+      return cob > 0 && Math.abs(cob - coberturaNum) < 1;
+    });
+    if (byCob) return byCob;
+  }
+
+  return null;
+}
+
 function parseRawClientData(data: unknown): Record<string, any> {
   if (!data) return {};
   if (typeof data === 'string') {
@@ -188,6 +230,8 @@ export default function EditarPropostaModal({
 
   // Valores Financeiros & Desconto Comercial (0% a 40%)
   const [premioBase, setPremioBase] = useState<number>(0);
+  const [premioBaseInput, setPremioBaseInput] = useState<string>('');
+  const [isEditingPremioBase, setIsEditingPremioBase] = useState<boolean>(false);
   const [descontoPercent, setDescontoPercent] = useState<number>(0);
   const [maxParcelasPermitidas, setMaxParcelasPermitidas] = useState<number>(6);
 
@@ -267,12 +311,10 @@ export default function EditarPropostaModal({
         formatDateToInput(cd.dataInicioVigencia || cd.vigencia || cd.dataVigencia || '')
       );
       const planoLoaded = String(cd.nomePlano || cd.tipoDePlano || cd.tipo || 'RC Advogados');
-      setNomePlano(planoLoaded);
 
       // Desconto inicial (respeitando o teto de 40%)
       const descGravado = Number(cd.descontoManualPercent ?? cd.descontoPercentual ?? 0);
       const descInicial = Math.min(40, Math.max(0, descGravado));
-      setDescontoPercent(descInicial);
 
       // Valores com saneamento inteligente contra multiplicação indevida (* 100)
       const rawCob = cotacao.importancia_segurada ?? cd.valorCobertura;
@@ -293,40 +335,67 @@ export default function EditarPropostaModal({
         : (rawPrem !== undefined && rawPrem !== null ? parseCurrencyToNumber(rawPrem) : 0);
       setPremioFinal(parsedPremNum > 0 ? String(parsedPremNum) : '');
 
-      // Cálculo do prêmio base de referência
+      // Identifica o plano correspondente na lista (por tipo, nome ou cobertura oficial)
+      const listaPlanos = planosDisponiveis.length > 0 ? planosDisponiveis : FALLBACK_PLANOS;
+      const planoMatched = findMatchingPlano(
+        listaPlanos,
+        cd.tipoDePlano || cd.tipo,
+        planoLoaded,
+        parsedCobNum
+      );
+
       let baseCalculado = Number(cd.valorOriginal || 0);
-      if (!baseCalculado || baseCalculado <= 0) {
-        if (descInicial > 0 && descInicial < 100 && parsedPremNum > 0) {
+
+      if (planoMatched) {
+        setSelectedPlanoTipo(planoMatched.tipoDePlano);
+        setNomePlano(planoMatched.nomeExibido);
+        const maxP = planoMatched.maxParcelas || (planoMatched.tipoDePlano === '100k' ? 1 : 6);
+        setMaxParcelasPermitidas(maxP);
+
+        const baseTabelaPlano = parseCurrencyToNumber(planoMatched.parcela);
+
+        // Se cd.valorOriginal já existia e era maior que 0 e maior que o prêmio com desconto, preserva
+        if (baseCalculado > 0 && baseCalculado >= parsedPremNum) {
+          // Mantém baseCalculado
+        } else if (baseTabelaPlano > 0) {
+          // Se não havia valorOriginal ou era inválido, o valor oficial de tabela do plano é a base!
+          baseCalculado = baseTabelaPlano;
+        } else if (descInicial > 0 && descInicial < 100 && parsedPremNum > 0) {
           baseCalculado = Math.round((parsedPremNum / (1 - descInicial / 100)) * 100) / 100;
         } else {
           baseCalculado = parsedPremNum;
         }
+
+        // Se não havia desconto explícito gravado, mas o prêmio da cotação é menor que o valor de tabela:
+        let descFinal = descInicial;
+        if (descFinal === 0 && baseCalculado > parsedPremNum && parsedPremNum > 0) {
+          const descCalculado = Math.round(((baseCalculado - parsedPremNum) / baseCalculado) * 100);
+          if (descCalculado > 0) {
+            descFinal = Math.min(40, Math.max(0, descCalculado));
+          }
+        }
+        setDescontoPercent(descFinal);
+      } else {
+        setSelectedPlanoTipo('custom');
+        setNomePlano(planoLoaded);
+        setMaxParcelasPermitidas(12);
+
+        if (!baseCalculado || baseCalculado <= 0) {
+          if (descInicial > 0 && descInicial < 100 && parsedPremNum > 0) {
+            baseCalculado = Math.round((parsedPremNum / (1 - descInicial / 100)) * 100) / 100;
+          } else {
+            baseCalculado = parsedPremNum;
+          }
+        }
+        setDescontoPercent(descInicial);
       }
+
       setPremioBase(baseCalculado);
+      setPremioBaseInput(baseCalculado > 0 ? String(baseCalculado) : '');
 
       setPlanoFranquia(String(cd.planoFranquia || 'R$ 1.000,00'));
       setParcelas(cd.parcela ? String(cd.parcela) : '1');
       setNotes(cotacao.notes || cd.observacoes || cd.notas || '');
-
-      // Identifica o plano selecionado na lista
-      const tipoLower = String(cd.tipoDePlano || cd.tipo || '').toLowerCase();
-      const planoMatched = FALLBACK_PLANOS.find(
-        (p) =>
-          p.tipoDePlano.toLowerCase() === tipoLower ||
-          p.nomeExibido.toLowerCase() === planoLoaded.toLowerCase()
-      );
-
-      if (planoMatched) {
-        setSelectedPlanoTipo(planoMatched.tipoDePlano);
-        const maxP = planoMatched.maxParcelas || (planoMatched.tipoDePlano === '100k' ? 1 : 6);
-        setMaxParcelasPermitidas(maxP);
-      } else if (tipoLower.includes('100k') || planoLoaded.toLowerCase().includes('100k')) {
-        setSelectedPlanoTipo('100k');
-        setMaxParcelasPermitidas(1);
-      } else {
-        setSelectedPlanoTipo('custom');
-        setMaxParcelasPermitidas(12);
-      }
 
       setErrorMessage(null);
       setSuccessMessage(null);
@@ -390,7 +459,9 @@ export default function EditarPropostaModal({
       return;
     }
 
-    const plano = planosDisponiveis.find((p) => p.tipoDePlano === tipoOuKey);
+    const plano =
+      planosDisponiveis.find((p) => p.tipoDePlano === tipoOuKey) ||
+      FALLBACK_PLANOS.find((p) => p.tipoDePlano === tipoOuKey);
     if (!plano) return;
 
     setNomePlano(plano.nomeExibido);
@@ -402,11 +473,12 @@ export default function EditarPropostaModal({
     // Franquia
     setPlanoFranquia(plano.franquia || 'R$ 1.000,00');
 
-    // Prêmio base de tabela
+    // Prêmio base DE TABELA do plano selecionado
     const base = parseCurrencyToNumber(plano.parcela);
     setPremioBase(base);
+    setPremioBaseInput(base > 0 ? String(base) : '');
 
-    // Recalcula o prêmio final aplicando o desconto ativo
+    // Recalcula o prêmio final aplicando o desconto ativo sobre o valor base de tabela
     const fator = 1 - (descontoPercent / 100);
     const novoFinal = Math.round(base * fator * 100) / 100;
     setPremioFinal(String(novoFinal));
@@ -416,6 +488,19 @@ export default function EditarPropostaModal({
     setMaxParcelasPermitidas(maxP);
     if (Number(parcelas) > maxP) {
       setParcelas(String(maxP));
+    }
+  };
+
+  // Alteração direta do Prêmio de Tabela (Base)
+  const handlePremioBaseChange = (novoBase: number) => {
+    setPremioBase(novoBase);
+    setPremioBaseInput(String(novoBase));
+    if (isFinancialLocked) return;
+
+    if (novoBase > 0) {
+      const fator = 1 - (descontoPercent / 100);
+      const novoFinal = Math.round(novoBase * fator * 100) / 100;
+      setPremioFinal(String(novoFinal));
     }
   };
 
@@ -437,6 +522,7 @@ export default function EditarPropostaModal({
             ? curFinal / (1 - descontoPercent / 100)
             : curFinal;
         setPremioBase(Math.round(baseDeduzida * 100) / 100);
+        setPremioBaseInput(String(Math.round(baseDeduzida * 100) / 100));
         const novoFinal = Math.round(baseDeduzida * (1 - descSeguro / 100) * 100) / 100;
         setPremioFinal(String(novoFinal));
       }
@@ -1162,18 +1248,55 @@ export default function EditarPropostaModal({
 
                     {/* Simulação e Resumo Financeiro */}
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t border-emerald-200/60 text-xs">
-                      <div className="bg-white/80 border border-emerald-200/60 rounded-xl p-2.5">
-                        <span className="text-gray-500 block text-[11px]">Prêmio de Tabela (Base)</span>
-                        <span className="font-bold text-gray-800 text-sm">
-                          {formatCurrencyBRL(premioBase || parseCurrencyToNumber(premioFinal))}
-                        </span>
+                      <div className="bg-white/90 border border-emerald-200/80 rounded-xl p-2.5 flex flex-col justify-between">
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-gray-600 block text-[11px] font-semibold">
+                            Prêmio de Tabela (Base R$)
+                          </label>
+                          {!isFinancialLocked && (
+                            <span className="text-[10px] text-gray-400 font-normal">
+                              Editável
+                            </span>
+                          )}
+                        </div>
+                        <input
+                          type="text"
+                          disabled={isFinancialLocked}
+                          value={
+                            isEditingPremioBase
+                              ? premioBaseInput
+                              : (premioBase > 0 ? formatCurrencyBRL(premioBase) : '')
+                          }
+                          onFocus={() => {
+                            setIsEditingPremioBase(true);
+                            setPremioBaseInput(premioBase > 0 ? String(premioBase) : '');
+                          }}
+                          onBlur={() => {
+                            setIsEditingPremioBase(false);
+                            const parsed = parseCurrencyToNumber(premioBaseInput);
+                            if (parsed > 0) {
+                              handlePremioBaseChange(parsed);
+                            }
+                          }}
+                          onChange={(e) => {
+                            setPremioBaseInput(e.target.value);
+                            const parsed = parseCurrencyToNumber(e.target.value);
+                            if (parsed > 0) {
+                              handlePremioBaseChange(parsed);
+                            }
+                          }}
+                          placeholder="R$ 680,00"
+                          className={`w-full text-sm font-bold text-gray-900 bg-white border border-gray-200 rounded-lg px-2.5 py-1 focus:outline-none focus:border-[#00d4e0] focus:ring-1 focus:ring-[#00d4e0]/20 ${
+                            isFinancialLocked ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : ''
+                          }`}
+                        />
                       </div>
 
-                      <div className="bg-white/80 border border-emerald-200/60 rounded-xl p-2.5">
-                        <span className="text-emerald-700 block text-[11px] font-semibold">
+                      <div className="bg-white/90 border border-emerald-200/80 rounded-xl p-2.5 flex flex-col justify-between">
+                        <span className="text-emerald-700 block text-[11px] font-semibold mb-1">
                           Economia Aplicada ({descontoPercent}%)
                         </span>
-                        <span className="font-bold text-emerald-700 text-sm">
+                        <span className="font-bold text-emerald-700 text-sm py-1">
                           - {formatCurrencyBRL(
                             Math.round(
                               (premioBase > 0 ? premioBase : parseCurrencyToNumber(premioFinal)) *
@@ -1184,9 +1307,11 @@ export default function EditarPropostaModal({
                         </span>
                       </div>
 
-                      <div className="bg-emerald-100/70 border border-emerald-300/80 rounded-xl p-2.5">
-                        <span className="text-emerald-950 block text-[11px] font-bold">Prêmio Final Líquido</span>
-                        <span className="font-extrabold text-[#0e4a5a] text-sm">
+                      <div className="bg-emerald-100/70 border border-emerald-300/80 rounded-xl p-2.5 flex flex-col justify-between">
+                        <span className="text-emerald-950 block text-[11px] font-bold mb-1">
+                          Prêmio Final Líquido
+                        </span>
+                        <span className="font-extrabold text-[#0e4a5a] text-sm py-1">
                           {formatCurrencyBRL(parseCurrencyToNumber(premioFinal))}
                         </span>
                       </div>
