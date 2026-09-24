@@ -13,9 +13,20 @@ import {
   formatToISODate,
   calculateBillingDueDate,
 } from './business-days';
+import { deleteAsaasPayment, deleteAsaasInstallment } from './asaas-charges';
+
+export interface GeneratePaymentCustomValues {
+  valorTotal?: number;
+  qtdParcelas?: number;
+  dueDate?: string;
+  billingType?: 'BOLETO' | 'PIX';
+  description?: string;
+}
 
 export interface GeneratePaymentOptions {
   isManualAdmin?: boolean;
+  customValues?: GeneratePaymentCustomValues;
+  forceRecreate?: boolean;
 }
 
 export interface GeneratePaymentResult {
@@ -60,7 +71,8 @@ export async function generateAsaasPaymentForQuote(
     if (
       ESTADOS_TERMINAIS.includes(cotacao.status) &&
       cotacao.status !== 'assinado' &&
-      cotacao.status !== 'pagamento_gerado'
+      cotacao.status !== 'pagamento_gerado' &&
+      !options?.isManualAdmin
     ) {
       return {
         ok: false,
@@ -68,42 +80,122 @@ export async function generateAsaasPaymentForQuote(
       };
     }
 
-    const clientData = parseJsonbField<Record<string, any>>(cotacao.client_data);
-
-    // 2. Idempotência: já existe uma cobrança gerada para esta cotação (em client_data ou em payment_orders)
-    if (clientData.checkoutId && clientData.linkBoleto) {
+    // Se já houver apólice emitida em sales, não permitir recriação acidental
+    const [existingSale] = await sql<any[]>`
+      SELECT id, status FROM sales WHERE cotacao_id = ${cotacao.id} LIMIT 1
+    `;
+    if (existingSale && !options?.isManualAdmin) {
       return {
-        ok: true,
-        checkoutId: clientData.checkoutId,
-        linkBoleto: clientData.linkBoleto,
-        dueDate: clientData.dataVencimento,
-        alreadyExisted: true,
+        ok: false,
+        error: 'Esta cotação já possui apólice/venda emitida e não pode ter a cobrança regerada.',
       };
     }
 
-    const [existingOrder] = await sql<any[]>`
-      SELECT external_payment_id, invoice_url, bank_slip_url, due_date
-      FROM payment_orders
-      WHERE cotacao_id = ${cotacao.id}
-      LIMIT 1
-    `;
-    if (existingOrder && (existingOrder.bank_slip_url || existingOrder.invoice_url)) {
-      const existingLink = existingOrder.bank_slip_url || existingOrder.invoice_url;
-      clientData.checkoutId = existingOrder.external_payment_id;
-      clientData.linkBoleto = existingLink;
-      clientData.dataVencimento = existingOrder.due_date;
-      await sql`
-        UPDATE cotacoes
-        SET client_data = ${JSON.stringify(clientData)}::jsonb, updated_at = NOW()
-        WHERE id = ${cotacao.id}
+    const clientData = parseJsonbField<Record<string, any>>(cotacao.client_data);
+
+    // 2. Tratamento de recriação forçada (cancelando cobrança anterior no Asaas e banco)
+    if (options?.forceRecreate) {
+      const [existingOrderToCancel] = await sql<any[]>`
+        SELECT id, status, external_payment_id, external_installment_id
+        FROM payment_orders
+        WHERE cotacao_id = ${cotacao.id}
+        LIMIT 1
       `;
-      return {
-        ok: true,
-        checkoutId: existingOrder.external_payment_id,
-        linkBoleto: existingLink,
-        dueDate: existingOrder.due_date,
-        alreadyExisted: true,
-      };
+      if (existingOrderToCancel) {
+        const isPaid = ['paid', 'received', 'confirmed', 'RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'].includes(
+          existingOrderToCancel.status
+        );
+        if (isPaid) {
+          return {
+            ok: false,
+            error: 'Esta cobrança já foi compensada/paga no Asaas e não pode ser cancelada ou substituída.',
+          };
+        }
+
+        // Deleta no Asaas
+        if (existingOrderToCancel.external_installment_id) {
+          await deleteAsaasInstallment(existingOrderToCancel.external_installment_id).catch(() => {});
+        } else if (existingOrderToCancel.external_payment_id) {
+          await deleteAsaasPayment(existingOrderToCancel.external_payment_id).catch(() => {});
+        }
+
+        // Limpa registros locais vinculados
+        await sql.begin(async (tx) => {
+          await tx`DELETE FROM delinquency_notifications WHERE payment_order_id = ${existingOrderToCancel.id}`;
+          await tx`DELETE FROM payment_installments WHERE payment_order_id = ${existingOrderToCancel.id}`;
+          await tx`DELETE FROM payment_orders WHERE id = ${existingOrderToCancel.id}`;
+        });
+
+        delete clientData.checkoutId;
+        delete clientData.linkBoleto;
+        delete clientData.dataVencimento;
+        delete clientData.faturaId;
+        delete clientData.externalInstallmentId;
+      }
+    } else if (!options?.customValues) {
+      // Idempotência padrão: só aplica quando não for customValues e não for forceRecreate
+      if (clientData.checkoutId && clientData.linkBoleto) {
+        return {
+          ok: true,
+          checkoutId: clientData.checkoutId,
+          linkBoleto: clientData.linkBoleto,
+          dueDate: clientData.dataVencimento,
+          alreadyExisted: true,
+        };
+      }
+
+      const [existingOrder] = await sql<any[]>`
+        SELECT external_payment_id, invoice_url, bank_slip_url, due_date
+        FROM payment_orders
+        WHERE cotacao_id = ${cotacao.id}
+        LIMIT 1
+      `;
+      if (existingOrder && (existingOrder.bank_slip_url || existingOrder.invoice_url)) {
+        const existingLink = existingOrder.bank_slip_url || existingOrder.invoice_url;
+        clientData.checkoutId = existingOrder.external_payment_id;
+        clientData.linkBoleto = existingLink;
+        clientData.dataVencimento = existingOrder.due_date;
+        await sql`
+          UPDATE cotacoes
+          SET client_data = ${JSON.stringify(clientData)}::jsonb, updated_at = NOW()
+          WHERE id = ${cotacao.id}
+        `;
+        return {
+          ok: true,
+          checkoutId: existingOrder.external_payment_id,
+          linkBoleto: existingLink,
+          dueDate: existingOrder.due_date,
+          alreadyExisted: true,
+        };
+      }
+    } else {
+      // Quando customValues é fornecido sem forceRecreate, verifica se já existe cobrança ativa
+      const [existingOrder] = await sql<any[]>`
+        SELECT external_payment_id, invoice_url, bank_slip_url, due_date, status
+        FROM payment_orders
+        WHERE cotacao_id = ${cotacao.id}
+        LIMIT 1
+      `;
+      if (existingOrder && (existingOrder.external_payment_id || clientData.checkoutId)) {
+        const isPaid = ['paid', 'received', 'confirmed', 'RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'].includes(
+          existingOrder.status
+        );
+        if (isPaid) {
+          return {
+            ok: false,
+            error: 'Esta cotação já possui uma cobrança com pagamento confirmado/pago.',
+            alreadyExisted: true,
+          };
+        }
+        return {
+          ok: false,
+          error: 'Já existe uma cobrança gerada para esta cotação. Confirme a substituição para cancelar a anterior e emitir a nova.',
+          checkoutId: existingOrder.external_payment_id || clientData.checkoutId,
+          linkBoleto: existingOrder.bank_slip_url || existingOrder.invoice_url || clientData.linkBoleto,
+          dueDate: existingOrder.due_date || clientData.dataVencimento,
+          alreadyExisted: true,
+        };
+      }
     }
 
     // 3. Obtém configurações ativas do Asaas (banco system_settings com fallback em env)
@@ -181,24 +273,34 @@ export async function generateAsaasPaymentForQuote(
       }
     }
 
-    // 5. Prepara os valores e parcelamento — recalculado no servidor
+    // 5. Prepara os valores e parcelamento — recalculado no servidor ou obtido de customValues
     const tipoDePlano = clientData.tipo || clientData.tipoDePlano || clientData.nomePlano || clientData.plano || null;
-    const preco = await calcularPrecoServidor({
-      tipoDePlano,
-      qtdParcelasSolicitada: Number(clientData.parcela) || 1,
-      cupomCodigo: clientData.cupomCodigo || null,
-      descontoManualPercent: Number(clientData.descontoManualPercent ?? clientData.descontoPercentual) || 0,
-    });
+    let valorTotal = 0;
+    let qtdParcelas = 1;
+    let valorParcela = 0;
 
-    let valorTotal = preco ? Math.round(preco.valorTotal * 100) / 100 : 0;
-    let qtdParcelas = preco ? preco.qtdParcelas : (Number(clientData.parcela) || 1);
-    let valorParcela = preco ? Math.round(preco.valorParcela * 100) / 100 : 0;
-
-    // Fallback de segurança para cotações com contrato já assinado no banco:
-    if ((!valorTotal || valorTotal <= 0) && (cotacao.premio_final || cotacao.premio_calculado)) {
-      valorTotal = Number(cotacao.premio_final || cotacao.premio_calculado);
-      qtdParcelas = Number(clientData.parcela) || 1;
+    if (options?.customValues?.valorTotal !== undefined && options.customValues.valorTotal > 0) {
+      valorTotal = Math.round(options.customValues.valorTotal * 100) / 100;
+      qtdParcelas = Math.max(1, Math.floor(Number(options.customValues.qtdParcelas || 1)));
       valorParcela = qtdParcelas > 1 ? Math.round((valorTotal / qtdParcelas) * 100) / 100 : valorTotal;
+    } else {
+      const preco = await calcularPrecoServidor({
+        tipoDePlano,
+        qtdParcelasSolicitada: Number(clientData.parcela) || 1,
+        cupomCodigo: clientData.cupomCodigo || null,
+        descontoManualPercent: Number(clientData.descontoManualPercent ?? clientData.descontoPercentual) || 0,
+      });
+
+      valorTotal = preco ? Math.round(preco.valorTotal * 100) / 100 : 0;
+      qtdParcelas = preco ? preco.qtdParcelas : (Number(clientData.parcela) || 1);
+      valorParcela = preco ? Math.round(preco.valorParcela * 100) / 100 : 0;
+
+      // Fallback de segurança para cotações com contrato já assinado no banco:
+      if ((!valorTotal || valorTotal <= 0) && (cotacao.premio_final || cotacao.premio_calculado)) {
+        valorTotal = Number(cotacao.premio_final || cotacao.premio_calculado);
+        qtdParcelas = Number(clientData.parcela) || 1;
+        valorParcela = qtdParcelas > 1 ? Math.round((valorTotal / qtdParcelas) * 100) / 100 : valorTotal;
+      }
     }
 
     if (!valorTotal || valorTotal <= 0) {
@@ -207,57 +309,66 @@ export async function generateAsaasPaymentForQuote(
     }
 
     // Regra de Data de Vencimento e Permissão:
-    // 1. Vigência >= hoje: Data de vigência + 2 dias úteis.
-    // 2. Vigência no passado (< hoje):
-    //    - Se contrato assinado em até 2 dias úteis após a vigência:
-    //      Permitido para vendedor, vencimento = Data da Assinatura + 2 dias úteis.
-    //    - Se ultrapassou o prazo de 2 dias úteis (ou não assinado):
-    //      Bloqueado para parceiro/vendedor. Apenas Admin pode emitir (vencimento: Data atual + 2 dias úteis).
-    let rawAssinatura = clientData.assinadoEm || clientData.dataAssinatura || clientData.signedAt;
-    if (!rawAssinatura) {
-      const [sigDoc] = await sql<{ signed_at: string | Date | null }[]>`
-        SELECT signed_at
-        FROM signature_documents
-        WHERE cotacao_id = ${cotacao.id} AND provider = 'zapsign' AND signed_at IS NOT NULL
-        ORDER BY created_at DESC
-        LIMIT 1
-      `;
-      if (sigDoc?.signed_at) {
-        rawAssinatura = sigDoc.signed_at;
+    let dueDateStr: string;
+
+    if (options?.customValues?.dueDate) {
+      const cleanDue = options.customValues.dueDate.slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanDue)) {
+        return { ok: false, error: 'Data de vencimento inválida. Use o formato AAAA-MM-DD.' };
+      }
+      dueDateStr = cleanDue;
+    } else {
+      let rawAssinatura = clientData.assinadoEm || clientData.dataAssinatura || clientData.signedAt;
+      if (!rawAssinatura) {
+        const [sigDoc] = await sql<{ signed_at: string | Date | null }[]>`
+          SELECT signed_at
+          FROM signature_documents
+          WHERE cotacao_id = ${cotacao.id} AND provider = 'zapsign' AND signed_at IS NOT NULL
+          ORDER BY created_at DESC
+          LIMIT 1
+        `;
+        if (sigDoc?.signed_at) {
+          rawAssinatura = sigDoc.signed_at;
+        }
+      }
+
+      const dueDateCalc = calculateBillingDueDate({
+        rawVigencia: clientData.dataInicioVigencia || clientData.vigencia || clientData.dataVigencia,
+        rawAssinatura,
+        createdAt: cotacao.created_at,
+        isManualAdmin: options?.isManualAdmin,
+      });
+
+      if (!dueDateCalc.ok || !dueDateCalc.dueDate) {
+        if (options?.isManualAdmin) {
+          dueDateStr = addBusinessDays(getTodayISODate(), 2);
+        } else {
+          logger.warn(
+            {
+              cotacaoId: cotacao.id,
+              vigencia: dueDateCalc.vigenciaIso,
+              assinatura: dueDateCalc.assinaturaIso,
+              reason: dueDateCalc.reason,
+            },
+            'asaas.payment.blocked_by_due_date_rule'
+          );
+          return {
+            ok: false,
+            error: dueDateCalc.error || 'Não foi possível calcular a data de vencimento da cobrança.',
+          };
+        }
+      } else {
+        dueDateStr = dueDateCalc.dueDate;
       }
     }
 
-    const dueDateCalc = calculateBillingDueDate({
-      rawVigencia: clientData.dataInicioVigencia || clientData.vigencia || clientData.dataVigencia,
-      rawAssinatura,
-      createdAt: cotacao.created_at,
-      isManualAdmin: options?.isManualAdmin,
-    });
-
-    if (!dueDateCalc.ok || !dueDateCalc.dueDate) {
-      logger.warn(
-        {
-          cotacaoId: cotacao.id,
-          vigencia: dueDateCalc.vigenciaIso,
-          assinatura: dueDateCalc.assinaturaIso,
-          reason: dueDateCalc.reason,
-        },
-        'asaas.payment.blocked_by_due_date_rule'
-      );
-      return {
-        ok: false,
-        error: dueDateCalc.error || 'Não foi possível calcular a data de vencimento da cobrança.',
-      };
-    }
-
-    const dueDateStr = dueDateCalc.dueDate;
-
-    const descricao = `Seguro RC Advogado - Plano ${tipoDePlano || ''}`;
+    const billingType = options?.customValues?.billingType || 'BOLETO';
+    const descricao = options?.customValues?.description?.trim() || `Seguro RC Advogado - Plano ${tipoDePlano || ''}`;
 
     // 6. Cria a cobrança ou parcelamento no Asaas
     let paymentPayload: Record<string, any> = {
       customer: clienteId,
-      billingType: 'BOLETO', // Boleto híbrido (com PIX incluso)
+      billingType,
       dueDate: dueDateStr,
       description: descricao,
     };
@@ -289,7 +400,16 @@ export async function generateAsaasPaymentForQuote(
 
     if (!paymentRes.ok) {
       logger.error({ status: paymentRes.status, body: paymentResText }, 'asaas.payment.payment_failed');
-      return { ok: false, error: `Falha ao gerar cobrança no Asaas: ${paymentResText}` };
+      let errorMsg = `Falha ao gerar cobrança no Asaas (HTTP ${paymentRes.status})`;
+      try {
+        const errJson = JSON.parse(paymentResText);
+        if (Array.isArray(errJson.errors) && errJson.errors.length > 0) {
+          errorMsg = errJson.errors[0]?.description || errJson.errors[0]?.message || errorMsg;
+        } else if (errJson.message) {
+          errorMsg = String(errJson.message);
+        }
+      } catch {}
+      return { ok: false, error: errorMsg };
     }
 
     const paymentJson = JSON.parse(paymentResText);

@@ -266,3 +266,127 @@ export async function deleteAsaasPayment(
     };
   }
 }
+
+/**
+ * Cancela e exclui um parcelamento completo (carnê) no Asaas.
+ * Remove todas as parcelas pendentes vinculadas.
+ */
+export async function deleteAsaasInstallment(
+  installmentId: string
+): Promise<{ ok: boolean; deleted: boolean; error?: string }> {
+  if (!installmentId || !installmentId.trim()) {
+    return { ok: false, deleted: false, error: 'ID do parcelamento Asaas inválido' };
+  }
+
+  const { apiKey, baseUrl } = await getAsaasConfig();
+  if (!apiKey) {
+    return { ok: false, deleted: false, error: 'Chave de API do Asaas não configurada' };
+  }
+
+  const cleanId = installmentId.trim();
+
+  try {
+    const res = await fetch(`${baseUrl}/installments/${encodeURIComponent(cleanId)}`, {
+      method: 'DELETE',
+      headers: {
+        access_token: apiKey,
+        'Content-Type': 'application/json',
+      },
+      cache: 'no-store',
+    });
+
+    if (res.status === 404) {
+      return { ok: true, deleted: true };
+    }
+
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+
+    if (res.ok && (body.deleted === true || body.id)) {
+      logger.info({ installmentId: cleanId }, 'asaas.installment.deleted_remotely');
+      return { ok: true, deleted: true };
+    }
+
+    const firstError = Array.isArray(body.errors) && body.errors.length > 0
+      ? (body.errors[0] as Record<string, unknown>).description
+      : body.message;
+
+    const errorMsg = String(firstError || `Erro ${res.status} ao remover parcelamento no Asaas`);
+    logger.warn({ installmentId: cleanId, status: res.status, errorMsg }, 'asaas.installment.delete_refused');
+    return { ok: false, deleted: false, error: errorMsg };
+  } catch (err) {
+    logger.error({ err, installmentId: cleanId }, 'asaas.installment.delete_network_failed');
+    return {
+      ok: false,
+      deleted: false,
+      error: err instanceof Error ? err.message : 'Falha de comunicação com o Asaas',
+    };
+  }
+}
+
+export interface UpdateAsaasPaymentParams {
+  dueDate?: string;
+  value?: number;
+  description?: string;
+}
+
+/**
+ * Atualiza campos de uma cobrança existente diretamente na API do Asaas.
+ * Suportado para cobranças em status PENDING ou OVERDUE.
+ */
+export async function updateAsaasPayment(
+  paymentId: string,
+  params: UpdateAsaasPaymentParams
+): Promise<{ ok: boolean; data?: Record<string, unknown>; error?: string }> {
+  if (!paymentId || !paymentId.trim()) {
+    return { ok: false, error: 'ID da cobrança Asaas inválido' };
+  }
+
+  const { apiKey, baseUrl } = await getAsaasConfig();
+  if (!apiKey) {
+    return { ok: false, error: 'Chave de API do Asaas não configurada' };
+  }
+
+  const cleanId = paymentId.trim();
+  const payload: Record<string, unknown> = {};
+
+  if (params.dueDate) payload.dueDate = params.dueDate;
+  if (params.value !== undefined && params.value > 0) payload.value = params.value;
+  if (params.description !== undefined) payload.description = params.description;
+
+  if (Object.keys(payload).length === 0) {
+    return { ok: false, error: 'Nenhum dado informado para atualização' };
+  }
+
+  try {
+    const res = await fetch(`${baseUrl}/payments/${encodeURIComponent(cleanId)}`, {
+      method: 'POST',
+      headers: {
+        access_token: apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      cache: 'no-store',
+    });
+
+    const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+
+    if (res.ok && body.id) {
+      logger.info({ paymentId: cleanId, updates: payload }, 'asaas.payment.updated_remotely');
+      return { ok: true, data: body };
+    }
+
+    const firstError = Array.isArray(body.errors) && body.errors.length > 0
+      ? (body.errors[0] as Record<string, unknown>).description
+      : body.message;
+
+    const errorMsg = String(firstError || `Erro ${res.status} retornado pelo Asaas ao atualizar cobrança`);
+    logger.warn({ paymentId: cleanId, status: res.status, errorMsg, payload }, 'asaas.payment.update_refused');
+    return { ok: false, error: errorMsg };
+  } catch (err) {
+    logger.error({ err, paymentId: cleanId }, 'asaas.payment.update_network_failed');
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'Falha de comunicação com o Asaas ao atualizar cobrança',
+    };
+  }
+}

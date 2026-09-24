@@ -15,6 +15,8 @@ import { ExcluirCotacaoButton, ExcluirBoletoButton } from '@/components/dev';
 import { VerificarZapSignButton } from '../_verificar-zapsign-button';
 import { CopiarLinkAssinaturaButton } from '@/components/cotacao/CopiarLinkAssinaturaButton';
 import { EnviarPropostaEmailButton } from '@/components/cotacao/EnviarPropostaEmailButton';
+import { GerenciarCobrancaButton } from '@/components/admin/GerenciarCobrancaButton';
+import type { CobrancaAsaasInitialData } from '@/components/admin/GerenciarCobrancaAsaasModal';
 
 const statusLabel: Record<string, string> = {
   rascunho: 'Rascunho',
@@ -102,8 +104,9 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
     billing_type: string;
     amount_total: string;
     status: string;
+    due_date: string;
   }>>`
-    SELECT id, installment_count, billing_type, amount_total, status
+    SELECT id, installment_count, billing_type, amount_total, status, due_date
     FROM payment_orders
     WHERE cotacao_id = ${id}
     ORDER BY created_at DESC
@@ -231,6 +234,25 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
     createdAt: cotacao.created_at,
     isManualAdmin: false,
   });
+
+  const cobrancaInitialData: CobrancaAsaasInitialData = {
+    valorTotal: totalAmountNum || Number(cotacao.premio_final ?? cotacao.premio_calculado ?? 0),
+    qtdParcelas: numParcelas,
+    dueDate: String(clientData.dataVencimento || billingDueDateCheck?.dueDate || ''),
+    billingType: (paymentOrder?.billing_type as 'BOLETO' | 'PIX') || 'BOLETO',
+    description: `Seguro RC Profissional - Plano ${planoNome}`,
+    isAssinado,
+    existingPayment: (paymentOrder || checkoutId) ? {
+      id: paymentOrder?.id || checkoutId,
+      externalId: checkoutId || paymentOrder?.id || null,
+      status: paymentOrder?.status || 'pending',
+      amount: paymentOrder ? parseFloat(paymentOrder.amount_total) || 0 : totalAmountNum,
+      installments: paymentOrder?.installment_count || numParcelas,
+      dueDate: String(clientData.dataVencimento || paymentOrder?.due_date || ''),
+      bankSlipUrl: linkBoleto || null,
+      invoiceUrl: linkBoleto || null,
+    } : null,
+  };
 
   return (
     <div className="space-y-6 max-w-[1100px] mx-auto">
@@ -457,6 +479,14 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
                         <ExternalLink size={12} className="!text-white text-white shrink-0" />
                       </a>
                     )}
+                    <GerenciarCobrancaButton
+                      cotacaoId={cotacao.id}
+                      clientName={cotacao.client_name}
+                      mode="edit"
+                      variant="card"
+                      initialData={cobrancaInitialData}
+                      label="Editar Cobrança"
+                    />
                     <EnviarFaturaEmailButton
                       cotacaoId={cotacao.id}
                       clientName={cotacao.client_name || String(clientData.nome || '')}
@@ -484,49 +514,54 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
             ) : (
               <div className="space-y-3">
                 <p className="text-xs text-slate-500 font-medium">Nenhuma fatura do Asaas foi gerada para esta cotação ainda.</p>
-                {cotacao.status === 'assinado' && (
-                  <div className="pt-1 space-y-2">
-                    {billingDueDateCheck.isPastVigencia && (
-                      <div
-                        className={`text-xs p-3 rounded-xl border ${
-                          billingDueDateCheck.ok
-                            ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                            : 'bg-amber-50 border-amber-200 text-amber-900'
-                        }`}
-                      >
-                        <strong className="block font-bold mb-0.5">
-                          {billingDueDateCheck.ok
-                            ? 'ℹ️ Vigência anterior à data atual (Assinatura no Prazo Tolerado):'
-                            : '⚠️ Vigência anterior à data atual:'}
-                        </strong>
-                        <span>
-                          {billingDueDateCheck.ok ? (
-                            <>
-                              O contrato foi assinado em até 2 dias úteis após a vigência. O vencimento da cobrança será calculado para a <strong>data da assinatura + 2 dias úteis ({formatDate(billingDueDateCheck.dueDate || '')})</strong>.
-                            </>
-                          ) : (
-                            <>
-                              {billingDueDateCheck.error}{' '}
-                              Como administrador, ao gerar a cobrança agora o vencimento será calculado automaticamente para a <strong>data atual + 2 dias úteis</strong>.
-                            </>
-                          )}
-                        </span>
-                      </div>
-                    )}
-                    <div className="flex flex-wrap items-center gap-2">
-                      <GerarBoletoButton id={cotacao.id} clientName={cotacao.client_name} variant="card" />
-                      <EnviarFaturaEmailButton
-                        cotacaoId={cotacao.id}
-                        clientName={cotacao.client_name || String(clientData.nome || '')}
-                        clientEmail={cotacao.client_email || String(clientData.email || '')}
-                        valor={cotacao.premio_final || cotacao.premio_calculado}
-                        vencimento={clientData.dataVencimento ? String(clientData.dataVencimento) : undefined}
-                        hasLink={false}
-                        variant="card"
-                      />
+                <div className="pt-1 space-y-2">
+                  {billingDueDateCheck.isPastVigencia && (
+                    <div
+                      className={`text-xs p-3 rounded-xl border ${
+                        billingDueDateCheck.ok
+                          ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                          : 'bg-amber-50 border-amber-200 text-amber-900'
+                      }`}
+                    >
+                      <strong className="block font-bold mb-0.5">
+                        {billingDueDateCheck.ok
+                          ? 'ℹ️ Vigência anterior à data atual (Assinatura no Prazo Tolerado):'
+                          : '⚠️ Vigência anterior à data atual:'}
+                      </strong>
+                      <span>
+                        {billingDueDateCheck.ok ? (
+                          <>
+                            O contrato foi assinado em até 2 dias úteis após a vigência. O vencimento da cobrança sugerido será a <strong>data da assinatura + 2 dias úteis ({formatDate(billingDueDateCheck.dueDate || '')})</strong>.
+                          </>
+                        ) : (
+                          <>
+                            {billingDueDateCheck.error}{' '}
+                            Como administrador/desenvolvedor, você pode revisar e ajustar a data de vencimento e valores desejados antes de emitir a cobrança.
+                          </>
+                        )}
+                      </span>
                     </div>
+                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <GerenciarCobrancaButton
+                      cotacaoId={cotacao.id}
+                      clientName={cotacao.client_name}
+                      mode="create"
+                      variant="card"
+                      initialData={cobrancaInitialData}
+                      label="Criar Cobrança Asaas"
+                    />
+                    <EnviarFaturaEmailButton
+                      cotacaoId={cotacao.id}
+                      clientName={cotacao.client_name || String(clientData.nome || '')}
+                      clientEmail={cotacao.client_email || String(clientData.email || '')}
+                      valor={cotacao.premio_final || cotacao.premio_calculado}
+                      vencimento={clientData.dataVencimento ? String(clientData.dataVencimento) : undefined}
+                      hasLink={false}
+                      variant="card"
+                    />
                   </div>
-                )}
+                </div>
               </div>
             )}
           </div>

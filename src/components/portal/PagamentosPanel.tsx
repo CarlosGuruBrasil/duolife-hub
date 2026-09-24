@@ -6,6 +6,7 @@ import { formatCurrency, formatDate, formatStatusLabel } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
 import { ExcluirBoletoButton } from '@/components/dev/ExcluirBoletoButton';
 import { SincronizarAsaasButton } from '@/components/cotacao/SincronizarAsaasButton';
+import { GerenciarCobrancaButton } from '@/components/admin/GerenciarCobrancaButton';
 
 interface Installment {
   id: string;
@@ -191,15 +192,26 @@ export function PagamentosPanel({
   return (
     <div className="space-y-5">
       {orders.length === 0 ? (
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-gray-500">Nenhuma cobrança gerada para esta cotação no banco local ainda.</p>
-          <SincronizarAsaasButton
-            id={cotacaoId}
-            isAdmin={liveAsaas}
-            variant="compact"
-            label="Verificar Pagamento Asaas"
-            onSuccess={refreshData}
-          />
+          <div className="flex items-center gap-2">
+            {liveAsaas && (
+              <GerenciarCobrancaButton
+                cotacaoId={cotacaoId}
+                mode="create"
+                variant="outline"
+                label="Criar Cobrança Asaas"
+                onSuccess={refreshData}
+              />
+            )}
+            <SincronizarAsaasButton
+              id={cotacaoId}
+              isAdmin={liveAsaas}
+              variant="compact"
+              label="Verificar Pagamento Asaas"
+              onSuccess={refreshData}
+            />
+          </div>
         </div>
       ) : (
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -210,15 +222,26 @@ export function PagamentosPanel({
               </div>
             ))}
           </div>
-          {orders.some((o) => o.status !== 'paid') && (
-            <SincronizarAsaasButton
-              id={cotacaoId}
-              isAdmin={liveAsaas}
-              variant="compact"
-              label="Sincronizar Asaas"
-              onSuccess={refreshData}
-            />
-          )}
+          <div className="flex items-center gap-2">
+            {liveAsaas && orders.some((o) => o.status !== 'paid' && o.status !== 'received' && o.status !== 'confirmed') && (
+              <GerenciarCobrancaButton
+                cotacaoId={cotacaoId}
+                mode="edit"
+                variant="outline"
+                label="Editar Cobrança"
+                onSuccess={refreshData}
+              />
+            )}
+            {orders.some((o) => o.status !== 'paid') && (
+              <SincronizarAsaasButton
+                id={cotacaoId}
+                isAdmin={liveAsaas}
+                variant="compact"
+                label="Sincronizar Asaas"
+                onSuccess={refreshData}
+              />
+            )}
+          </div>
         </div>
       )}
 
@@ -334,6 +357,31 @@ export function PagamentosPanel({
                                 </a>
                               )}
                               {!invoice && !slip && !receipt && <span className="text-gray-400">-</span>}
+                              {liveAsaas && !charge.deleted && charge.status !== 'RECEIVED' && charge.status !== 'CONFIRMED' && charge.status !== 'RECEIVED_IN_CASH' && (
+                                <GerenciarCobrancaButton
+                                  cotacaoId={cotacaoId}
+                                  mode="edit"
+                                  variant="icon"
+                                  label={`Editar cobrança ${charge.id}`}
+                                  initialData={{
+                                    valorTotal: charge.value,
+                                    qtdParcelas: charge.installmentNumber || 1,
+                                    dueDate: charge.dueDate || undefined,
+                                    description: charge.description || undefined,
+                                    existingPayment: {
+                                      id: charge.id,
+                                      externalId: charge.id,
+                                      status: charge.status,
+                                      amount: charge.value,
+                                      installments: charge.installmentNumber || 1,
+                                      dueDate: charge.dueDate || '',
+                                      bankSlipUrl: charge.bankSlipUrl,
+                                      invoiceUrl: charge.invoiceUrl,
+                                    },
+                                  }}
+                                  onSuccess={refreshData}
+                                />
+                              )}
                               {canDeleteBoleto && !charge.deleted && charge.status !== 'RECEIVED' && charge.status !== 'CONFIRMED' && charge.status !== 'RECEIVED_IN_CASH' && (
                                 <ExcluirBoletoButton
                                   id={charge.id}
