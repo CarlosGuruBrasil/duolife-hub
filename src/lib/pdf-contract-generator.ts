@@ -98,11 +98,12 @@ const MESES_PT_MIN = [
 
 /**
  * Quebra linhas de texto para caber na largura especificada.
+ * Quebra também palavras individuais que excedam a largura máxima da célula.
  */
 function wrapText(text: string, font: PDFFont, fontSize: number, maxWidth: number): string[] {
   if (!text) return [];
   const lines: string[] = [];
-  const paragraphs = text.split('\n');
+  const paragraphs = String(text).split('\n');
 
   for (const para of paragraphs) {
     if (!para.trim()) {
@@ -117,8 +118,26 @@ function wrapText(text: string, font: PDFFont, fontSize: number, maxWidth: numbe
       if (testWidth <= maxWidth) {
         currentLine = testLine;
       } else {
-        if (currentLine) lines.push(currentLine);
-        currentLine = word;
+        if (currentLine) {
+          lines.push(currentLine);
+          currentLine = '';
+        }
+        // Se uma única palavra exceder maxWidth, particiona caractere a caractere
+        const wordWidth = font.widthOfTextAtSize(sanitizeForPdf(word), fontSize);
+        if (wordWidth > maxWidth) {
+          let chunk = '';
+          for (const char of word) {
+            if (font.widthOfTextAtSize(sanitizeForPdf(chunk + char), fontSize) <= maxWidth) {
+              chunk += char;
+            } else {
+              if (chunk) lines.push(chunk);
+              chunk = char;
+            }
+          }
+          currentLine = chunk;
+        } else {
+          currentLine = word;
+        }
       }
     }
     if (currentLine) lines.push(currentLine);
@@ -179,12 +198,15 @@ interface CellConfig {
   borderColor?: Color;
   borderWidth?: number;
   align?: 'left' | 'center' | 'right';
+  valign?: 'top' | 'middle';
   paddingX?: number;
   paddingY?: number;
+  lineHeight?: number;
 }
 
 /**
- * Helper para desenhar célula com borda e preenchimento no sistema top-down.
+ * Helper para desenhar célula com borda, preenchimento e suporte automático
+ * a multi-line auto-wrapping de textos longos.
  */
 function drawCell(page: PDFPage, pageHeight: number, c: CellConfig) {
   const yBottom = pageHeight - c.y - c.h;
@@ -214,30 +236,54 @@ function drawCell(page: PDFPage, pageHeight: number, c: CellConfig) {
     });
   }
 
-  // Texto
+  // Texto com auto-wrap inteligente de múltiplas linhas
   if (c.text !== undefined && c.font && c.fontSize) {
-    const sanitized = sanitizeForPdf(c.text);
-    const textWidth = c.font.widthOfTextAtSize(sanitized, c.fontSize);
     const padX = c.paddingX ?? 4;
+    const padY = c.paddingY ?? 3;
+    const maxTextW = Math.max(10, c.w - padX * 2);
     const align = c.align ?? 'left';
 
-    let textX = c.x + padX;
-    if (align === 'center') {
-      textX = c.x + (c.w - textWidth) / 2;
-    } else if (align === 'right') {
-      textX = c.x + c.w - textWidth - padX;
+    const lines = wrapText(c.text, c.font, c.fontSize, maxTextW);
+    if (lines.length === 0) return;
+
+    const lineHeight = c.lineHeight ?? (c.fontSize * 1.25);
+    const totalTextHeight = (lines.length - 1) * lineHeight + c.fontSize * 0.75;
+
+    // Alinhamento vertical
+    let startY: number;
+    if (c.valign === 'top' || totalTextHeight >= c.h - padY * 2) {
+      startY = (pageHeight - c.y) - padY - (c.fontSize * 0.75);
+    } else {
+      // Middle vertical
+      const freeSpace = c.h - totalTextHeight;
+      startY = yBottom + freeSpace / 2 + totalTextHeight - (c.fontSize * 0.75);
     }
 
-    // Centralização vertical do texto
-    const textY = yBottom + (c.h - c.fontSize * 0.75) / 2;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const sanitized = sanitizeForPdf(line);
+      const textWidth = c.font.widthOfTextAtSize(sanitized, c.fontSize);
 
-    page.drawText(sanitized, {
-      x: textX,
-      y: textY,
-      size: c.fontSize,
-      font: c.font,
-      color: c.textColor ?? rgb(0.08, 0.08, 0.08),
-    });
+      let textX = c.x + padX;
+      if (align === 'center') {
+        textX = c.x + (c.w - textWidth) / 2;
+      } else if (align === 'right') {
+        textX = c.x + c.w - textWidth - padX;
+      }
+
+      const currentLineY = startY - i * lineHeight;
+
+      // Não deixa desenhar fora do limite inferior da célula
+      if (currentLineY >= yBottom + 1) {
+        page.drawText(sanitized, {
+          x: textX,
+          y: currentLineY,
+          size: c.fontSize,
+          font: c.font,
+          color: c.textColor ?? rgb(0.08, 0.08, 0.08),
+        });
+      }
+    }
   }
 }
 
@@ -526,19 +572,32 @@ function drawProponenteBlock(
   currY += rowH;
 
   // Linha 5: Início Profissional & Tratamento de Dados (LGPD)
-  const l5Col1W = 105.0;
-  const l5Col2W = 75.0;
-  const l5Col3W = 100.0;
+  const l5Col1W = 95.0;
+  const l5Col2W = 65.0;
+  const l5Col3W = 95.0;
   const l5Col4W = w - (l5Col1W + l5Col2W + l5Col3W);
-  const rowH5 = 26.0;
+  const rowH5 = 28.0;
 
   drawCell(page, pageHeight, { x, y: currY, w: l5Col1W, h: rowH5, text: 'Início Profissional:', font: fontBold, fontSize: 7.8, bgColor: colorGrayHeader, borderColor: colorBorder });
   drawCell(page, pageHeight, { x: x + l5Col1W, y: currY, w: l5Col2W, h: rowH5, text: data.inicioProfissional, font: fontRegular, fontSize: 7.8, bgColor: colorWhite, borderColor: colorBorder, align: 'center' });
   drawCell(page, pageHeight, { x: x + l5Col1W + l5Col2W, y: currY, w: l5Col3W, h: rowH5, text: 'Tratamento de Dados:', font: fontBold, fontSize: 7.8, bgColor: colorGrayHeader, borderColor: colorBorder });
 
-  // LGPD box
+  // LGPD box com quebra suave e sem transbordamento
   const lgpdText = '([X]) Concordo que este site armazene minhas informações para que possam responder à minha consulta.';
-  drawCell(page, pageHeight, { x: x + l5Col1W + l5Col2W + l5Col3W, y: currY, w: l5Col4W, h: rowH5, text: lgpdText, font: fontRegular, fontSize: 7.0, bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page, pageHeight, {
+    x: x + l5Col1W + l5Col2W + l5Col3W,
+    y: currY,
+    w: l5Col4W,
+    h: rowH5,
+    text: lgpdText,
+    font: fontRegular,
+    fontSize: 6.8,
+    lineHeight: 8.5,
+    paddingX: 5,
+    paddingY: 3,
+    bgColor: colorWhite,
+    borderColor: colorBorder,
+  });
   currY += rowH5;
 
   return currY + 12.0;
@@ -1198,25 +1257,29 @@ function renderPropostaOficial(
 
   // Perguntas PPE (2 colunas)
   const ppeColW = contentW / 2;
-  const ppeBoxH = 50.0;
+  const ppeHeaderH = 36.0;
+  const ppeValH = 18.0;
 
   // Coluna 1
   drawCell(page2, pageHeight, {
     x: contentX,
     y: y2,
     w: ppeColW,
-    h: 32.0,
+    h: ppeHeaderH,
     text: 'Desempenha ou já desempenhou algum dos cargos relacionados a PPE, nos últimos 5 anos?',
     font: fontBold,
-    fontSize: 7.2,
+    fontSize: 7.0,
+    lineHeight: 8.8,
+    paddingX: 6,
+    paddingY: 4,
     bgColor: colorGrayHeader,
     borderColor: colorBorder,
   });
   drawCell(page2, pageHeight, {
     x: contentX,
-    y: y2 + 32.0,
+    y: y2 + ppeHeaderH,
     w: ppeColW,
-    h: 18.0,
+    h: ppeValH,
     text: params.ppe.ppeCargos,
     font: fontRegular,
     fontSize: 7.8,
@@ -1230,18 +1293,21 @@ function renderPropostaOficial(
     x: contentX + ppeColW,
     y: y2,
     w: ppeColW,
-    h: 32.0,
+    h: ppeHeaderH,
     text: 'É representante legal, familiar ou estreito colaborador de ocupante de algum cargo relacionado a PPE, nos últimos 5 anos?',
     font: fontBold,
-    fontSize: 7.2,
+    fontSize: 7.0,
+    lineHeight: 8.8,
+    paddingX: 6,
+    paddingY: 4,
     bgColor: colorGrayHeader,
     borderColor: colorBorder,
   });
   drawCell(page2, pageHeight, {
     x: contentX + ppeColW,
-    y: y2 + 32.0,
+    y: y2 + ppeHeaderH,
     w: ppeColW,
-    h: 18.0,
+    h: ppeValH,
     text: params.ppe.ppeRepresenta,
     font: fontRegular,
     fontSize: 7.8,
@@ -1249,7 +1315,7 @@ function renderPropostaOficial(
     borderColor: colorBorder,
     align: 'center',
   });
-  y2 += ppeBoxH + 6.0;
+  y2 += ppeHeaderH + ppeValH + 6.0;
 
   // Cargos PPE selecionados
   drawCell(page2, pageHeight, {
@@ -1486,25 +1552,10 @@ function renderPropostaOficial(
   });
   y3 += 24.0;
 
-  // Pergunta 4 (chamada de rodapé da pág 3)
-  page3.drawText('O profissional alguma vez pagou por uma reclamação com fundos próprios? (Continuação na pág. 4)', {
-    x: contentX + 4.0,
-    y: pageHeight - y3 - 12.0,
-    size: 7.8,
-    font: fontBold,
-    color: rgb(0.2, 0.2, 0.2),
-  });
-
-  // --- PÁGINA 4: Pagamento com Fundos Próprios, Declaração, Comercialização e Assinaturas ---
-  const page4 = pdfDoc.addPage([pageWidth, pageHeight]);
-  renderTimbradoHeaderAndFooter(page4, pageWidth, pageHeight, assets, params.corretora, fontRegular, fontBold);
-
-  let y4 = 88.0;
-
-  // Continuação Pergunta 4
-  drawCell(page4, pageHeight, {
+  // Pergunta 4: Pagamento com Fundos Próprios
+  drawCell(page3, pageHeight, {
     x: contentX,
-    y: y4,
+    y: y3,
     w: contentW - 80.0,
     h: 20.0,
     text: 'O profissional alguma vez pagou por uma reclamação com fundos próprios?',
@@ -1513,9 +1564,9 @@ function renderPropostaOficial(
     bgColor: colorGrayHeader,
     borderColor: colorBorder,
   });
-  drawCell(page4, pageHeight, {
+  drawCell(page3, pageHeight, {
     x: contentX + contentW - 80.0,
-    y: y4,
+    y: y3,
     w: 80.0,
     h: 20.0,
     text: params.questionario.pagouReclamacao,
@@ -1525,11 +1576,11 @@ function renderPropostaOficial(
     borderColor: colorBorder,
     align: 'center',
   });
-  y4 += 20.0;
+  y3 += 20.0;
 
-  drawCell(page4, pageHeight, {
+  drawCell(page3, pageHeight, {
     x: contentX,
-    y: y4,
+    y: y3,
     w: 130.0,
     h: 18.0,
     text: 'Se afirmativo, informar detalhes:',
@@ -1538,9 +1589,9 @@ function renderPropostaOficial(
     bgColor: colorGrayHeader,
     borderColor: colorBorder,
   });
-  drawCell(page4, pageHeight, {
+  drawCell(page3, pageHeight, {
     x: contentX + 130.0,
-    y: y4,
+    y: y3,
     w: contentW - 130.0,
     h: 18.0,
     text: params.questionario.pagouDetalhe,
@@ -1549,7 +1600,13 @@ function renderPropostaOficial(
     bgColor: colorWhite,
     borderColor: colorBorder,
   });
-  y4 += 24.0;
+  y3 += 24.0;
+
+  // --- PÁGINA 4: Declaração, Comercialização e Assinaturas ---
+  const page4 = pdfDoc.addPage([pageWidth, pageHeight]);
+  renderTimbradoHeaderAndFooter(page4, pageWidth, pageHeight, assets, params.corretora, fontRegular, fontBold);
+
+  let y4 = 88.0;
 
   // Declaração de Veracidade e Risco
   y4 = drawSectionHeader(page4, pageHeight, contentX, y4, contentW, 'DECLARAÇÃO DE VERACIDADE E RISCO', fontBold, colorGrayHeader, colorBorder);
