@@ -33,9 +33,11 @@ export function GerenciarCobrancaButton({
   function handleSuccess() {
     if (onSuccess) {
       onSuccess();
-    } else {
-      router.refresh();
     }
+    router.refresh();
+    setTimeout(() => {
+      window.location.reload();
+    }, 600);
   }
 
   const defaultLabel =

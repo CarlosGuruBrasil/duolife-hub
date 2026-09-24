@@ -135,6 +135,16 @@ export async function generateAsaasPaymentForQuote(
     } else if (!options?.customValues) {
       // Idempotência padrão: só aplica quando não for customValues e não for forceRecreate
       if (clientData.checkoutId && clientData.linkBoleto) {
+        await sql`
+          UPDATE cotacoes
+          SET
+            status = CASE
+              WHEN status IN ('rascunho', 'enviada', 'contrato_gerado', 'assinado') THEN 'pagamento_gerado'
+              ELSE status
+            END,
+            updated_at = NOW()
+          WHERE id = ${cotacao.id}
+        `;
         return {
           ok: true,
           checkoutId: clientData.checkoutId,
@@ -157,7 +167,13 @@ export async function generateAsaasPaymentForQuote(
         clientData.dataVencimento = existingOrder.due_date;
         await sql`
           UPDATE cotacoes
-          SET client_data = ${JSON.stringify(clientData)}::jsonb, updated_at = NOW()
+          SET
+            status = CASE
+              WHEN status IN ('rascunho', 'enviada', 'contrato_gerado', 'assinado') THEN 'pagamento_gerado'
+              ELSE status
+            END,
+            client_data = ${JSON.stringify(clientData)}::jsonb,
+            updated_at = NOW()
           WHERE id = ${cotacao.id}
         `;
         return {
@@ -577,7 +593,10 @@ export async function generateAsaasPaymentForQuote(
     await sql`
       UPDATE cotacoes
       SET
-        status = 'pagamento_gerado',
+        status = CASE
+          WHEN status IN ('aprovada', 'emitida') THEN status
+          ELSE 'pagamento_gerado'
+        END,
         premio_final = ${valorTotal},
         client_data = ${JSON.stringify(clientData)}::jsonb,
         updated_at = NOW()

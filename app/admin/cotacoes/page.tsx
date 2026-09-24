@@ -4,8 +4,6 @@ import { Plus, ExternalLink, FileText, Search, Play } from 'lucide-react';
 import { verifyAuth, isInternalUser, isDevUser } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { RecusarCotacaoButton } from './_recusar-button';
-import { GerarBoletoButton } from './_gerar-boleto-button';
-import { GerenciarCobrancaButton } from '@/components/admin/GerenciarCobrancaButton';
 import { ExcluirCotacaoButton } from '@/components/dev';
 import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
 import { formatCurrency, formatDateTime, formatStatusLabel } from '@/lib/format';
@@ -308,7 +306,6 @@ export default async function AdminCotacoesPage({
                     'active',
                   ].includes(String(cotacao.status || '').toLowerCase()) || Boolean(clientData.contratoPdf || clientData.signedFileUrl || clientData.assinadoEm);
                   const oab = String(clientData.oab || '');
-                  const numParcelas = Number(clientData.parcela) || 1;
 
                   return (
                     <tr key={cotacao.id} className="hover:bg-slate-50/60 transition-colors duration-150 group">
@@ -370,50 +367,15 @@ export default async function AdminCotacoesPage({
                       <td className="px-6 py-4 text-center border-b border-slate-100">
                         <div className="flex items-center justify-center gap-2">
                           {linkBoleto ? (
-                            <div className="flex items-center gap-1">
-                              <a
-                                href={linkBoleto}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 px-2 py-1 rounded-lg transition-colors"
-                                title="Abrir Boleto / Pix do Asaas"
-                              >
-                                📄 Fatura Asaas <ExternalLink size={10} />
-                              </a>
-                              <GerenciarCobrancaButton
-                                cotacaoId={cotacao.id}
-                                clientName={cotacao.client_name}
-                                mode="edit"
-                                variant="icon"
-                                label="Editar Cobrança"
-                                initialData={{
-                                  valorTotal: Number(cotacao.premio_final ?? cotacao.premio_calculado ?? 0),
-                                  qtdParcelas: numParcelas,
-                                  isAssinado: isContratoAssinado,
-                                  existingPayment: {
-                                    id: cotacao.id,
-                                    status: 'pending',
-                                    amount: Number(cotacao.premio_final ?? cotacao.premio_calculado ?? 0),
-                                    installments: numParcelas,
-                                    dueDate: '',
-                                    bankSlipUrl: linkBoleto,
-                                  },
-                                }}
-                              />
-                            </div>
-                          ) : !ESTADOS_TERMINAIS.includes(cotacao.status) ? (
-                            <GerenciarCobrancaButton
-                              cotacaoId={cotacao.id}
-                              clientName={cotacao.client_name}
-                              mode="create"
-                              variant="table"
-                              label="Gerar Boleto"
-                              initialData={{
-                                valorTotal: Number(cotacao.premio_final ?? cotacao.premio_calculado ?? 0),
-                                qtdParcelas: numParcelas,
-                                isAssinado: isContratoAssinado,
-                              }}
-                            />
+                            <a
+                              href={linkBoleto}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 px-2.5 py-1 rounded-lg transition-colors"
+                              title="Abrir Boleto / Pix do Asaas"
+                            >
+                              📄 Fatura Asaas <ExternalLink size={10} />
+                            </a>
                           ) : (
                             <span className="text-xs text-slate-400 font-normal">—</span>
                           )}

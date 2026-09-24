@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { verifyAdminAuth, unauthorized } from '@/lib/auth';
+import { sql } from '@/lib/pg';
 import { generateAsaasPaymentForQuote, GeneratePaymentCustomValues } from '@/lib/asaas-service';
 import { logger } from '@/lib/logger';
 
@@ -68,6 +69,18 @@ export async function POST(
         { status: 400 }
       );
     }
+
+    // Garante atomicamente que o status da cotação seja atualizado para 'pagamento_gerado'
+    await sql`
+      UPDATE cotacoes
+      SET
+        status = CASE
+          WHEN status IN ('aprovada', 'emitida') THEN status
+          ELSE 'pagamento_gerado'
+        END,
+        updated_at = NOW()
+      WHERE id = ${id}
+    `;
 
     return Response.json({
       ok: true,

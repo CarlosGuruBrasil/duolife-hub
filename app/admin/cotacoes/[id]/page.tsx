@@ -4,7 +4,6 @@ import { ArrowLeft, ExternalLink, FileText, UserCheck, CreditCard, ShieldCheck, 
 import { verifyAuth, isInternalUser, isDevUser } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { PagamentosPanel } from './_pagamentos-client';
-import { GerarBoletoButton } from '../_gerar-boleto-button';
 import { EnviarFaturaEmailButton } from '@/components/cotacao/EnviarFaturaEmailButton';
 import { formatCurrency, formatDate, formatDateTime, formatAtuacao, sanitizePlanFinancials } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';

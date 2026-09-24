@@ -130,6 +130,17 @@ export async function PATCH(
         );
       }
 
+      await sql`
+        UPDATE cotacoes
+        SET
+          status = CASE
+            WHEN status IN ('aprovada', 'emitida') THEN status
+            ELSE 'pagamento_gerado'
+          END,
+          updated_at = NOW()
+        WHERE id = ${id}
+      `;
+
       return Response.json({
         ok: true,
         recreated: true,
@@ -226,7 +237,13 @@ export async function PATCH(
       }
       await sql`
         UPDATE cotacoes
-        SET client_data = ${JSON.stringify(clientData)}::jsonb, updated_at = NOW()
+        SET
+          status = CASE
+            WHEN status IN ('aprovada', 'emitida') THEN status
+            ELSE 'pagamento_gerado'
+          END,
+          client_data = ${JSON.stringify(clientData)}::jsonb,
+          updated_at = NOW()
         WHERE id = ${id}
       `;
     }

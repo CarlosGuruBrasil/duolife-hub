@@ -46,6 +46,17 @@ export async function POST(
       return Response.json({ error: result.error || 'Falha ao gerar cobrança' }, { status: 400 });
     }
 
+    await sql`
+      UPDATE cotacoes
+      SET
+        status = CASE
+          WHEN status IN ('aprovada', 'emitida') THEN status
+          ELSE 'pagamento_gerado'
+        END,
+        updated_at = NOW()
+      WHERE id = ${id}
+    `;
+
     return Response.json({
       ok: true,
       checkoutId: result.checkoutId,
