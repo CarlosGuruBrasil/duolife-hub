@@ -43,6 +43,7 @@ export interface AdminClientsFilterParams {
   paymentStatus?: string;
   corretoraId?: string;
   partnerId?: string;
+  isRenewal?: string;
   periodPreset?: PeriodPreset;
   startDate?: string;
   endDate?: string;

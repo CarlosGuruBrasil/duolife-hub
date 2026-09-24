@@ -61,6 +61,7 @@ export function ClientesActiveBadges({ products, corretoras, partners }: Cliente
   const paymentStatus = searchParams.get('paymentStatus');
   const corretoraId = searchParams.get('corretoraId');
   const partnerId = searchParams.get('partnerId');
+  const isRenewal = searchParams.get('isRenewal');
   const periodPreset = searchParams.get('periodPreset');
   const startDate = searchParams.get('startDate');
   const endDate = searchParams.get('endDate');
@@ -162,6 +163,14 @@ export function ClientesActiveBadges({ products, corretoras, partners }: Cliente
       id: 'partnerId',
       label: `Vendedor: ${part ? part.name : partnerId}`,
       onRemove: () => removeFilter('partnerId'),
+    });
+  }
+
+  if (isRenewal) {
+    badges.push({
+      id: 'isRenewal',
+      label: isRenewal === 'true' || isRenewal === 'sim' ? 'Renovação: Sim' : 'Renovação: Não (Novos Clientes)',
+      onRemove: () => removeFilter('isRenewal'),
     });
   }
 

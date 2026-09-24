@@ -194,6 +194,21 @@ export async function getAdminClientsList(
     )`);
   }
 
+  // Filtro por Renovação
+  if (rawParams.isRenewal === 'true' || rawParams.isRenewal === 'sim') {
+    conditions.push(sql`EXISTS (
+      SELECT 1 FROM cotacoes c_ren
+      WHERE c_ren.client_id = ic.id
+        AND (c_ren.is_renewal = true OR c_ren.client_data->>'isRenovacao' = 'Sim' OR (c_ren.client_data->>'renovacao')::text = 'true')
+    )`);
+  } else if (rawParams.isRenewal === 'false' || rawParams.isRenewal === 'nao') {
+    conditions.push(sql`NOT EXISTS (
+      SELECT 1 FROM cotacoes c_ren
+      WHERE c_ren.client_id = ic.id
+        AND (c_ren.is_renewal = true OR c_ren.client_data->>'isRenovacao' = 'Sim' OR (c_ren.client_data->>'renovacao')::text = 'true')
+    )`);
+  }
+
   // Filtro por Período de Cadastro
   const { start, end } = resolveDateRange(rawParams.periodPreset, rawParams.startDate, rawParams.endDate);
   if (start) {

@@ -108,6 +108,7 @@ export default async function AdminCotacoesPage({
   const productId = typeof params.productId === 'string' ? params.productId : '';
   const corretoraId = typeof params.corretoraId === 'string' ? params.corretoraId : '';
   const partnerId = typeof params.partnerId === 'string' ? params.partnerId : '';
+  const isRenewal = typeof params.isRenewal === 'string' ? params.isRenewal : '';
   const periodPreset = typeof params.periodPreset === 'string' ? (params.periodPreset as PeriodPreset) : undefined;
   const startDate = typeof params.startDate === 'string' ? params.startDate : undefined;
   const endDate = typeof params.endDate === 'string' ? params.endDate : undefined;
@@ -121,6 +122,11 @@ export default async function AdminCotacoesPage({
     conditions.push(sql`(c.corretora_id = ${corretoraId} OR part.corretora_id = ${corretoraId})`);
   }
   if (partnerId) conditions.push(sql`c.partner_id = ${partnerId}`);
+  if (isRenewal === 'true' || isRenewal === 'sim') {
+    conditions.push(sql`(c.is_renewal = true OR c.client_data->>'isRenovacao' = 'Sim' OR (c.client_data->>'renovacao')::text = 'true')`);
+  } else if (isRenewal === 'false' || isRenewal === 'nao') {
+    conditions.push(sql`(c.is_renewal = false AND (c.client_data->>'isRenovacao' IS NULL OR c.client_data->>'isRenovacao' != 'Sim') AND ((c.client_data->>'renovacao')::text IS NULL OR (c.client_data->>'renovacao')::text != 'true'))`);
+  }
 
   const { start, end } = resolveDateRange(periodPreset, startDate, endDate);
   if (start) conditions.push(sql`c.created_at >= ${start}::timestamptz`);
@@ -209,6 +215,7 @@ export default async function AdminCotacoesPage({
     productId ||
     corretoraId ||
     partnerId ||
+    isRenewal ||
     (periodPreset && periodPreset !== 'all')
   );
 

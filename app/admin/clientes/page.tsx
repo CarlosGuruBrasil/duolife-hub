@@ -109,6 +109,7 @@ export default async function AdminClientesPage({
   const paymentStatus = typeof rawParams.paymentStatus === 'string' ? rawParams.paymentStatus : undefined;
   const corretoraId = typeof rawParams.corretoraId === 'string' ? rawParams.corretoraId : undefined;
   const partnerId = typeof rawParams.partnerId === 'string' ? rawParams.partnerId : undefined;
+  const isRenewal = typeof rawParams.isRenewal === 'string' ? rawParams.isRenewal : undefined;
   const periodPreset =
     typeof rawParams.periodPreset === 'string' ? (rawParams.periodPreset as PeriodPreset) : undefined;
   const startDate = typeof rawParams.startDate === 'string' ? rawParams.startDate : undefined;
@@ -127,6 +128,7 @@ export default async function AdminClientesPage({
     paymentStatus,
     corretoraId,
     partnerId,
+    isRenewal,
     periodPreset,
     startDate,
     endDate,
@@ -142,6 +144,7 @@ export default async function AdminClientesPage({
     paymentStatus ||
     corretoraId ||
     partnerId ||
+    isRenewal ||
     (periodPreset && periodPreset !== 'all')
   );
 

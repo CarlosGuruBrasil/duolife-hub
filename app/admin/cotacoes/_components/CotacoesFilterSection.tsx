@@ -34,6 +34,7 @@ export function CotacoesFilterSection({
     searchParams.get('productId'),
     searchParams.get('corretoraId'),
     searchParams.get('partnerId'),
+    searchParams.get('isRenewal'),
     searchParams.get('periodPreset') && searchParams.get('periodPreset') !== 'all',
   ].filter(Boolean).length;
 

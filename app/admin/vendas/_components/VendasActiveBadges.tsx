@@ -33,6 +33,7 @@ export function VendasActiveBadges({
   const productId = searchParams.get('productId');
   const corretoraId = searchParams.get('corretoraId');
   const partnerId = searchParams.get('partnerId');
+  const isRenewal = searchParams.get('isRenewal');
   const periodPreset = searchParams.get('periodPreset');
   const startDate = searchParams.get('startDate');
   const endDate = searchParams.get('endDate');
@@ -88,6 +89,13 @@ export function VendasActiveBadges({
     badges.push({
       label: `Vendedor: ${part ? part.name : 'Selecionado'}`,
       onRemove: () => removeParam(['partnerId']),
+    });
+  }
+
+  if (isRenewal) {
+    badges.push({
+      label: isRenewal === 'true' || isRenewal === 'sim' ? 'Renovação: Sim' : 'Renovação: Não (Nova Venda)',
+      onRemove: () => removeParam(['isRenewal']),
     });
   }
 

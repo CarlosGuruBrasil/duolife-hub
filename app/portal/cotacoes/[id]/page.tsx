@@ -88,8 +88,8 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
         SELECT
           c.id, c.client_id, c.client_name, c.client_cpf_cnpj, c.client_email, c.client_phone,
           c.status, c.importancia_segurada, c.premio_final, c.premio_calculado, c.client_data, c.created_at,
-          c.notes, c.product_id,
-          p.name AS product_name,
+          c.notes, c.product_id, c.partner_id,
+          p.name AS product_name, p.flow_key AS product_flow_key,
           part.nome_fantasia AS partner_name
         FROM cotacoes c
         JOIN products p ON p.id = c.product_id
@@ -103,8 +103,8 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
         SELECT
           c.id, c.client_id, c.client_name, c.client_cpf_cnpj, c.client_email, c.client_phone,
           c.status, c.importancia_segurada, c.premio_final, c.premio_calculado, c.client_data, c.created_at,
-          c.notes, c.product_id,
-          p.name AS product_name,
+          c.notes, c.product_id, c.partner_id,
+          p.name AS product_name, p.flow_key AS product_flow_key,
           part.nome_fantasia AS partner_name
         FROM cotacoes c
         JOIN products p ON p.id = c.product_id
@@ -118,8 +118,8 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
         SELECT
           c.id, c.client_id, c.client_name, c.client_cpf_cnpj, c.client_email, c.client_phone,
           c.status, c.importancia_segurada, c.premio_final, c.premio_calculado, c.client_data, c.created_at,
-          c.notes, c.product_id,
-          p.name AS product_name,
+          c.notes, c.product_id, c.partner_id,
+          p.name AS product_name, p.flow_key AS product_flow_key,
           part.nome_fantasia AS partner_name
         FROM cotacoes c
         JOIN products p ON p.id = c.product_id
@@ -176,11 +176,17 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
 
   const planoNome = String(clientData.nomePlano || clientData.tipoDePlano || 'RC Advogados');
 
-  let rawTotalAmountNum = paymentOrder?.amount_total
+  const isQuoteMutable = ['rascunho', 'enviada'].includes(String(cotacao.status || '').toLowerCase());
+
+  let rawTotalAmountNum = !isQuoteMutable && paymentOrder?.amount_total
     ? parseFloat(paymentOrder.amount_total)
-    : (clientData.valor !== undefined && clientData.valor !== null
-        ? Number(clientData.valor)
-        : Number(cotacao.premio_final ?? cotacao.premio_calculado ?? 0));
+    : (cotacao.premio_final !== null && cotacao.premio_final !== undefined
+        ? Number(cotacao.premio_final)
+        : (clientData.valor !== undefined && clientData.valor !== null
+            ? Number(clientData.valor)
+            : (paymentOrder?.amount_total
+                ? parseFloat(paymentOrder.amount_total)
+                : Number(cotacao.premio_calculado ?? 0))));
 
   const { cobertura: sanitizedCobNum, premio: sanitizedPremNum } = sanitizePlanFinancials({
     planoNome,
@@ -318,9 +324,12 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
                 client_email: cotacao.client_email,
                 client_phone: cotacao.client_phone,
                 importancia_segurada: cotacao.importancia_segurada,
-                premio_final: cotacao.premio_final ?? cotacao.premio_calculado,
+                premio_final: cotacao.premio_final ?? cotacao.premio_calculado ?? (clientData.valor ? Number(clientData.valor) : null),
                 notes: cotacao.notes ? String(cotacao.notes) : null,
                 client_data: clientData,
+                product_id: cotacao.product_id,
+                product_flow_key: cotacao.product_flow_key,
+                partner_id: cotacao.partner_id,
               }}
               variant="outline"
               size="sm"
@@ -373,9 +382,12 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
                 client_email: cotacao.client_email,
                 client_phone: cotacao.client_phone,
                 importancia_segurada: cotacao.importancia_segurada,
-                premio_final: cotacao.premio_final ?? cotacao.premio_calculado,
+                premio_final: cotacao.premio_final ?? cotacao.premio_calculado ?? (clientData.valor ? Number(clientData.valor) : null),
                 notes: cotacao.notes ? String(cotacao.notes) : null,
                 client_data: clientData,
+                product_id: cotacao.product_id,
+                product_flow_key: cotacao.product_flow_key,
+                partner_id: cotacao.partner_id,
               }}
               variant="ghost"
               size="sm"

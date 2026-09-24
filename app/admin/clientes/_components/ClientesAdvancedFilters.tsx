@@ -42,6 +42,7 @@ export function ClientesAdvancedFilters({ products, corretoras, partners, isOpen
   const [paymentStatus, setPaymentStatus] = useState(searchParams.get('paymentStatus') || '');
   const [corretoraId, setCorretoraId] = useState(searchParams.get('corretoraId') || '');
   const [partnerId, setPartnerId] = useState(searchParams.get('partnerId') || '');
+  const [isRenewal, setIsRenewal] = useState(searchParams.get('isRenewal') || '');
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>(
     (searchParams.get('periodPreset') as PeriodPreset) || 'all'
   );
@@ -57,6 +58,7 @@ export function ClientesAdvancedFilters({ products, corretoras, partners, isOpen
     setPaymentStatus(searchParams.get('paymentStatus') || '');
     setCorretoraId(searchParams.get('corretoraId') || '');
     setPartnerId(searchParams.get('partnerId') || '');
+    setIsRenewal(searchParams.get('isRenewal') || '');
     setPeriodPreset((searchParams.get('periodPreset') as PeriodPreset) || 'all');
     setStartDate(searchParams.get('startDate') || '');
     setEndDate(searchParams.get('endDate') || '');
@@ -157,6 +159,9 @@ export function ClientesAdvancedFilters({ products, corretoras, partners, isOpen
     if (partnerId) params.set('partnerId', partnerId);
     else params.delete('partnerId');
 
+    if (isRenewal) params.set('isRenewal', isRenewal);
+    else params.delete('isRenewal');
+
     if (periodPreset && periodPreset !== 'all') params.set('periodPreset', periodPreset);
     else params.delete('periodPreset');
 
@@ -185,6 +190,7 @@ export function ClientesAdvancedFilters({ products, corretoras, partners, isOpen
     setPaymentStatus('');
     setCorretoraId('');
     setPartnerId('');
+    setIsRenewal('');
     setPeriodPreset('all');
     setStartDate('');
     setEndDate('');
@@ -197,6 +203,7 @@ export function ClientesAdvancedFilters({ products, corretoras, partners, isOpen
     params.delete('paymentStatus');
     params.delete('corretoraId');
     params.delete('partnerId');
+    params.delete('isRenewal');
     params.delete('periodPreset');
     params.delete('startDate');
     params.delete('endDate');
@@ -228,7 +235,7 @@ export function ClientesAdvancedFilters({ products, corretoras, partners, isOpen
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-8 gap-3">
         {/* 1. Produto */}
         <div>
           <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
@@ -385,6 +392,25 @@ export function ClientesAdvancedFilters({ products, corretoras, partners, isOpen
                 {pt.name}
               </option>
             ))}
+          </select>
+        </div>
+
+        {/* 8. Renovação */}
+        <div>
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
+            Renovação
+          </label>
+          <select
+            value={isRenewal}
+            onChange={(e) => {
+              setIsRenewal(e.target.value);
+              updateSingleFilter('isRenewal', e.target.value);
+            }}
+            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none cursor-pointer truncate"
+          >
+            <option value="">Todos os clientes</option>
+            <option value="true">Apenas Renovações</option>
+            <option value="false">Novos Clientes (Sem renovação)</option>
           </select>
         </div>
       </div>

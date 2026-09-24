@@ -230,34 +230,50 @@ export async function PATCH(
 
     const cupomCodigo = (payload.cupomCodigo ?? sanitizedInputClientData.cupomCodigo ?? currentClientData.cupomCodigo) as string | null | undefined;
 
-    // Prevenção de Price Tampering:
-    // O prêmio final é recalculado no servidor a partir da tabela oficial de planos e cupom,
-    // nunca aceitando valores enviados arbitrariamente pelo cliente.
+    // Extração de prêmio manual enviado via formulário/modal de edição (permitido para cotações em rascunho/enviada)
+    const rawPremio = proposal.premioFinal ?? payload.premio_final ?? payload.premioFinal ?? (isFinancialMutable ? (sanitizedInputClientData.valor ?? sanitizedInputClientData.premioFinal) : undefined);
+    let userSpecifiedPremio: number | null = null;
+    if (isFinancialMutable && rawPremio !== undefined && rawPremio !== null && rawPremio !== '') {
+      const parsed = parseCurrencyToNumber(rawPremio, 0);
+      if (parsed > 0) {
+        userSpecifiedPremio = parsed;
+      }
+    }
+
     let premioFinal: number | null = cotacao.premio_final !== null ? Number(cotacao.premio_final) : null;
     let valorParcelaCalculada: number | null = null;
     let parcelasCalculadas: number = parcela;
 
     if (isFinancialMutable) {
-      const targetPlano = (sanitizedInputClientData.tipo || sanitizedInputClientData.tipoDePlano || rawPlanoNome || currentClientData.tipoDePlano || currentClientData.tipo || currentClientData.nomePlano) as string | null | undefined;
-      const precoCalculado = await calcularPrecoServidor({
-        tipoDePlano: targetPlano,
-        qtdParcelasSolicitada: parcela,
-        cupomCodigo,
-        descontoManualPercent: Number(
-          payload.descontoManualPercent ??
-          sanitizedInputClientData.descontoManualPercent ??
-          sanitizedInputClientData.descontoPercentual ??
-          currentClientData.descontoManualPercent ??
-          currentClientData.descontoPercentual
-        ) || 0,
-      });
+      if (userSpecifiedPremio !== null && userSpecifiedPremio > 0) {
+        // Usuário/operador editou explicitamente o valor do prêmio
+        premioFinal = userSpecifiedPremio;
+        parcelasCalculadas = parcela;
+        valorParcelaCalculada = parcelasCalculadas > 0
+          ? Math.round((premioFinal / parcelasCalculadas) * 100) / 100
+          : premioFinal;
+      } else {
+        const targetPlano = (sanitizedInputClientData.tipo || sanitizedInputClientData.tipoDePlano || rawPlanoNome || currentClientData.tipoDePlano || currentClientData.tipo || currentClientData.nomePlano) as string | null | undefined;
+        const precoCalculado = await calcularPrecoServidor({
+          tipoDePlano: targetPlano,
+          qtdParcelasSolicitada: parcela,
+          cupomCodigo,
+          descontoManualPercent: Number(
+            payload.descontoManualPercent ??
+            sanitizedInputClientData.descontoManualPercent ??
+            sanitizedInputClientData.descontoPercentual ??
+            currentClientData.descontoManualPercent ??
+            currentClientData.descontoPercentual
+          ) || 0,
+        });
 
-      if (precoCalculado) {
-        premioFinal = precoCalculado.valorTotal;
-        valorParcelaCalculada = precoCalculado.valorParcela;
-        parcelasCalculadas = precoCalculado.qtdParcelas;
-      } else if (user.role !== 'duolife_admin' && !cotacao.premio_final) {
-        return Response.json({ error: 'Não foi possível calcular o preço oficial do plano selecionado' }, { status: 422 });
+        if (precoCalculado) {
+          premioFinal = precoCalculado.valorTotal;
+          valorParcelaCalculada = precoCalculado.valorParcela;
+          parcelasCalculadas = precoCalculado.qtdParcelas;
+        } else if (user.role !== 'duolife_admin' && !cotacao.premio_final) {
+          return Response.json({ error: 'Não foi possível calcular o preço oficial do plano selecionado' }, { status: 422 });
+        }
       }
     }
 
@@ -272,6 +288,9 @@ export async function PATCH(
     }
     if (sanitizedFinancials.premio > 0 && (isFinancialMutable || (premioFinal !== null && premioFinal >= 10000))) {
       premioFinal = sanitizedFinancials.premio;
+      if (parcelasCalculadas > 0 && premioFinal !== null) {
+        valorParcelaCalculada = Math.round((premioFinal / parcelasCalculadas) * 100) / 100;
+      }
     }
 
     // Mesclagem de client_data preservando dados protegidos anteriores (tokens ZapSign, checkoutId, etc.)
@@ -303,6 +322,13 @@ export async function PATCH(
       ...(premioFinal !== null ? { valor: premioFinal, premioFinal } : {}),
       ...(valorParcelaCalculada !== null ? { valorParcela: valorParcelaCalculada } : {}),
       ...(importanciaSegurada !== null ? { valorCobertura: `R$ ${importanciaSegurada.toLocaleString('pt-BR')}` } : {}),
+      ...(payload.descontoManualPercent !== undefined || sanitizedInputClientData.descontoManualPercent !== undefined || payload.descontoPercentual !== undefined || sanitizedInputClientData.descontoPercentual !== undefined ? {
+        descontoManualPercent: Math.min(40, Math.max(0, Number(payload.descontoManualPercent ?? sanitizedInputClientData.descontoManualPercent ?? payload.descontoPercentual ?? sanitizedInputClientData.descontoPercentual) || 0)),
+        descontoPercentual: Math.min(40, Math.max(0, Number(payload.descontoPercentual ?? sanitizedInputClientData.descontoPercentual ?? payload.descontoManualPercent ?? sanitizedInputClientData.descontoManualPercent) || 0)),
+      } : {}),
+      ...(payload.valorOriginal !== undefined || sanitizedInputClientData.valorOriginal !== undefined ? {
+        valorOriginal: Number(payload.valorOriginal ?? sanitizedInputClientData.valorOriginal) || 0,
+      } : {}),
       // Preserva tokens invioláveis gerados anteriormente no servidor
       ...(currentClientData.contratoToken ? { contratoToken: currentClientData.contratoToken } : {}),
       ...(currentClientData.signUrl ? { signUrl: currentClientData.signUrl } : {}),
@@ -355,6 +381,19 @@ export async function PATCH(
         updated_at = NOW()
       WHERE id = ${id}
     `;
+
+    // Se existir ordem de pagamento pendente/não paga para esta cotação em edição, sincroniza o valor total
+    if (isFinancialMutable && premioFinal !== null) {
+      await sql`
+        UPDATE payment_orders
+        SET
+          amount_total = ${premioFinal},
+          installment_count = ${parcelasCalculadas},
+          updated_at = NOW()
+        WHERE cotacao_id = ${id}
+          AND status NOT IN ('paid', 'received', 'confirmed', 'RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH')
+      `;
+    }
 
     // Retorna a cotação atualizada completa com joins
     const [updatedQuote] = await sql`

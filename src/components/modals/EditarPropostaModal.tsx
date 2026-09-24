@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import {
@@ -15,6 +15,12 @@ import {
   CheckCircle2,
   AlertCircle,
   Save,
+  Tag,
+  Percent,
+  TrendingDown,
+  Layers,
+  Sparkles,
+  CreditCard,
 } from 'lucide-react';
 import {
   BRAZILIAN_UFS,
@@ -27,6 +33,7 @@ import {
   parseCurrencyToNumber,
 } from './masks';
 import { formatAtuacao, parseAtuacaoList, sanitizePlanFinancials } from '@/lib/format';
+import { rcAdvogadosConfig } from '@/lib/product-schemas';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 
 export interface EditarPropostaModalProps {
@@ -44,9 +51,42 @@ export interface EditarPropostaModalProps {
     premio_final?: number | string | null;
     notes?: string | null;
     client_data?: any;
+    product_id?: string | null;
+    product_flow_key?: string | null;
+    partner_id?: string | null;
   };
   readOnlyFinancials?: boolean; // Se true ou se status for assinado/pagamento_gerado/aprovada, bloqueia edição de prêmio/cobertura
 }
+
+export interface PlanoDisponivel {
+  tipoDePlano: string;
+  nomeExibido: string;
+  cobertura: string;
+  franquia: string;
+  parcela: string;
+  ordem?: number;
+  parcela2X?: string;
+  parcela3X?: string;
+  parcela4X?: string;
+  parcela5X?: string;
+  parcela6X?: string;
+  maxParcelas?: number;
+}
+
+const FALLBACK_PLANOS: PlanoDisponivel[] = (rcAdvogadosConfig.planos || []).map((p) => ({
+  tipoDePlano: p.tipoDePlano,
+  nomeExibido: p.nomeExibido,
+  cobertura: p.cobertura,
+  franquia: p.franquia,
+  ordem: p.ordem,
+  parcela: p.parcela,
+  parcela2X: (p as any).parcela2X,
+  parcela3X: (p as any).parcela3X,
+  parcela4X: (p as any).parcela4X,
+  parcela5X: (p as any).parcela5X,
+  parcela6X: (p as any).parcela6X,
+  maxParcelas: p.maxParcelas || (p.tipoDePlano === '100k' ? 1 : 6),
+}));
 
 function parseRawClientData(data: unknown): Record<string, any> {
   if (!data) return {};
@@ -141,6 +181,16 @@ export default function EditarPropostaModal({
   const [parcelas, setParcelas] = useState('1');
   const [notes, setNotes] = useState('');
 
+  // Estados de Planos & Serviço Dinâmico
+  const [planosDisponiveis, setPlanosDisponiveis] = useState<PlanoDisponivel[]>(FALLBACK_PLANOS);
+  const [loadingPlanos, setLoadingPlanos] = useState<boolean>(false);
+  const [selectedPlanoTipo, setSelectedPlanoTipo] = useState<string>('custom');
+
+  // Valores Financeiros & Desconto Comercial (0% a 40%)
+  const [premioBase, setPremioBase] = useState<number>(0);
+  const [descontoPercent, setDescontoPercent] = useState<number>(0);
+  const [maxParcelasPermitidas, setMaxParcelasPermitidas] = useState<number>(6);
+
   // Controles de feedback e busca
   const [loadingCep, setLoadingCep] = useState(false);
   const [cepSuccess, setCepSuccess] = useState(false);
@@ -155,6 +205,39 @@ export default function EditarPropostaModal({
         String(cotacao.status).toLowerCase()
       )
   );
+
+  // Carrega planos dinamicamente via API /api/portal/planos com base no produto/ramo
+  useEffect(() => {
+    if (!isOpen) return;
+    let isCancelled = false;
+
+    async function carregarPlanos() {
+      setLoadingPlanos(true);
+      try {
+        const queryParams = new URLSearchParams();
+        if (cotacao.product_id) queryParams.set('productId', cotacao.product_id);
+        if (cotacao.product_flow_key) queryParams.set('flowKey', cotacao.product_flow_key);
+        if (cotacao.partner_id) queryParams.set('partnerId', cotacao.partner_id);
+
+        const res = await fetch(`/api/portal/planos?${queryParams.toString()}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.ok && Array.isArray(data.planos) && data.planos.length > 0 && !isCancelled) {
+            setPlanosDisponiveis(data.planos);
+          }
+        }
+      } catch {
+        // Fallback garantido por FALLBACK_PLANOS
+      } finally {
+        if (!isCancelled) setLoadingPlanos(false);
+      }
+    }
+
+    carregarPlanos();
+    return () => {
+      isCancelled = true;
+    };
+  }, [isOpen, cotacao.product_id, cotacao.product_flow_key, cotacao.partner_id]);
 
   // Carrega e preenche os estados a partir da cotação
   useEffect(() => {
@@ -186,6 +269,11 @@ export default function EditarPropostaModal({
       const planoLoaded = String(cd.nomePlano || cd.tipoDePlano || cd.tipo || 'RC Advogados');
       setNomePlano(planoLoaded);
 
+      // Desconto inicial (respeitando o teto de 40%)
+      const descGravado = Number(cd.descontoManualPercent ?? cd.descontoPercentual ?? 0);
+      const descInicial = Math.min(40, Math.max(0, descGravado));
+      setDescontoPercent(descInicial);
+
       // Valores com saneamento inteligente contra multiplicação indevida (* 100)
       const rawCob = cotacao.importancia_segurada ?? cd.valorCobertura;
       const rawPrem = cotacao.premio_final ?? cd.valor;
@@ -195,21 +283,50 @@ export default function EditarPropostaModal({
         premio: rawPrem,
       });
 
-      setImportanciaSegurada(
-        sanitized.cobertura > 0
-          ? String(sanitized.cobertura)
-          : (rawCob !== undefined && rawCob !== null ? String(rawCob) : '')
-      );
+      const parsedCobNum = sanitized.cobertura > 0
+        ? sanitized.cobertura
+        : (rawCob !== undefined && rawCob !== null ? parseCurrencyToNumber(rawCob) : 0);
+      setImportanciaSegurada(parsedCobNum > 0 ? String(parsedCobNum) : '');
 
-      setPremioFinal(
-        sanitized.premio > 0
-          ? String(sanitized.premio)
-          : (rawPrem !== undefined && rawPrem !== null ? String(rawPrem) : '')
-      );
+      const parsedPremNum = sanitized.premio > 0
+        ? sanitized.premio
+        : (rawPrem !== undefined && rawPrem !== null ? parseCurrencyToNumber(rawPrem) : 0);
+      setPremioFinal(parsedPremNum > 0 ? String(parsedPremNum) : '');
+
+      // Cálculo do prêmio base de referência
+      let baseCalculado = Number(cd.valorOriginal || 0);
+      if (!baseCalculado || baseCalculado <= 0) {
+        if (descInicial > 0 && descInicial < 100 && parsedPremNum > 0) {
+          baseCalculado = Math.round((parsedPremNum / (1 - descInicial / 100)) * 100) / 100;
+        } else {
+          baseCalculado = parsedPremNum;
+        }
+      }
+      setPremioBase(baseCalculado);
 
       setPlanoFranquia(String(cd.planoFranquia || 'R$ 1.000,00'));
       setParcelas(cd.parcela ? String(cd.parcela) : '1');
       setNotes(cotacao.notes || cd.observacoes || cd.notas || '');
+
+      // Identifica o plano selecionado na lista
+      const tipoLower = String(cd.tipoDePlano || cd.tipo || '').toLowerCase();
+      const planoMatched = FALLBACK_PLANOS.find(
+        (p) =>
+          p.tipoDePlano.toLowerCase() === tipoLower ||
+          p.nomeExibido.toLowerCase() === planoLoaded.toLowerCase()
+      );
+
+      if (planoMatched) {
+        setSelectedPlanoTipo(planoMatched.tipoDePlano);
+        const maxP = planoMatched.maxParcelas || (planoMatched.tipoDePlano === '100k' ? 1 : 6);
+        setMaxParcelasPermitidas(maxP);
+      } else if (tipoLower.includes('100k') || planoLoaded.toLowerCase().includes('100k')) {
+        setSelectedPlanoTipo('100k');
+        setMaxParcelasPermitidas(1);
+      } else {
+        setSelectedPlanoTipo('custom');
+        setMaxParcelasPermitidas(12);
+      }
 
       setErrorMessage(null);
       setSuccessMessage(null);
@@ -229,9 +346,6 @@ export default function EditarPropostaModal({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
-
-
-  if (!isOpen) return null;
 
   // Busca ViaCEP
   const handleCepChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -266,31 +380,98 @@ export default function EditarPropostaModal({
     }
   };
 
-  const handlePlanoChange = (novoPlano: string) => {
-    setNomePlano(novoPlano);
-    if (!isFinancialLocked) {
-      const lower = novoPlano.toLowerCase().trim();
-      if (lower.includes('100k') || lower.includes('100 mil') || lower.includes('100.000')) {
-        setImportanciaSegurada('100000');
-        setPlanoFranquia('R$ 1.000,00');
-      } else if (lower.includes('200k') || lower.includes('200 mil') || lower.includes('200.000')) {
-        setImportanciaSegurada('200000');
-        setPlanoFranquia('R$ 2.000,00');
-      } else if (lower.includes('300k') || lower.includes('300 mil') || lower.includes('300.000')) {
-        setImportanciaSegurada('300000');
-        setPlanoFranquia('R$ 3.000,00');
-      } else if (lower.includes('500k') || lower.includes('500 mil') || lower.includes('500.000')) {
-        setImportanciaSegurada('500000');
-        setPlanoFranquia('R$ 5.000,00');
-      } else if (lower.includes('1m') || lower.includes('1 milhão') || lower.includes('1.000.000')) {
-        setImportanciaSegurada('1000000');
-      } else if (lower.includes('2m') || lower.includes('2 milhões') || lower.includes('2.000.000')) {
-        setImportanciaSegurada('2000000');
-      } else if (lower.includes('3m') || lower.includes('3 milhões') || lower.includes('3.000.000')) {
-        setImportanciaSegurada('3000000');
+  // Seleção de serviço / plano de cobertura
+  const handleSelectPlano = (tipoOuKey: string) => {
+    setSelectedPlanoTipo(tipoOuKey);
+    if (isFinancialLocked) return;
+
+    if (tipoOuKey === 'custom') {
+      setMaxParcelasPermitidas(12);
+      return;
+    }
+
+    const plano = planosDisponiveis.find((p) => p.tipoDePlano === tipoOuKey);
+    if (!plano) return;
+
+    setNomePlano(plano.nomeExibido);
+
+    // Cobertura
+    const numCob = parseCurrencyToNumber(plano.cobertura);
+    setImportanciaSegurada(numCob > 0 ? String(numCob) : plano.cobertura);
+
+    // Franquia
+    setPlanoFranquia(plano.franquia || 'R$ 1.000,00');
+
+    // Prêmio base de tabela
+    const base = parseCurrencyToNumber(plano.parcela);
+    setPremioBase(base);
+
+    // Recalcula o prêmio final aplicando o desconto ativo
+    const fator = 1 - (descontoPercent / 100);
+    const novoFinal = Math.round(base * fator * 100) / 100;
+    setPremioFinal(String(novoFinal));
+
+    // Ajusta limites de parcelamento do plano
+    const maxP = plano.maxParcelas || (plano.tipoDePlano.toLowerCase() === '100k' ? 1 : 6);
+    setMaxParcelasPermitidas(maxP);
+    if (Number(parcelas) > maxP) {
+      setParcelas(String(maxP));
+    }
+  };
+
+  // Alteração de desconto comercial (0% a 40%)
+  const handleDescontoChange = (novoPercent: number) => {
+    if (isFinancialLocked) return;
+    const descSeguro = Math.min(40, Math.max(0, Math.round(novoPercent)));
+    setDescontoPercent(descSeguro);
+
+    if (premioBase > 0) {
+      const fator = 1 - (descSeguro / 100);
+      const novoFinal = Math.round(premioBase * fator * 100) / 100;
+      setPremioFinal(String(novoFinal));
+    } else {
+      const curFinal = parseCurrencyToNumber(premioFinal);
+      if (curFinal > 0) {
+        const baseDeduzida =
+          descontoPercent > 0 && descontoPercent < 100
+            ? curFinal / (1 - descontoPercent / 100)
+            : curFinal;
+        setPremioBase(Math.round(baseDeduzida * 100) / 100);
+        const novoFinal = Math.round(baseDeduzida * (1 - descSeguro / 100) * 100) / 100;
+        setPremioFinal(String(novoFinal));
       }
     }
   };
+
+  // Alteração manual do campo de prêmio total
+  const handlePremioFinalChange = (rawVal: string) => {
+    setPremioFinal(rawVal);
+    if (isFinancialLocked) return;
+    const num = parseCurrencyToNumber(rawVal);
+    if (premioBase > 0 && num > 0 && num <= premioBase) {
+      const descCalculado = Math.round(((premioBase - num) / premioBase) * 100);
+      if (descCalculado >= 0 && descCalculado <= 40) {
+        setDescontoPercent(descCalculado);
+      }
+    }
+  };
+
+  // Cálculo das opções de parcelamento em tempo real
+  const opcoesParcelamento = useMemo(() => {
+    const finalNum = parseCurrencyToNumber(premioFinal);
+    const limit = Math.max(1, maxParcelasPermitidas || 6);
+    const list: { qtd: number; valorParcela: number; total: number; label: string }[] = [];
+
+    for (let i = 1; i <= limit; i++) {
+      const vParc = finalNum > 0 ? Math.round((finalNum / i) * 100) / 100 : 0;
+      const label =
+        i === 1
+          ? `1x de ${formatCurrencyBRL(vParc)} à vista`
+          : `${i}x de ${formatCurrencyBRL(vParc)} (Total: ${formatCurrencyBRL(finalNum)})`;
+      list.push({ qtd: i, valorParcela: vParc, total: finalNum, label });
+    }
+    return list;
+  }, [premioFinal, maxParcelasPermitidas]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -336,9 +517,14 @@ export default function EditarPropostaModal({
         dataInicioVigencia: dataInicioVigencia || existingClientData.dataInicioVigencia,
         vigencia: dataInicioVigencia || existingClientData.vigencia,
         nomePlano: nomePlano.trim() || existingClientData.nomePlano,
+        tipoDePlano: selectedPlanoTipo !== 'custom' ? selectedPlanoTipo : (existingClientData.tipoDePlano || nomePlano.trim()),
+        tipo: selectedPlanoTipo !== 'custom' ? selectedPlanoTipo : (existingClientData.tipo || nomePlano.trim()),
         planoFranquia: planoFranquia.trim() || existingClientData.planoFranquia,
         parcela: parcelas ? Number(parcelas) : existingClientData.parcela,
         observacoes: notes.trim() || existingClientData.observacoes,
+        descontoManualPercent: descontoPercent,
+        descontoPercentual: descontoPercent,
+        valorOriginal: premioBase > 0 ? premioBase : (existingClientData.valorOriginal || 0),
       };
 
       const payload: Record<string, any> = {
@@ -353,6 +539,9 @@ export default function EditarPropostaModal({
         birth_date: birthDate || null,
         birthDate: birthDate || null,
         notes: notes.trim() || null,
+        descontoManualPercent: descontoPercent,
+        descontoPercentual: descontoPercent,
+        valorOriginal: premioBase > 0 ? premioBase : null,
         address: {
           cep: cleanDigits(cep) || null,
           logradouro: logradouro.trim() || null,
@@ -368,9 +557,12 @@ export default function EditarPropostaModal({
           atuacao: parseAtuacaoList(atuacao.trim()),
           dataInicioVigencia: dataInicioVigencia || null,
           planoNome: nomePlano.trim() || null,
+          tipoDePlano: selectedPlanoTipo !== 'custom' ? selectedPlanoTipo : null,
           franquia: planoFranquia.trim() || null,
           parcela: parcelas ? Number(parcelas) : 1,
           notes: notes.trim() || null,
+          descontoManualPercent: descontoPercent,
+          valorOriginal: premioBase > 0 ? premioBase : null,
         },
         client_data: updatedClientData,
       };
@@ -379,6 +571,14 @@ export default function EditarPropostaModal({
       if (!isFinancialLocked) {
         const rawCobParsed = parseCurrencyToNumber(importanciaSegurada);
         const rawPremParsed = parseCurrencyToNumber(premioFinal);
+
+        if (premioFinal.trim() !== '' && rawPremParsed <= 0) {
+          setErrorMessage('O valor do prêmio deve ser um número válido maior que zero.');
+          setActiveTab('proposta');
+          setSaving(false);
+          return;
+        }
+
         const { cobertura: parsedCobertura, premio: parsedPremio } = sanitizePlanFinancials({
           planoNome: nomePlano,
           cobertura: rawCobParsed,
@@ -388,13 +588,22 @@ export default function EditarPropostaModal({
         if (parsedCobertura > 0) {
           payload.importancia_segurada = parsedCobertura;
           payload.proposalData.importanciaSegurada = parsedCobertura;
-          updatedClientData.valorCobertura = parsedCobertura;
+          updatedClientData.valorCobertura = `R$ ${parsedCobertura.toLocaleString('pt-BR')}`;
+          updatedClientData.importanciaSegurada = parsedCobertura;
         }
         if (parsedPremio > 0) {
           payload.premio_final = parsedPremio;
           payload.proposalData.premioFinal = parsedPremio;
           updatedClientData.valor = parsedPremio;
+          updatedClientData.premioFinal = parsedPremio;
+          const numParcelas = Number(parcelas) || 1;
+          const vParc = numParcelas > 0 ? Math.round((parsedPremio / numParcelas) * 100) / 100 : parsedPremio;
+          updatedClientData.valorParcela = vParc;
         }
+
+        updatedClientData.descontoManualPercent = descontoPercent;
+        updatedClientData.descontoPercentual = descontoPercent;
+        updatedClientData.valorOriginal = premioBase > 0 ? premioBase : (parsedPremio > 0 ? parsedPremio : 0);
       }
 
       const res = await fetch(`/api/cotacoes/${cotacao.id}`, {
@@ -809,13 +1018,189 @@ export default function EditarPropostaModal({
                   </div>
                 </div>
 
-                {/* Seção Condições da Apólice / Seguro */}
+                {/* Seção 2: Serviço & Plano de Cobertura */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between pb-1 border-b border-gray-100">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5">
+                      <Layers className="w-4 h-4 text-[#00d4e0]" />
+                      Serviço / Plano de Cobertura
+                    </h3>
+                    {loadingPlanos && (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-[#0e4a5a] font-medium animate-pulse">
+                        <Loader2 className="w-3 h-3 animate-spin text-[#00d4e0]" /> Buscando planos do produto...
+                      </span>
+                    )}
+                    {isFinancialLocked && (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-amber-700 font-medium">
+                        <Lock className="w-3 h-3" /> Bloqueado
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                        Selecione o Serviço / Plano Disponível
+                      </label>
+                      <select
+                        disabled={isFinancialLocked}
+                        value={selectedPlanoTipo}
+                        onChange={(e) => handleSelectPlano(e.target.value)}
+                        className={`w-full rounded-xl border px-3.5 py-2.5 text-sm font-semibold transition-all ${
+                          isFinancialLocked
+                            ? 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed'
+                            : 'bg-white border-gray-300 text-gray-900 focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20'
+                        }`}
+                      >
+                        {planosDisponiveis.map((p) => (
+                          <option key={p.tipoDePlano} value={p.tipoDePlano}>
+                            {p.nomeExibido} — Cobertura: {p.cobertura} · Franquia: {p.franquia} · Tabela: {p.parcela}
+                          </option>
+                        ))}
+                        <option value="custom">Outro Plano / Personalizado</option>
+                      </select>
+                    </div>
+
+                    {selectedPlanoTipo === 'custom' && (
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                          Nome Personalizado do Plano
+                        </label>
+                        <input
+                          type="text"
+                          value={nomePlano}
+                          onChange={(e) => setNomePlano(e.target.value)}
+                          placeholder="Ex: RC Advogados Especial"
+                          className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Seção 3: Desconto Comercial da Proposta (0% a 40%) */}
+                <div className="bg-emerald-50/50 border border-emerald-200/80 rounded-2xl p-4 sm:p-5 space-y-4 shadow-2xs">
+                  <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-200/60 pb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center font-bold">
+                        <Percent className="w-4 h-4 text-emerald-700" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-xs font-bold uppercase tracking-wider text-emerald-950">
+                            Desconto Comercial da Proposta
+                          </h4>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            0% a 40% Máx
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-emerald-800/80 mt-0.5">
+                          Ajuste o percentual comercial para recalcular o prêmio e as parcelas em tempo real.
+                        </p>
+                      </div>
+                    </div>
+
+                    {isFinancialLocked && (
+                      <span className="inline-flex items-center gap-1 text-[11px] text-amber-800 font-semibold bg-amber-100/70 border border-amber-300 px-2.5 py-1 rounded-full">
+                        <Lock className="w-3 h-3 text-amber-700" /> Desconto Bloqueado
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Slider e Input */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-4">
+                      <input
+                        type="range"
+                        min={0}
+                        max={40}
+                        step={1}
+                        disabled={isFinancialLocked}
+                        value={descontoPercent}
+                        onChange={(e) => handleDescontoChange(Number(e.target.value))}
+                        className={`flex-1 h-2 bg-emerald-200 rounded-lg appearance-none cursor-pointer accent-[#0e4a5a] ${
+                          isFinancialLocked ? 'opacity-50 cursor-not-allowed' : ''
+                        }`}
+                      />
+                      <div className="flex items-center gap-1 min-w-[90px] bg-white border border-emerald-300 rounded-xl px-2.5 py-1.5 shadow-2xs">
+                        <input
+                          type="number"
+                          min={0}
+                          max={40}
+                          step={1}
+                          disabled={isFinancialLocked}
+                          value={descontoPercent}
+                          onChange={(e) => handleDescontoChange(Number(e.target.value))}
+                          className="w-12 text-sm font-bold text-gray-900 text-right focus:outline-none disabled:bg-transparent"
+                        />
+                        <span className="text-xs font-bold text-gray-500">%</span>
+                      </div>
+                    </div>
+
+                    {/* Atalhos Rápidos */}
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      <span className="text-[11px] font-semibold text-emerald-900 mr-1">Atalhos:</span>
+                      {[0, 5, 10, 15, 20, 25, 30, 35, 40].map((pct) => {
+                        const isCurrent = descontoPercent === pct;
+                        return (
+                          <button
+                            key={pct}
+                            type="button"
+                            disabled={isFinancialLocked}
+                            onClick={() => handleDescontoChange(pct)}
+                            className={`px-2.5 py-1 text-xs rounded-lg font-bold transition-all cursor-pointer ${
+                              isCurrent
+                                ? 'bg-[#0e4a5a] text-white shadow-xs scale-105'
+                                : 'bg-white border border-emerald-200 text-emerald-900 hover:bg-emerald-100 hover:border-emerald-300'
+                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                          >
+                            {pct}%
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {/* Simulação e Resumo Financeiro */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t border-emerald-200/60 text-xs">
+                      <div className="bg-white/80 border border-emerald-200/60 rounded-xl p-2.5">
+                        <span className="text-gray-500 block text-[11px]">Prêmio de Tabela (Base)</span>
+                        <span className="font-bold text-gray-800 text-sm">
+                          {formatCurrencyBRL(premioBase || parseCurrencyToNumber(premioFinal))}
+                        </span>
+                      </div>
+
+                      <div className="bg-white/80 border border-emerald-200/60 rounded-xl p-2.5">
+                        <span className="text-emerald-700 block text-[11px] font-semibold">
+                          Economia Aplicada ({descontoPercent}%)
+                        </span>
+                        <span className="font-bold text-emerald-700 text-sm">
+                          - {formatCurrencyBRL(
+                            Math.round(
+                              (premioBase > 0 ? premioBase : parseCurrencyToNumber(premioFinal)) *
+                                (descontoPercent / 100) *
+                                100
+                            ) / 100
+                          )}
+                        </span>
+                      </div>
+
+                      <div className="bg-emerald-100/70 border border-emerald-300/80 rounded-xl p-2.5">
+                        <span className="text-emerald-950 block text-[11px] font-bold">Prêmio Final Líquido</span>
+                        <span className="font-extrabold text-[#0e4a5a] text-sm">
+                          {formatCurrencyBRL(parseCurrencyToNumber(premioFinal))}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Seção 4: Condições do Seguro & Vigência */}
                 <div className="space-y-4">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5 pb-1 border-b border-gray-100">
                     Condições do Seguro & Vigência
                   </h3>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">
                         Início da Vigência
@@ -828,26 +1213,6 @@ export default function EditarPropostaModal({
                       />
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                        Nome do Plano Contratado
-                      </label>
-                      <input
-                        type="text"
-                        list="planos-sugestoes"
-                        value={nomePlano}
-                        onChange={(e) => handlePlanoChange(e.target.value)}
-                        placeholder="RC Advogados Essencial"
-                        className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all"
-                      />
-                      <datalist id="planos-sugestoes">
-                        {PLANOS_SUGESTOES.map((p) => (
-                          <option key={p} value={p} />
-                        ))}
-                      </datalist>
-                    </div>
-
-                    {/* Cobertura / Importância Segurada */}
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <label className="block text-xs font-semibold text-gray-700">
@@ -882,11 +1247,33 @@ export default function EditarPropostaModal({
                       />
                     </div>
 
-                    {/* Prêmio Final */}
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                        Franquia Contratada
+                      </label>
+                      <input
+                        type="text"
+                        value={planoFranquia}
+                        onChange={(e) => setPlanoFranquia(e.target.value)}
+                        placeholder="Ex: R$ 1.000,00"
+                        className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Seção 5: Formas de Pagamento & Parcelamento */}
+                <div className="space-y-4">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5 pb-1 border-b border-gray-100">
+                    <CreditCard className="w-4 h-4 text-[#00d4e0]" />
+                    Formas de Pagamento & Prêmio Final
+                  </h3>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <label className="block text-xs font-semibold text-gray-700">
-                          Prêmio Total (R$)
+                          Prêmio Total Final (R$)
                         </label>
                         {isFinancialLocked && (
                           <span className="inline-flex items-center gap-1 text-[11px] text-amber-700 font-medium">
@@ -907,9 +1294,9 @@ export default function EditarPropostaModal({
                               )
                             : premioFinal
                         }
-                        onChange={(e) => setPremioFinal(e.target.value)}
+                        onChange={(e) => handlePremioFinalChange(e.target.value)}
                         placeholder="R$ 361,67"
-                        className={`w-full rounded-xl border px-3.5 py-2.5 text-sm font-semibold transition-all ${
+                        className={`w-full rounded-xl border px-3.5 py-2.5 text-sm font-bold transition-all ${
                           isFinancialLocked
                             ? 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed'
                             : 'bg-white border-gray-300 text-gray-900 focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20'
@@ -917,41 +1304,30 @@ export default function EditarPropostaModal({
                       />
                     </div>
 
-                    {/* Franquia */}
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                        Franquia Contratada
-                      </label>
-                      <input
-                        type="text"
-                        value={planoFranquia}
-                        onChange={(e) => setPlanoFranquia(e.target.value)}
-                        placeholder="Ex: R$ 1.000,00"
-                        className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all"
-                      />
-                    </div>
-
-                    {/* Parcelas */}
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                        Condição de Pagamento (Parcelas)
+                        Condição de Pagamento (Parcelas Permitidas)
                       </label>
                       <select
                         value={parcelas}
                         onChange={(e) => setParcelas(e.target.value)}
-                        className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all"
+                        className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 font-semibold focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all"
                       >
-                        <option value="1">1x À Vista</option>
-                        <option value="2">2x Parcelas</option>
-                        <option value="3">3x Parcelas</option>
-                        <option value="4">4x Parcelas</option>
-                        <option value="5">5x Parcelas</option>
-                        <option value="6">6x Parcelas</option>
-                        <option value="10">10x Parcelas</option>
-                        <option value="12">12x Parcelas</option>
+                        {opcoesParcelamento.map((op) => (
+                          <option key={op.qtd} value={String(op.qtd)}>
+                            {op.label}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   </div>
+
+                  {maxParcelasPermitidas === 1 && (
+                    <div className="bg-sky-50 border border-sky-200 rounded-xl p-3 text-sky-900 text-xs flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-sky-600 shrink-0" />
+                      <span>Este plano possui condição simplificada exclusiva de pagamento à vista (1x).</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Observações / Notas Internas */}

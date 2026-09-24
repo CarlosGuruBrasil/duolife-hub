@@ -31,6 +31,7 @@ export function ClientesFilterSection({
     searchParams.get('paymentStatus'),
     searchParams.get('corretoraId'),
     searchParams.get('partnerId'),
+    searchParams.get('isRenewal'),
     searchParams.get('periodPreset') && searchParams.get('periodPreset') !== 'all',
   ].filter(Boolean).length;
 

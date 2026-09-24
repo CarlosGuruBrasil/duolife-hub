@@ -42,6 +42,7 @@ export function CotacoesActiveBadges({
   const productId = searchParams.get('productId');
   const corretoraId = searchParams.get('corretoraId');
   const partnerId = searchParams.get('partnerId');
+  const isRenewal = searchParams.get('isRenewal');
   const periodPreset = searchParams.get('periodPreset');
   const startDate = searchParams.get('startDate');
   const endDate = searchParams.get('endDate');
@@ -115,6 +116,14 @@ export function CotacoesActiveBadges({
       id: 'partnerId',
       label: `Vendedor: ${part ? part.name : partnerId}`,
       onRemove: () => removeFilter('partnerId'),
+    });
+  }
+
+  if (isRenewal) {
+    badges.push({
+      id: 'isRenewal',
+      label: isRenewal === 'true' || isRenewal === 'sim' ? 'Renovação: Sim' : 'Renovação: Não (Novo Negócio)',
+      onRemove: () => removeFilter('isRenewal'),
     });
   }
 
