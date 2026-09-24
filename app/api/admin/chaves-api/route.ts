@@ -50,6 +50,7 @@ export async function GET() {
       ZAPSIGN_TEMPLATE_100K: dbSettings['ZAPSIGN_TEMPLATE_100K'] || process.env.ZAPSIGN_TEMPLATE_100K || '',
       ZAPSIGN_TEMPLATE_RENOVACAO: dbSettings['ZAPSIGN_TEMPLATE_RENOVACAO'] || process.env.ZAPSIGN_TEMPLATE_RENOVACAO || '',
       ZAPSIGN_WEBHOOK_SECRET: dbSettings['ZAPSIGN_WEBHOOK_SECRET'] || process.env.ZAPSIGN_WEBHOOK_SECRET || '',
+      ZAPSIGN_DOCUMENT_MODE: dbSettings['ZAPSIGN_DOCUMENT_MODE'] || process.env.ZAPSIGN_DOCUMENT_MODE || 'dynamic_pdf',
 
       WIX_API_KEY: dbSettings['WIX_API_KEY'] || process.env.WIX_API_KEY || process.env.WIX_AUTH_TOKEN || '',
       WIX_SITE_ID: dbSettings['WIX_SITE_ID'] || process.env.WIX_SITE_ID || process.env.WIX_SITEID || '',

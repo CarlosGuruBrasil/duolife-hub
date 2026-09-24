@@ -42,6 +42,7 @@ interface ApiSettings {
 
   ZAPSIGN_API_TOKEN: string;
   ZAPSIGN_ENVIRONMENT: string;
+  ZAPSIGN_DOCUMENT_MODE: string;
   ZAPSIGN_TEMPLATE_OFICIAL: string;
   ZAPSIGN_TEMPLATE_100K: string;
   ZAPSIGN_TEMPLATE_RENOVACAO: string;
@@ -73,6 +74,7 @@ const DEFAULT_SETTINGS: ApiSettings = {
   ASAAS_WEBHOOK_SECRET: '',
   ZAPSIGN_API_TOKEN: '',
   ZAPSIGN_ENVIRONMENT: 'sandbox',
+  ZAPSIGN_DOCUMENT_MODE: 'dynamic_pdf',
   ZAPSIGN_TEMPLATE_OFICIAL: '',
   ZAPSIGN_TEMPLATE_100K: '',
   ZAPSIGN_TEMPLATE_RENOVACAO: '',
@@ -263,6 +265,7 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
 
   const isAsaasSandbox = settings.ASAAS_ENVIRONMENT === 'sandbox';
   const isZapSignSandbox = settings.ZAPSIGN_ENVIRONMENT === 'sandbox';
+  const isZapSignDynamicPdf = settings.ZAPSIGN_DOCUMENT_MODE !== 'template';
   const isWixEnabled = settings.WIX_INTEGRATION_ENABLED !== 'false';
   const isNet4LifeInfoEnabled = settings.NET4LIFE_INFO_ENABLED !== 'false';
 
@@ -520,14 +523,9 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
                     </span>
                   </div>
                   <div>
-                    <span className="text-gray-500 block font-medium">Templates Minutas:</span>
+                    <span className="text-gray-500 block font-medium">Modo de Envio:</span>
                     <span className="font-bold text-gray-800">
-                      {[
-                        settings.ZAPSIGN_TEMPLATE_OFICIAL,
-                        settings.ZAPSIGN_TEMPLATE_100K,
-                        settings.ZAPSIGN_TEMPLATE_RENOVACAO,
-                      ].filter(Boolean).length}{' '}
-                      de 3 ativos
+                      {isZapSignDynamicPdf ? 'PDF Dinâmico (Padrão)' : 'Por Modelo ZapSign'}
                     </span>
                   </div>
                 </div>
@@ -958,6 +956,118 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
               </div>
             </div>
 
+            {/* SELETOR DE MODO DE ENVIO DA PROPOSTA */}
+            <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-3">
+                <div>
+                  <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                    <FileSignature className="h-4 w-4 text-[#0e4a5a]" />
+                    Modo de Envio da Proposta para a ZapSign
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Escolha se o contrato/proposta será enviado pelo PDF oficial gerado pela plataforma ou por modelos pré-cadastrados na ZapSign.
+                  </p>
+                </div>
+                <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200 shrink-0 self-start sm:self-auto">
+                  {isZapSignDynamicPdf ? '✓ PDF Dinâmico Ativo (Padrão)' : '• Envio por Modelo Ativo'}
+                </span>
+              </div>
+
+              <div className="grid md:grid-cols-2 gap-4">
+                {/* Opção 1: Proposta Dinâmica em PDF (Padrão e Recomendada) */}
+                <div
+                  onClick={() => handleChange('ZAPSIGN_DOCUMENT_MODE', 'dynamic_pdf')}
+                  className={`border-2 rounded-xl p-5 cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md ${
+                    isZapSignDynamicPdf
+                      ? 'border-[#0e4a5a] bg-emerald-50/20 shadow-xs'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                        isZapSignDynamicPdf ? 'bg-[#0e4a5a] text-white shadow-xs' : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        <FileSignature className="h-4.5 w-4.5" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-gray-900">Proposta em PDF Dinâmico</h4>
+                        <span className="inline-block mt-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded">
+                          Padrão do Sistema • Recomendado
+                        </span>
+                      </div>
+                    </div>
+                    {isZapSignDynamicPdf ? (
+                      <CheckCircle2 className="h-5 w-5 text-[#0e4a5a] shrink-0" />
+                    ) : (
+                      <div className="w-5 h-5 rounded-full border-2 border-gray-300 shrink-0" />
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-600 mt-3 leading-relaxed">
+                    Gera e envia o <strong>documento oficial de 2 páginas</strong> em tempo real (layout KEV Seguros + DuoLife) com substituição do logotipo oficial da corretora ou nome em texto, cálculo financeiro exato e âncora de assinatura digital ICP-Brasil.
+                  </p>
+                  <div className="mt-3 pt-3 border-t border-gray-100 text-[11px] text-gray-500 space-y-1">
+                    <div className="flex items-center gap-1.5 text-emerald-800 font-medium">
+                      <Check className="h-3 w-3 text-emerald-600 shrink-0" />
+                      <span>Sem dependência de cadastro de minutas na ZapSign</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-emerald-800 font-medium">
+                      <Check className="h-3 w-3 text-emerald-600 shrink-0" />
+                      <span>Substituição dinâmica da marca da corretora no cabeçalho</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-emerald-800 font-medium">
+                      <Check className="h-3 w-3 text-emerald-600 shrink-0" />
+                      <span>Fórmula oficial de Prêmio Líquido e IOF (7,38%)</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Opção 2: Envio por Modelo Pré-Cadastrado */}
+                <div
+                  onClick={() => handleChange('ZAPSIGN_DOCUMENT_MODE', 'template')}
+                  className={`border-2 rounded-xl p-5 cursor-pointer transition-all hover:-translate-y-0.5 hover:shadow-md ${
+                    !isZapSignDynamicPdf
+                      ? 'border-[#0e4a5a] bg-emerald-50/20 shadow-xs'
+                      : 'border-gray-200 bg-white hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2.5">
+                      <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                        !isZapSignDynamicPdf ? 'bg-[#0e4a5a] text-white shadow-xs' : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        <LayoutDashboard className="h-4.5 w-4.5" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-gray-900">Envio por Modelo (Template ZapSign)</h4>
+                        <span className="inline-block mt-0.5 text-[10px] font-black uppercase tracking-wider text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
+                          Modo Alternativo
+                        </span>
+                      </div>
+                    </div>
+                    {!isZapSignDynamicPdf ? (
+                      <CheckCircle2 className="h-5 w-5 text-[#0e4a5a] shrink-0" />
+                    ) : (
+                      <div className="w-5 h-5 rounded-full border-2 border-gray-300 shrink-0" />
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-600 mt-3 leading-relaxed">
+                    Envia utilizando as <strong>minutas cadastradas previamente</strong> no painel web da ZapSign. O sistema preenche as variáveis de-para configuradas nos Template IDs abaixo.
+                  </p>
+                  <div className="mt-3 pt-3 border-t border-gray-100 text-[11px] text-gray-500 space-y-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-gray-400">•</span>
+                      <span>Exige que os Template IDs abaixo estejam cadastrados</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-gray-400">•</span>
+                      <span>Layout rígido baseado no modelo do painel ZapSign</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="grid md:grid-cols-2 gap-4">
               <div>
                 <span className="field-label">Token da API ZapSign (ZAPSIGN_API_TOKEN)</span>
@@ -1004,9 +1114,21 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
 
             {/* Modelos de Minutas */}
             <div className="border-t border-gray-200 pt-5 space-y-3">
-              <h3 className="text-xs font-black uppercase tracking-wider text-gray-700">
-                Modelos de Minuta Cadastrados no ZapSign (Template IDs)
-              </h3>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                <h3 className="text-xs font-black uppercase tracking-wider text-gray-700">
+                  Modelos de Minuta Cadastrados no ZapSign (Template IDs)
+                </h3>
+                {isZapSignDynamicPdf && (
+                  <span className="text-[11px] text-gray-500 font-medium">
+                    (Opcional no modo Proposta em PDF Dinâmico)
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-gray-500">
+                {isZapSignDynamicPdf
+                  ? 'Como o modo Proposta em PDF Dinâmico está ativo, o sistema gera o contrato oficial diretamente pelo DuoLife Hub. Os IDs abaixo só serão usados caso você alterne para o modo "Envio por Modelo".'
+                  : 'Preencha os IDs dos modelos criados na sua conta ZapSign para direcionamento de cada tipo de proposta.'}
+              </p>
               <div className="grid md:grid-cols-3 gap-4">
                 <div>
                   <span className="field-label">Template Oficial (Padrão)</span>

@@ -178,11 +178,12 @@ export async function getZapSignConfig(): Promise<ZapSignConfig> {
     ? 'https://sandbox.api.zapsign.com.br/api/v1'
     : 'https://api.zapsign.com.br/api/v1';
 
-  const docGenerationMode = (
+  const rawDocMode = (
     dbSettings['ZAPSIGN_DOCUMENT_MODE'] ||
     process.env.ZAPSIGN_DOCUMENT_MODE ||
-    'template'
-  ).trim().toLowerCase() === 'dynamic_pdf' ? 'dynamic_pdf' : 'template';
+    'dynamic_pdf'
+  ).trim().toLowerCase();
+  const docGenerationMode = rawDocMode === 'template' ? 'template' : 'dynamic_pdf';
 
   return {
     apiToken,

@@ -290,13 +290,15 @@ export async function renderContratoPdf(params: RenderContratoPdfParams): Promis
   else if (/engenheir/i.test(atividadeObjetoRaw)) atividadeObjeto = 'Engenharia';
   else if (/contador|cont[aá]bil/i.test(atividadeObjetoRaw)) atividadeObjeto = 'Contabilidade';
 
-  // Vigência do Certificado: início hoje ou data informada, fim = +1 ano
+  // Vigência do Certificado: início hoje ou data informada, fim = data informada ou +1 ano
   const dataInicioStr = clientData.dataInicio
     ? formatData(clientData.dataInicio)
     : formatData(hoje);
 
   let dataFimStr = '';
-  if (dataInicioStr && dataInicioStr.includes('/')) {
+  if (clientData.dataFim || clientData.dataFimVigencia || clientData.vigenciaAte) {
+    dataFimStr = formatData(clientData.dataFim || clientData.dataFimVigencia || clientData.vigenciaAte);
+  } else if (dataInicioStr && dataInicioStr.includes('/')) {
     const [d, m, a] = dataInicioStr.split('/');
     dataFimStr = `${d}/${m}/${Number(a) + 1}`;
   } else {
@@ -572,8 +574,11 @@ export async function renderContratoPdf(params: RenderContratoPdfParams): Promis
   });
 
   // Linha 1: Nome Corretor
+  const corretorNomeLinha = clientData.vendedorNome && clientData.vendedorNome !== corretoraNome
+    ? `${corretoraNome} (Vendedor: ${clientData.vendedorNome})`
+    : corretoraNome;
   drawCell(page1, pageHeight, { x: tableX, y: 315.9, w: colLabelW, h: 18.0, text: 'Nome:', font: fontBold, fontSize: 8.0, bgColor: colorGrayHeader });
-  drawCell(page1, pageHeight, { x: tableX + colLabelW, y: 315.9, w: colValW, h: 18.0, text: sanitizeForPdf(corretoraNome), font: fontBold, fontSize: 7.5, bgColor: colorWhite });
+  drawCell(page1, pageHeight, { x: tableX + colLabelW, y: 315.9, w: colValW, h: 18.0, text: sanitizeForPdf(corretorNomeLinha), font: fontBold, fontSize: 7.5, bgColor: colorWhite });
 
   // Linha 2: Telefone
   drawCell(page1, pageHeight, { x: tableX, y: 333.9, w: colLabelW, h: 18.0, text: 'Telefone:', font: fontBold, fontSize: 8.0, bgColor: colorGrayHeader });
@@ -995,7 +1000,13 @@ export async function renderContratoPdf(params: RenderContratoPdfParams): Promis
     { text: `CPF: ${formatCpf(cotacao.client_cpf_cnpj)}`, font: fontRegular, size: 8.2 },
     { text: 'Segurado / Proponente Aderente', font: fontRegular, size: 8.0 },
     { text: `Assinatura digital via ZapSign (ICP-Brasil)`, font: fontRegular, size: 8.0 },
-    { text: `Intermediação: ${sanitizeForPdf(corretora.nomeFantasia)}`, font: fontRegular, size: 8.0 },
+    {
+      text: clientData.vendedorNome
+        ? `Intermediação: ${sanitizeForPdf(corretora.nomeFantasia)} | Vendedor: ${sanitizeForPdf(clientData.vendedorNome)}`
+        : `Intermediação: ${sanitizeForPdf(corretora.nomeFantasia)}`,
+      font: fontRegular,
+      size: 8.0,
+    },
   ];
 
   let segTextY = signY - 14.0;
