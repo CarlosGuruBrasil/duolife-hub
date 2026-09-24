@@ -32,6 +32,8 @@ export async function GET(req: NextRequest) {
         c.address,
         c.status,
         c.metadata,
+        c.logo_base64,
+        c.logo_mime_type,
         c.created_at,
         c.updated_at,
         (SELECT COUNT(*)::int FROM partners p WHERE p.corretora_id = c.id) AS partners_count,
@@ -80,6 +82,8 @@ const createCorretoraSchema = z.object({
   primaryColor: z.preprocess(emptyToUndefined, z.string().trim().optional()),
   secondaryColor: z.preprocess(emptyToUndefined, z.string().trim().optional()),
   logoUrl: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+  logo_base64: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+  logo_mime_type: z.preprocess(emptyToUndefined, z.string().trim().optional()),
   admin_name: z.preprocess(emptyToUndefined, z.string().trim().min(2, 'Informe o nome do administrador').optional()),
   admin_email: z.preprocess(emptyToUndefined, z.string().trim().email('E-mail do administrador inválido').optional()),
   admin_password: z.preprocess(emptyToUndefined, z.string().trim().min(6, 'A senha deve ter no mínimo 6 caracteres').optional()),
@@ -111,6 +115,20 @@ export async function POST(req: NextRequest) {
   const data = parsed.data;
   const cnpj = somenteDigitos(data.cnpj);
   const email = data.email.toLowerCase();
+
+  // Processamento do Logotipo da Corretora (máximo 2MB)
+  let logoBase64: string | null = null;
+  let logoMimeType: string | null = null;
+
+  if (data.logo_base64) {
+    const cleanBase64 = data.logo_base64.replace(/^data:[^;]+;base64,/, '');
+    const sizeBytes = Buffer.byteLength(cleanBase64, 'base64');
+    if (sizeBytes > 2 * 1024 * 1024) {
+      return Response.json({ error: 'O arquivo de logotipo excede o limite máximo permitido de 2MB' }, { status: 400 });
+    }
+    logoBase64 = cleanBase64;
+    logoMimeType = data.logo_mime_type || (data.logo_base64.includes('image/jpeg') ? 'image/jpeg' : 'image/png');
+  }
 
   // Dados do Administrador Master da Corretora
   const adminName = (data.admin_name || data.nome_fantasia).trim();
@@ -158,7 +176,7 @@ export async function POST(req: NextRequest) {
       companyName: data.nome_fantasia,
       companyPhone: data.phone,
       companyEmail: email,
-      logoUrl: data.logoUrl || '',
+      logoUrl: logoBase64 ? `data:${logoMimeType};base64,${logoBase64}` : (data.logoUrl || ''),
       primaryColor: data.primaryColor || '#004172',
       secondaryColor: data.secondaryColor || '#00a0af',
       susep: data.susep || '',
@@ -174,7 +192,9 @@ export async function POST(req: NextRequest) {
         phone,
         address,
         status,
-        metadata
+        metadata,
+        logo_base64,
+        logo_mime_type
       )
       VALUES (
         ${data.razao_social},
@@ -185,9 +205,11 @@ export async function POST(req: NextRequest) {
         ${data.phone},
         ${JSON.stringify(address)}::jsonb,
         'active',
-        ${JSON.stringify({ whiteLabel, created_by: admin.userId })}::jsonb
+        ${JSON.stringify({ whiteLabel, created_by: admin.userId })}::jsonb,
+        ${logoBase64},
+        ${logoMimeType}
       )
-      RETURNING id, razao_social, nome_fantasia, cnpj, susep, email, phone, status, created_at
+      RETURNING id, razao_social, nome_fantasia, cnpj, susep, email, phone, status, logo_base64, logo_mime_type, created_at
     `;
 
     // Cria o usuário gestor master da corretora

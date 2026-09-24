@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Building, CheckCircle, Clock, XCircle, Plus, Users, Briefcase, ExternalLink, ShieldCheck, Phone, Mail, MapPin, Copy, Check, Eye, EyeOff } from 'lucide-react';
+import { Building, CheckCircle, Clock, XCircle, Plus, Users, Briefcase, ExternalLink, ShieldCheck, Phone, Mail, MapPin, Copy, Check, Eye, EyeOff, Upload, Trash2, Image as ImageIcon } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { maskCnpj, maskPhone } from '@/components/modals/masks';
 import type { WhiteLabelConfig } from '@/lib/white-label';
@@ -20,6 +20,8 @@ interface Corretora {
   phone: string | null;
   address: Record<string, unknown>;
   status: string;
+  logo_base64?: string | null;
+  logo_mime_type?: string | null;
   created_at: string;
   partners_count: number;
   cotacoes_count: number;
@@ -42,6 +44,8 @@ const FORM_VAZIO = {
   primaryColor: '#004172',
   secondaryColor: '#00a0af',
   logoUrl: '',
+  logo_base64: '',
+  logo_mime_type: '',
   admin_name: '',
   admin_email: '',
   admin_password: '',
@@ -67,6 +71,7 @@ export default function AdminCorretorasPage() {
   const [canManage, setCanManage] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(FORM_VAZIO);
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -89,6 +94,45 @@ export default function AdminCorretorasPage() {
     load();
   }, []);
 
+  function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const MAX_SIZE = 2 * 1024 * 1024; // 2MB
+    if (file.size > MAX_SIZE) {
+      toast.error('O logotipo excede o limite máximo permitido de 2MB.');
+      e.target.value = '';
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Selecione um arquivo de imagem válido (PNG, JPEG ou WEBP).');
+      e.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      setLogoPreview(result);
+      setForm((prev) => ({
+        ...prev,
+        logo_base64: result,
+        logo_mime_type: file.type,
+      }));
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handleRemoveLogo() {
+    setLogoPreview(null);
+    setForm((prev) => ({
+      ...prev,
+      logo_base64: '',
+      logo_mime_type: '',
+    }));
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -110,6 +154,8 @@ export default function AdminCorretorasPage() {
       primaryColor: form.primaryColor.trim() || undefined,
       secondaryColor: form.secondaryColor.trim() || undefined,
       logoUrl: form.logoUrl.trim() || undefined,
+      logo_base64: form.logo_base64.trim() || undefined,
+      logo_mime_type: form.logo_mime_type.trim() || undefined,
       admin_name: form.admin_name.trim() || undefined,
       admin_email: form.admin_email.trim() || undefined,
       admin_password: form.admin_password.trim() || undefined,
@@ -150,6 +196,7 @@ export default function AdminCorretorasPage() {
       }
 
       setForm(FORM_VAZIO);
+      setLogoPreview(null);
       setShowPassword(false);
       setShowForm(false);
       load();
@@ -307,6 +354,60 @@ export default function AdminCorretorasPage() {
             </div>
           </div>
 
+          {/* Seção: Logotipo e Identidade Visual (PDF e Portal) */}
+          <div className="border-t border-gray-200/80 pt-4 mt-2">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5">
+                <ImageIcon size={16} className="text-primary" /> Logotipo da Corretora (PDF e Proposta)
+              </h3>
+              <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
+                Máximo 2MB • PNG ou JPEG
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              O logotipo cadastrado será renderizado automaticamente no topo do Contrato/Proposta em PDF. Se nenhum logotipo for enviado, o PDF exibirá apenas o nome da corretora em texto.
+            </p>
+
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-gray-50 p-3.5 rounded-xl border border-gray-200">
+              <div className="w-36 h-20 rounded-lg bg-white border border-gray-200 flex items-center justify-center p-1.5 overflow-hidden shrink-0 shadow-xs">
+                {logoPreview ? (
+                  <img src={logoPreview} alt="Prévia do Logotipo" className="max-w-full max-h-full object-contain" />
+                ) : (
+                  <div className="text-center px-2">
+                    <ImageIcon size={20} className="mx-auto text-gray-300 mb-0.5" />
+                    <span className="text-[10px] text-gray-400 font-medium">Sem Logotipo</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex-1 space-y-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-300 hover:bg-gray-100 rounded-lg text-xs font-semibold text-gray-700 shadow-xs transition-colors">
+                    <Upload size={14} className="text-primary" /> Enviar Logotipo (máx 2MB)
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={handleLogoChange}
+                      className="hidden"
+                    />
+                  </label>
+                  {logoPreview && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveLogo}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                    >
+                      <Trash2 size={13} /> Remover Imagem
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-gray-500">
+                  O arquivo é salvo de forma definitiva e segura diretamente no banco de dados da plataforma.
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* Seção: Acesso do Administrador Master da Corretora */}
           <div className="border-t border-gray-200/80 pt-4 mt-2">
             <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5 mb-1">
@@ -379,7 +480,10 @@ export default function AdminCorretorasPage() {
           <div className="flex justify-end gap-3 pt-2">
             <button
               type="button"
-              onClick={() => setShowForm(false)}
+              onClick={() => {
+                setShowForm(false);
+                setLogoPreview(null);
+              }}
               className="px-5 py-2.5 border border-gray-300 text-gray-700 rounded-xl text-sm font-semibold hover:bg-gray-50 transition-colors cursor-pointer"
             >
               Cancelar
@@ -420,7 +524,9 @@ export default function AdminCorretorasPage() {
                   const statusInfo = STATUS_LABELS[c.status] || STATUS_LABELS.active;
                   const Icon = statusInfo.icon;
                   const isNet4Life = c.id === 'corretora_net4life_001';
-                  const iconSrc = c.whiteLabel?.iconUrl || (isNet4Life ? '/images/corretoras/net4life-icon.png' : c.whiteLabel?.logoUrl);
+                  const iconSrc = (c.logo_base64 && c.logo_mime_type)
+                    ? `data:${c.logo_mime_type};base64,${c.logo_base64}`
+                    : (c.whiteLabel?.iconUrl || (isNet4Life ? '/images/corretoras/net4life-icon.png' : c.whiteLabel?.logoUrl));
 
                   return (
                     <tr key={c.id} className="group hover:bg-gray-50/75 transition-colors">

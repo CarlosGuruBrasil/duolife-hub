@@ -105,6 +105,7 @@ export default async function AdminCotacoesPage({
   const status = statusLabel[rawStatus] ? rawStatus : '';
   const q = (typeof params.q === 'string' ? params.q : '').trim().slice(0, 120);
   const productId = typeof params.productId === 'string' ? params.productId : '';
+  const corretoraId = typeof params.corretoraId === 'string' ? params.corretoraId : '';
   const partnerId = typeof params.partnerId === 'string' ? params.partnerId : '';
   const periodPreset = typeof params.periodPreset === 'string' ? (params.periodPreset as PeriodPreset) : undefined;
   const startDate = typeof params.startDate === 'string' ? params.startDate : undefined;
@@ -115,6 +116,9 @@ export default async function AdminCotacoesPage({
   const conditions = [];
   if (status) conditions.push(sql`c.status = ${status}`);
   if (productId) conditions.push(sql`c.product_id = ${productId}`);
+  if (corretoraId) {
+    conditions.push(sql`(c.corretora_id = ${corretoraId} OR part.corretora_id = ${corretoraId})`);
+  }
   if (partnerId) conditions.push(sql`c.partner_id = ${partnerId}`);
 
   const { start, end } = resolveDateRange(periodPreset, startDate, endDate);
@@ -148,7 +152,7 @@ export default async function AdminCotacoesPage({
     ? conditions.reduce((acc, cond) => sql`${acc} AND ${cond}`)
     : sql`TRUE`;
 
-  const [countResult, productsList, partnersList] = await Promise.all([
+  const [countResult, productsList, corretorasList, partnersList] = await Promise.all([
     sql<{ total: number }[]>`
       SELECT COUNT(*)::int AS total
       FROM cotacoes c
@@ -159,8 +163,11 @@ export default async function AdminCotacoesPage({
     sql<{ id: string; name: string }[]>`
       SELECT id, name FROM products WHERE is_active = true ORDER BY name ASC
     `,
-    sql<{ id: string; name: string }[]>`
-      SELECT id, COALESCE(nome_fantasia, razao_social) AS name FROM partners ORDER BY name ASC
+    sql<{ id: string; name: string; cnpj: string | null }[]>`
+      SELECT id, COALESCE(nome_fantasia, razao_social) AS name, cnpj FROM corretoras ORDER BY name ASC
+    `,
+    sql<{ id: string; name: string; corretoraId: string | null }[]>`
+      SELECT id, COALESCE(nome_fantasia, razao_social) AS name, corretora_id AS "corretoraId" FROM partners ORDER BY name ASC
     `,
   ]);
 
@@ -199,6 +206,7 @@ export default async function AdminCotacoesPage({
     status ||
     q ||
     productId ||
+    corretoraId ||
     partnerId ||
     (periodPreset && periodPreset !== 'all')
   );
@@ -223,6 +231,7 @@ export default async function AdminCotacoesPage({
       {/* Seção de Filtros Reativos */}
       <CotacoesFilterSection
         products={productsList}
+        corretoras={corretorasList}
         partners={partnersList}
         statusLabels={statusLabel}
         pageSize={pageSize}

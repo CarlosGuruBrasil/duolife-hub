@@ -11,6 +11,7 @@ interface Option {
 
 interface CotacoesActiveBadgesProps {
   products: Option[];
+  corretoras: Option[];
   partners: Option[];
   statusLabels: Record<string, string>;
 }
@@ -27,6 +28,7 @@ const periodPresetLabel: Record<string, string> = {
 
 export function CotacoesActiveBadges({
   products,
+  corretoras,
   partners,
   statusLabels,
 }: CotacoesActiveBadgesProps) {
@@ -38,6 +40,7 @@ export function CotacoesActiveBadges({
   const q = searchParams.get('q');
   const status = searchParams.get('status');
   const productId = searchParams.get('productId');
+  const corretoraId = searchParams.get('corretoraId');
   const partnerId = searchParams.get('partnerId');
   const periodPreset = searchParams.get('periodPreset');
   const startDate = searchParams.get('startDate');
@@ -97,11 +100,20 @@ export function CotacoesActiveBadges({
     });
   }
 
+  if (corretoraId) {
+    const corr = corretoras.find((c) => c.id === corretoraId);
+    badges.push({
+      id: 'corretoraId',
+      label: `Corretora: ${corr ? corr.name : corretoraId}`,
+      onRemove: () => removeFilter('corretoraId'),
+    });
+  }
+
   if (partnerId) {
     const part = partners.find((p) => p.id === partnerId);
     badges.push({
       id: 'partnerId',
-      label: `Parceiro: ${part ? part.name : partnerId}`,
+      label: `Vendedor: ${part ? part.name : partnerId}`,
       onRemove: () => removeFilter('partnerId'),
     });
   }

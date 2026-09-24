@@ -6,6 +6,7 @@ import { X } from 'lucide-react';
 
 interface ClientesActiveBadgesProps {
   products: Array<{ id: string; name: string; code: string }>;
+  corretoras: Array<{ id: string; name: string; cnpj?: string | null }>;
   partners: Array<{ id: string; name: string }>;
 }
 
@@ -46,7 +47,7 @@ const periodPresetLabel: Record<string, string> = {
   this_year: 'Este ano',
 };
 
-export function ClientesActiveBadges({ products, partners }: ClientesActiveBadgesProps) {
+export function ClientesActiveBadges({ products, corretoras, partners }: ClientesActiveBadgesProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -58,6 +59,7 @@ export function ClientesActiveBadges({ products, partners }: ClientesActiveBadge
   const quoteStatus = searchParams.get('quoteStatus');
   const signatureStatus = searchParams.get('signatureStatus');
   const paymentStatus = searchParams.get('paymentStatus');
+  const corretoraId = searchParams.get('corretoraId');
   const partnerId = searchParams.get('partnerId');
   const periodPreset = searchParams.get('periodPreset');
   const startDate = searchParams.get('startDate');
@@ -145,11 +147,20 @@ export function ClientesActiveBadges({ products, partners }: ClientesActiveBadge
     });
   }
 
+  if (corretoraId) {
+    const corr = corretoras.find((c) => c.id === corretoraId);
+    badges.push({
+      id: 'corretoraId',
+      label: `Corretora: ${corr ? corr.name : corretoraId}`,
+      onRemove: () => removeFilter('corretoraId'),
+    });
+  }
+
   if (partnerId) {
     const part = partners.find((p) => p.id === partnerId);
     badges.push({
       id: 'partnerId',
-      label: `Parceiro: ${part ? part.name : partnerId}`,
+      label: `Vendedor: ${part ? part.name : partnerId}`,
       onRemove: () => removeFilter('partnerId'),
     });
   }

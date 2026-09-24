@@ -67,6 +67,7 @@ export default async function AdminVendasPage({
   const status = statusLabel[rawStatus] ? rawStatus : '';
   const q = (typeof params.q === 'string' ? params.q : '').trim().slice(0, 120);
   const productId = typeof params.productId === 'string' ? params.productId : '';
+  const corretoraId = typeof params.corretoraId === 'string' ? params.corretoraId : '';
   const partnerId = typeof params.partnerId === 'string' ? params.partnerId : '';
   const rawPeriodPreset = typeof params.periodPreset === 'string' ? (params.periodPreset as PeriodPreset) : undefined;
   const startDate = typeof params.startDate === 'string' ? params.startDate : undefined;
@@ -86,6 +87,9 @@ export default async function AdminVendasPage({
   }
   if (productId) {
     conditions.push(sql`s.product_id = ${productId}`);
+  }
+  if (corretoraId) {
+    conditions.push(sql`(s.corretora_id = ${corretoraId} OR p.corretora_id = ${corretoraId})`);
   }
   if (partnerId) {
     conditions.push(sql`s.partner_id = ${partnerId}`);
@@ -122,7 +126,7 @@ export default async function AdminVendasPage({
     ? conditions.reduce((acc, cond) => sql`${acc} AND ${cond}`)
     : sql`TRUE`;
 
-  const [metricsResult, productsList, partnersList] = await Promise.all([
+  const [metricsResult, productsList, corretorasList, partnersList] = await Promise.all([
     sql<{ total_count: string; total_premios: string; total_comissoes: string }[]>`
       SELECT
         COUNT(*)::text as total_count,
@@ -140,11 +144,16 @@ export default async function AdminVendasPage({
       WHERE is_active = true
       ORDER BY name ASC
     `,
-    sql<{ id: string; name: string }[]>`
-      SELECT id, razao_social AS name
+    sql<{ id: string; name: string; cnpj: string | null }[]>`
+      SELECT id, COALESCE(nome_fantasia, razao_social) AS name, cnpj
+      FROM corretoras
+      ORDER BY name ASC
+    `,
+    sql<{ id: string; name: string; corretoraId: string | null }[]>`
+      SELECT id, COALESCE(nome_fantasia, razao_social) AS name, corretora_id AS "corretoraId"
       FROM partners
       WHERE status = 'active'
-      ORDER BY razao_social ASC
+      ORDER BY name ASC
     `,
   ]);
 
@@ -183,7 +192,7 @@ export default async function AdminVendasPage({
     OFFSET ${offset}
   `;
 
-  const hasActiveFilters = Boolean(q || status || productId || partnerId || periodPreset !== '30d');
+  const hasActiveFilters = Boolean(q || status || productId || corretoraId || partnerId || periodPreset !== '30d');
 
   return (
     <div className="space-y-6">
@@ -227,7 +236,8 @@ export default async function AdminVendasPage({
       {/* Barra de Filtros Reativa e Inteligente */}
       <VendasFilterSection
         products={productsList.map((p) => ({ id: p.id, name: p.name }))}
-        partners={partnersList.map((p) => ({ id: p.id, name: p.name }))}
+        corretoras={corretorasList}
+        partners={partnersList}
         statusLabels={statusLabel}
         pageSize={pageSize}
       />
@@ -263,7 +273,7 @@ export default async function AdminVendasPage({
                 <thead className="table-sticky-head bg-gray-50/95 text-xs font-semibold uppercase tracking-wider text-gray-600">
                   <tr>
                     <th className="px-5 py-3.5 table-sticky-col-head rounded-tl-2xl">Cliente</th>
-                    <th className="px-5 py-3.5 border-b border-gray-200">Parceiro</th>
+                    <th className="px-5 py-3.5 border-b border-gray-200">Vendedor</th>
                     <th className="px-5 py-3.5 border-b border-gray-200">Apólice</th>
                     <th className="px-5 py-3.5 border-b border-gray-200">Produto</th>
                     <th className="px-5 py-3.5 border-b border-gray-200">Prêmio</th>

@@ -3,18 +3,20 @@
 import React, { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { ClientesFilterBar } from './ClientesFilterBar';
-import { ClientesAdvancedFilters } from './ClientesAdvancedFilters';
+import { ClientesAdvancedFilters, CorretoraOption, PartnerOption } from './ClientesAdvancedFilters';
 import { ClientesActiveBadges } from './ClientesActiveBadges';
 import { PageSizeOption } from '@/types/admin-clients';
 
 interface ClientesFilterSectionProps {
   products: Array<{ id: string; name: string; code: string }>;
-  partners: Array<{ id: string; name: string }>;
+  corretoras: CorretoraOption[];
+  partners: PartnerOption[];
   pageSize: PageSizeOption;
 }
 
 export function ClientesFilterSection({
   products,
+  corretoras,
   partners,
   pageSize,
 }: ClientesFilterSectionProps) {
@@ -27,6 +29,7 @@ export function ClientesFilterSection({
     searchParams.get('quoteStatus'),
     searchParams.get('signatureStatus'),
     searchParams.get('paymentStatus'),
+    searchParams.get('corretoraId'),
     searchParams.get('partnerId'),
     searchParams.get('periodPreset') && searchParams.get('periodPreset') !== 'all',
   ].filter(Boolean).length;
@@ -42,11 +45,12 @@ export function ClientesFilterSection({
 
       <ClientesAdvancedFilters
         products={products}
+        corretoras={corretoras}
         partners={partners}
         isOpen={isOpenAdvanced}
       />
 
-      <ClientesActiveBadges products={products} partners={partners} />
+      <ClientesActiveBadges products={products} corretoras={corretoras} partners={partners} />
     </div>
   );
 }

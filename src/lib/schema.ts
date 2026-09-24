@@ -91,6 +91,8 @@ async function runRuntimeSchemaSetup(): Promise<void> {
   `;
   await sql`CREATE INDEX IF NOT EXISTS idx_corretoras_cnpj ON corretoras(cnpj)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_corretoras_status ON corretoras(status)`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS logo_base64 TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS logo_mime_type TEXT`;
 
   // Usuários que gerenciam a corretora
   await sql`

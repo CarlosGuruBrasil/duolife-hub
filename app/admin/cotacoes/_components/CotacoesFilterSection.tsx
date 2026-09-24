@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { CotacoesFilterBar } from './CotacoesFilterBar';
-import { CotacoesAdvancedFilters } from './CotacoesAdvancedFilters';
+import { CotacoesAdvancedFilters, CorretoraOption, PartnerOption } from './CotacoesAdvancedFilters';
 import { CotacoesActiveBadges } from './CotacoesActiveBadges';
 
 interface Option {
@@ -13,13 +13,15 @@ interface Option {
 
 interface CotacoesFilterSectionProps {
   products: Option[];
-  partners: Option[];
+  corretoras: CorretoraOption[];
+  partners: PartnerOption[];
   statusLabels: Record<string, string>;
   pageSize: number;
 }
 
 export function CotacoesFilterSection({
   products,
+  corretoras,
   partners,
   statusLabels,
   pageSize,
@@ -30,6 +32,7 @@ export function CotacoesFilterSection({
   const activeFiltersCount = [
     searchParams.get('status'),
     searchParams.get('productId'),
+    searchParams.get('corretoraId'),
     searchParams.get('partnerId'),
     searchParams.get('periodPreset') && searchParams.get('periodPreset') !== 'all',
   ].filter(Boolean).length;
@@ -45,6 +48,7 @@ export function CotacoesFilterSection({
 
       <CotacoesAdvancedFilters
         products={products}
+        corretoras={corretoras}
         partners={partners}
         statusLabels={statusLabels}
         isOpen={isOpenAdvanced}
@@ -52,6 +56,7 @@ export function CotacoesFilterSection({
 
       <CotacoesActiveBadges
         products={products}
+        corretoras={corretoras}
         partners={partners}
         statusLabels={statusLabels}
       />

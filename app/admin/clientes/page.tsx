@@ -107,6 +107,7 @@ export default async function AdminClientesPage({
   const quoteStatus = typeof rawParams.quoteStatus === 'string' ? rawParams.quoteStatus : undefined;
   const signatureStatus = typeof rawParams.signatureStatus === 'string' ? rawParams.signatureStatus : undefined;
   const paymentStatus = typeof rawParams.paymentStatus === 'string' ? rawParams.paymentStatus : undefined;
+  const corretoraId = typeof rawParams.corretoraId === 'string' ? rawParams.corretoraId : undefined;
   const partnerId = typeof rawParams.partnerId === 'string' ? rawParams.partnerId : undefined;
   const periodPreset =
     typeof rawParams.periodPreset === 'string' ? (rawParams.periodPreset as PeriodPreset) : undefined;
@@ -124,6 +125,7 @@ export default async function AdminClientesPage({
     quoteStatus,
     signatureStatus,
     paymentStatus,
+    corretoraId,
     partnerId,
     periodPreset,
     startDate,
@@ -138,6 +140,7 @@ export default async function AdminClientesPage({
     quoteStatus ||
     signatureStatus ||
     paymentStatus ||
+    corretoraId ||
     partnerId ||
     (periodPreset && periodPreset !== 'all')
   );
@@ -156,6 +159,7 @@ export default async function AdminClientesPage({
       {/* Seção de Filtros (Busca universal, filtros avançados e badges) */}
       <ClientesFilterSection
         products={filters.availableProducts}
+        corretoras={filters.availableCorretoras}
         partners={filters.availablePartners}
         pageSize={pageSize}
       />

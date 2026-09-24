@@ -5,6 +5,20 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { Filter, RotateCcw, Loader2 } from 'lucide-react';
 import { PeriodPreset } from '@/lib/date-filters';
 
+import { maskCnpj } from '@/components/modals/masks';
+
+export interface CorretoraOption {
+  id: string;
+  name: string;
+  cnpj?: string | null;
+}
+
+export interface PartnerOption {
+  id: string;
+  name: string;
+  corretoraId?: string | null;
+}
+
 interface Option {
   id: string;
   name: string;
@@ -12,13 +26,15 @@ interface Option {
 
 interface CotacoesAdvancedFiltersProps {
   products: Option[];
-  partners: Option[];
+  corretoras: CorretoraOption[];
+  partners: PartnerOption[];
   statusLabels: Record<string, string>;
   isOpen: boolean;
 }
 
 export function CotacoesAdvancedFilters({
   products,
+  corretoras,
   partners,
   statusLabels,
   isOpen,
@@ -30,6 +46,7 @@ export function CotacoesAdvancedFilters({
 
   const [status, setStatus] = useState(searchParams.get('status') || '');
   const [productId, setProductId] = useState(searchParams.get('productId') || '');
+  const [corretoraId, setCorretoraId] = useState(searchParams.get('corretoraId') || '');
   const [partnerId, setPartnerId] = useState(searchParams.get('partnerId') || '');
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>(
     (searchParams.get('periodPreset') as PeriodPreset) || 'all'
@@ -40,11 +57,19 @@ export function CotacoesAdvancedFilters({
   useEffect(() => {
     setStatus(searchParams.get('status') || '');
     setProductId(searchParams.get('productId') || '');
+    setCorretoraId(searchParams.get('corretoraId') || '');
     setPartnerId(searchParams.get('partnerId') || '');
     setPeriodPreset((searchParams.get('periodPreset') as PeriodPreset) || 'all');
     setStartDate(searchParams.get('startDate') || '');
     setEndDate(searchParams.get('endDate') || '');
   }, [searchParams]);
+
+  const filteredPartners = React.useMemo(() => {
+    if (!corretoraId || corretoraId === 'all') {
+      return partners;
+    }
+    return partners.filter((p) => p.corretoraId === corretoraId);
+  }, [partners, corretoraId]);
 
   if (!isOpen) return null;
 
@@ -61,6 +86,32 @@ export function CotacoesAdvancedFilters({
     }
     params.set('page', '1');
 
+    startTransition(() => {
+      router.push(`${pathname}?${params.toString()}`);
+    });
+  };
+
+  const handleCorretoraChange = (newCorretoraId: string) => {
+    setCorretoraId(newCorretoraId);
+    const params = new URLSearchParams(searchParams.toString());
+    if (newCorretoraId && newCorretoraId !== 'all') {
+      params.set('corretoraId', newCorretoraId);
+    } else {
+      params.delete('corretoraId');
+    }
+
+    if (partnerId) {
+      const isStillValid = newCorretoraId && newCorretoraId !== 'all'
+        ? partners.some((p) => p.id === partnerId && p.corretoraId === newCorretoraId)
+        : true;
+
+      if (!isStillValid) {
+        setPartnerId('');
+        params.delete('partnerId');
+      }
+    }
+
+    params.set('page', '1');
     startTransition(() => {
       router.push(`${pathname}?${params.toString()}`);
     });
@@ -85,6 +136,7 @@ export function CotacoesAdvancedFilters({
   const handleClear = () => {
     setStatus('');
     setProductId('');
+    setCorretoraId('');
     setPartnerId('');
     setPeriodPreset('all');
     setStartDate('');
@@ -93,6 +145,7 @@ export function CotacoesAdvancedFilters({
     const params = new URLSearchParams(searchParams.toString());
     params.delete('status');
     params.delete('productId');
+    params.delete('corretoraId');
     params.delete('partnerId');
     params.delete('periodPreset');
     params.delete('startDate');
@@ -122,7 +175,7 @@ export function CotacoesAdvancedFilters({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {/* 1. Status da Cotação */}
         <div>
           <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
@@ -167,10 +220,32 @@ export function CotacoesAdvancedFilters({
           </select>
         </div>
 
-        {/* 3. Parceiro / Corretor */}
+        {/* 3. Corretora (empresa CNPJ) */}
         <div>
           <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
-            Parceiro
+            Corretora
+          </label>
+          <select
+            value={corretoraId}
+            onChange={(e) => handleCorretoraChange(e.target.value)}
+            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none cursor-pointer truncate"
+          >
+            <option value="">Todas as corretoras</option>
+            {corretoras.map((c) => {
+              const cnpjMasked = c.cnpj ? maskCnpj(c.cnpj) : null;
+              return (
+                <option key={c.id} value={c.id}>
+                  {c.name} {cnpjMasked ? `(${cnpjMasked})` : ''}
+                </option>
+              );
+            })}
+          </select>
+        </div>
+
+        {/* 4. Vendedor */}
+        <div>
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
+            Vendedor
           </label>
           <select
             value={partnerId}
@@ -178,10 +253,10 @@ export function CotacoesAdvancedFilters({
               setPartnerId(e.target.value);
               updateSingleFilter('partnerId', e.target.value);
             }}
-            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none cursor-pointer"
+            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none cursor-pointer truncate"
           >
-            <option value="">Todos os parceiros</option>
-            {partners.map((pt) => (
+            <option value="">Todos os vendedores</option>
+            {filteredPartners.map((pt) => (
               <option key={pt.id} value={pt.id}>
                 {pt.name}
               </option>

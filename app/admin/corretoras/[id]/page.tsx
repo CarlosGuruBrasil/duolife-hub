@@ -2,7 +2,7 @@
 
 import { useEffect, useState, use } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Building, ShieldCheck, Mail, Phone, MapPin, Users, Briefcase, ExternalLink, Globe, Save, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Building, ShieldCheck, Mail, Phone, MapPin, Users, Briefcase, ExternalLink, Globe, Save, CheckCircle, Upload, Trash2, Image as ImageIcon } from 'lucide-react';
 import type { WhiteLabelConfig } from '@/lib/white-label';
 import { toast } from '@/components/ui/toast';
 
@@ -16,6 +16,8 @@ interface CorretoraDetail {
   phone: string | null;
   address: Record<string, string>;
   status: string;
+  logo_base64?: string | null;
+  logo_mime_type?: string | null;
   created_at: string;
   whiteLabel: WhiteLabelConfig;
 }
@@ -60,6 +62,10 @@ export default function AdminCorretoraDetailPage({ params }: { params: Promise<{
     secondaryColor: '#002B4D',
   });
 
+  const [logoPreview, setLogoPreview] = useState<string | null>(null);
+  const [logoBase64ToSave, setLogoBase64ToSave] = useState<string | null | undefined>(undefined);
+  const [logoMimeTypeToSave, setLogoMimeTypeToSave] = useState<string | null | undefined>(undefined);
+
   async function load() {
     setLoading(true);
     try {
@@ -79,6 +85,13 @@ export default function AdminCorretoraDetailPage({ params }: { params: Promise<{
         primaryColor: data.corretora.whiteLabel?.primaryColor || '#004172',
         secondaryColor: data.corretora.whiteLabel?.secondaryColor || '#002B4D',
       });
+
+      const initialLogo = data.corretora.logo_base64 && data.corretora.logo_mime_type
+        ? `data:${data.corretora.logo_mime_type};base64,${data.corretora.logo_base64}`
+        : (data.corretora.whiteLabel?.logoUrl || null);
+      setLogoPreview(initialLogo);
+      setLogoBase64ToSave(undefined);
+      setLogoMimeTypeToSave(undefined);
     } catch {
       setCorretora(null);
     } finally {
@@ -90,25 +103,65 @@ export default function AdminCorretoraDetailPage({ params }: { params: Promise<{
     load();
   }, [id]);
 
+  function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const MAX_SIZE = 2 * 1024 * 1024; // 2MB
+    if (file.size > MAX_SIZE) {
+      toast.error('O logotipo excede o limite máximo permitido de 2MB.');
+      e.target.value = '';
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Selecione um arquivo de imagem válido (PNG, JPEG ou WEBP).');
+      e.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      setLogoPreview(result);
+      setLogoBase64ToSave(result);
+      setLogoMimeTypeToSave(file.type);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handleRemoveLogo() {
+    setLogoPreview(null);
+    setLogoBase64ToSave(null);
+    setLogoMimeTypeToSave(null);
+  }
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
 
     try {
+      const payload: Record<string, unknown> = {
+        razao_social: form.razao_social,
+        nome_fantasia: form.nome_fantasia,
+        susep: form.susep,
+        email: form.email,
+        phone: form.phone,
+        whiteLabel: {
+          primaryColor: form.primaryColor,
+          secondaryColor: form.secondaryColor,
+        },
+      };
+
+      if (logoBase64ToSave !== undefined) {
+        payload.logo_base64 = logoBase64ToSave;
+        payload.logo_mime_type = logoMimeTypeToSave;
+      }
+
       const res = await fetch(`/api/admin/corretoras/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          razao_social: form.razao_social,
-          nome_fantasia: form.nome_fantasia,
-          susep: form.susep,
-          email: form.email,
-          phone: form.phone,
-          whiteLabel: {
-            primaryColor: form.primaryColor,
-            secondaryColor: form.secondaryColor,
-          },
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
@@ -157,10 +210,14 @@ export default function AdminCorretoraDetailPage({ params }: { params: Promise<{
       <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
           <div className="flex items-center gap-5">
-            {isNet4Life || corretora.whiteLabel?.logoUrl ? (
+            {(corretora.logo_base64 && corretora.logo_mime_type) || corretora.whiteLabel?.logoUrl || isNet4Life ? (
               <div className="w-24 h-16 rounded-xl bg-gray-50 border border-gray-200 flex items-center justify-center p-2 shrink-0">
                 <img
-                  src={isNet4Life ? '/images/corretoras/net4life-logo.png' : corretora.whiteLabel.logoUrl}
+                  src={
+                    (corretora.logo_base64 && corretora.logo_mime_type)
+                      ? `data:${corretora.logo_mime_type};base64,${corretora.logo_base64}`
+                      : (isNet4Life ? '/images/corretoras/net4life-logo.png' : corretora.whiteLabel.logoUrl)
+                  }
                   alt={corretora.nome_fantasia}
                   className="max-w-full max-h-full object-contain"
                 />
@@ -356,6 +413,62 @@ export default function AdminCorretoraDetailPage({ params }: { params: Promise<{
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
                 className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
               />
+            </div>
+
+            {/* Seção Logotipo da Corretora (PDF e Portal) */}
+            <div className="border-t border-gray-100 pt-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold text-gray-700 uppercase">
+                  Logotipo da Corretora
+                </label>
+                <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
+                  Máx 2MB
+                </span>
+              </div>
+              <p className="text-[11px] text-gray-500">
+                Utilizado no cabeçalho do Contrato/Proposta em PDF. Se não houver logo, o PDF exibirá apenas o nome da corretora em texto.
+              </p>
+
+              <div className="flex items-center gap-3 bg-gray-50 p-2.5 rounded-lg border border-gray-200">
+                <div className="w-24 h-14 rounded-md bg-white border border-gray-200 flex items-center justify-center p-1 overflow-hidden shrink-0 shadow-xs">
+                  {logoPreview ? (
+                    <img src={logoPreview} alt="Logotipo" className="max-w-full max-h-full object-contain" />
+                  ) : (
+                    <div className="text-center px-1">
+                      <ImageIcon size={16} className="mx-auto text-gray-300" />
+                      <span className="text-[9px] text-gray-400 font-medium">Sem Logo</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex-1 space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <label className="cursor-pointer inline-flex items-center gap-1 px-2.5 py-1.5 bg-white border border-gray-300 hover:bg-gray-100 rounded-md text-xs font-semibold text-gray-700 transition-colors">
+                      <Upload size={13} className="text-primary" /> {logoPreview ? 'Trocar Logo' : 'Enviar Logo'}
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        onChange={handleLogoChange}
+                        className="hidden"
+                      />
+                    </label>
+                    {logoPreview && (
+                      <button
+                        type="button"
+                        onClick={handleRemoveLogo}
+                        className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
+                      >
+                        <Trash2 size={12} /> Remover
+                      </button>
+                    )}
+                  </div>
+                  {logoBase64ToSave !== undefined && (
+                    <p className="text-[10px] text-amber-700 font-medium">
+                      * Alteração pendente. Clique em "Salvar Alterações" para gravar.
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3 pt-2">

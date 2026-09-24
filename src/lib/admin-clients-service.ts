@@ -176,6 +176,16 @@ export async function getAdminClientsList(
     }
   }
 
+  // Filtro por Corretora
+  if (rawParams.corretoraId) {
+    conditions.push(sql`EXISTS (
+      SELECT 1 FROM cotacoes c_corr
+      LEFT JOIN partners p_corr ON p_corr.id = c_corr.partner_id
+      WHERE c_corr.client_id = ic.id
+        AND (c_corr.corretora_id = ${rawParams.corretoraId} OR p_corr.corretora_id = ${rawParams.corretoraId})
+    )`);
+  }
+
   // Filtro por Parceiro
   if (rawParams.partnerId) {
     conditions.push(sql`EXISTS (
@@ -232,7 +242,7 @@ export async function getAdminClientsList(
   })();
 
   // 5. Execução em Paralelo: Total Count + Listas de Filtros
-  const [countResult, productsList, partnersList] = await Promise.all([
+  const [countResult, productsList, corretorasList, partnersList] = await Promise.all([
     sql<{ total: number }[]>`
       SELECT COUNT(*)::int AS total
       FROM insurance_clients ic
@@ -244,8 +254,13 @@ export async function getAdminClientsList(
       WHERE is_active = true
       ORDER BY name ASC
     `,
-    sql<{ id: string; name: string }[]>`
-      SELECT id, COALESCE(nome_fantasia, razao_social) AS name
+    sql<{ id: string; name: string; cnpj: string | null }[]>`
+      SELECT id, COALESCE(nome_fantasia, razao_social) AS name, cnpj
+      FROM corretoras
+      ORDER BY name ASC
+    `,
+    sql<{ id: string; name: string; corretoraId: string | null }[]>`
+      SELECT id, COALESCE(nome_fantasia, razao_social) AS name, corretora_id AS "corretoraId"
       FROM partners
       ORDER BY name ASC
     `,
@@ -351,6 +366,7 @@ export async function getAdminClientsList(
     },
     filters: {
       availableProducts: productsList,
+      availableCorretoras: corretorasList,
       availablePartners: partnersList,
     },
   };

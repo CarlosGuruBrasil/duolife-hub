@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { VendasFilterBar } from './VendasFilterBar';
-import { VendasAdvancedFilters } from './VendasAdvancedFilters';
+import { VendasAdvancedFilters, CorretoraOption, PartnerOption } from './VendasAdvancedFilters';
 import { VendasActiveBadges } from './VendasActiveBadges';
 
 interface Option {
@@ -13,13 +13,15 @@ interface Option {
 
 interface VendasFilterSectionProps {
   products: Option[];
-  partners: Option[];
+  corretoras: CorretoraOption[];
+  partners: PartnerOption[];
   statusLabels: Record<string, string>;
   pageSize: number;
 }
 
 export function VendasFilterSection({
   products,
+  corretoras,
   partners,
   statusLabels,
   pageSize,
@@ -30,6 +32,7 @@ export function VendasFilterSection({
   const activeFiltersCount = [
     searchParams.get('status'),
     searchParams.get('productId'),
+    searchParams.get('corretoraId'),
     searchParams.get('partnerId'),
     searchParams.get('periodPreset') === 'custom' || searchParams.get('startDate') || searchParams.get('endDate'),
   ].filter(Boolean).length;
@@ -46,6 +49,7 @@ export function VendasFilterSection({
 
       <VendasAdvancedFilters
         products={products}
+        corretoras={corretoras}
         partners={partners}
         statusLabels={statusLabels}
         isOpen={isOpenAdvanced}
@@ -53,6 +57,7 @@ export function VendasFilterSection({
 
       <VendasActiveBadges
         products={products}
+        corretoras={corretoras}
         partners={partners}
         statusLabels={statusLabels}
       />

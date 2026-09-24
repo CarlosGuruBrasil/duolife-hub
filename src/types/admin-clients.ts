@@ -41,6 +41,7 @@ export interface AdminClientsFilterParams {
   quoteStatus?: string;
   signatureStatus?: string;
   paymentStatus?: string;
+  corretoraId?: string;
   partnerId?: string;
   periodPreset?: PeriodPreset;
   startDate?: string;
@@ -77,6 +78,7 @@ export interface PaginatedClientsResult {
   };
   filters: {
     availableProducts: Array<{ id: string; name: string; code: string }>;
-    availablePartners: Array<{ id: string; name: string }>;
+    availableCorretoras: Array<{ id: string; name: string; cnpj?: string | null }>;
+    availablePartners: Array<{ id: string; name: string; corretoraId?: string | null }>;
   };
 }

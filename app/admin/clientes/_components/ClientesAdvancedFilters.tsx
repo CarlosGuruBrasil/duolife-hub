@@ -5,18 +5,28 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { Filter, RotateCcw, Loader2 } from 'lucide-react';
 import { PeriodPreset, QuotesFilterType } from '@/types/admin-clients';
 
-interface Option {
+import { maskCnpj } from '@/components/modals/masks';
+
+export interface CorretoraOption {
   id: string;
   name: string;
+  cnpj?: string | null;
+}
+
+export interface PartnerOption {
+  id: string;
+  name: string;
+  corretoraId?: string | null;
 }
 
 interface ClientesAdvancedFiltersProps {
   products: Array<{ id: string; name: string; code: string }>;
-  partners: Option[];
+  corretoras: CorretoraOption[];
+  partners: PartnerOption[];
   isOpen: boolean;
 }
 
-export function ClientesAdvancedFilters({ products, partners, isOpen }: ClientesAdvancedFiltersProps) {
+export function ClientesAdvancedFilters({ products, corretoras, partners, isOpen }: ClientesAdvancedFiltersProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -30,6 +40,7 @@ export function ClientesAdvancedFilters({ products, partners, isOpen }: Clientes
   const [quoteStatus, setQuoteStatus] = useState(searchParams.get('quoteStatus') || '');
   const [signatureStatus, setSignatureStatus] = useState(searchParams.get('signatureStatus') || '');
   const [paymentStatus, setPaymentStatus] = useState(searchParams.get('paymentStatus') || '');
+  const [corretoraId, setCorretoraId] = useState(searchParams.get('corretoraId') || '');
   const [partnerId, setPartnerId] = useState(searchParams.get('partnerId') || '');
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>(
     (searchParams.get('periodPreset') as PeriodPreset) || 'all'
@@ -44,11 +55,19 @@ export function ClientesAdvancedFilters({ products, partners, isOpen }: Clientes
     setQuoteStatus(searchParams.get('quoteStatus') || '');
     setSignatureStatus(searchParams.get('signatureStatus') || '');
     setPaymentStatus(searchParams.get('paymentStatus') || '');
+    setCorretoraId(searchParams.get('corretoraId') || '');
     setPartnerId(searchParams.get('partnerId') || '');
     setPeriodPreset((searchParams.get('periodPreset') as PeriodPreset) || 'all');
     setStartDate(searchParams.get('startDate') || '');
     setEndDate(searchParams.get('endDate') || '');
   }, [searchParams]);
+
+  const filteredPartners = React.useMemo(() => {
+    if (!corretoraId || corretoraId === 'all') {
+      return partners;
+    }
+    return partners.filter((p) => p.corretoraId === corretoraId);
+  }, [partners, corretoraId]);
 
   if (!isOpen) return null;
 
@@ -65,6 +84,32 @@ export function ClientesAdvancedFilters({ products, partners, isOpen }: Clientes
     }
     params.set('page', '1');
 
+    startTransition(() => {
+      router.push(`${pathname}?${params.toString()}`);
+    });
+  };
+
+  const handleCorretoraChange = (newCorretoraId: string) => {
+    setCorretoraId(newCorretoraId);
+    const params = new URLSearchParams(searchParams.toString());
+    if (newCorretoraId && newCorretoraId !== 'all') {
+      params.set('corretoraId', newCorretoraId);
+    } else {
+      params.delete('corretoraId');
+    }
+
+    if (partnerId) {
+      const isStillValid = newCorretoraId && newCorretoraId !== 'all'
+        ? partners.some((p) => p.id === partnerId && p.corretoraId === newCorretoraId)
+        : true;
+
+      if (!isStillValid) {
+        setPartnerId('');
+        params.delete('partnerId');
+      }
+    }
+
+    params.set('page', '1');
     startTransition(() => {
       router.push(`${pathname}?${params.toString()}`);
     });
@@ -106,6 +151,9 @@ export function ClientesAdvancedFilters({ products, partners, isOpen }: Clientes
     if (paymentStatus) params.set('paymentStatus', paymentStatus);
     else params.delete('paymentStatus');
 
+    if (corretoraId) params.set('corretoraId', corretoraId);
+    else params.delete('corretoraId');
+
     if (partnerId) params.set('partnerId', partnerId);
     else params.delete('partnerId');
 
@@ -135,6 +183,7 @@ export function ClientesAdvancedFilters({ products, partners, isOpen }: Clientes
     setQuoteStatus('');
     setSignatureStatus('');
     setPaymentStatus('');
+    setCorretoraId('');
     setPartnerId('');
     setPeriodPreset('all');
     setStartDate('');
@@ -146,6 +195,7 @@ export function ClientesAdvancedFilters({ products, partners, isOpen }: Clientes
     params.delete('quoteStatus');
     params.delete('signatureStatus');
     params.delete('paymentStatus');
+    params.delete('corretoraId');
     params.delete('partnerId');
     params.delete('periodPreset');
     params.delete('startDate');
@@ -178,7 +228,7 @@ export function ClientesAdvancedFilters({ products, partners, isOpen }: Clientes
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-3">
         {/* 1. Produto */}
         <div>
           <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
@@ -294,10 +344,32 @@ export function ClientesAdvancedFilters({ products, partners, isOpen }: Clientes
           </select>
         </div>
 
-        {/* 6. Parceiro / Corretor */}
+        {/* 6. Corretora (empresa CNPJ) */}
         <div>
           <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
-            Parceiro
+            Corretora
+          </label>
+          <select
+            value={corretoraId}
+            onChange={(e) => handleCorretoraChange(e.target.value)}
+            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none cursor-pointer truncate"
+          >
+            <option value="">Todas as corretoras</option>
+            {corretoras.map((c) => {
+              const cnpjMasked = c.cnpj ? maskCnpj(c.cnpj) : null;
+              return (
+                <option key={c.id} value={c.id}>
+                  {c.name} {cnpjMasked ? `(${cnpjMasked})` : ''}
+                </option>
+              );
+            })}
+          </select>
+        </div>
+
+        {/* 7. Vendedor */}
+        <div>
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
+            Vendedor
           </label>
           <select
             value={partnerId}
@@ -305,10 +377,10 @@ export function ClientesAdvancedFilters({ products, partners, isOpen }: Clientes
               setPartnerId(e.target.value);
               updateSingleFilter('partnerId', e.target.value);
             }}
-            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none cursor-pointer"
+            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none cursor-pointer truncate"
           >
-            <option value="">Todos os parceiros</option>
-            {partners.map((pt) => (
+            <option value="">Todos os vendedores</option>
+            {filteredPartners.map((pt) => (
               <option key={pt.id} value={pt.id}>
                 {pt.name}
               </option>

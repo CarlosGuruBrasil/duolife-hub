@@ -13,6 +13,11 @@ export interface CorretoraContratoInfo {
   email: string;
   phone: string;
   enderecoFormatado: string;
+  endereco?: string;
+  bairro?: string;
+  cep?: string;
+  cidade?: string;
+  uf?: string;
   logoBuffer: Buffer | null;
   logoMimeType: 'image/png' | 'image/jpeg' | null;
 }
@@ -43,13 +48,31 @@ export function formatPhone(raw?: string | null): string {
 }
 
 /**
- * Carrega a logo da corretora ou a oficial da DuoLife como fallback resiliente.
+ * Carrega o buffer do logo a partir de Data URI (base64 no banco), arquivo local ou URL externa.
  */
 async function loadLogoBuffer(logoUrl?: string | null): Promise<{ buffer: Buffer | null; mime: 'image/png' | 'image/jpeg' | null }> {
+  if (!logoUrl) return { buffer: null, mime: null };
+
+  // 1. Suporte direto a Data URI base64 gravado no banco de dados (ex: data:image/png;base64,...)
+  if (logoUrl.startsWith('data:image/')) {
+    try {
+      const match = logoUrl.match(/^data:(image\/[a-zA-Z0-9\+]+);base64,(.+)$/);
+      if (match) {
+        const rawMime = match[1].toLowerCase();
+        const mime = rawMime === 'image/jpeg' || rawMime === 'image/jpg' ? 'image/jpeg' : 'image/png';
+        const buffer = Buffer.from(match[2], 'base64');
+        return { buffer, mime };
+      }
+    } catch (err) {
+      logger.warn({ err }, 'corretora_resolver.data_uri_decode_failed');
+      return { buffer: null, mime: null };
+    }
+  }
+
   const publicDir = path.join(process.cwd(), 'public');
 
-  // 1. Tenta carregar a URL configurada se for local
-  if (logoUrl && logoUrl.startsWith('/')) {
+  // 2. Tenta carregar a URL configurada se for arquivo local
+  if (logoUrl.startsWith('/')) {
     try {
       const cleanPath = path.normalize(logoUrl).replace(/^(\.\.[\/\\])+/, '');
       const fullPath = path.join(publicDir, cleanPath);
@@ -60,11 +83,12 @@ async function loadLogoBuffer(logoUrl?: string | null): Promise<{ buffer: Buffer
       return { buffer: data, mime };
     } catch (err) {
       logger.warn({ logoUrl, err }, 'corretora_resolver.local_logo_not_found');
+      return { buffer: null, mime: null };
     }
   }
 
-  // 2. Tenta carregar se for URL externa
-  if (logoUrl && (logoUrl.startsWith('http://') || logoUrl.startsWith('https://'))) {
+  // 3. Tenta carregar se for URL externa
+  if (logoUrl.startsWith('http://') || logoUrl.startsWith('https://')) {
     try {
       const res = await fetch(logoUrl, { signal: AbortSignal.timeout(3500) });
       if (res.ok) {
@@ -79,15 +103,7 @@ async function loadLogoBuffer(logoUrl?: string | null): Promise<{ buffer: Buffer
     }
   }
 
-  // 3. Fallback: logo DuoLife oficial
-  try {
-    const fallbackPath = path.join(publicDir, 'logo-horizontal.png');
-    const data = await fs.readFile(fallbackPath);
-    return { buffer: data, mime: 'image/png' };
-  } catch (err) {
-    logger.warn({ err }, 'corretora_resolver.fallback_logo_not_found');
-    return { buffer: null, mime: null };
-  }
+  return { buffer: null, mime: null };
 }
 
 /**
@@ -123,8 +139,10 @@ export async function getCorretoraParaContrato(cotacaoId: string): Promise<Corre
     phone: string | null;
     address: any;
     metadata: any;
+    logo_base64?: string | null;
+    logo_mime_type?: string | null;
   }[]>`
-    SELECT id, razao_social, nome_fantasia, cnpj, susep, email, phone, address, metadata
+    SELECT id, razao_social, nome_fantasia, cnpj, susep, email, phone, address, metadata, logo_base64, logo_mime_type
     FROM corretoras
     WHERE id = ${targetCorretoraId}
     LIMIT 1
@@ -133,7 +151,7 @@ export async function getCorretoraParaContrato(cotacaoId: string): Promise<Corre
   // Fallback caso não encontre pelo ID
   if (!corretora) {
     const [primeiraAtiva] = await sql<any[]>`
-      SELECT id, razao_social, nome_fantasia, cnpj, susep, email, phone, address, metadata
+      SELECT id, razao_social, nome_fantasia, cnpj, susep, email, phone, address, metadata, logo_base64, logo_mime_type
       FROM corretoras
       WHERE status = 'active'
       ORDER BY created_at ASC
@@ -144,16 +162,21 @@ export async function getCorretoraParaContrato(cotacaoId: string): Promise<Corre
 
   // Se mesmo assim não houver no banco, monta defaults DuoLife / NET4Life
   if (!corretora) {
-    const { buffer, mime } = await loadLogoBuffer('/logo-horizontal.png');
+    const { buffer, mime } = await loadLogoBuffer('/images/corretoras/net4life-logo.png');
     return {
       id: 'default',
-      razaoSocial: 'DuoLife Seguros e Benefícios',
-      nomeFantasia: 'DuoLife',
-      cnpj: '00.000.000/0001-00',
-      susep: '202018702',
-      email: 'contato@duolife.net.br',
-      phone: '(48) 3028-0033',
-      enderecoFormatado: 'Florianópolis / SC',
+      razaoSocial: 'NETFORLIFE TECNOLOGIA EM GESTÃO E CORRETAGEM DE SEGUROS LTDA',
+      nomeFantasia: 'NET4LIFE',
+      cnpj: '34.567.890/0001-12',
+      susep: '202058392',
+      email: 'contato@net4life.com.br',
+      phone: '(48) 99139-4912',
+      enderecoFormatado: 'Rod. José Carlos Daux, 8600, Bloco 03, Sala 05, Santo Antônio de Lisboa, Florianópolis/SC, CEP: 88050-000',
+      endereco: 'Rod. José Carlos Daux, 8600, Bloco 03, Sala 05',
+      bairro: 'Santo Antônio de Lisboa',
+      cep: '88050-000',
+      cidade: 'Florianópolis',
+      uf: 'SC',
       logoBuffer: buffer,
       logoMimeType: mime,
     };
@@ -164,6 +187,12 @@ export async function getCorretoraParaContrato(cotacaoId: string): Promise<Corre
   const addr = parseJsonbField<Record<string, any>>(corretora.address);
 
   // Formatação amigável de endereço
+  const enderecoLinha = [
+    addr.street,
+    addr.number ? (addr.street?.includes(',') ? addr.number : `, ${addr.number}`) : null,
+    addr.complement ? `, ${addr.complement}` : null,
+  ].filter(Boolean).join('');
+
   const enderecoParts = [
     addr.street,
     addr.number ? `nº ${addr.number}` : null,
@@ -173,18 +202,50 @@ export async function getCorretoraParaContrato(cotacaoId: string): Promise<Corre
   ].filter(Boolean);
   const enderecoFormatado = enderecoParts.length > 0 ? enderecoParts.join(', ') : 'Brasil';
 
-  const logoUrl = whiteLabel.logoUrl || '/images/corretoras/net4life-logo.png';
-  const { buffer: logoBuffer, mime: logoMimeType } = await loadLogoBuffer(logoUrl);
+  // 1. Resolução do logotipo oficial da corretora
+  let logoBuffer: Buffer | null = null;
+  let logoMimeType: 'image/png' | 'image/jpeg' | null = null;
+
+  // Prioridade 1: Imagem armazenada diretamente na coluna logo_base64 no banco de dados
+  if (corretora.logo_base64) {
+    try {
+      logoBuffer = Buffer.from(corretora.logo_base64, 'base64');
+      logoMimeType = corretora.logo_mime_type === 'image/jpeg' ? 'image/jpeg' : 'image/png';
+    } catch (e) {
+      logger.warn({ err: e, corretoraId: corretora.id }, 'corretora_resolver.logo_base64_error');
+    }
+  }
+
+  // Prioridade 2: URL ou Data URI configurado no whiteLabel
+  if (!logoBuffer && whiteLabel.logoUrl) {
+    const loaded = await loadLogoBuffer(whiteLabel.logoUrl);
+    logoBuffer = loaded.buffer;
+    logoMimeType = loaded.mime;
+  }
+
+  // Prioridade 3: Se for a própria corretora NET4Life, pode usar o logo padrão local se não tiver outro
+  const isNet4Life = corretora.id === 'corretora_net4life_001' || String(corretora.cnpj || '').includes('07351909000133');
+  if (!logoBuffer && isNet4Life) {
+    const loadedNet = await loadLogoBuffer('/images/corretoras/net4life-logo.png');
+    logoBuffer = loadedNet.buffer;
+    logoMimeType = loadedNet.mime;
+  }
+  // Se for qualquer outra corretora sem logo cadastrado, logoBuffer permanece null!
 
   return {
     id: corretora.id,
-    razaoSocial: corretora.razao_social || whiteLabel.companyName || corretora.nome_fantasia,
-    nomeFantasia: corretora.nome_fantasia || whiteLabel.companyName || corretora.razao_social,
-    cnpj: formatCnpj(corretora.cnpj),
-    susep: String(corretora.susep || whiteLabel.susep || '').trim(),
-    email: corretora.email || whiteLabel.companyEmail || 'contato@duolife.net.br',
-    phone: formatPhone(corretora.phone || whiteLabel.companyPhone || ''),
+    razaoSocial: corretora.razao_social || whiteLabel.companyName || corretora.nome_fantasia || 'NETFORLIFE TECNOLOGIA EM GESTÃO E CORRETAGEM DE SEGUROS LTDA',
+    nomeFantasia: corretora.nome_fantasia || whiteLabel.companyName || corretora.razao_social || 'NET4LIFE',
+    cnpj: formatCnpj(corretora.cnpj) || '34.567.890/0001-12',
+    susep: String(corretora.susep || whiteLabel.susep || '202058392').trim(),
+    email: corretora.email || whiteLabel.companyEmail || 'contato@net4life.com.br',
+    phone: formatPhone(corretora.phone || whiteLabel.companyPhone || '(48) 99139-4912'),
     enderecoFormatado,
+    endereco: enderecoLinha || addr.street || 'Rod. José Carlos Daux, 8600, Bloco 03, Sala 05',
+    bairro: addr.neighborhood || 'Santo Antônio de Lisboa',
+    cep: addr.cep || '88050-000',
+    cidade: addr.city || 'Florianópolis',
+    uf: addr.state || 'SC',
     logoBuffer,
     logoMimeType,
   };
