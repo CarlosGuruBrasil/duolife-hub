@@ -9,7 +9,7 @@ import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
 import { getZapSignConfig, sanitizeApiToken } from '@/lib/system-settings';
 import { parseAtuacaoList } from '@/lib/atuacao';
 import { rateLimit, rateLimitResponse } from '@/lib/rate-limit';
-import { gerarContratoPdfBuffer } from '@/lib/pdf-contract-generator';
+import { gerarContratoPdfBuffer, determinarTipoContrato } from '@/lib/pdf-contract-generator';
 import { criarDocumentoZapSignDireto } from '@/lib/zapsign-direct-docs';
 import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
 
@@ -103,20 +103,10 @@ export async function POST(
       zapConfig.docGenerationMode === 'dynamic_pdf' ||
       req.nextUrl.searchParams.get('modo') === 'dynamic_pdf';
 
-    const isRenovacao =
-      clientData.isRenovacao === 'Sim' ||
-      clientData.renovacao === true ||
-      clientData.renovacao === 'true' ||
-      clientData.renovacao === 'Sim';
-    const isPlano100k =
-      String(clientData.tipo || '').toLowerCase() === '100k' ||
-      String(clientData.tipoDePlano || '').toLowerCase() === '100k';
-
-    // Se no dropdown "É uma renovação de apólice anterior?" foi selecionado "Sim (Renovação de seguro anterior)",
-    // prioriza OBRIGATORIAMENTE o Template Renovação.
-    const templateId = isRenovacao
+    const tipoContrato = determinarTipoContrato(clientData, cotacao);
+    const templateId = tipoContrato === '100k_renovacao'
       ? zapConfig.templateRenovacao
-      : isPlano100k
+      : tipoContrato === '100k'
         ? zapConfig.template100k
         : zapConfig.templateOficial;
 
