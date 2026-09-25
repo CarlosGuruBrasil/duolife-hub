@@ -32,6 +32,29 @@ export async function PATCH(
   try {
     const body = (await req.json().catch(() => ({}))) as AlterarCobrancaBody;
 
+function toIsoDateString(val: unknown): string {
+  if (!val) return '';
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return '';
+    const y = val.getUTCFullYear();
+    const m = String(val.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(val.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  const s = String(val).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    return s.slice(0, 10);
+  }
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear();
+    const m = String(parsed.getMonth() + 1).padStart(2, '0');
+    const d = String(parsed.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return s.slice(0, 10);
+}
+
     // 1. Busca a ordem de pagamento atual da cotação
     const [order] = await sql<
       Array<{
@@ -43,7 +66,7 @@ export async function PATCH(
         status: string;
         amount_total: string;
         installment_count: number;
-        due_date: string;
+        due_date: string | Date | null;
         description: string | null;
       }>
     >`
@@ -56,7 +79,7 @@ export async function PATCH(
         status,
         amount_total,
         installment_count,
-        due_date,
+        due_date::text AS due_date,
         description
       FROM payment_orders
       WHERE cotacao_id = ${id}
@@ -89,7 +112,7 @@ export async function PATCH(
 
     const currentTotal = parseFloat(order.amount_total) || 0;
     const currentParcelas = order.installment_count || 1;
-    const currentDue = (order.due_date || '').slice(0, 10);
+    const currentDue = toIsoDateString(order.due_date);
     const currentDesc = order.description || '';
 
     const newTotal =
@@ -100,10 +123,10 @@ export async function PATCH(
       body.qtdParcelas !== undefined && body.qtdParcelas > 0
         ? Math.floor(Number(body.qtdParcelas))
         : currentParcelas;
-    const newDue = body.dueDate ? body.dueDate.trim().slice(0, 10) : currentDue;
-    const newDesc = body.description !== undefined ? body.description.trim() : currentDesc;
-    const newBillingType = (body.billingType || order.billing_type || 'UNDEFINED').toUpperCase();
-    const currentBillingType = (order.billing_type || 'UNDEFINED').toUpperCase();
+    const newDue = body.dueDate ? toIsoDateString(body.dueDate) : currentDue;
+    const newDesc = body.description !== undefined ? String(body.description).trim() : currentDesc;
+    const newBillingType = String(body.billingType || order.billing_type || 'UNDEFINED').toUpperCase();
+    const currentBillingType = String(order.billing_type || 'UNDEFINED').toUpperCase();
     const billingTypeChanged = Boolean(body.billingType && newBillingType !== currentBillingType);
 
     const parcelasChanged = newParcelas !== currentParcelas;

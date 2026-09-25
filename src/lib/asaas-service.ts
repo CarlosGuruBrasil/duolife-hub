@@ -157,7 +157,7 @@ export async function generateAsaasPaymentForQuote(
       }
 
       const [existingOrder] = await sql<any[]>`
-        SELECT external_payment_id, invoice_url, bank_slip_url, due_date
+        SELECT external_payment_id, invoice_url, bank_slip_url, due_date::text AS due_date
         FROM payment_orders
         WHERE cotacao_id = ${cotacao.id}
         LIMIT 1
@@ -189,7 +189,7 @@ export async function generateAsaasPaymentForQuote(
     } else {
       // Quando customValues é fornecido sem forceRecreate, verifica se já existe cobrança ativa
       const [existingOrder] = await sql<any[]>`
-        SELECT external_payment_id, invoice_url, bank_slip_url, due_date, status
+        SELECT external_payment_id, invoice_url, bank_slip_url, due_date::text AS due_date, status
         FROM payment_orders
         WHERE cotacao_id = ${cotacao.id}
         LIMIT 1
@@ -330,7 +330,7 @@ export async function generateAsaasPaymentForQuote(
     let dueDateStr: string;
 
     if (options?.customValues?.dueDate) {
-      const cleanDue = options.customValues.dueDate.slice(0, 10);
+      const cleanDue = String(options.customValues.dueDate).trim().slice(0, 10);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(cleanDue)) {
         return { ok: false, error: 'Data de vencimento inválida. Use o formato AAAA-MM-DD.' };
       }

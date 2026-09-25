@@ -75,7 +75,7 @@ export async function POST(
     let qtdParcelas = Number(clientData.parcela) || 1;
 
     const [existingOrder] = await sql<any[]>`
-      SELECT id, external_payment_id, bank_slip_url, invoice_url, due_date, amount_total, installment_count, billing_type
+      SELECT id, external_payment_id, bank_slip_url, invoice_url, due_date::text AS due_date, amount_total, installment_count, billing_type
       FROM payment_orders
       WHERE cotacao_id = ${cotacao.id}
       ORDER BY created_at DESC

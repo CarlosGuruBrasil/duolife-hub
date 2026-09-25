@@ -106,7 +106,7 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
     status: string;
     due_date: string;
   }>>`
-    SELECT id, installment_count, billing_type, amount_total, status, due_date
+    SELECT id, installment_count, billing_type, amount_total, status, due_date::text AS due_date
     FROM payment_orders
     WHERE cotacao_id = ${id}
     ORDER BY created_at DESC

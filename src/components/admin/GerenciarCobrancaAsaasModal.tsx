@@ -99,7 +99,7 @@ export function GerenciarCobrancaAsaasModal({
       initialData?.dueDate ??
       '';
     if (initDue) {
-      setDueDate(initDue.slice(0, 10));
+      setDueDate(String(initDue).trim().slice(0, 10));
     } else {
       // Default to today + 2 days
       const d = new Date();
