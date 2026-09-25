@@ -10,7 +10,7 @@ import { getZapSignConfig, sanitizeApiToken } from '@/lib/system-settings';
 import { parseAtuacaoList } from '@/lib/atuacao';
 import { rateLimit, rateLimitResponse } from '@/lib/rate-limit';
 import { gerarContratoPdfBuffer, determinarTipoContrato } from '@/lib/pdf-contract-generator';
-import { criarDocumentoZapSignDireto } from '@/lib/zapsign-direct-docs';
+import { criarDocumentoZapSignDireto, cancelarDocumentoZapSign } from '@/lib/zapsign-direct-docs';
 import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
 
 export async function POST(
@@ -35,6 +35,14 @@ export async function POST(
     if (!user) return unauthorized();
     targetPartnerId = user.partnerId;
   }
+
+  let requestBody: Record<string, any> = {};
+  try {
+    requestBody = await req.json();
+  } catch {
+    requestBody = {};
+  }
+  const forceRecreate = Boolean(requestBody?.forceRecreate || req.nextUrl.searchParams.get('force') === 'true');
 
   const actorKey = user ? user.userId : `${clientIp}:${targetPartnerId || 'anon'}`;
   const rl = rateLimit(`gerar-contrato:${actorKey}`, 10, 60 * 1000); // 10 gerações por minuto
@@ -79,22 +87,42 @@ export async function POST(
       return Response.json({ error: 'Cotação sem valor de prêmio calculado — não é possível gerar contrato' }, { status: 422 });
     }
 
-    // Idempotência: já existe um contrato gerado para esta cotação, não cria outro documento no ZapSign —
-    // a menos que o link de assinatura já tenha passado do prazo de validade do ZapSign (~30 dias), caso
-    // em que geramos um novo documento em vez de reaproveitar um signUrl morto indefinidamente.
-    const SIGN_URL_MAX_AGE_DAYS = 25;
+    // Prazo de validade universal: exatamente 7 dias corridos a partir da geração
+    const PRAZO_DIAS_ASSINATURA = 7;
+    const deadlineDate = new Date(Date.now() + PRAZO_DIAS_ASSINATURA * 24 * 60 * 60 * 1000);
+    const deadlineIso = deadlineDate.toISOString();
+    const deadlineZapSign = deadlineIso.slice(0, 10); // YYYY-MM-DD aceito pelo ZapSign
+
     const contratoGeradoEm = clientData.contratoGeradoEm ? new Date(clientData.contratoGeradoEm) : null;
     const signUrlExpirado = contratoGeradoEm
-      ? (Date.now() - contratoGeradoEm.getTime()) > SIGN_URL_MAX_AGE_DAYS * 24 * 60 * 60 * 1000
+      ? (Date.now() - contratoGeradoEm.getTime()) > PRAZO_DIAS_ASSINATURA * 24 * 60 * 60 * 1000
       : false;
 
-    if (clientData.contratoToken && !signUrlExpirado) {
+    // Se NÃO for solicitação explícita de regeração (forceRecreate) e o contrato anterior existir e não estiver expirado:
+    if (!forceRecreate && clientData.contratoToken && !signUrlExpirado) {
       return Response.json({
         ok: true,
         docToken: clientData.contratoToken,
         signUrl: clientData.signUrl,
         alreadyExisted: true,
       });
+    }
+
+    // Se for regeração (forceRecreate) ou expiração, e houver um token anterior na ZapSign:
+    // 1. Cancela o documento anterior na ZapSign para invalidar o link antigo imediatamente
+    // 2. Marca o documento anterior em signature_documents como 'cancelled' ou 'expired'
+    if (clientData.contratoToken) {
+      try {
+        await cancelarDocumentoZapSign(clientData.contratoToken);
+      } catch (cancelErr) {
+        logger.warn({ cancelErr, docToken: clientData.contratoToken }, 'api.portal.gerar-contrato.cancel_old_warn');
+      }
+
+      await sql`
+        UPDATE signature_documents
+        SET status = ${signUrlExpirado ? 'expired' : 'cancelled'}, updated_at = NOW()
+        WHERE cotacao_id = ${cotacao.id} AND status NOT IN ('cancelled', 'refused', 'expired')
+      `;
     }
 
     // 2. Determina modo e template do ZapSign
@@ -311,6 +339,7 @@ export async function POST(
         base64Pdf: pdfData.base64,
         docName: pdfData.docName,
         externalId: cotacao.id,
+        deadlineAt: deadlineZapSign,
         signatario: {
           nome: pdfData.signatario.nome,
           email: pdfData.signatario.email,
@@ -331,6 +360,7 @@ export async function POST(
         send_automatic_whatsapp: false,
         sandbox,
         lang: "pt-br",
+        deadline_at: deadlineZapSign,
         data: dataArray,
         external_id: cotacao.id
       };
@@ -376,7 +406,12 @@ export async function POST(
     clientData.contratoToken = docToken;
     clientData.signUrl = signUrl;
     clientData.contratoGeradoEm = new Date().toISOString();
+    clientData.contratoPrazoLimite = deadlineIso;
     clientData.contratoModo = isDynamicPdf ? 'dynamic_pdf' : 'template';
+    // Limpa estado de desatualização da minuta
+    clientData.minutaDesatualizada = false;
+    delete clientData.minutaDesatualizadaMotivo;
+    delete clientData.minutaAlteradaEm;
 
     await sql`
       UPDATE cotacoes
@@ -387,15 +422,14 @@ export async function POST(
       WHERE id = ${cotacao.id}
     `;
 
-    // Se estamos regenerando por expiração, o documento antigo precisa sair do estado "ativo"
-    // antes do insert abaixo, senão colide com o índice único parcial (1 documento ativo por cotação).
-    if (signUrlExpirado) {
-      await sql`
-        UPDATE signature_documents
-        SET status = 'expired', updated_at = NOW()
-        WHERE cotacao_id = ${cotacao.id} AND status NOT IN ('cancelled', 'refused', 'expired')
-      `;
-    }
+    // Garante que qualquer outro documento anterior não cancelado saia do estado ativo
+    await sql`
+      UPDATE signature_documents
+      SET status = 'cancelled', updated_at = NOW()
+      WHERE cotacao_id = ${cotacao.id}
+        AND external_document_id != ${docToken}
+        AND status NOT IN ('cancelled', 'refused', 'expired')
+    `;
 
     await sql`
       INSERT INTO signature_documents (
@@ -406,6 +440,7 @@ export async function POST(
         template_id,
         sign_url,
         status,
+        deadline_at,
         raw_payload,
         updated_at
       )
@@ -417,6 +452,7 @@ export async function POST(
         ${isDynamicPdf ? 'dynamic_pdf' : templateId},
         ${signUrl || null},
         'pending',
+        ${deadlineIso},
         ${JSON.stringify(resJson)}::jsonb,
         NOW()
       )
@@ -424,6 +460,7 @@ export async function POST(
       DO UPDATE SET
         template_id = EXCLUDED.template_id,
         sign_url = EXCLUDED.sign_url,
+        deadline_at = EXCLUDED.deadline_at,
         raw_payload = EXCLUDED.raw_payload,
         updated_at = NOW()
     `;

@@ -644,6 +644,7 @@ async function runRuntimeSchemaSetup(): Promise<void> {
       UNIQUE (provider, external_document_id)
     )
   `;
+  await sql`ALTER TABLE signature_documents ADD COLUMN IF NOT EXISTS deadline_at TIMESTAMPTZ`;
   await sql`CREATE INDEX IF NOT EXISTS signature_documents_cotacao_id ON signature_documents (cotacao_id)`;
   await sql`CREATE INDEX IF NOT EXISTS signature_documents_client_id ON signature_documents (client_id)`;
   // Garante no máximo 1 contrato ativo por cotação a nível de banco, não só via checagem em aplicação

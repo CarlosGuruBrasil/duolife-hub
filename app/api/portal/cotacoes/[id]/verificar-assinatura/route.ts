@@ -270,6 +270,22 @@ export async function POST(
       });
     }
 
+    const isExpired = resJson.status === 'expired' || (clientData.contratoPrazoLimite && new Date() > new Date(clientData.contratoPrazoLimite));
+    if (isExpired) {
+      await sql`
+        UPDATE signature_documents
+        SET status = 'expired', updated_at = NOW(), raw_payload = ${JSON.stringify(resJson)}::jsonb
+        WHERE cotacao_id = ${cotacao.id} AND provider = 'zapsign' AND status NOT IN ('signed', 'cancelled')
+      `;
+      return Response.json({
+        ok: true,
+        status: cotacao.status,
+        assinado: false,
+        expirado: true,
+        message: 'O prazo de assinatura de 7 dias expirou sem assinatura. Clique em "Regerar Minuta" para emitir um novo contrato.'
+      });
+    }
+
     return Response.json({
       ok: true,
       status: cotacao.status,

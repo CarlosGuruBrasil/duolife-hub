@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { CopiarLinkAssinaturaButton } from '@/components/cotacao/CopiarLinkAssinaturaButton';
 import { notFound, redirect } from 'next/navigation';
-import { ArrowLeft, ExternalLink, FileText, CreditCard, ShieldCheck, FileCheck, Play, CheckCircle2, Clock, Download, Eye } from 'lucide-react';
+import { ArrowLeft, ExternalLink, FileText, CreditCard, ShieldCheck, FileCheck, Play, CheckCircle2, Clock, Download, Eye, AlertTriangle } from 'lucide-react';
 import { verifyPartnerAuth, getPartnerAccessContext } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
@@ -12,6 +12,7 @@ import EditarPropostaButton from '@/components/modals/EditarPropostaButton';
 import { EnviarFaturaEmailButton } from '@/components/cotacao/EnviarFaturaEmailButton';
 import { EnviarPropostaEmailButton } from '@/components/cotacao/EnviarPropostaEmailButton';
 import { VerificarZapSignButton } from '@/components/cotacao/VerificarZapSignButton';
+import RegerarMinutaButton from '@/components/cotacao/RegerarMinutaButton';
 
 const statusLabel: Record<string, string> = {
   rascunho: 'Rascunho',
@@ -163,9 +164,10 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
     signed_file_url: string | null;
     status: string;
     signed_at: string | null;
+    deadline_at: string | null;
     created_at: string;
   }>>`
-    SELECT id, external_document_id, sign_url, signed_file_url, status, signed_at, created_at
+    SELECT id, external_document_id, sign_url, signed_file_url, status, signed_at, deadline_at, created_at
     FROM signature_documents
     WHERE cotacao_id = ${id} AND provider = 'zapsign'
     ORDER BY created_at DESC
@@ -274,6 +276,16 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
 
   const dataAssinatura = signatureDoc?.signed_at || (clientData.assinadoEm as string | undefined);
   const dataCriacaoContrato = signatureDoc?.created_at || (clientData.contratoGeradoEm as string | undefined);
+  const contratoPrazoLimite = (signatureDoc?.deadline_at as string | undefined) || (clientData.contratoPrazoLimite as string | undefined);
+  const dataCriacaoMs = dataCriacaoContrato ? new Date(dataCriacaoContrato).getTime() : 0;
+  const cotacaoUpdatedAtMs = cotacao.updated_at ? new Date(cotacao.updated_at).getTime() : 0;
+  const prazoLimiteMs = contratoPrazoLimite
+    ? new Date(contratoPrazoLimite).getTime()
+    : (dataCriacaoMs > 0 ? dataCriacaoMs + 7 * 24 * 60 * 60 * 1000 : 0);
+  const isMinutaExpired = !isAssinado && prazoLimiteMs > 0 && Date.now() > prazoLimiteMs;
+  const prazoLimiteFormatado = prazoLimiteMs > 0 ? new Date(prazoLimiteMs).toISOString() : null;
+  const isMinutaOutdated = Boolean(clientData.minutaDesatualizada) ||
+    (cotacao.status === 'contrato_gerado' && dataCriacaoMs > 0 && cotacaoUpdatedAtMs - dataCriacaoMs > 5000);
 
   return (
     <div className="space-y-6 max-w-[1100px] mx-auto">
@@ -598,10 +610,16 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
             ) : signUrl || docToken || cotacao.status === 'contrato_gerado' ? (
               <div className="space-y-4">
                 {/* Banner de Status Limpo */}
-                <div className="bg-amber-50/70 border border-amber-200/80 rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-2">
+                <div className={`border rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-2 ${
+                  isMinutaExpired
+                    ? 'bg-rose-50/90 border-rose-200'
+                    : isMinutaOutdated
+                    ? 'bg-amber-50/90 border-amber-300'
+                    : 'bg-amber-50/70 border-amber-200/80'
+                }`}>
                   <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-900 shrink-0">
-                    <Clock size={15} className="text-amber-700 shrink-0" />
-                    <span>Aguardando Assinatura</span>
+                    <Clock size={15} className={isMinutaExpired ? 'text-rose-600' : 'text-amber-700'} />
+                    <span>{isMinutaExpired ? 'Minuta Expirada (Prazo de 7 dias)' : 'Aguardando Assinatura'}</span>
                   </span>
                   {docToken && (
                     <span
@@ -613,11 +631,34 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
                   )}
                 </div>
 
+                {/* Avisos Contextuais de Minuta Desatualizada ou Expirada */}
+                {isMinutaOutdated && (
+                  <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 flex items-start gap-2.5">
+                    <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="block font-bold">Minuta desatualizada:</strong>
+                      <span>Os dados da proposta ou do cliente foram alterados após a geração do contrato. Clique no botão <strong>Regerar Minuta</strong> abaixo para cancelar o contrato anterior na ZapSign e emitir o documento corrigido.</span>
+                    </div>
+                  </div>
+                )}
+
+                {isMinutaExpired && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900 flex items-start gap-2.5">
+                    <Clock size={16} className="text-rose-600 shrink-0 mt-0.5" />
+                    <div>
+                      <strong className="block font-bold">Prazo de assinatura expirado (7 dias corridos):</strong>
+                      <span>O prazo de validade deste link foi encerrado na ZapSign. Clique em <strong>Regerar Minuta</strong> para emitir um novo contrato válido por mais 7 dias.</span>
+                    </div>
+                  </div>
+                )}
+
                 {/* Grid de Metadados */}
-                <div className="grid grid-cols-2 gap-3 text-xs">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
                   <div>
                     <span className="text-slate-400 font-medium block text-[11px]">Situação</span>
-                    <span className="text-amber-900 font-semibold block mt-0.5">Pendente do proponente</span>
+                    <span className={`font-semibold block mt-0.5 ${isMinutaExpired ? 'text-rose-700' : 'text-amber-900'}`}>
+                      {isMinutaExpired ? 'Prazo Expirado' : 'Pendente do proponente'}
+                    </span>
                   </div>
                   <div>
                     <span className="text-slate-400 font-medium block text-[11px]">Gerado em</span>
@@ -625,10 +666,24 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
                       {dataCriacaoContrato ? formatDateTime(String(dataCriacaoContrato)) : '—'}
                     </span>
                   </div>
+                  <div>
+                    <span className="text-slate-400 font-medium block text-[11px]">Validade (7 dias)</span>
+                    <span className={`font-semibold block mt-0.5 ${isMinutaExpired ? 'text-rose-600 font-bold' : 'text-slate-700'}`}>
+                      {prazoLimiteFormatado ? formatDateTime(prazoLimiteFormatado) : '—'}
+                    </span>
+                  </div>
                 </div>
 
                 {/* Barra de Ações */}
-                <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2">{signUrl && (
+                <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2">
+                  <RegerarMinutaButton
+                    cotacaoId={cotacao.id}
+                    isOutdated={isMinutaOutdated}
+                    isExpired={isMinutaExpired}
+                    docToken={docToken}
+                    prazoLimite={prazoLimiteFormatado}
+                  />
+                  {signUrl && !isMinutaExpired && (
                     <>
                       <CopiarLinkAssinaturaButton signUrl={signUrl} />
                       <a

@@ -192,12 +192,12 @@ export async function PATCH(
       delete sanitizedInputClientData[key];
     }
 
-    // Regra da Opção 1:
-    // Status rascunho ou enviada: permite atualizar campos de proposta e recalcular prêmio.
-    // Status assinado, pagamento_gerado, aprovada, emitida (e outros status pós-emissão/contrato):
-    // Preserva os valores financeiros originais da cotação (importanciaSegurada, premioFinal e plano)
-    // para integridade com ZapSign e Asaas, tanto para corretores quanto administradores.
-    const isFinancialMutable = ['rascunho', 'enviada'].includes(cotacao.status);
+    // Status rascunho, enviada ou contrato_gerado (aguardando assinatura):
+    // Permite atualizar campos de proposta e recalcular prêmio. Caso a cotação já possua
+    // minuta gerada, a alteração marcará a minuta como desatualizada para que o operador possa regerá-la na ZapSign.
+    // Status assinado, pagamento_gerado, aprovada, emitida:
+    // Preserva os valores financeiros originais da cotação para integridade com os títulos já assinados/gerados.
+    const isFinancialMutable = ['rascunho', 'enviada', 'contrato_gerado'].includes(cotacao.status);
 
     const proposal = (payload.proposalData || {}) as Record<string, unknown>;
 
@@ -351,6 +351,16 @@ export async function PATCH(
         dataVigencia: proposal.dataInicioVigencia ?? sanitizedInputClientData.dataInicioVigencia ?? sanitizedInputClientData.vigencia,
       } : {}),
     };
+
+    // Se a cotação já possuir contrato gerado na ZapSign (status contrato_gerado ou token ativo),
+    // qualquer alteração realizada no cliente ou na proposta marca a minuta como desatualizada,
+    // habilitando o botão "Regerar Minuta" para o operador cancelar a anterior e emitir a nova.
+    const hasContractGenerated = cotacao.status === 'contrato_gerado' || Boolean(currentClientData.contratoToken);
+    if (hasContractGenerated) {
+      mergedClientData.minutaDesatualizada = true;
+      mergedClientData.minutaAlteradaEm = new Date().toISOString();
+      mergedClientData.minutaDesatualizadaMotivo = 'Informações da proposta ou dados cadastrais foram alterados';
+    }
 
     // Sincroniza o cliente em insurance_clients
     const insuranceClient = await upsertInsuranceClient({

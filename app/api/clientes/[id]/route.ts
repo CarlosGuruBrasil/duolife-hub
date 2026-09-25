@@ -340,13 +340,13 @@ export async function PATCH(
     if (syncQuotes) {
       try {
         const quotesToUpdate = isAdmin
-          ? await sql<{ id: string; client_data: unknown }[]>`
-              SELECT id, client_data
+          ? await sql<{ id: string; status: string; client_data: unknown }[]>`
+              SELECT id, status, client_data
               FROM cotacoes
               WHERE client_id = ${existingClient.id} OR client_cpf_cnpj = ${existingClient.document_number}
             `
-          : await sql<{ id: string; client_data: unknown }[]>`
-              SELECT id, client_data
+          : await sql<{ id: string; status: string; client_data: unknown }[]>`
+              SELECT id, status, client_data
               FROM cotacoes
               WHERE (client_id = ${existingClient.id} OR client_cpf_cnpj = ${existingClient.document_number})
                 AND partner_id = ${access!.partnerId}
@@ -372,6 +372,12 @@ export async function PATCH(
             updatedCd.bairro = updatedAddress.bairro || cd.bairro;
             updatedCd.cidade = updatedAddress.cidade || cd.cidade;
             updatedCd.uf = updatedAddress.uf || cd.uf;
+          }
+
+          if (q.status === 'contrato_gerado' || Boolean(cd.contratoToken)) {
+            updatedCd.minutaDesatualizada = true;
+            updatedCd.minutaAlteradaEm = new Date().toISOString();
+            updatedCd.minutaDesatualizadaMotivo = 'Dados do cliente alterados no cadastro';
           }
 
           await sql`
