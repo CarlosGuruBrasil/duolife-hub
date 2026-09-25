@@ -65,13 +65,14 @@ const statusLabel: Record<string, string> = {
 };
 
 const billingTypeLabel: Record<string, string> = {
-  boleto: 'boleto',
-  BOLETO: 'boleto',
-  pix: 'Pix',
-  PIX: 'Pix',
-  credit_card: 'cartão de crédito',
-  CREDIT_CARD: 'cartão de crédito',
-  UNDEFINED: 'não definido',
+  boleto: 'Boleto / Pix',
+  BOLETO: 'Boleto / Pix',
+  pix: 'PIX',
+  PIX: 'PIX',
+  credit_card: 'Cartão de crédito',
+  CREDIT_CARD: 'Cartão de crédito',
+  UNDEFINED: 'Fatura (escolha do cliente)',
+  undefined: 'Fatura (escolha do cliente)',
 };
 
 const asaasStatusLabel: Record<string, string> = {

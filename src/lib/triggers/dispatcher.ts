@@ -201,6 +201,16 @@ export async function dispatchDomainEvent(
               link_fatura: context.transacao?.link_fatura || '',
               vencimento: context.transacao?.vencimento || '',
               data_vencimento: context.transacao?.vencimento || '',
+              forma_pagamento: context.transacao?.forma_pagamento || context.dados?.forma_pagamento || 'UNDEFINED',
+              forma_pagamento_texto: context.dados?.forma_pagamento_texto || (
+                (context.transacao?.forma_pagamento || context.dados?.forma_pagamento) === 'BOLETO'
+                  ? 'Boleto Bancário (com PIX)'
+                  : (context.transacao?.forma_pagamento || context.dados?.forma_pagamento) === 'PIX'
+                  ? 'PIX Instantâneo'
+                  : (context.transacao?.forma_pagamento || context.dados?.forma_pagamento) === 'CREDIT_CARD'
+                  ? 'Cartão de Crédito'
+                  : 'Fatura (Cartão de Crédito, Boleto ou PIX)'
+              ),
               parceiro_nome: context.parceiro?.nome || 'DuoLife',
               codigo_venda: context.parceiro?.codigoVenda || '',
               link_reset: context.dados?.link_reset || context.dados?.reset_url || '',

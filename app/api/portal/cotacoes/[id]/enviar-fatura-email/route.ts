@@ -75,7 +75,7 @@ export async function POST(
     let qtdParcelas = Number(clientData.parcela) || 1;
 
     const [existingOrder] = await sql<any[]>`
-      SELECT id, external_payment_id, bank_slip_url, invoice_url, due_date, amount_total, installment_count
+      SELECT id, external_payment_id, bank_slip_url, invoice_url, due_date, amount_total, installment_count, billing_type
       FROM payment_orders
       WHERE cotacao_id = ${cotacao.id}
       ORDER BY created_at DESC
@@ -140,6 +140,18 @@ export async function POST(
 
     const partnerName = partnerRow?.nome || 'DuoLife';
 
+    const rawBt = existingOrder?.billing_type || clientData.billingType || clientData.formaPagamento;
+    const billingType = rawBt ? String(rawBt).toUpperCase() : 'UNDEFINED';
+
+    const formaPagamentoNome =
+      billingType === 'BOLETO'
+        ? 'Boleto Bancário (com PIX)'
+        : billingType === 'PIX'
+        ? 'PIX Instantâneo'
+        : billingType === 'CREDIT_CARD'
+        ? 'Cartão de Crédito'
+        : 'Fatura (Cartão de Crédito, Boleto ou PIX)';
+
     // 6. Dispara evento de domínio oficial FATURA_GERADA
     let actionsExecuted = 0;
     try {
@@ -164,7 +176,7 @@ export async function POST(
           link_fatura: linkBoleto,
           vencimento: formattedDueDate,
           valor: valorTotal,
-          forma_pagamento: 'BOLETO',
+          forma_pagamento: billingType,
           status: 'PENDING',
         },
         parceiro: partnerRow ? {
@@ -189,6 +201,8 @@ export async function POST(
           valor: valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
           qtdParcelas,
           valorParcela: valorParcela.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
+          forma_pagamento: billingType,
+          forma_pagamento_texto: formaPagamentoNome,
         },
       });
 
@@ -211,6 +225,8 @@ export async function POST(
           vencimento: formattedDueDate || 'À vista',
           link_fatura: linkBoleto,
           parceiro_nome: partnerName,
+          forma_pagamento: billingType,
+          forma_pagamento_texto: formaPagamentoNome,
         },
         metadata: {
           eventType: 'FATURA_GERADA',

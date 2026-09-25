@@ -12,7 +12,7 @@ interface AlterarCobrancaBody {
   valorTotal?: number;
   qtdParcelas?: number;
   dueDate?: string;
-  billingType?: 'BOLETO' | 'PIX';
+  billingType?: 'BOLETO' | 'PIX' | 'CREDIT_CARD' | 'UNDEFINED' | string;
   description?: string;
   forceRecreate?: boolean;
 }
@@ -102,7 +102,9 @@ export async function PATCH(
         : currentParcelas;
     const newDue = body.dueDate ? body.dueDate.trim().slice(0, 10) : currentDue;
     const newDesc = body.description !== undefined ? body.description.trim() : currentDesc;
-    const newBillingType = body.billingType || (order.billing_type as 'BOLETO' | 'PIX') || 'BOLETO';
+    const newBillingType = (body.billingType || order.billing_type || 'UNDEFINED').toUpperCase();
+    const currentBillingType = (order.billing_type || 'UNDEFINED').toUpperCase();
+    const billingTypeChanged = Boolean(body.billingType && newBillingType !== currentBillingType);
 
     const parcelasChanged = newParcelas !== currentParcelas;
     const totalChanged = Math.abs(newTotal - currentTotal) > 0.009;
@@ -168,6 +170,25 @@ export async function PATCH(
         ok: false,
         requiresRecreate: true,
         reason: 'O Asaas não permite alterar o valor total de uma cobrança parcelada sem recriar as parcelas.',
+      });
+    }
+
+    // Caso 3: Houve alteração na forma de pagamento (billingType).
+    // O Asaas NÃO permite alterar a modalidade de uma cobrança já existente.
+    if (billingTypeChanged) {
+      const getLabel = (t: string) => {
+        switch (t.toUpperCase()) {
+          case 'BOLETO': return 'Boleto Bancário (com PIX)';
+          case 'PIX': return 'PIX Direto';
+          case 'CREDIT_CARD': return 'Cartão de Crédito';
+          case 'UNDEFINED': return 'Fatura (Cliente escolhe)';
+          default: return t;
+        }
+      };
+      return Response.json({
+        ok: false,
+        requiresRecreate: true,
+        reason: `A forma de pagamento foi alterada de "${getLabel(currentBillingType)}" para "${getLabel(newBillingType)}". O Asaas não permite alterar a forma de pagamento de uma cobrança já gerada sem cancelá-la e emitir uma nova.`,
       });
     }
 

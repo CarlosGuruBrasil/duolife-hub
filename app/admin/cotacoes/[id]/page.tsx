@@ -256,7 +256,7 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
     valorTotal: totalAmountNum || Number(cotacao.premio_final ?? cotacao.premio_calculado ?? 0),
     qtdParcelas: numParcelas,
     dueDate: String(clientData.dataVencimento || billingDueDateCheck?.dueDate || ''),
-    billingType: (paymentOrder?.billing_type as 'BOLETO' | 'PIX') || 'BOLETO',
+    billingType: (paymentOrder?.billing_type as any) || (clientData.billingType as any) || (clientData.formaPagamento as any) || 'UNDEFINED',
     description: `Seguro RC Profissional - Plano ${planoNome}`,
     isAssinado,
     existingPayment: (paymentOrder || checkoutId) ? {
@@ -268,6 +268,7 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
       dueDate: String(clientData.dataVencimento || paymentOrder?.due_date || ''),
       bankSlipUrl: linkBoleto || null,
       invoiceUrl: linkBoleto || null,
+      billingType: paymentOrder?.billing_type || clientData.billingType || clientData.formaPagamento || null,
     } : null,
   };
 
@@ -487,7 +488,17 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs bg-amber-50/80 border border-amber-200/80 p-3 rounded-xl">
                   <div>
                     <span className="font-bold text-amber-900 block">Cobrança Asaas Gerada</span>
-                    <span className="text-amber-700 text-[11px] block">ID: {checkoutId || 'Asaas'}</span>
+                    <span className="text-amber-700 text-[11px] block">
+                      Forma: <strong>{
+                        paymentOrder?.billing_type === 'BOLETO'
+                          ? 'Boleto Bancário (com PIX)'
+                          : paymentOrder?.billing_type === 'PIX'
+                          ? 'PIX Instantâneo'
+                          : paymentOrder?.billing_type === 'CREDIT_CARD'
+                          ? 'Cartão de Crédito'
+                          : 'Fatura (Cliente escolhe)'
+                      }</strong> &bull; ID: {checkoutId || 'Asaas'}
+                    </span>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     {linkBoleto && (
@@ -498,7 +509,15 @@ export default async function AdminCotacaoDetailPage({ params }: { params: Promi
                         className="inline-flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 !text-white text-white font-bold px-3.5 py-1.5 rounded-lg text-xs transition-colors shadow-xs"
                       >
                         <span>📄</span>
-                        <span className="!text-white text-white">Abrir Fatura / Pix</span>
+                        <span className="!text-white text-white">
+                          {paymentOrder?.billing_type === 'CREDIT_CARD'
+                            ? 'Abrir Fatura / Cartão'
+                            : paymentOrder?.billing_type === 'PIX'
+                            ? 'Abrir PIX'
+                            : paymentOrder?.billing_type === 'BOLETO'
+                            ? 'Abrir Boleto / Pix'
+                            : 'Abrir Fatura'}
+                        </span>
                         <ExternalLink size={12} className="!text-white text-white shrink-0" />
                       </a>
                     )}

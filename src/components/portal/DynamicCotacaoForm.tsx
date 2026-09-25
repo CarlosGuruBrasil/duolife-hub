@@ -349,6 +349,7 @@ export default function DynamicCotacaoForm({
   const [cargosPpe, setCargosPpe] = useState<CargoPPE[]>(CARGOS_PPE_PADRAO);
   const [planoSel, setPlanoSel] = useState<Plano | null>(null);
   const [parcelaSel, setParcelaSel] = useState<{ qtd: number; valor: number } | null>(null);
+  const [formaPagamento, setFormaPagamento] = useState<'UNDEFINED' | 'BOLETO' | 'PIX' | 'CREDIT_CARD'>('UNDEFINED');
 
   // Helper reativo para identificar plano 100k simplificado
   const isPlano100k = useMemo(() => {
@@ -1072,6 +1073,8 @@ export default function DynamicCotacaoForm({
         valor: valorTotal,
         valorParcela: valorParcela,
         parcela: parcelaSel.qtd,
+        formaPagamento: formaPagamento,
+        billingType: formaPagamento,
         descontoManualPercent: descontoPercentual,
         descontoPercentual: maiorDesconto,
         cupomCodigo: cupomAplicado ? cupomCode : null,
@@ -1215,7 +1218,8 @@ export default function DynamicCotacaoForm({
     try {
       const res = await fetch(`/api/portal/cotacoes/${cotacaoId}/gerar-pagamento`, {
         method: 'POST',
-        headers: getHeaders(),
+        headers: getHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ billingType: formaPagamento }),
       });
       const data = await res.json();
 
@@ -2300,6 +2304,129 @@ export default function DynamicCotacaoForm({
             </div>
           )}
 
+          {/* Opções de Forma de Pagamento */}
+          <div className="space-y-3 pt-2 border-t border-gray-100">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
+                Forma de Pagamento
+              </label>
+              <span className="text-[11px] text-gray-500">
+                Se não escolhida, o cliente receberá a fatura por e-mail para escolher ao pagar
+              </span>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {/* Opção 1: Fatura Aberta (Cliente escolhe ao pagar) */}
+              <div
+                onClick={() => setFormaPagamento('UNDEFINED')}
+                className={`border-2 rounded-xl p-4 cursor-pointer transition-all min-h-[44px] flex flex-col justify-between ${
+                  formaPagamento === 'UNDEFINED'
+                    ? 'border-emerald-500 bg-emerald-50/50 shadow-xs ring-2 ring-emerald-500/20'
+                    : 'border-gray-200 bg-white hover:border-gray-300'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-100/80 text-emerald-800 flex items-center justify-center">
+                      <FileText size={16} />
+                    </div>
+                    <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                      Padrão
+                    </span>
+                  </div>
+                  <div className="font-bold text-sm text-gray-900">Fatura por E-mail</div>
+                  <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                    O segurado recebe a fatura por e-mail e escolhe entre Cartão, Boleto ou PIX no checkout.
+                  </p>
+                </div>
+                {formaPagamento === 'UNDEFINED' && (
+                  <div className="mt-3 flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+                    <Check size={13} />
+                    <span>Selecionado</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Opção 2: Boleto Bancário com Pix */}
+              <div
+                onClick={() => setFormaPagamento('BOLETO')}
+                className={`border-2 rounded-xl p-4 cursor-pointer transition-all min-h-[44px] flex flex-col justify-between ${
+                  formaPagamento === 'BOLETO'
+                    ? 'border-emerald-500 bg-emerald-50/50 shadow-xs ring-2 ring-emerald-500/20'
+                    : 'border-gray-200 bg-white hover:border-gray-300'
+                }`}
+              >
+                <div>
+                  <div className="w-8 h-8 rounded-lg bg-blue-100/80 text-blue-800 flex items-center justify-center mb-1.5">
+                    <FileText size={16} />
+                  </div>
+                  <div className="font-bold text-sm text-gray-900">Boleto / PIX</div>
+                  <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                    Boleto bancário registrado com código de barras e QR Code PIX incluso para pagamento.
+                  </p>
+                </div>
+                {formaPagamento === 'BOLETO' && (
+                  <div className="mt-3 flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+                    <Check size={13} />
+                    <span>Selecionado</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Opção 3: PIX Direto */}
+              <div
+                onClick={() => setFormaPagamento('PIX')}
+                className={`border-2 rounded-xl p-4 cursor-pointer transition-all min-h-[44px] flex flex-col justify-between ${
+                  formaPagamento === 'PIX'
+                    ? 'border-emerald-500 bg-emerald-50/50 shadow-xs ring-2 ring-emerald-500/20'
+                    : 'border-gray-200 bg-white hover:border-gray-300'
+                }`}
+              >
+                <div>
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100/80 text-emerald-800 flex items-center justify-center mb-1.5">
+                    <CheckCircle2 size={16} />
+                  </div>
+                  <div className="font-bold text-sm text-gray-900">PIX Direto</div>
+                  <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                    Pagamento instantâneo com geração direta de QR Code Pix e Chave Copia e Cola.
+                  </p>
+                </div>
+                {formaPagamento === 'PIX' && (
+                  <div className="mt-3 flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+                    <Check size={13} />
+                    <span>Selecionado</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Opção 4: Cartão de Crédito */}
+              <div
+                onClick={() => setFormaPagamento('CREDIT_CARD')}
+                className={`border-2 rounded-xl p-4 cursor-pointer transition-all min-h-[44px] flex flex-col justify-between ${
+                  formaPagamento === 'CREDIT_CARD'
+                    ? 'border-emerald-500 bg-emerald-50/50 shadow-xs ring-2 ring-emerald-500/20'
+                    : 'border-gray-200 bg-white hover:border-gray-300'
+                }`}
+              >
+                <div>
+                  <div className="w-8 h-8 rounded-lg bg-purple-100/80 text-purple-800 flex items-center justify-center mb-1.5">
+                    <CreditCard size={16} />
+                  </div>
+                  <div className="font-bold text-sm text-gray-900">Cartão de Crédito</div>
+                  <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                    O cliente acessa a fatura oficial para inserir os dados do cartão de crédito com segurança.
+                  </p>
+                </div>
+                {formaPagamento === 'CREDIT_CARD' && (
+                  <div className="mt-3 flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+                    <Check size={13} />
+                    <span>Selecionado</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* Campo Opcional de Cupom — Exclusivo da venda assistida pelo vendedor */}
           {!isClientRegistration && (
             <>
@@ -2515,9 +2642,15 @@ export default function DynamicCotacaoForm({
                         </span>
                       </div>
                       <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-                        <span className="text-xs text-gray-500 block font-medium">Formas de Pagamento</span>
+                        <span className="text-xs text-gray-500 block font-medium">Forma de Pagamento</span>
                         <span className="text-base font-bold text-primary mt-1 block">
-                          PIX e Boleto
+                          {formaPagamento === 'BOLETO'
+                            ? 'Boleto / PIX'
+                            : formaPagamento === 'PIX'
+                            ? 'PIX Instantâneo'
+                            : formaPagamento === 'CREDIT_CARD'
+                            ? 'Cartão de Crédito'
+                            : 'Fatura por E-mail'}
                         </span>
                       </div>
                     </div>

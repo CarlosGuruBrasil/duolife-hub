@@ -263,6 +263,7 @@ export async function POST(req: NextRequest) {
         UPDATE payment_orders
         SET
           status = 'paid',
+          billing_type = COALESCE(${payment.billingType || null}, billing_type),
           paid_installments = COALESCE(installment_count, 1),
           paid_amount = COALESCE(amount_total, ${Number(payment.value) || 0}),
           external_payment_id = COALESCE(external_payment_id, ${payment.id}),

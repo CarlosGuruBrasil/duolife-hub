@@ -17,11 +17,13 @@ import {
 import { toast } from '@/components/ui/toast';
 import { formatCurrency, formatDate } from '@/lib/format';
 
+export type BillingTypeOption = 'BOLETO' | 'PIX' | 'CREDIT_CARD' | 'UNDEFINED';
+
 export interface CobrancaAsaasInitialData {
   valorTotal?: number;
   qtdParcelas?: number;
   dueDate?: string;
-  billingType?: 'BOLETO' | 'PIX';
+  billingType?: BillingTypeOption | string;
   description?: string;
   isAssinado?: boolean;
   existingPayment?: {
@@ -33,6 +35,7 @@ export interface CobrancaAsaasInitialData {
     dueDate: string;
     bankSlipUrl?: string | null;
     invoiceUrl?: string | null;
+    billingType?: string | null;
   } | null;
 }
 
@@ -62,7 +65,7 @@ export function GerenciarCobrancaAsaasModal({
   const [valorTotal, setValorTotal] = useState<string>('0');
   const [qtdParcelas, setQtdParcelas] = useState<number>(1);
   const [dueDate, setDueDate] = useState<string>('');
-  const [billingType, setBillingType] = useState<'BOLETO' | 'PIX'>('BOLETO');
+  const [billingType, setBillingType] = useState<BillingTypeOption>('UNDEFINED');
   const [description, setDescription] = useState<string>('');
 
   // Impediment & Confirmation state
@@ -104,7 +107,9 @@ export function GerenciarCobrancaAsaasModal({
       setDueDate(d.toISOString().slice(0, 10));
     }
 
-    setBillingType(initialData?.billingType || 'BOLETO');
+    const rawBt = (initialData?.existingPayment?.billingType || initialData?.billingType || 'UNDEFINED').toUpperCase() as BillingTypeOption;
+    setBillingType(['BOLETO', 'PIX', 'CREDIT_CARD', 'UNDEFINED'].includes(rawBt) ? rawBt : 'UNDEFINED');
+
     setDescription(
       initialData?.description ||
       `Seguro RC Profissional - Proposta #${cotacaoId.slice(0, 8)}`
@@ -473,15 +478,20 @@ export function GerenciarCobrancaAsaasModal({
                 <select
                   id="select-billing-type"
                   value={billingType}
-                  onChange={(e) => setBillingType(e.target.value as 'BOLETO' | 'PIX')}
+                  onChange={(e) => setBillingType(e.target.value as BillingTypeOption)}
                   disabled={loading || !!impedimentReason}
                   className="w-full px-3 py-2 text-sm bg-white border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:border-transparent transition-all min-h-[44px] disabled:bg-gray-100"
                 >
+                  <option value="UNDEFINED">Fatura (Cliente escolhe na hora de pagar)</option>
                   <option value="BOLETO">Boleto Bancário (com PIX incluso)</option>
                   <option value="PIX">PIX Direto (Instantâneo)</option>
+                  <option value="CREDIT_CARD">Cartão de Crédito</option>
                 </select>
                 <p className="text-[11px] text-gray-500 mt-1">
-                  O boleto híbrido já acompanha QR Code Pix na fatura.
+                  {billingType === 'UNDEFINED' && 'O cliente recebe o link da fatura e escolhe pagar com Cartão de Crédito, Boleto ou Pix.'}
+                  {billingType === 'BOLETO' && 'Gera boleto bancário registrado com código de barras e QR Code Pix incluso na fatura.'}
+                  {billingType === 'PIX' && 'Gera QR Code Pix instantâneo e chave Copia e Cola para pagamento imediato.'}
+                  {billingType === 'CREDIT_CARD' && 'Gera link da fatura para o cliente preencher os dados do cartão de crédito com segurança.'}
                 </p>
               </div>
             </div>

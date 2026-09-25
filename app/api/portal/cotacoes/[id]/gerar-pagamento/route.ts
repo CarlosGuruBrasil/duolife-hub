@@ -39,8 +39,23 @@ export async function POST(
       return Response.json({ error: 'Cotação não encontrada' }, { status: 404 });
     }
 
+    const body = (await req.json().catch(() => ({}))) as { billingType?: string };
+    const clientData = (cotacao.client_data as Record<string, any>) || {};
+    const rawBillingType = body.billingType || clientData.billingType || clientData.formaPagamento;
+
+    let billingType = 'UNDEFINED';
+    if (rawBillingType) {
+      const upper = String(rawBillingType).toUpperCase();
+      if (['BOLETO', 'PIX', 'CREDIT_CARD', 'UNDEFINED'].includes(upper)) {
+        billingType = upper;
+      }
+    }
+
     const isManualAdmin = user ? isInternalUser(user) : false;
-    const result = await generateAsaasPaymentForQuote(id, { isManualAdmin });
+    const result = await generateAsaasPaymentForQuote(id, {
+      isManualAdmin,
+      customValues: { billingType },
+    });
 
     if (!result.ok) {
       return Response.json({ error: result.error || 'Falha ao gerar cobrança' }, { status: 400 });

@@ -15,11 +15,13 @@ import {
 } from './business-days';
 import { deleteAsaasPayment, deleteAsaasInstallment } from './asaas-charges';
 
+export type BillingTypeOption = 'BOLETO' | 'PIX' | 'CREDIT_CARD' | 'UNDEFINED' | string;
+
 export interface GeneratePaymentCustomValues {
   valorTotal?: number;
   qtdParcelas?: number;
   dueDate?: string;
-  billingType?: 'BOLETO' | 'PIX';
+  billingType?: BillingTypeOption;
   description?: string;
 }
 
@@ -378,7 +380,21 @@ export async function generateAsaasPaymentForQuote(
       }
     }
 
-    const billingType = options?.customValues?.billingType || 'BOLETO';
+    const rawBillingType =
+      options?.customValues?.billingType ||
+      clientData.billingType ||
+      clientData.formaPagamento;
+
+    // Normaliza para as opções oficiais do Asaas. Se não informado, o padrão é 'UNDEFINED'
+    // (Fatura aberta para o cliente escolher na hora do pagamento)
+    let billingType = 'UNDEFINED';
+    if (rawBillingType) {
+      const upper = String(rawBillingType).toUpperCase();
+      if (['BOLETO', 'PIX', 'CREDIT_CARD', 'UNDEFINED'].includes(upper)) {
+        billingType = upper;
+      }
+    }
+
     const descricao = options?.customValues?.description?.trim() || `Seguro RC Advogado - Plano ${tipoDePlano || ''}`;
 
     // 6. Cria a cobrança ou parcelamento no Asaas
@@ -432,7 +448,11 @@ export async function generateAsaasPaymentForQuote(
 
     // Se for parcelado, buscamos as cobranças filhas
     let checkoutId = paymentJson.id;
-    let linkBoleto = paymentJson.bankSlipUrl || paymentJson.invoiceUrl;
+    // Para CREDIT_CARD e UNDEFINED, bankSlipUrl é null e a URL de pagamento é invoiceUrl
+    let linkBoleto =
+      billingType === 'CREDIT_CARD' || billingType === 'UNDEFINED'
+        ? paymentJson.invoiceUrl || paymentJson.bankSlipUrl
+        : paymentJson.bankSlipUrl || paymentJson.invoiceUrl;
     let netValue = paymentJson.netValue;
     let installmentsPayload = [paymentJson];
     let externalInstallmentId = paymentJson.installment || null;
@@ -452,7 +472,10 @@ export async function generateAsaasPaymentForQuote(
               (a: any, b: any) => (a.installmentNumber || 0) - (b.installmentNumber || 0)
             );
             installmentsPayload = sorted;
-            linkBoleto = sorted[0].bankSlipUrl || sorted[0].invoiceUrl;
+            linkBoleto =
+              billingType === 'CREDIT_CARD' || billingType === 'UNDEFINED'
+                ? sorted[0].invoiceUrl || sorted[0].bankSlipUrl
+                : sorted[0].bankSlipUrl || sorted[0].invoiceUrl;
             checkoutId = sorted[0].id || checkoutId;
             netValue = sorted.reduce((sum: number, item: any) => sum + (Number(item.netValue) || 0), 0);
           }
@@ -586,6 +609,9 @@ export async function generateAsaasPaymentForQuote(
     // 8. Atualiza a cotação no Banco
     clientData.checkoutId = checkoutId;
     clientData.linkBoleto = linkBoleto;
+    clientData.invoiceUrl = paymentJson.invoiceUrl || linkBoleto;
+    clientData.billingType = paymentJson.billingType || billingType;
+    clientData.formaPagamento = paymentJson.billingType || billingType;
     clientData.dataVencimento = dueDateStr;
     clientData.paymentOrderId = paymentOrderId || null;
     clientData.externalInstallmentId = externalInstallmentId;
@@ -637,6 +663,15 @@ export async function generateAsaasPaymentForQuote(
 
       const formattedDueDate = dueDateStr.split('-').reverse().join('/');
 
+      const formaPagamentoNome =
+        billingType === 'BOLETO'
+          ? 'Boleto Bancário (com PIX)'
+          : billingType === 'PIX'
+          ? 'PIX Instantâneo'
+          : billingType === 'CREDIT_CARD'
+          ? 'Cartão de Crédito'
+          : 'Fatura (Cartão de Crédito, Boleto ou PIX)';
+
       await dispatchDomainEvent('FATURA_GERADA', {
         eventType: 'FATURA_GERADA',
         contextId: cotacao.id,
@@ -658,7 +693,7 @@ export async function generateAsaasPaymentForQuote(
           link_fatura: linkBoleto,
           vencimento: formattedDueDate,
           valor: valorTotal,
-          forma_pagamento: 'BOLETO',
+          forma_pagamento: billingType,
           status: 'PENDING',
         },
         vendedor: vendedorRow
@@ -687,6 +722,8 @@ export async function generateAsaasPaymentForQuote(
           valor: valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
           qtdParcelas,
           valorParcela: valorParcela.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
+          forma_pagamento: billingType,
+          forma_pagamento_texto: formaPagamentoNome,
         },
       });
     } catch (dispatchErr) {

@@ -164,6 +164,17 @@ export function normalizeEmailVariables(rawVars: Record<string, any> = {}): Reco
     if (!norm.corretor_nome) norm.corretor_nome = parcNome;
   }
 
+  // 9. Forma de Pagamento
+  const formaPag = norm.forma_pagamento || norm.formaPagamento || norm.billing_type || norm.billingType;
+  if (formaPag) {
+    if (!norm.forma_pagamento) norm.forma_pagamento = formaPag;
+    if (!norm.billing_type) norm.billing_type = formaPag;
+  }
+  const formaPagTexto = norm.forma_pagamento_texto || norm.formaPagamentoTexto;
+  if (formaPagTexto && !norm.forma_pagamento_texto) {
+    norm.forma_pagamento_texto = formaPagTexto;
+  }
+
   return norm;
 }
 
@@ -613,7 +624,7 @@ export async function ensureDefaultEmailTemplates(): Promise<void> {
     },
     {
       code: 'fatura_gerada',
-      name: 'Fatura e Boleto para Pagamento',
+      name: 'Fatura e Cobrança para Pagamento',
       subject: 'Fatura Disponível para Pagamento — Proposta #{{cotacao_id}}',
       body_html: `<!DOCTYPE html>
 <html>
@@ -640,13 +651,13 @@ export async function ensureDefaultEmailTemplates(): Promise<void> {
       <div class="card-info">
         <p style="margin: 4px 0;"><strong>Valor:</strong> R$ {{valor|0,00}}</p>
         <p style="margin: 4px 0;"><strong>Vencimento:</strong> {{vencimento}}</p>
-        <p style="margin: 4px 0;"><strong>Opções de Pagamento:</strong> Boleto Bancário e PIX (QRCode)</p>
+        <p style="margin: 4px 0;"><strong>Forma de Pagamento:</strong> {{forma_pagamento_texto|Fatura (Cartão de Crédito, Boleto Bancário ou PIX)}}</p>
       </div>
-      <p>Clique no botão abaixo para abrir a fatura e efetuar o pagamento:</p>
+      <p>Clique no botão abaixo para abrir a sua fatura e efetuar o pagamento:</p>
       <div style="text-align: center; margin: 28px 0;">
-        <a href="{{link_fatura}}" class="btn" target="_blank">Acessar Boleto / Pagar via PIX</a>
+        <a href="{{link_fatura}}" class="btn" target="_blank">Acessar Fatura para Pagamento</a>
       </div>
-      <p style="font-size: 13px; color: #64748b;">Assim que o pagamento for compensado pelo banco, sua cobertura será ativada e a apólice será emitida automaticamente.</p>
+      <p style="font-size: 13px; color: #64748b;">Caso nenhuma forma de pagamento tenha sido pré-selecionada, você poderá escolher entre Cartão de Crédito, Boleto Bancário ou PIX diretamente na tela da fatura. Assim que o pagamento for compensado pelo banco, sua cobertura será ativada e a apólice será emitida automaticamente.</p>
       <p style="margin-top: 24px;">Atenciosamente,<br><strong>Equipe DuoLife</strong></p>
     </div>
     <div class="footer">
@@ -655,7 +666,7 @@ export async function ensureDefaultEmailTemplates(): Promise<void> {
   </div>
 </body>
 </html>`,
-      variables: ['nome', 'cotacao_id', 'valor', 'vencimento', 'link_fatura'],
+      variables: ['nome', 'cotacao_id', 'valor', 'vencimento', 'link_fatura', 'forma_pagamento', 'forma_pagamento_texto'],
     },
     {
       code: 'pagamento_confirmado',

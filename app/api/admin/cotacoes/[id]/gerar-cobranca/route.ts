@@ -10,7 +10,7 @@ interface GerarCobrancaBody {
   valorTotal?: number;
   qtdParcelas?: number;
   dueDate?: string;
-  billingType?: 'BOLETO' | 'PIX';
+  billingType?: 'BOLETO' | 'PIX' | 'CREDIT_CARD' | 'UNDEFINED' | string;
   description?: string;
   forceRecreate?: boolean;
 }
@@ -41,8 +41,13 @@ export async function POST(
     if (body.dueDate && typeof body.dueDate === 'string') {
       customValues.dueDate = body.dueDate.trim().slice(0, 10);
     }
-    if (body.billingType === 'BOLETO' || body.billingType === 'PIX') {
-      customValues.billingType = body.billingType;
+    if (body.billingType) {
+      const bt = String(body.billingType).toUpperCase();
+      if (['BOLETO', 'PIX', 'CREDIT_CARD', 'UNDEFINED'].includes(bt)) {
+        customValues.billingType = bt;
+      }
+    } else {
+      customValues.billingType = 'UNDEFINED';
     }
     if (body.description && typeof body.description === 'string') {
       customValues.description = body.description.trim();
