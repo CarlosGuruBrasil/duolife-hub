@@ -288,14 +288,16 @@ export default async function AdminCotacoesPage({
                   const planoNome = String(clientData.nomePlano || clientData.tipoDePlano || cotacao.product_name || 'RC Advogados');
                   const cobertura = String(clientData.valorCobertura || (cotacao.importancia_segurada ? formatCurrency(cotacao.importancia_segurada) : ''));
                   const linkBoleto = safeExternalUrl(clientData.linkBoleto as string | undefined);
-                  const rawContrato =
+                  const rawSignedPdf =
                     (clientData.contratoPdf as string | undefined) ||
                     (clientData.signedFileUrl as string | undefined) ||
-                    (clientData.linkContrato as string | undefined) ||
-                    (clientData.signUrl as string | undefined);
-                  const contratoUrl = (rawContrato && !rawContrato.includes('/verificar/'))
-                    ? safeExternalUrl(rawContrato)
+                    (clientData.linkContrato as string | undefined);
+                  const signedPdfUrl = (rawSignedPdf && !rawSignedPdf.includes('/verificar/'))
+                    ? safeExternalUrl(rawSignedPdf)
                     : null;
+                  const rawSignUrl = clientData.signUrl as string | undefined;
+                  const signUrl = rawSignUrl ? safeExternalUrl(rawSignUrl) : null;
+                  const contratoUrl = signedPdfUrl || signUrl;
                   const isContratoAssinado = [
                     'assinado',
                     'signed',

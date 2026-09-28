@@ -155,6 +155,9 @@ export interface MultiRamoFormState {
   uf: string;
 
   // Passo 3: Perfil Profissional, Áreas de Atuação e Faturamento
+  associadoEscritorio?: 'Sim' | 'Não' | string;
+  nomeEscritorio?: string;
+  escritorioAssociado?: string;
   faturamentoAntes?: string;
   faturamentoDepois?: string;
   especialidades?: string[];

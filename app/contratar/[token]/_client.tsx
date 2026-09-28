@@ -43,10 +43,19 @@ export default function ContractPageClient({ token }: Props) {
 
   useEffect(() => {
     (async () => {
-      const res = await fetch(`/api/public/contratacao/${token}`);
-      const data = await res.json();
-      setLink(data.link || null);
-      setLoading(false);
+      try {
+        const res = await fetch(`/api/public/contratacao/${token}`);
+        const data = await res.json();
+        if (data.signUrl) {
+          window.location.href = data.signUrl;
+          return;
+        }
+        setLink(data.link || null);
+      } catch {
+        setLink(null);
+      } finally {
+        setLoading(false);
+      }
     })();
   }, [token]);
 

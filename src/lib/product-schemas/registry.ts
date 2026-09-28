@@ -373,6 +373,9 @@ export function buildRamoStep2Schema(ramo: RamoConfig) {
 export function buildRamoStep3Schema(ramo: RamoConfig) {
   const schema = z.object({
     tipoDePlano: z.string().optional(),
+    associadoEscritorio: z.enum(['Sim', 'Não']).default('Não'),
+    nomeEscritorio: z.string().optional(),
+    escritorioAssociado: z.string().optional(),
     faturamentoAntes: z.string().optional(),
     faturamentoDepois: z.string().optional(),
     especialidades: z.array(z.string()).optional(),
@@ -388,6 +391,17 @@ export function buildRamoStep3Schema(ramo: RamoConfig) {
     const isPlano100k =
       String(data.tipoDePlano || '').toLowerCase() === '100k' ||
       String(data.tipoDePlano || '') === '100';
+
+    // Se o profissional é associado a escritório (exceto plano 100k simplificado)
+    if (!isPlano100k && data.associadoEscritorio === 'Sim') {
+      if (!data.nomeEscritorio || data.nomeEscritorio.trim().length === 0) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['nomeEscritorio'],
+          message: 'Informe o nome do escritório ao qual o profissional é associado.',
+        });
+      }
+    }
 
     // Se o ramo exige faturamento e não é plano simplificado 100k
     if (ramo.hasFaturamento && !isPlano100k) {

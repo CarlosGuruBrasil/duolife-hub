@@ -3,6 +3,7 @@ import { ensureSchema } from '@/lib/schema';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
 import { getWhiteLabelConfig } from '@/lib/white-label';
+import { resolveContratoSignUrl } from '@/lib/contrato-link-resolver';
 
 function appBaseUrl() {
   return process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || 'https://duolife.com.br';
@@ -30,6 +31,14 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
   try {
     await ensureSchema();
     const { token } = await params;
+
+    const signUrl = await resolveContratoSignUrl(token);
+    if (signUrl) {
+      return Response.json({
+        signUrl,
+        redirect: true,
+      });
+    }
 
     const link = await resolveLink(token);
     if (!link) return Response.json({ error: 'Link inválido ou expirado' }, { status: 404 });

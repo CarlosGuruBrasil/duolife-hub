@@ -274,7 +274,11 @@ export async function POST(
 
       // Dados Profissionais
       "inicioProfissional": formatData(clientData.dataAtividade),
-      "escritorio": clientData.escritorioAssociado || '',
+      "escritorio": clientData.associadoEscritorio === 'Sim'
+        ? (clientData.nomeEscritorio || clientData.escritorioAssociado || clientData.escritorio || '')
+        : (clientData.escritorioAssociado && clientData.escritorioAssociado !== 'Não associado' && clientData.escritorioAssociado !== 'Não'
+            ? clientData.escritorioAssociado
+            : 'Não associado'),
       "titularidade": clientData.titularidade || '',
       "faturamentoAntes": clientData.faturamentoAntes || '',
       "faturamentoDepois": clientData.faturamentoDepois || '',

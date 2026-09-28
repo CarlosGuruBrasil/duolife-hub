@@ -1896,7 +1896,11 @@ export async function renderContratoPdf(params: RenderContratoPdfParams): Promis
         proponenteData,
         seguroAnterior,
         infoProfissional: {
-          escritorio: clientData.escritorioAssociado || clientData.escritorio || 'Não associado',
+          escritorio: clientData.associadoEscritorio === 'Sim'
+            ? (clientData.nomeEscritorio || clientData.escritorioAssociado || clientData.escritorio || 'Sim (Associado a escritório)')
+            : (clientData.escritorioAssociado && clientData.escritorioAssociado !== 'Não associado' && clientData.escritorioAssociado !== 'Não'
+                ? clientData.escritorioAssociado
+                : 'Não associado'),
           titularidade: clientData.titularidade || 'Não possui',
           faturamentoAntes: clientData.faturamentoAntes || 'Não informado',
           faturamentoDepois: clientData.faturamentoDepois || 'Não informado',

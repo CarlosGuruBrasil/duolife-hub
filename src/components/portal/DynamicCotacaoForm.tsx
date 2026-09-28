@@ -115,6 +115,9 @@ export interface DynamicFormState {
   uf: string;
 
   // Passo 3: Perfil Profissional, Áreas de Atuação e Faturamento
+  associadoEscritorio: 'Sim' | 'Não' | string;
+  nomeEscritorio: string;
+  escritorioAssociado: string;
   faturamentoAntes: string;
   faturamentoDepois: string;
   especialidades: string[];
@@ -191,6 +194,9 @@ const initialFormState: DynamicFormState = {
   bairro: '',
   cidade: '',
   uf: 'SP',
+  associadoEscritorio: 'Não',
+  nomeEscritorio: '',
+  escritorioAssociado: 'Não associado',
   faturamentoAntes: '',
   faturamentoDepois: '',
   especialidades: [],
@@ -606,6 +612,9 @@ export default function DynamicCotacaoForm({
             bairro: cd.bairro || '',
             cidade: cd.cidade || '',
             uf: cd.uf || 'SP',
+            associadoEscritorio: (cd.associadoEscritorio === 'Sim' || (cd.escritorioAssociado && cd.escritorioAssociado !== 'Não associado' && cd.escritorioAssociado !== 'Não')) ? 'Sim' : 'Não',
+            nomeEscritorio: cd.nomeEscritorio || (cd.escritorioAssociado && cd.escritorioAssociado !== 'Não associado' && cd.escritorioAssociado !== 'Não' ? cd.escritorioAssociado : ''),
+            escritorioAssociado: cd.escritorioAssociado || '',
             faturamentoAntes: cd.faturamentoAntes || '',
             faturamentoDepois: cd.faturamentoDepois || '',
             especialidades: atuacaoArray,
@@ -992,6 +1001,11 @@ export default function DynamicCotacaoForm({
       }
 
       if (!isPlano100k) {
+        if (form.associadoEscritorio === 'Sim' && (!form.nomeEscritorio || !form.nomeEscritorio.trim())) {
+          setError('Por favor, informe o nome do escritório ao qual o profissional é associado.');
+          return;
+        }
+
         if (resolvedRamoConfig.hasFaturamento) {
           if (!form.faturamentoAntes || !form.faturamentoDepois) {
             setError('Informe o faturamento bruto anual dos períodos indicados.');
@@ -1093,6 +1107,10 @@ export default function DynamicCotacaoForm({
         dataRetroativa: form.dataRetroativa ? formatDateForIso(form.dataRetroativa) : null,
         renovacao: form.isRenovacao === 'Sim',
         isRenovacao: form.isRenovacao,
+        // Associação a escritório
+        associadoEscritorio: form.associadoEscritorio || 'Não',
+        nomeEscritorio: (form.nomeEscritorio || '').trim(),
+        escritorioAssociado: form.associadoEscritorio === 'Sim' ? (form.nomeEscritorio || '').trim() : 'Não associado',
         // Especialidades & Atuação unificadas
         especialidades: form.especialidades,
         atuacao: form.especialidades.length > 0 ? form.especialidades.join(':') : (form.atuacao.length > 0 ? form.atuacao.join(':') : ''),

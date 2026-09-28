@@ -403,10 +403,9 @@ export async function resolveEmailLogHtml(log: EmailDispatchLog): Promise<string
 }
 
 /**
- * Cria templates padrões no banco de dados caso não existam
+ * Lista de templates padrões de e-mail do sistema
  */
-export async function ensureDefaultEmailTemplates(): Promise<void> {
-  const defaultTemplates = [
+export const DEFAULT_TEMPLATES = [
     {
       code: 'boas_vindas',
       name: 'Boas-vindas — Novo Cliente / Lead',
@@ -527,6 +526,10 @@ export async function ensureDefaultEmailTemplates(): Promise<void> {
       <p>Clique no botão abaixo para revisar as condições e realizar sua assinatura digital segura:</p>
       <div style="text-align: center; margin: 28px 0;">
         <a href="{{link_assinatura}}" class="btn" target="_blank">Assinar Contrato Digitalmente</a>
+        <p style="margin-top: 14px; font-size: 12px; color: #64748b; word-break: break-all;">
+          Ou acesse diretamente pelo link de assinatura:<br>
+          <a href="{{link_assinatura}}" style="color: #0e4a5a; text-decoration: underline;" target="_blank">{{link_assinatura}}</a>
+        </p>
       </div>
       <div class="notice-box">
         <strong>Assinatura 100% Digital com Validade Jurídica:</strong><br>
@@ -974,7 +977,8 @@ export async function ensureDefaultEmailTemplates(): Promise<void> {
     },
   ];
 
-  for (const tpl of defaultTemplates) {
+export async function ensureDefaultEmailTemplates(): Promise<void> {
+  for (const tpl of DEFAULT_TEMPLATES) {
     await sql`
       INSERT INTO email_templates (code, name, subject, body_html, variables, is_active)
       VALUES (

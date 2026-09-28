@@ -267,10 +267,13 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
     ? safeExternalUrl(rawSignedPdf)
     : null;
 
-  const rawSignUrl = signatureDoc?.sign_url || (clientData.signUrl as string | undefined);
-  const signUrl = (rawSignUrl && !rawSignUrl.includes('/verificar/'))
-    ? safeExternalUrl(rawSignUrl)
-    : null;
+  const rawSignUrl =
+    signatureDoc?.sign_url ||
+    (clientData.signUrl as string | undefined) ||
+    (docToken && !docToken.includes('/') && !docToken.includes(' ') && docToken.length > 5
+      ? `https://app.zapsign.com.br/verificar/${docToken}`
+      : undefined);
+  const signUrl = rawSignUrl ? safeExternalUrl(rawSignUrl) : null;
 
   const contratoUrl = signedPdfUrl || signUrl;
 
@@ -691,6 +694,39 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
                     </span>
                   </div>
                 </div>
+
+                {/* Link Direto de Assinatura (ZapSign) */}
+                {signUrl && !isMinutaExpired && (
+                  <div className="bg-amber-50/70 border border-amber-200/90 rounded-xl p-3.5 space-y-2">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                      <span className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                        <FileText size={14} className="text-amber-700 shrink-0" />
+                        Link Direto para Assinatura (ZapSign)
+                      </span>
+                      <a
+                        href={signUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-semibold text-[#0e4a5a] hover:underline inline-flex items-center gap-1 shrink-0"
+                      >
+                        <span>Abrir no ZapSign</span>
+                        <ExternalLink size={11} className="shrink-0" />
+                      </a>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        value={signUrl}
+                        className="form-input text-xs font-mono bg-white text-slate-800 py-1.5 px-3 select-all flex-1 border border-slate-300 rounded-lg focus:outline-none"
+                      />
+                      <CopiarLinkAssinaturaButton signUrl={signUrl} />
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Disponibilize este link diretamente ao cliente para realização da assinatura digital.
+                    </p>
+                  </div>
+                )}
 
                 {/* Barra de Ações */}
                 <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2">

@@ -34,9 +34,14 @@ export async function POST(
       LIMIT 1
     `;
 
-    const rawSignUrl = signatureDoc?.sign_url || (clientData.signUrl as string | undefined);
-    const signUrl = rawSignUrl && !rawSignUrl.includes('/verificar/') ? safeExternalUrl(rawSignUrl) : null;
     const docToken = signatureDoc?.external_document_id || clientData.contratoToken || clientData.tokenZapsign;
+    const rawSignUrl =
+      signatureDoc?.sign_url ||
+      (clientData.signUrl as string | undefined) ||
+      (docToken && !docToken.includes('/') && !docToken.includes(' ') && docToken.length > 5
+        ? `https://app.zapsign.com.br/verificar/${docToken}`
+        : undefined);
+    const signUrl = rawSignUrl ? safeExternalUrl(rawSignUrl) : null;
 
     if (!signUrl && !docToken && cotacao.status !== 'contrato_gerado') {
       return Response.json(
