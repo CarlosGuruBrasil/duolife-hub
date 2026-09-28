@@ -43,12 +43,18 @@ async function runTests() {
   assert.strictEqual(last3.label, 'Últimos 3 Meses');
   console.log('✓ Atalho last-3-months configurado corretamente.');
 
-  // Teste 5: Opções de meses recentes
-  console.log('Teste 5: Validando opções de meses para o filtro...');
+  // Teste 5: Opções de meses recentes (garantia de que options[0] é o mês atual e options[1] o anterior)
+  console.log('Teste 5: Validando opções de meses para o filtro (mês atual no índice 0)...');
   const options = getRecentMonthOptions(12);
-  assert.ok(options.length >= 13, 'Deve conter pelo menos 13 opções (all + 12 meses)');
-  assert.strictEqual(options[0].value, 'all', 'Primeira opção deve ser "all"');
-  console.log('✓ Lista de opções de meses gerada com sucesso.');
+  const now = new Date();
+  const expectedCurrentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const expectedPrevMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+
+  assert.strictEqual(options.length, 12, 'Deve conter exatamente 12 meses');
+  assert.strictEqual(options[0].value, expectedCurrentMonth, 'Primeira opção deve ser rigorosamente o mês atual');
+  assert.strictEqual(options[1].value, expectedPrevMonth, 'Segunda opção deve ser rigorosamente o mês anterior');
+  console.log('✓ Lista de opções de meses garante mês atual no índice 0 e mês anterior no índice 1.');
 
   // Teste 6: Simulação de filtragem de atividade de parceiros no período
   console.log('Teste 6: Validando regra de corte de parceiros sem atividade no período...');

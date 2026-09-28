@@ -297,7 +297,7 @@ export function getRecentMonthOptions(count = 24): AdminMonthOption[] {
       label: formatMonthLabel(month),
     };
   });
-  return [{ value: 'all', label: 'Todo o Histórico' }, ...months];
+  return months;
 }
 
 async function getSummary(start: string, endExclusive: string, isAll = false): Promise<DashboardSummary> {

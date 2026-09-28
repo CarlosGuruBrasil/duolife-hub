@@ -44,7 +44,25 @@ function AdminPeriodFilterBarInner({
     }
   }, [currentStartParam, currentEndParam]);
 
-  const currentYear = new Date().getFullYear();
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const actualCurrentMonthKey = `${currentYear}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const prevDate = new Date(currentYear, now.getMonth() - 1, 1);
+  const actualPreviousMonthKey = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+
+  const pureMonthOptions = monthOptions.filter((opt) => opt.value !== 'all');
+  const currentMonthValue = pureMonthOptions[0]?.value || actualCurrentMonthKey;
+  const previousMonthValue = pureMonthOptions[1]?.value || actualPreviousMonthKey;
+
+  const isPredefinedActive = !isCustomActive && !showCustomRange;
+
+  const isCurrentMonthActive =
+    isPredefinedActive &&
+    (currentMonthParam === currentMonthValue ||
+      (!searchParams.get('month') && !searchParams.get('start') && !searchParams.get('end')));
+
+  const isPreviousMonthActive =
+    isPredefinedActive && currentMonthParam === previousMonthValue;
 
   function handleSelectPeriod(monthVal: string) {
     setShowCustomRange(false);
@@ -73,8 +91,6 @@ function AdminPeriodFilterBarInner({
     });
   }
 
-  const isPredefinedActive = !isCustomActive && !showCustomRange;
-
   return (
     <div className="bg-white/90 backdrop-blur-md rounded-2xl border border-gray-200/80 p-4 shadow-xs space-y-3 font-sans">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
@@ -86,9 +102,9 @@ function AdminPeriodFilterBarInner({
 
           <button
             type="button"
-            onClick={() => handleSelectPeriod(monthOptions[0]?.value || '')}
+            onClick={() => handleSelectPeriod(currentMonthValue)}
             className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
-              isPredefinedActive && currentMonthParam === monthOptions[0]?.value
+              isCurrentMonthActive
                 ? 'bg-[#072a33] text-[#00d4e0] shadow-xs'
                 : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200/60'
             }`}
@@ -98,9 +114,9 @@ function AdminPeriodFilterBarInner({
 
           <button
             type="button"
-            onClick={() => handleSelectPeriod(monthOptions[1]?.value || '')}
+            onClick={() => handleSelectPeriod(previousMonthValue)}
             className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
-              isPredefinedActive && currentMonthParam === monthOptions[1]?.value
+              isPreviousMonthActive
                 ? 'bg-[#072a33] text-[#00d4e0] shadow-xs'
                 : 'bg-gray-50 text-gray-700 hover:bg-gray-100 border border-gray-200/60'
             }`}
@@ -160,11 +176,12 @@ function AdminPeriodFilterBarInner({
                 </option>
               )}
               <optgroup label="Seleção Rápida">
+                <option value="all">Todo o Histórico</option>
                 <option value="last-3-months">Últimos 3 Meses</option>
                 <option value={`year-${currentYear}`}>Ano Completo ({currentYear})</option>
               </optgroup>
               <optgroup label="Histórico Mensal">
-                {monthOptions.map((opt) => (
+                {pureMonthOptions.map((opt) => (
                   <option key={opt.value} value={opt.value}>
                     {opt.label}
                   </option>
