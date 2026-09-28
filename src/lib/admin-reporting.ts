@@ -185,6 +185,13 @@ function formatDateKey(date: Date) {
   return `${year}-${month}`;
 }
 
+function formatDayIso(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function formatDateIso(date: Date) {
   return `${formatDateKey(date)}-01`;
 }
@@ -202,16 +209,18 @@ export function resolveAdminPeriod(monthParam?: string, startDateParam?: string,
   // 1. Período Customizado (De / Até)
   if (startDateParam && endDateParam && /^\d{4}-\d{2}-\d{2}$/.test(startDateParam) && /^\d{4}-\d{2}-\d{2}$/.test(endDateParam)) {
     const startObj = new Date(`${startDateParam}T00:00:00`);
-    const endObj = new Date(`${endDateParam}T23:59:59`);
-    const durationMs = endObj.getTime() - startObj.getTime();
+    const endObj = new Date(`${endDateParam}T00:00:00`);
+    const endNextDay = new Date(endObj);
+    endNextDay.setDate(endNextDay.getDate() + 1);
+    const durationMs = endNextDay.getTime() - startObj.getTime();
     const prevStartObj = new Date(startObj.getTime() - durationMs);
 
     return {
       monthKey: 'custom',
       label: `Período Customizado (${new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(startObj)} - ${new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short' }).format(endObj)})`,
       start: startDateParam,
-      endExclusive: `${endDateParam}T23:59:59`,
-      previousStart: formatDateIso(prevStartObj),
+      endExclusive: formatDayIso(endNextDay),
+      previousStart: formatDayIso(prevStartObj),
       previousEndExclusive: startDateParam,
     };
   }  // 1.5 Atalho: Todo o Histórico
@@ -291,7 +300,7 @@ export function getRecentMonthOptions(count = 24): AdminMonthOption[] {
   return [{ value: 'all', label: 'Todo o Histórico' }, ...months];
 }
 
-async function getSummary(start: string, endExclusive: string): Promise<DashboardSummary> {
+async function getSummary(start: string, endExclusive: string, isAll = false): Promise<DashboardSummary> {
   const [row] = await sql<{
     quotes_created: NumericLike;
     waiting_signature: NumericLike;
@@ -309,8 +318,7 @@ async function getSummary(start: string, endExclusive: string): Promise<Dashboar
         COUNT(*) FILTER (WHERE status IN ('enviada', 'contrato_gerado', 'assinado'))::int AS waiting_signature,
         COUNT(*) FILTER (WHERE status = 'pagamento_gerado')::int AS waiting_payment
       FROM cotacoes
-      WHERE created_at >= ${start}::date
-        AND created_at < ${endExclusive}::date
+      WHERE (${isAll} OR (created_at >= ${start}::date AND created_at < ${endExclusive}::date))
     ),
     sales_summary AS (
       SELECT
@@ -318,22 +326,19 @@ async function getSummary(start: string, endExclusive: string): Promise<Dashboar
         COUNT(*) FILTER (WHERE status = 'ativa')::int AS active_policies,
         COALESCE(SUM(premio_total), 0) AS total_premium
       FROM sales
-      WHERE created_at >= ${start}::date
-        AND created_at < ${endExclusive}::date
+      WHERE (${isAll} OR (created_at >= ${start}::date AND created_at < ${endExclusive}::date))
     ),
     commission_summary AS (
       SELECT
         COALESCE(SUM(amount) FILTER (WHERE status IN ('pendente', 'aprovada')), 0) AS commission_pending,
         COALESCE(SUM(amount) FILTER (WHERE status = 'paga'), 0) AS commission_paid
       FROM commissions
-      WHERE created_at >= ${start}::date
-        AND created_at < ${endExclusive}::date
+      WHERE (${isAll} OR (created_at >= ${start}::date AND created_at < ${endExclusive}::date))
     ),
     payment_summary AS (
       SELECT COALESCE(SUM(paid_amount), 0) AS paid_amount
       FROM payment_orders
-      WHERE created_at >= ${start}::date
-        AND created_at < ${endExclusive}::date
+      WHERE (${isAll} OR (created_at >= ${start}::date AND created_at < ${endExclusive}::date))
     )
     SELECT *
     FROM quote_summary, sales_summary, commission_summary, payment_summary
@@ -410,14 +415,14 @@ export async function getAdminDashboardData(
   endDateParam?: string
 ): Promise<AdminDashboardData> {
   const period = resolveAdminPeriod(monthParam, startDateParam, endDateParam);
+  const isAll = period.monthKey === 'all';
   const [summary, previousSummary, funnelRows, productRows, partnerRows, eventRows, syncRows] = await Promise.all([
-    getSummary(period.start, period.endExclusive),
-    getSummary(period.previousStart, period.previousEndExclusive),
+    getSummary(period.start, period.endExclusive, isAll),
+    getSummary(period.previousStart, period.previousEndExclusive, false),
     sql<{ status: string; count: NumericLike }[]>`
       SELECT status, COUNT(*)::int AS count
       FROM cotacoes
-      WHERE created_at >= ${period.start}::date
-        AND created_at < ${period.endExclusive}::date
+      WHERE (${isAll} OR (created_at >= ${period.start}::date AND created_at < ${period.endExclusive}::date))
       GROUP BY status
       ORDER BY COUNT(*) DESC, status ASC
     `,
@@ -428,22 +433,34 @@ export async function getAdminDashboardData(
       premium_total: NumericLike;
       commission_total: NumericLike;
     }[]>`
+      WITH q_agg AS (
+        SELECT
+          product_id,
+          COUNT(*)::int AS quotes_count
+        FROM cotacoes
+        WHERE (${isAll} OR (created_at >= ${period.start}::date AND created_at < ${period.endExclusive}::date))
+        GROUP BY product_id
+      ),
+      s_agg AS (
+        SELECT
+          product_id,
+          COUNT(*)::int AS sales_count,
+          COALESCE(SUM(premio_total), 0) AS premium_total,
+          COALESCE(SUM(commission_amount), 0) AS commission_total
+        FROM sales
+        WHERE (${isAll} OR (created_at >= ${period.start}::date AND created_at < ${period.endExclusive}::date))
+        GROUP BY product_id
+      )
       SELECT
         p.name AS product_name,
-        COUNT(DISTINCT c.id)::int AS quotes_count,
-        COUNT(DISTINCT s.id)::int AS sales_count,
-        COALESCE(SUM(s.premio_total), 0) AS premium_total,
-        COALESCE(SUM(s.commission_amount), 0) AS commission_total
+        COALESCE(q.quotes_count, 0) AS quotes_count,
+        COALESCE(s.sales_count, 0) AS sales_count,
+        COALESCE(s.premium_total, 0) AS premium_total,
+        COALESCE(s.commission_total, 0) AS commission_total
       FROM products p
-      LEFT JOIN cotacoes c
-        ON c.product_id = p.id
-       AND c.created_at >= ${period.start}::date
-       AND c.created_at < ${period.endExclusive}::date
-      LEFT JOIN sales s
-        ON s.product_id = p.id
-       AND s.created_at >= ${period.start}::date
-       AND s.created_at < ${period.endExclusive}::date
-      GROUP BY p.name
+      LEFT JOIN q_agg q ON q.product_id = p.id
+      LEFT JOIN s_agg s ON s.product_id = p.id
+      WHERE p.is_active = true OR COALESCE(q.quotes_count, 0) > 0 OR COALESCE(s.sales_count, 0) > 0
       ORDER BY premium_total DESC, quotes_count DESC, p.name ASC
     `,
     sql<{
@@ -454,28 +471,44 @@ export async function getAdminDashboardData(
       premium_total: NumericLike;
       commission_pending: NumericLike;
     }[]>`
+      WITH q_agg AS (
+        SELECT
+          partner_id,
+          COUNT(*)::int AS quotes_count
+        FROM cotacoes
+        WHERE (${isAll} OR (created_at >= ${period.start}::date AND created_at < ${period.endExclusive}::date))
+        GROUP BY partner_id
+      ),
+      s_agg AS (
+        SELECT
+          partner_id,
+          COUNT(*)::int AS sales_count,
+          COALESCE(SUM(premio_total), 0) AS premium_total
+        FROM sales
+        WHERE (${isAll} OR (created_at >= ${period.start}::date AND created_at < ${period.endExclusive}::date))
+        GROUP BY partner_id
+      ),
+      cm_agg AS (
+        SELECT
+          partner_id,
+          COALESCE(SUM(amount) FILTER (WHERE status IN ('pendente', 'aprovada')), 0) AS commission_pending
+        FROM commissions
+        WHERE (${isAll} OR (created_at >= ${period.start}::date AND created_at < ${period.endExclusive}::date))
+        GROUP BY partner_id
+      )
       SELECT
         p.id AS partner_id,
         COALESCE(p.nome_fantasia, p.razao_social, 'Operação direta') AS partner_name,
-        COUNT(DISTINCT c.id)::int AS quotes_count,
-        COUNT(DISTINCT s.id)::int AS sales_count,
-        COALESCE(SUM(s.premio_total), 0) AS premium_total,
-        COALESCE(SUM(cm.amount) FILTER (WHERE cm.status IN ('pendente', 'aprovada')), 0) AS commission_pending
+        COALESCE(q.quotes_count, 0) AS quotes_count,
+        COALESCE(s.sales_count, 0) AS sales_count,
+        COALESCE(s.premium_total, 0) AS premium_total,
+        COALESCE(cm.commission_pending, 0) AS commission_pending
       FROM partners p
-      LEFT JOIN cotacoes c
-        ON c.partner_id = p.id
-       AND c.created_at >= ${period.start}::date
-       AND c.created_at < ${period.endExclusive}::date
-      LEFT JOIN sales s
-        ON s.partner_id = p.id
-       AND s.created_at >= ${period.start}::date
-       AND s.created_at < ${period.endExclusive}::date
-      LEFT JOIN commissions cm
-        ON cm.partner_id = p.id
-       AND cm.created_at >= ${period.start}::date
-       AND cm.created_at < ${period.endExclusive}::date
-      GROUP BY p.id, partner_name
-      ORDER BY premium_total DESC, quotes_count DESC, partner_name ASC
+      LEFT JOIN q_agg q ON q.partner_id = p.id
+      LEFT JOIN s_agg s ON s.partner_id = p.id
+      LEFT JOIN cm_agg cm ON cm.partner_id = p.id
+      WHERE (COALESCE(q.quotes_count, 0) > 0 OR COALESCE(s.sales_count, 0) > 0 OR COALESCE(s.premium_total, 0) > 0)
+      ORDER BY premium_total DESC, sales_count DESC, quotes_count DESC, partner_name ASC
       LIMIT 8
     `,
     sql<RecentAdminEvent[]>`
@@ -515,8 +548,7 @@ export async function getAdminDashboardData(
         LEFT JOIN partners p ON p.id = cm.partner_id
         LEFT JOIN sales s ON s.id = cm.sale_id
       ) events
-      WHERE "createdAt"::timestamptz >= ${period.start}::date
-        AND "createdAt"::timestamptz < ${period.endExclusive}::date
+      WHERE (${isAll} OR ("createdAt"::timestamptz >= ${period.start}::date AND "createdAt"::timestamptz < ${period.endExclusive}::date))
       ORDER BY "createdAt"::timestamptz DESC
       LIMIT 12
     `,
@@ -534,8 +566,7 @@ export async function getAdminDashboardData(
         COUNT(*) FILTER (WHERE status NOT IN ('success', 'synced', 'ok'))::int AS failed_count,
         MAX(created_at)::text AS last_event_at
       FROM sync_log
-      WHERE created_at >= ${period.start}::date
-        AND created_at < ${period.endExclusive}::date
+      WHERE (${isAll} OR (created_at >= ${period.start}::date AND created_at < ${period.endExclusive}::date))
       GROUP BY source_system
       ORDER BY last_event_at DESC NULLS LAST, source_system ASC
       LIMIT 6
@@ -588,6 +619,7 @@ export async function getAdminReportData(
   endDateParam?: string
 ): Promise<AdminReportData> {
   const period = resolveAdminPeriod(monthParam, startDateParam, endDateParam);
+  const isAll = period.monthKey === 'all';
   const [quoteStatuses, paymentStatuses, partnerRows, overduePayments, syncErrors] = await Promise.all([
     sql<{
       status: string;
@@ -599,8 +631,7 @@ export async function getAdminReportData(
         COUNT(*)::int AS count,
         COALESCE(SUM(premio_final), 0) AS premio_total
       FROM cotacoes
-      WHERE created_at >= ${period.start}::date
-        AND created_at < ${period.endExclusive}::date
+      WHERE (${isAll} OR (created_at >= ${period.start}::date AND created_at < ${period.endExclusive}::date))
       GROUP BY status
       ORDER BY COUNT(*) DESC, status ASC
     `,
@@ -616,8 +647,7 @@ export async function getAdminReportData(
         COALESCE(SUM(amount_total), 0) AS amount_total,
         COALESCE(SUM(paid_amount), 0) AS paid_amount
       FROM payment_orders
-      WHERE created_at >= ${period.start}::date
-        AND created_at < ${period.endExclusive}::date
+      WHERE (${isAll} OR (created_at >= ${period.start}::date AND created_at < ${period.endExclusive}::date))
       GROUP BY status
       ORDER BY amount_total DESC, status ASC
     `,
@@ -630,32 +660,53 @@ export async function getAdminReportData(
       paid_amount: NumericLike;
       pending_commission: NumericLike;
     }[]>`
+      WITH q_agg AS (
+        SELECT
+          partner_id,
+          COUNT(*)::int AS quotes_count
+        FROM cotacoes
+        WHERE (${isAll} OR (created_at >= ${period.start}::date AND created_at < ${period.endExclusive}::date))
+        GROUP BY partner_id
+      ),
+      s_agg AS (
+        SELECT
+          partner_id,
+          COUNT(*)::int AS sales_count,
+          COALESCE(SUM(premio_total), 0) AS premium_total
+        FROM sales
+        WHERE (${isAll} OR (created_at >= ${period.start}::date AND created_at < ${period.endExclusive}::date))
+        GROUP BY partner_id
+      ),
+      po_agg AS (
+        SELECT
+          partner_id,
+          COALESCE(SUM(paid_amount), 0) AS paid_amount
+        FROM payment_orders
+        WHERE (${isAll} OR (created_at >= ${period.start}::date AND created_at < ${period.endExclusive}::date))
+        GROUP BY partner_id
+      ),
+      cm_agg AS (
+        SELECT
+          partner_id,
+          COALESCE(SUM(amount) FILTER (WHERE status IN ('pendente', 'aprovada')), 0) AS pending_commission
+        FROM commissions
+        WHERE (${isAll} OR (created_at >= ${period.start}::date AND created_at < ${period.endExclusive}::date))
+        GROUP BY partner_id
+      )
       SELECT
         p.id AS partner_id,
         COALESCE(p.nome_fantasia, p.razao_social, 'Operação direta') AS partner_name,
-        COUNT(DISTINCT c.id)::int AS quotes_count,
-        COUNT(DISTINCT s.id)::int AS sales_count,
-        COALESCE(SUM(s.premio_total), 0) AS premium_total,
-        COALESCE(SUM(po.paid_amount), 0) AS paid_amount,
-        COALESCE(SUM(cm.amount) FILTER (WHERE cm.status IN ('pendente', 'aprovada')), 0) AS pending_commission
+        COALESCE(q.quotes_count, 0) AS quotes_count,
+        COALESCE(s.sales_count, 0) AS sales_count,
+        COALESCE(s.premium_total, 0) AS premium_total,
+        COALESCE(po.paid_amount, 0) AS paid_amount,
+        COALESCE(cm.pending_commission, 0) AS pending_commission
       FROM partners p
-      LEFT JOIN cotacoes c
-        ON c.partner_id = p.id
-       AND c.created_at >= ${period.start}::date
-       AND c.created_at < ${period.endExclusive}::date
-      LEFT JOIN sales s
-        ON s.partner_id = p.id
-       AND s.created_at >= ${period.start}::date
-       AND s.created_at < ${period.endExclusive}::date
-      LEFT JOIN payment_orders po
-        ON po.partner_id = p.id
-       AND po.created_at >= ${period.start}::date
-       AND po.created_at < ${period.endExclusive}::date
-      LEFT JOIN commissions cm
-        ON cm.partner_id = p.id
-       AND cm.created_at >= ${period.start}::date
-       AND cm.created_at < ${period.endExclusive}::date
-      GROUP BY p.id, partner_name
+      LEFT JOIN q_agg q ON q.partner_id = p.id
+      LEFT JOIN s_agg s ON s.partner_id = p.id
+      LEFT JOIN po_agg po ON po.partner_id = p.id
+      LEFT JOIN cm_agg cm ON cm.partner_id = p.id
+      WHERE (COALESCE(q.quotes_count, 0) > 0 OR COALESCE(s.sales_count, 0) > 0 OR COALESCE(s.premium_total, 0) > 0 OR COALESCE(po.paid_amount, 0) > 0)
       ORDER BY premium_total DESC, quotes_count DESC, partner_name ASC
     `,
     sql<{

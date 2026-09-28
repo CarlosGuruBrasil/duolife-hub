@@ -31,6 +31,15 @@ function statusBadge(status: string) {
   return `admin-status-badge ${tone}`;
 }
 
+function buildRankingHref(monthParam?: string, startParam?: string, endParam?: string) {
+  const p = new URLSearchParams();
+  if (monthParam) p.set('month', monthParam);
+  if (startParam) p.set('start', startParam);
+  if (endParam) p.set('end', endParam);
+  const q = p.toString();
+  return `/admin/ranking${q ? `?${q}` : ''}`;
+}
+
 export default async function AdminDashboard({
   searchParams,
 }: {
@@ -141,30 +150,80 @@ export default async function AdminDashboard({
         <div className="card no-hover">
           <div className="admin-section-header">
             <div>
-              <h2 className="admin-section-title">Parceiros em destaque</h2>
-              <p className="admin-section-copy">Produção e comissões pendentes por parceiro.</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="admin-section-title">Parceiros em destaque</h2>
+                <span className="text-[11px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  {data.period.label}
+                </span>
+              </div>
+              <p className="admin-section-copy">Produção de vendas e cotações fechadas no período filtrado.</p>
             </div>
+            <Link
+              href={buildRankingHref(monthParam, startParam, endParam)}
+              className="text-xs font-bold text-[#0e4a5a] hover:text-[#00a0af] transition-colors flex items-center gap-1 shrink-0"
+            >
+              Ranking completo &rarr;
+            </Link>
           </div>
           <div className="space-y-3">
             {data.partnerPerformance.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-[var(--border)] p-5 text-sm text-[var(--text-secondary)]">
-                Ainda não há movimento de parceiros neste período.
+              <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50/50 p-6 text-center text-sm text-gray-500">
+                Ainda não há movimento de parceiros no período selecionado ({data.period.label}).
               </div>
             ) : (
-              data.partnerPerformance.map((row) => (
-                <div key={`${row.partnerId || 'direct'}-${row.partnerName}`} className="admin-inline-stat">
-                  <div>
-                    <div className="admin-inline-stat-label">{row.partnerName}</div>
-                    <div className="admin-inline-stat-copy">
-                      {row.quotesCount} cotações • {row.salesCount} vendas
+              data.partnerPerformance.map((row, index) => {
+                const rank = index + 1;
+                const badgeStyle =
+                  rank === 1
+                    ? 'bg-amber-100 text-amber-900 border-amber-300 font-black'
+                    : rank === 2
+                    ? 'bg-slate-100 text-slate-800 border-slate-300 font-bold'
+                    : rank === 3
+                    ? 'bg-amber-50 text-amber-800 border-amber-200 font-bold'
+                    : 'bg-gray-50 text-gray-600 border-gray-200 font-medium';
+
+                return (
+                  <div
+                    key={`${row.partnerId || 'direct'}-${row.partnerName}`}
+                    className="admin-inline-stat hover:border-gray-300 transition-all p-3 rounded-xl border border-gray-100 bg-white"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs border ${badgeStyle} shrink-0`}
+                        title={`${rank}º lugar em produção no período`}
+                      >
+                        {rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}º`}
+                      </span>
+                      <div className="min-w-0">
+                        {row.partnerId ? (
+                          <Link
+                            href={`/admin/parceiros/${row.partnerId}`}
+                            className="admin-inline-stat-label hover:text-[#00a0af] transition-colors hover:underline truncate block"
+                          >
+                            {row.partnerName}
+                          </Link>
+                        ) : (
+                          <div className="admin-inline-stat-label truncate">{row.partnerName}</div>
+                        )}
+                        <div className="admin-inline-stat-copy">
+                          {row.quotesCount} {row.quotesCount === 1 ? 'cotação' : 'cotações'} •{' '}
+                          <span className="font-semibold text-gray-700">
+                            {row.salesCount} {row.salesCount === 1 ? 'venda' : 'vendas'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="admin-inline-stat-value font-black text-[#0e4a5a]">
+                        {formatCurrency(row.premiumTotal)}
+                      </div>
+                      <div className="admin-inline-stat-copy">
+                        {formatCurrency(row.commissionPending)} em comissão
+                      </div>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="admin-inline-stat-value">{formatCurrency(row.premiumTotal)}</div>
-                    <div className="admin-inline-stat-copy">{formatCurrency(row.commissionPending)} em comissão pendente</div>
-                  </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
