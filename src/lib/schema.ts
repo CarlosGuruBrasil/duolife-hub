@@ -93,6 +93,15 @@ async function runRuntimeSchemaSetup(): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS idx_corretoras_status ON corretoras(status)`;
   await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS logo_base64 TEXT`;
   await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS logo_mime_type TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS banco TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS agencia TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS conta TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS pix_tipo_chave TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS pix_chave TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS contrato_social_base64 TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS contrato_social_mime_type TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS contrato_social_nome_arquivo TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS contrato_social_uploaded_at TIMESTAMPTZ`;
 
   // Usuários que gerenciam a corretora
   await sql`

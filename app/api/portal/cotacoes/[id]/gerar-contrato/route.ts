@@ -334,24 +334,43 @@ export async function POST(
 
     let docToken = '';
     let signUrl = '';
+    let signUrlCorretora = '';
+    let signUrlProponente = '';
     let resJson: any = null;
 
     if (isDynamicPdf) {
-      // 6a. Geração de contrato dinâmico em PDF com marca e dados da corretora (novo modo)
+      // 6a. Geração de contrato dinâmico em PDF com marca e dados da corretora (2 signatários: Corretora e Proponente)
       const pdfData = await gerarContratoPdfBuffer(cotacao.id);
+
+      const signatarioCorretora = {
+        nome: pdfData.signatarioCorretora?.nome || 'Corretora',
+        email: pdfData.signatarioCorretora?.email || 'contato@net4life.com.br',
+        phone: pdfData.signatarioCorretora?.phone || null,
+        order: 1,
+        signaturePattern: '{{assinatura_corretora}}',
+        sendAutomaticEmail: true,
+      };
+
+      const signatarioProponente = {
+        nome: pdfData.signatarioProponente?.nome || cotacao.client_name,
+        email: pdfData.signatarioProponente?.email || cotacao.client_email || 'suporte@duolife.net.br',
+        phone: pdfData.signatarioProponente?.phone || cotacao.client_phone || null,
+        order: 2,
+        signaturePattern: '{{assinatura_proponente}}',
+        sendAutomaticEmail: true,
+      };
+
       const directDoc = await criarDocumentoZapSignDireto({
         base64Pdf: pdfData.base64,
         docName: pdfData.docName,
         externalId: cotacao.id,
         deadlineAt: deadlineZapSign,
-        signatario: {
-          nome: pdfData.signatario.nome,
-          email: pdfData.signatario.email,
-          phone: pdfData.signatario.phone,
-        },
+        signatarios: [signatarioCorretora, signatarioProponente],
       });
       docToken = directDoc.docToken;
       signUrl = directDoc.signUrl;
+      signUrlCorretora = directDoc.signers?.[0]?.signUrl || '';
+      signUrlProponente = directDoc.signers?.[1]?.signUrl || directDoc.signUrl || signUrl;
       resJson = directDoc.rawPayload;
     } else {
       // 6b. POST para o ZapSign via modelo pré-configurado (fluxo padrão existente mantido 100% inalterado)
@@ -409,6 +428,8 @@ export async function POST(
     // 7. Atualiza a cotação no Banco
     clientData.contratoToken = docToken;
     clientData.signUrl = signUrl;
+    if (signUrlCorretora) clientData.signUrlCorretora = signUrlCorretora;
+    if (signUrlProponente) clientData.signUrlProponente = signUrlProponente;
     clientData.contratoGeradoEm = new Date().toISOString();
     clientData.contratoPrazoLimite = deadlineIso;
     clientData.contratoModo = isDynamicPdf ? 'dynamic_pdf' : 'template';

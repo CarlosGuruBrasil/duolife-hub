@@ -3,12 +3,38 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { Building, CheckCircle, Clock, XCircle, Plus, Users, Briefcase, ExternalLink, ShieldCheck, Phone, Mail, MapPin, Copy, Check, Eye, EyeOff, Upload, Trash2, Image as ImageIcon } from 'lucide-react';
+import {
+  Building, CheckCircle, Clock, XCircle, Plus, Users, Briefcase, ExternalLink,
+  ShieldCheck, Phone, Mail, MapPin, Copy, Check, Eye, EyeOff, Upload, Trash2,
+  Image as ImageIcon, Landmark, FileText, FileCheck, Download
+} from 'lucide-react';
 import { formatDate } from '@/lib/format';
-import { maskCnpj, maskPhone } from '@/components/modals/masks';
+import { maskCnpj, maskPhone, maskCpfCnpj } from '@/components/modals/masks';
 import type { WhiteLabelConfig } from '@/lib/white-label';
 import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
 import { toast } from '@/components/ui/toast';
+
+export const BANCOS_BRASILEIROS = [
+  '001 - Banco do Brasil S.A.',
+  '033 - Banco Santander (Brasil) S.A.',
+  '104 - Caixa Econômica Federal',
+  '237 - Banco Bradesco S.A.',
+  '341 - Itaú Unibanco S.A.',
+  '077 - Banco Inter S.A.',
+  '260 - Nu Pagamentos S.A. (Nubank)',
+  '336 - Banco C6 S.A.',
+  '212 - Banco Original S.A.',
+  '756 - Banco Cooperativo Sicoob S.A.',
+  '748 - Banco Cooperativo Sicredi S.A.',
+  '422 - Banco Safra S.A.',
+  '655 - Banco Votorantim S.A.',
+  '041 - Banrisul',
+  '070 - BRB - Banco de Brasília',
+  '197 - Stone Pagamentos',
+  '290 - PagBank (PagSeguro)',
+  '380 - PicPay',
+  'Outro (informar código/nome)',
+];
 
 interface Corretora {
   id: string;
@@ -22,6 +48,15 @@ interface Corretora {
   status: string;
   logo_base64?: string | null;
   logo_mime_type?: string | null;
+  banco?: string | null;
+  agencia?: string | null;
+  conta?: string | null;
+  pix_tipo_chave?: string | null;
+  pix_chave?: string | null;
+  contrato_social_mime_type?: string | null;
+  contrato_social_nome_arquivo?: string | null;
+  contrato_social_uploaded_at?: string | null;
+  has_contrato_social?: boolean;
   created_at: string;
   partners_count: number;
   cotacoes_count: number;
@@ -46,6 +81,14 @@ const FORM_VAZIO = {
   logoUrl: '',
   logo_base64: '',
   logo_mime_type: '',
+  banco: '',
+  agencia: '',
+  conta: '',
+  pix_tipo_chave: 'cnpj',
+  pix_chave: '',
+  contrato_social_base64: '',
+  contrato_social_mime_type: '',
+  contrato_social_nome_arquivo: '',
   admin_name: '',
   admin_email: '',
   admin_password: '',
@@ -71,6 +114,8 @@ export default function AdminCorretorasPage() {
   const [canManage, setCanManage] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(FORM_VAZIO);
+  const [bancoCustom, setBancoCustom] = useState('');
+  const [contratoFile, setContratoFile] = useState<{ name: string; size: string; mime: string } | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -133,10 +178,103 @@ export default function AdminCorretorasPage() {
     }));
   }
 
+  function handleContratoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const MAX_SIZE = 10 * 1024 * 1024; // 10MB
+    if (file.size > MAX_SIZE) {
+      toast.error('O Contrato Social excede o limite máximo permitido de 10MB.');
+      e.target.value = '';
+      return;
+    }
+
+    const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
+    const isPdfByName = file.name.toLowerCase().endsWith('.pdf');
+    if (!allowedTypes.includes(file.type) && !isPdfByName) {
+      toast.error('Selecione um arquivo de Contrato Social em PDF ou Imagem (PNG, JPEG).');
+      e.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      const formattedSize = file.size > 1024 * 1024
+        ? `${(file.size / (1024 * 1024)).toFixed(2)} MB`
+        : `${Math.round(file.size / 1024)} KB`;
+
+      setContratoFile({
+        name: file.name,
+        size: formattedSize,
+        mime: file.type || 'application/pdf',
+      });
+      setForm((prev) => ({
+        ...prev,
+        contrato_social_base64: result,
+        contrato_social_mime_type: file.type || 'application/pdf',
+        contrato_social_nome_arquivo: file.name,
+      }));
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handleRemoveContrato() {
+    setContratoFile(null);
+    setForm((prev) => ({
+      ...prev,
+      contrato_social_base64: '',
+      contrato_social_mime_type: '',
+      contrato_social_nome_arquivo: '',
+    }));
+  }
+
+  function handlePreencherPix(tipo: 'cnpj' | 'email' | 'phone') {
+    if (tipo === 'cnpj' && form.cnpj) {
+      setForm((prev) => ({ ...prev, pix_chave: form.cnpj }));
+    } else if (tipo === 'email' && form.email) {
+      setForm((prev) => ({ ...prev, pix_chave: form.email }));
+    } else if (tipo === 'phone' && form.phone) {
+      setForm((prev) => ({ ...prev, pix_chave: form.phone }));
+    }
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     setCopied(false);
+
+    const bancoFinal = form.banco === 'Outro (informar código/nome)' ? bancoCustom.trim() : form.banco.trim();
+
+    if (!form.contrato_social_base64) {
+      toast.error('O upload do Contrato Social é obrigatório.');
+      setSaving(false);
+      return;
+    }
+
+    if (!bancoFinal) {
+      toast.error('Selecione ou informe o Banco.');
+      setSaving(false);
+      return;
+    }
+
+    if (!form.agencia.trim()) {
+      toast.error('Informe a Agência bancária.');
+      setSaving(false);
+      return;
+    }
+
+    if (!form.conta.trim()) {
+      toast.error('Informe a Conta bancária.');
+      setSaving(false);
+      return;
+    }
+
+    if (!form.pix_chave.trim()) {
+      toast.error('Informe a Chave PIX.');
+      setSaving(false);
+      return;
+    }
 
     const payload = {
       ...form,
@@ -156,6 +294,14 @@ export default function AdminCorretorasPage() {
       logoUrl: form.logoUrl.trim() || undefined,
       logo_base64: form.logo_base64.trim() || undefined,
       logo_mime_type: form.logo_mime_type.trim() || undefined,
+      banco: bancoFinal,
+      agencia: form.agencia.trim(),
+      conta: form.conta.trim(),
+      pix_tipo_chave: form.pix_tipo_chave,
+      pix_chave: form.pix_chave.trim(),
+      contrato_social_base64: form.contrato_social_base64,
+      contrato_social_mime_type: form.contrato_social_mime_type,
+      contrato_social_nome_arquivo: form.contrato_social_nome_arquivo,
       admin_name: form.admin_name.trim() || undefined,
       admin_email: form.admin_email.trim() || undefined,
       admin_password: form.admin_password.trim() || undefined,
@@ -196,6 +342,8 @@ export default function AdminCorretorasPage() {
       }
 
       setForm(FORM_VAZIO);
+      setBancoCustom('');
+      setContratoFile(null);
       setLogoPreview(null);
       setShowPassword(false);
       setShowForm(false);
@@ -351,6 +499,235 @@ export default function AdminCorretorasPage() {
                 placeholder="SC"
                 className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
               />
+            </div>
+          </div>
+
+          {/* Seção: Informações Bancárias & PIX (Obrigatório) */}
+          <div className="border-t border-gray-200/80 pt-4 mt-2">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5">
+                <Landmark size={16} className="text-primary" /> Informações Bancárias & Chave PIX
+              </h3>
+              <span className="text-[11px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                Obrigatório *
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              Dados da conta e chave PIX para repasse de comissões da corretora.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Banco *</label>
+                <select
+                  required
+                  value={form.banco}
+                  onChange={(e) => setForm({ ...form, banco: e.target.value })}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary cursor-pointer"
+                >
+                  <option value="">Selecione o banco...</option>
+                  {BANCOS_BRASILEIROS.map((b) => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                </select>
+                {form.banco === 'Outro (informar código/nome)' && (
+                  <div className="mt-2">
+                    <input
+                      type="text"
+                      required
+                      value={bancoCustom}
+                      onChange={(e) => setBancoCustom(e.target.value)}
+                      placeholder="Ex: 655 - Banco Votorantim"
+                      className="w-full bg-white border border-gray-300 rounded-lg px-3 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-primary"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Agência com Dígito *</label>
+                <input
+                  type="text"
+                  required
+                  value={form.agencia}
+                  onChange={(e) => setForm({ ...form, agencia: e.target.value })}
+                  placeholder="Ex: 0001 ou 1234-5"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Conta Corrente com Dígito *</label>
+                <input
+                  type="text"
+                  required
+                  value={form.conta}
+                  onChange={(e) => setForm({ ...form, conta: e.target.value })}
+                  placeholder="Ex: 12345-6"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary font-mono"
+                />
+              </div>
+            </div>
+
+            {/* Sub-bloco PIX */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-3 pt-3 border-t border-gray-100">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Tipo de Chave PIX *</label>
+                <select
+                  required
+                  value={form.pix_tipo_chave}
+                  onChange={(e) => {
+                    const novoTipo = e.target.value;
+                    setForm((prev) => ({
+                      ...prev,
+                      pix_tipo_chave: novoTipo,
+                      pix_chave: '',
+                    }));
+                  }}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary cursor-pointer"
+                >
+                  <option value="cnpj">CNPJ</option>
+                  <option value="email">E-mail</option>
+                  <option value="telefone">Telefone / Celular</option>
+                  <option value="cpf">CPF (sócio)</option>
+                  <option value="aleatoria">Chave Aleatória (EVP)</option>
+                </select>
+              </div>
+
+              <div className="md:col-span-2">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-gray-700 uppercase">Chave PIX *</label>
+                  <div className="flex items-center gap-2">
+                    {form.pix_tipo_chave === 'cnpj' && form.cnpj && (
+                      <button
+                        type="button"
+                        onClick={() => handlePreencherPix('cnpj')}
+                        className="text-[11px] font-medium text-primary hover:underline cursor-pointer"
+                      >
+                        Usar CNPJ da corretora
+                      </button>
+                    )}
+                    {form.pix_tipo_chave === 'email' && form.email && (
+                      <button
+                        type="button"
+                        onClick={() => handlePreencherPix('email')}
+                        className="text-[11px] font-medium text-primary hover:underline cursor-pointer"
+                      >
+                        Usar e-mail institucional
+                      </button>
+                    )}
+                    {form.pix_tipo_chave === 'telefone' && form.phone && (
+                      <button
+                        type="button"
+                        onClick={() => handlePreencherPix('phone')}
+                        className="text-[11px] font-medium text-primary hover:underline cursor-pointer"
+                      >
+                        Usar telefone
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <input
+                  type="text"
+                  required
+                  value={form.pix_chave}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    let formatted = val;
+                    if (form.pix_tipo_chave === 'cnpj') formatted = maskCnpj(val);
+                    else if (form.pix_tipo_chave === 'cpf') formatted = maskCpfCnpj(val);
+                    else if (form.pix_tipo_chave === 'telefone') formatted = maskPhone(val);
+                    setForm({ ...form, pix_chave: formatted });
+                  }}
+                  placeholder={
+                    form.pix_tipo_chave === 'cnpj' ? '00.000.000/0000-00' :
+                    form.pix_tipo_chave === 'cpf' ? '000.000.000-00' :
+                    form.pix_tipo_chave === 'telefone' ? '(00) 00000-0000' :
+                    form.pix_tipo_chave === 'email' ? 'financeiro@corretora.com.br' :
+                    'Chave EVP (ex: 123e4567-e89b-12d3-a456-426614174000)'
+                  }
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary font-mono"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Seção: Upload de Contrato Social (Obrigatório) */}
+          <div className="border-t border-gray-200/80 pt-4 mt-2">
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5">
+                <FileText size={16} className="text-primary" /> Contrato Social da Corretora
+              </h3>
+              <span className="text-[11px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                Obrigatório * • Máx 10MB • PDF ou Imagem
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              Anexe o Contrato Social consolidado ou a última alteração contratual registrada na Junta Comercial.
+            </p>
+
+            <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200">
+              {contratoFile ? (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-lg border border-emerald-200 shadow-xs">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200">
+                      <FileCheck size={20} />
+                    </div>
+                    <div>
+                      <div className="font-semibold text-sm text-gray-900 flex items-center gap-2">
+                        {contratoFile.name}
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded uppercase">
+                          Pronto
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        Tamanho: <strong className="text-gray-700">{contratoFile.size}</strong> • Tipo: <span className="font-mono text-[11px]">{contratoFile.mime}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 transition-colors">
+                      <Upload size={13} className="text-primary" /> Substituir
+                      <input
+                        type="file"
+                        accept=".pdf,image/png,image/jpeg,image/webp"
+                        onChange={handleContratoChange}
+                        className="hidden"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={handleRemoveContrato}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors cursor-pointer"
+                    >
+                      <Trash2 size={13} /> Remover
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 rounded-xl bg-white text-center hover:border-primary/50 transition-colors">
+                  <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-2">
+                    <FileText size={24} />
+                  </div>
+                  <div className="text-sm font-semibold text-gray-800">
+                    Clique para selecionar o Contrato Social
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1 mb-3">
+                    Formatos aceitos: PDF, PNG ou JPEG até 10MB
+                  </p>
+                  <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-[#0e4a5a] hover:bg-[#072a33] text-white rounded-lg text-xs font-bold shadow-sm transition-all">
+                    <Upload size={14} /> Selecionar Arquivo
+                    <input
+                      type="file"
+                      required
+                      accept=".pdf,image/png,image/jpeg,image/webp"
+                      onChange={handleContratoChange}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              )}
             </div>
           </div>
 
@@ -513,6 +890,7 @@ export default function AdminCorretorasPage() {
                   <th className="py-3.5 px-4 table-sticky-col-head rounded-tl-xl">Corretora</th>
                   <th className="py-3.5 px-4 border-b border-gray-200">CNPJ & SUSEP</th>
                   <th className="py-3.5 px-4 border-b border-gray-200">Contatos</th>
+                  <th className="py-3.5 px-4 border-b border-gray-200">Bancário & Contrato</th>
                   <th className="py-3.5 px-4 text-center border-b border-gray-200">Parceiros</th>
                   <th className="py-3.5 px-4 text-center border-b border-gray-200">Cotações</th>
                   <th className="py-3.5 px-4 text-center border-b border-gray-200">Status</th>
@@ -569,6 +947,43 @@ export default function AdminCorretorasPage() {
                             <Phone size={12} className="text-gray-400" /> {c.phone}
                           </div>
                         )}
+                      </td>
+                      <td className="py-4 px-4 text-xs border-b border-gray-100">
+                        {c.banco ? (
+                          <div className="font-medium text-gray-900 flex items-center gap-1">
+                            <Landmark size={12} className="text-primary shrink-0" />
+                            <span className="truncate max-w-[170px]" title={c.banco}>{c.banco}</span>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 text-[11px]">Não informado</span>
+                        )}
+                        {c.agencia && c.conta && (
+                          <div className="text-[11px] text-gray-500 font-mono mt-0.5">
+                            Ag {c.agencia} • Cc {c.conta}
+                          </div>
+                        )}
+                        <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                          {c.has_contrato_social ? (
+                            <a
+                              href={`/api/admin/corretoras/${c.id}/contrato-social`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded border border-emerald-200 transition-colors"
+                              title="Visualizar Contrato Social anexado"
+                            >
+                              <FileCheck size={11} /> Contrato Social
+                            </a>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200">
+                              Sem Contrato
+                            </span>
+                          )}
+                          {c.pix_tipo_chave && (
+                            <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-gray-100 text-gray-600" title={`Chave: ${c.pix_chave || '-'}`}>
+                              PIX: {c.pix_tipo_chave}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="py-4 px-4 text-center border-b border-gray-100">
                         <span className="inline-flex items-center gap-1 font-semibold text-gray-900 bg-gray-100 px-2.5 py-1 rounded-full text-xs">

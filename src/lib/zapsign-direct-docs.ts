@@ -1,27 +1,45 @@
 import { getZapSignConfig, sanitizeApiToken } from './system-settings';
 import { logger } from './logger';
 
+export interface SignatarioZapSignItem {
+  nome: string;
+  email: string;
+  phone?: string | null;
+  signaturePattern?: string;
+  order?: number;
+  sendAutomaticEmail?: boolean;
+}
+
 export interface EnviarContratoZapSignParams {
   base64Pdf: string;
   docName: string;
   externalId: string;
   deadlineAt?: string;
-  signatario: {
+  signatario?: {
     nome: string;
     email: string;
     phone?: string | null;
   };
+  signatarios?: SignatarioZapSignItem[];
 }
 
 export interface ZapSignDocResponse {
   docToken: string;
   signUrl: string;
+  signers?: Array<{
+    token: string;
+    name: string;
+    email: string;
+    signUrl: string;
+    status: string;
+  }>;
   rawPayload: any;
 }
 
 /**
  * Cria um documento avulso diretamente na ZapSign enviando o PDF em Base64,
  * sem depender de modelos pré-existentes (/api/v1/docs/).
+ * Suporta múltiplos signatários com ordem sequencial e âncoras distintas.
  */
 export async function criarDocumentoZapSignDireto(
   params: EnviarContratoZapSignParams
@@ -34,13 +52,37 @@ export async function criarDocumentoZapSignDireto(
     throw new Error('Token da API ZapSign não configurado nas configurações de sistema.');
   }
 
-  // Limpeza e extração de telefone para signatário
-  const rawPhone = String(params.signatario.phone || '').replace(/\D/g, '');
-  let phoneNumber = rawPhone;
-  let phoneCountry = '55';
-  if (rawPhone.startsWith('55') && rawPhone.length >= 12) {
-    phoneNumber = rawPhone.slice(2);
+  // Prepara lista de signatários (usa signatarios se fornecido, senão faz fallback para signatario único)
+  const listaSignatarios: SignatarioZapSignItem[] = params.signatarios && params.signatarios.length > 0
+    ? params.signatarios
+    : params.signatario
+      ? [{ ...params.signatario, signaturePattern: '{{assinatura_proponente}}', order: 1, sendAutomaticEmail: true }]
+      : [];
+
+  if (listaSignatarios.length === 0) {
+    throw new Error('Nenhum signatário informado para criação do documento na ZapSign.');
   }
+
+  const signersPayload = listaSignatarios.map((s, idx) => {
+    const rawPhone = String(s.phone || '').replace(/\D/g, '');
+    let phoneNumber = rawPhone;
+    let phoneCountry = '55';
+    if (rawPhone.startsWith('55') && rawPhone.length >= 12) {
+      phoneNumber = rawPhone.slice(2);
+    }
+
+    return {
+      name: s.nome,
+      email: s.email || 'suporte@duolife.net.br',
+      phone_country: phoneCountry,
+      phone_number: phoneNumber || undefined,
+      auth_mode: 'signature',
+      signature_pattern: s.signaturePattern || (idx === 0 ? '{{assinatura_corretora}}' : '{{assinatura_proponente}}'),
+      send_automatic_email: s.sendAutomaticEmail ?? true,
+      send_automatic_whatsapp: false,
+      order: s.order ?? (idx + 1),
+    };
+  });
 
   const payload: Record<string, any> = {
     name: params.docName,
@@ -49,25 +91,15 @@ export async function criarDocumentoZapSignDireto(
     lang: 'pt-br',
     external_id: params.externalId,
     ...(params.deadlineAt ? { deadline_at: params.deadlineAt } : {}),
-    signers: [
-      {
-        name: params.signatario.nome,
-        email: params.signatario.email || 'suporte@duolife.net.br',
-        phone_country: phoneCountry,
-        phone_number: phoneNumber || undefined,
-        auth_mode: 'signature',
-        signature_pattern: '{{ASSINATURA_SEGURADO}}',
-        send_automatic_email: false,
-        send_automatic_whatsapp: false,
-      },
-    ],
+    signers: signersPayload,
   };
 
   logger.info(
     {
       docName: params.docName,
       externalId: params.externalId,
-      signer: params.signatario.email,
+      signersCount: signersPayload.length,
+      signers: signersPayload.map(s => ({ name: s.name, email: s.email, order: s.order, pattern: s.signature_pattern })),
       isSandbox: zapConfig.isSandbox,
     },
     'zapsign_direct.create_doc.request'
@@ -94,16 +126,27 @@ export async function criarDocumentoZapSignDireto(
 
   const resJson = JSON.parse(responseText);
   const docToken = resJson.token || resJson.doc_token;
-  const signUrl = resJson.signers?.[0]?.sign_url || '';
 
   if (!docToken) {
     logger.error({ body: responseText }, 'zapsign_direct.create_doc.missing_token');
     throw new Error('Resposta da ZapSign não continha o token do documento criado.');
   }
 
+  const signersList = (resJson.signers || []).map((s: any) => ({
+    token: s.token || '',
+    name: s.name || '',
+    email: s.email || '',
+    signUrl: s.sign_url || '',
+    status: s.status || 'pending',
+  }));
+
+  // O signUrl do proponente (cliente final) é o segundo signatário se houver 2, ou o primeiro se for único
+  const signUrl = signersList[1]?.signUrl || signersList[0]?.signUrl || '';
+
   return {
     docToken,
     signUrl,
+    signers: signersList,
     rawPayload: resJson,
   };
 }

@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { isPlatformAdmin, verifyAdminAuth, unauthorized } from '@/lib/auth';
-import { validarCnpj, somenteDigitos } from '@/lib/documento';
+import { validarCnpj, validarCpf, somenteDigitos } from '@/lib/documento';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { logger } from '@/lib/logger';
@@ -34,6 +34,15 @@ export async function GET(req: NextRequest) {
         c.metadata,
         c.logo_base64,
         c.logo_mime_type,
+        c.banco,
+        c.agencia,
+        c.conta,
+        c.pix_tipo_chave,
+        c.pix_chave,
+        c.contrato_social_mime_type,
+        c.contrato_social_nome_arquivo,
+        c.contrato_social_uploaded_at,
+        (c.contrato_social_base64 IS NOT NULL) AS has_contrato_social,
         c.created_at,
         c.updated_at,
         (SELECT COUNT(*)::int FROM partners p WHERE p.corretora_id = c.id) AS partners_count,
@@ -84,6 +93,16 @@ const createCorretoraSchema = z.object({
   logoUrl: z.preprocess(emptyToUndefined, z.string().trim().optional()),
   logo_base64: z.preprocess(emptyToUndefined, z.string().trim().optional()),
   logo_mime_type: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+  banco: z.string().trim().min(1, 'Informe o banco para recebimento'),
+  agencia: z.string().trim().min(1, 'Informe a agência bancária'),
+  conta: z.string().trim().min(1, 'Informe a conta bancária'),
+  pix_tipo_chave: z.enum(['cnpj', 'cpf', 'email', 'telefone', 'aleatoria'], {
+    message: 'Selecione o tipo de chave PIX',
+  }),
+  pix_chave: z.string().trim().min(1, 'Informe a chave PIX'),
+  contrato_social_base64: z.string().trim().min(1, 'O upload do Contrato Social é obrigatório'),
+  contrato_social_mime_type: z.string().trim().min(1, 'Tipo de arquivo do Contrato Social inválido'),
+  contrato_social_nome_arquivo: z.string().trim().min(1, 'Nome do arquivo do Contrato Social é obrigatório'),
   admin_name: z.preprocess(emptyToUndefined, z.string().trim().min(2, 'Informe o nome do administrador').optional()),
   admin_email: z.preprocess(emptyToUndefined, z.string().trim().email('E-mail do administrador inválido').optional()),
   admin_password: z.preprocess(emptyToUndefined, z.string().trim().min(6, 'A senha deve ter no mínimo 6 caracteres').optional()),
@@ -96,6 +115,45 @@ const createCorretoraSchema = z.object({
       path: ['cnpj'],
       message: 'CNPJ inválido',
     });
+  }
+
+  // Validação da Chave PIX
+  if (data.pix_tipo_chave === 'cnpj') {
+    const clean = somenteDigitos(data.pix_chave);
+    if (!validarCnpj(clean)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['pix_chave'],
+        message: 'Chave PIX do tipo CNPJ inválida',
+      });
+    }
+  } else if (data.pix_tipo_chave === 'cpf') {
+    const clean = somenteDigitos(data.pix_chave);
+    if (!validarCpf(clean)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['pix_chave'],
+        message: 'Chave PIX do tipo CPF inválida',
+      });
+    }
+  } else if (data.pix_tipo_chave === 'email') {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(data.pix_chave)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['pix_chave'],
+        message: 'Chave PIX do tipo E-mail inválida',
+      });
+    }
+  } else if (data.pix_tipo_chave === 'telefone') {
+    const clean = somenteDigitos(data.pix_chave);
+    if (clean.length < 10 || clean.length > 11) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['pix_chave'],
+        message: 'Chave PIX do tipo Telefone/Celular deve conter DDD + número',
+      });
+    }
   }
 });
 
@@ -128,6 +186,18 @@ export async function POST(req: NextRequest) {
     }
     logoBase64 = cleanBase64;
     logoMimeType = data.logo_mime_type || (data.logo_base64.includes('image/jpeg') ? 'image/jpeg' : 'image/png');
+  }
+
+  // Processamento do Contrato Social da Corretora (obrigatório, máximo 10MB)
+  const cleanContratoBase64 = data.contrato_social_base64.replace(/^data:[^;]+;base64,/, '');
+  const contratoSizeBytes = Buffer.byteLength(cleanContratoBase64, 'base64');
+  if (contratoSizeBytes > 10 * 1024 * 1024) {
+    return Response.json({ error: 'O arquivo de Contrato Social excede o limite máximo permitido de 10MB' }, { status: 400 });
+  }
+  const allowedContratoMimes = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
+  const contratoMime = data.contrato_social_mime_type || (data.contrato_social_nome_arquivo.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/pdf');
+  if (!allowedContratoMimes.includes(contratoMime)) {
+    return Response.json({ error: 'Formato do Contrato Social inválido. Envie um arquivo PDF ou imagem (PNG/JPEG)' }, { status: 400 });
   }
 
   // Dados do Administrador Master da Corretora
@@ -194,7 +264,16 @@ export async function POST(req: NextRequest) {
         status,
         metadata,
         logo_base64,
-        logo_mime_type
+        logo_mime_type,
+        banco,
+        agencia,
+        conta,
+        pix_tipo_chave,
+        pix_chave,
+        contrato_social_base64,
+        contrato_social_mime_type,
+        contrato_social_nome_arquivo,
+        contrato_social_uploaded_at
       )
       VALUES (
         ${data.razao_social},
@@ -207,9 +286,21 @@ export async function POST(req: NextRequest) {
         'active',
         ${JSON.stringify({ whiteLabel, created_by: admin.userId })}::jsonb,
         ${logoBase64},
-        ${logoMimeType}
+        ${logoMimeType},
+        ${data.banco},
+        ${data.agencia},
+        ${data.conta},
+        ${data.pix_tipo_chave},
+        ${data.pix_chave},
+        ${cleanContratoBase64},
+        ${contratoMime},
+        ${data.contrato_social_nome_arquivo},
+        NOW()
       )
-      RETURNING id, razao_social, nome_fantasia, cnpj, susep, email, phone, status, logo_base64, logo_mime_type, created_at
+      RETURNING
+        id, razao_social, nome_fantasia, cnpj, susep, email, phone, status,
+        logo_base64, logo_mime_type, banco, agencia, conta, pix_tipo_chave, pix_chave,
+        contrato_social_mime_type, contrato_social_nome_arquivo, contrato_social_uploaded_at, created_at
     `;
 
     // Cria o usuário gestor master da corretora

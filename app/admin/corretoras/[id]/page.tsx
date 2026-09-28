@@ -2,9 +2,15 @@
 
 import { useEffect, useState, use } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Building, ShieldCheck, Mail, Phone, MapPin, Users, Briefcase, ExternalLink, Globe, Save, CheckCircle, Upload, Trash2, Image as ImageIcon } from 'lucide-react';
+import {
+  ArrowLeft, Building, ShieldCheck, Mail, Phone, MapPin, Users, Briefcase,
+  ExternalLink, Globe, Save, CheckCircle, Upload, Trash2, Image as ImageIcon,
+  Landmark, FileText, FileCheck, Download
+} from 'lucide-react';
 import type { WhiteLabelConfig } from '@/lib/white-label';
 import { toast } from '@/components/ui/toast';
+import { BANCOS_BRASILEIROS } from '../page';
+import { maskCnpj, maskPhone, maskCpfCnpj } from '@/components/modals/masks';
 
 interface CorretoraDetail {
   id: string;
@@ -18,6 +24,15 @@ interface CorretoraDetail {
   status: string;
   logo_base64?: string | null;
   logo_mime_type?: string | null;
+  banco?: string | null;
+  agencia?: string | null;
+  conta?: string | null;
+  pix_tipo_chave?: string | null;
+  pix_chave?: string | null;
+  contrato_social_mime_type?: string | null;
+  contrato_social_nome_arquivo?: string | null;
+  contrato_social_uploaded_at?: string | null;
+  has_contrato_social?: boolean;
   created_at: string;
   whiteLabel: WhiteLabelConfig;
 }
@@ -58,13 +73,20 @@ export default function AdminCorretoraDetailPage({ params }: { params: Promise<{
     susep: '',
     email: '',
     phone: '',
+    banco: '',
+    agencia: '',
+    conta: '',
+    pix_tipo_chave: 'cnpj',
+    pix_chave: '',
     primaryColor: '#004172',
     secondaryColor: '#002B4D',
   });
 
+  const [bancoCustom, setBancoCustom] = useState('');
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [logoBase64ToSave, setLogoBase64ToSave] = useState<string | null | undefined>(undefined);
   const [logoMimeTypeToSave, setLogoMimeTypeToSave] = useState<string | null | undefined>(undefined);
+  const [contratoFileToSave, setContratoFileToSave] = useState<{ base64: string; mime: string; name: string } | null | undefined>(undefined);
 
   async function load() {
     setLoading(true);
@@ -76,15 +98,23 @@ export default function AdminCorretoraDetailPage({ params }: { params: Promise<{
       setCorretora(data.corretora);
       setParceiros(data.parceiros ?? []);
       setStats(data.stats ?? null);
+
+      const isKnownBank = BANCOS_BRASILEIROS.includes(data.corretora.banco || '');
       setForm({
         razao_social: data.corretora.razao_social,
         nome_fantasia: data.corretora.nome_fantasia || '',
         susep: data.corretora.susep || '',
         email: data.corretora.email,
         phone: data.corretora.phone || '',
+        banco: data.corretora.banco ? (isKnownBank ? data.corretora.banco : 'Outro (informar código/nome)') : '',
+        agencia: data.corretora.agencia || '',
+        conta: data.corretora.conta || '',
+        pix_tipo_chave: data.corretora.pix_tipo_chave || 'cnpj',
+        pix_chave: data.corretora.pix_chave || '',
         primaryColor: data.corretora.whiteLabel?.primaryColor || '#004172',
         secondaryColor: data.corretora.whiteLabel?.secondaryColor || '#002B4D',
       });
+      setBancoCustom(data.corretora.banco && !isKnownBank ? data.corretora.banco : '');
 
       const initialLogo = data.corretora.logo_base64 && data.corretora.logo_mime_type
         ? `data:${data.corretora.logo_mime_type};base64,${data.corretora.logo_base64}`
@@ -92,6 +122,7 @@ export default function AdminCorretoraDetailPage({ params }: { params: Promise<{
       setLogoPreview(initialLogo);
       setLogoBase64ToSave(undefined);
       setLogoMimeTypeToSave(undefined);
+      setContratoFileToSave(undefined);
     } catch {
       setCorretora(null);
     } finally {
@@ -136,17 +167,59 @@ export default function AdminCorretoraDetailPage({ params }: { params: Promise<{
     setLogoMimeTypeToSave(null);
   }
 
+  function handleContratoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const MAX_SIZE = 10 * 1024 * 1024; // 10MB
+    if (file.size > MAX_SIZE) {
+      toast.error('O Contrato Social excede o limite máximo permitido de 10MB.');
+      e.target.value = '';
+      return;
+    }
+
+    const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
+    const isPdfByName = file.name.toLowerCase().endsWith('.pdf');
+    if (!allowedTypes.includes(file.type) && !isPdfByName) {
+      toast.error('Selecione um arquivo de Contrato Social em PDF ou Imagem (PNG, JPEG).');
+      e.target.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      setContratoFileToSave({
+        base64: result,
+        mime: file.type || 'application/pdf',
+        name: file.name,
+      });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function handleRemoveContrato() {
+    setContratoFileToSave(null);
+  }
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
 
     try {
+      const bancoFinal = form.banco === 'Outro (informar código/nome)' ? bancoCustom.trim() : form.banco.trim();
+
       const payload: Record<string, unknown> = {
         razao_social: form.razao_social,
         nome_fantasia: form.nome_fantasia,
         susep: form.susep,
         email: form.email,
         phone: form.phone,
+        banco: bancoFinal,
+        agencia: form.agencia.trim(),
+        conta: form.conta.trim(),
+        pix_tipo_chave: form.pix_tipo_chave,
+        pix_chave: form.pix_chave.trim(),
         whiteLabel: {
           primaryColor: form.primaryColor,
           secondaryColor: form.secondaryColor,
@@ -156,6 +229,12 @@ export default function AdminCorretoraDetailPage({ params }: { params: Promise<{
       if (logoBase64ToSave !== undefined) {
         payload.logo_base64 = logoBase64ToSave;
         payload.logo_mime_type = logoMimeTypeToSave;
+      }
+
+      if (contratoFileToSave !== undefined) {
+        payload.contrato_social_base64 = contratoFileToSave ? contratoFileToSave.base64 : null;
+        payload.contrato_social_mime_type = contratoFileToSave ? contratoFileToSave.mime : null;
+        payload.contrato_social_nome_arquivo = contratoFileToSave ? contratoFileToSave.name : null;
       }
 
       const res = await fetch(`/api/admin/corretoras/${id}`, {
@@ -245,6 +324,31 @@ export default function AdminCorretoraDetailPage({ params }: { params: Promise<{
                 <span className="flex items-center gap-1"><Mail size={12} className="text-gray-400" /> {corretora.email}</span>
                 {corretora.phone && (
                   <span className="flex items-center gap-1"><Phone size={12} className="text-gray-400" /> {corretora.phone}</span>
+                )}
+                {corretora.banco && (
+                  <span className="flex items-center gap-1 text-gray-800 font-medium">
+                    <Landmark size={12} className="text-primary" /> {corretora.banco} (Ag {corretora.agencia} • Cc {corretora.conta})
+                  </span>
+                )}
+                {corretora.pix_chave && (
+                  <span className="font-mono text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded text-[11px]">
+                    PIX ({corretora.pix_tipo_chave}): {corretora.pix_chave}
+                  </span>
+                )}
+                {corretora.has_contrato_social ? (
+                  <a
+                    href={`/api/admin/corretoras/${corretora.id}/contrato-social`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded transition-colors"
+                    title="Abrir Contrato Social em nova aba"
+                  >
+                    <FileCheck size={12} /> Ver Contrato Social
+                  </a>
+                ) : (
+                  <span className="text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                    Sem Contrato Anexado
+                  </span>
                 )}
               </div>
             </div>
@@ -413,6 +517,165 @@ export default function AdminCorretoraDetailPage({ params }: { params: Promise<{
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
                 className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
               />
+            </div>
+
+            {/* Seção: Dados Bancários & PIX */}
+            <div className="border-t border-gray-100 pt-3 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold text-gray-700 uppercase flex items-center gap-1.5">
+                  <Landmark size={14} className="text-primary" /> Dados Bancários
+                </label>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-gray-600 uppercase mb-1">Banco</label>
+                <select
+                  value={form.banco}
+                  onChange={(e) => setForm({ ...form, banco: e.target.value })}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-primary cursor-pointer"
+                >
+                  <option value="">Selecione o banco...</option>
+                  {BANCOS_BRASILEIROS.map((b) => (
+                    <option key={b} value={b}>{b}</option>
+                  ))}
+                </select>
+                {form.banco === 'Outro (informar código/nome)' && (
+                  <input
+                    type="text"
+                    value={bancoCustom}
+                    onChange={(e) => setBancoCustom(e.target.value)}
+                    placeholder="Ex: 655 - Banco Votorantim"
+                    className="w-full mt-1.5 bg-white border border-gray-300 rounded-lg px-2.5 py-1 text-xs text-gray-900 focus:outline-none focus:border-primary"
+                  />
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-600 uppercase mb-1">Agência com Dígito</label>
+                  <input
+                    type="text"
+                    value={form.agencia}
+                    onChange={(e) => setForm({ ...form, agencia: e.target.value })}
+                    placeholder="0001"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-primary font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-600 uppercase mb-1">Conta Corrente</label>
+                  <input
+                    type="text"
+                    value={form.conta}
+                    onChange={(e) => setForm({ ...form, conta: e.target.value })}
+                    placeholder="12345-6"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-primary font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-600 uppercase mb-1">Tipo de Chave PIX</label>
+                  <select
+                    value={form.pix_tipo_chave}
+                    onChange={(e) => setForm({ ...form, pix_tipo_chave: e.target.value, pix_chave: '' })}
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-primary cursor-pointer"
+                  >
+                    <option value="cnpj">CNPJ</option>
+                    <option value="email">E-mail</option>
+                    <option value="telefone">Telefone / Celular</option>
+                    <option value="cpf">CPF</option>
+                    <option value="aleatoria">Aleatória (EVP)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-gray-600 uppercase mb-1">Chave PIX</label>
+                  <input
+                    type="text"
+                    value={form.pix_chave}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      let formatted = val;
+                      if (form.pix_tipo_chave === 'cnpj') formatted = maskCnpj(val);
+                      else if (form.pix_tipo_chave === 'cpf') formatted = maskCpfCnpj(val);
+                      else if (form.pix_tipo_chave === 'telefone') formatted = maskPhone(val);
+                      setForm({ ...form, pix_chave: formatted });
+                    }}
+                    placeholder="Chave PIX"
+                    className="w-full bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-xs text-gray-900 focus:outline-none focus:border-primary font-mono"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Seção Contrato Social */}
+            <div className="border-t border-gray-100 pt-3 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-semibold text-gray-700 uppercase flex items-center gap-1.5">
+                  <FileText size={14} className="text-primary" /> Contrato Social
+                </label>
+                <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded">
+                  PDF ou Imagem (Máx 10MB)
+                </span>
+              </div>
+
+              <div className="bg-gray-50 p-2.5 rounded-lg border border-gray-200 space-y-2">
+                {corretora.has_contrato_social && (
+                  <div className="flex items-center justify-between bg-white p-2 rounded border border-gray-200 text-xs">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <FileCheck size={14} className="text-emerald-600 shrink-0" />
+                      <span className="truncate text-gray-700" title={corretora.contrato_social_nome_arquivo || 'Contrato Social'}>
+                        {corretora.contrato_social_nome_arquivo || 'Contrato_Social.pdf'}
+                      </span>
+                    </div>
+                    <a
+                      href={`/api/admin/corretoras/${id}/contrato-social`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline shrink-0 ml-2"
+                    >
+                      <Download size={11} /> Baixar
+                    </a>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <label className="cursor-pointer inline-flex items-center gap-1 px-2.5 py-1.5 bg-white border border-gray-300 hover:bg-gray-100 rounded-md text-xs font-semibold text-gray-700 transition-colors">
+                    <Upload size={13} className="text-primary" />
+                    {corretora.has_contrato_social ? 'Substituir Contrato' : 'Anexar Contrato'}
+                    <input
+                      type="file"
+                      accept=".pdf,image/png,image/jpeg,image/webp"
+                      onChange={handleContratoChange}
+                      className="hidden"
+                    />
+                  </label>
+                  {contratoFileToSave && (
+                    <span className="text-[11px] text-emerald-700 font-medium truncate">
+                      ✓ {contratoFileToSave.name}
+                    </span>
+                  )}
+                  {contratoFileToSave === null && (
+                    <span className="text-[11px] text-red-600 font-medium">
+                      (Será removido ao salvar)
+                    </span>
+                  )}
+                  {corretora.has_contrato_social && contratoFileToSave !== null && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveContrato}
+                      className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-red-600 hover:text-red-700 rounded transition-colors cursor-pointer"
+                    >
+                      <Trash2 size={11} /> Remover
+                    </button>
+                  )}
+                </div>
+                {contratoFileToSave !== undefined && (
+                  <p className="text-[10px] text-amber-700 font-medium">
+                    * Alteração de documento pendente. Clique em "Salvar Alterações".
+                  </p>
+                )}
+              </div>
             </div>
 
             {/* Seção Logotipo da Corretora (PDF e Portal) */}

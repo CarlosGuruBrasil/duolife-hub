@@ -19,6 +19,17 @@ export interface ContratoPdfResult {
     phone: string;
     cpfCnpj: string;
   };
+  signatarioCorretora?: {
+    nome: string;
+    email: string;
+    phone?: string;
+  };
+  signatarioProponente?: {
+    nome: string;
+    email: string;
+    phone?: string;
+    cpfCnpj?: string;
+  };
 }
 
 export type TipoContratoPdf = '100k' | '100k_renovacao' | 'oficial';
@@ -515,7 +526,7 @@ function drawProponenteBlock(
     dataNascto: string;
     enderecoCompleto: string;
     inicioProfissional: string;
-    lgpdConcorda: boolean;
+    lgpdConcorda?: boolean;
   },
   fontRegular: PDFFont,
   fontBold: PDFFont,
@@ -524,83 +535,44 @@ function drawProponenteBlock(
   colorBorder: Color
 ): number {
   let currY = yTop;
-  const colLabelW = 75.0;
+  const colLabelW = 85.0;
   const colValW = w - colLabelW;
-  const rowH = 17.5;
+  const rowH = 16.5;
 
   // Linha 1: Nome
-  drawCell(page, pageHeight, { x, y: currY, w: colLabelW, h: rowH, text: 'Nome:', font: fontBold, fontSize: 8.0, bgColor: colorGrayHeader, borderColor: colorBorder });
-  drawCell(page, pageHeight, { x: x + colLabelW, y: currY, w: colValW, h: rowH, text: data.nome, font: fontBold, fontSize: 8.0, bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page, pageHeight, { x, y: currY, w: colLabelW, h: rowH, text: 'Nome:', font: fontBold, fontSize: 7.7, bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page, pageHeight, { x: x + colLabelW, y: currY, w: colValW, h: rowH, text: data.nome, font: fontBold, fontSize: 7.7, bgColor: colorWhite, borderColor: colorBorder });
   currY += rowH;
 
-  // Linha 2: E-mail
-  drawCell(page, pageHeight, { x, y: currY, w: colLabelW, h: rowH, text: 'E-mail:', font: fontBold, fontSize: 8.0, bgColor: colorGrayHeader, borderColor: colorBorder });
-  drawCell(page, pageHeight, { x: x + colLabelW, y: currY, w: colValW, h: rowH, text: data.email, font: fontRegular, fontSize: 8.0, bgColor: colorWhite, borderColor: colorBorder });
+  // Linha 2: Nascimento & CPF
+  const halfW = w / 2;
+  const c2LabelW = 48.0;
+  drawCell(page, pageHeight, { x, y: currY, w: colLabelW, h: rowH, text: 'Nascimento:', font: fontBold, fontSize: 7.7, bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page, pageHeight, { x: x + colLabelW, y: currY, w: halfW - colLabelW, h: rowH, text: data.dataNascto, font: fontRegular, fontSize: 7.7, bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page, pageHeight, { x: x + halfW, y: currY, w: c2LabelW, h: rowH, text: 'CPF:', font: fontBold, fontSize: 7.7, bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page, pageHeight, { x: x + halfW + c2LabelW, y: currY, w: halfW - c2LabelW, h: rowH, text: data.cpf, font: fontRegular, fontSize: 7.7, bgColor: colorWhite, borderColor: colorBorder });
   currY += rowH;
 
-  // Linha 3: Celular | CPF | Nº OAB | Nascimento (4 colunas)
-  const c1LabelW = 50.0;
-  const c1ValW = 80.0;
-  const c2LabelW = 40.0;
-  const c2ValW = 90.0;
-  const c3LabelW = 55.0;
-  const c3ValW = 85.0;
-  const c4LabelW = 60.0;
-  const c4ValW = w - (c1LabelW + c1ValW + c2LabelW + c2ValW + c3LabelW + c3ValW + c4LabelW);
-
-  let cX = x;
-  drawCell(page, pageHeight, { x: cX, y: currY, w: c1LabelW, h: rowH, text: 'Celular:', font: fontBold, fontSize: 7.8, bgColor: colorGrayHeader, borderColor: colorBorder });
-  cX += c1LabelW;
-  drawCell(page, pageHeight, { x: cX, y: currY, w: c1ValW, h: rowH, text: data.celular, font: fontRegular, fontSize: 7.8, bgColor: colorWhite, borderColor: colorBorder });
-  cX += c1ValW;
-  drawCell(page, pageHeight, { x: cX, y: currY, w: c2LabelW, h: rowH, text: 'CPF:', font: fontBold, fontSize: 7.8, bgColor: colorGrayHeader, borderColor: colorBorder });
-  cX += c2LabelW;
-  drawCell(page, pageHeight, { x: cX, y: currY, w: c2ValW, h: rowH, text: data.cpf, font: fontRegular, fontSize: 7.8, bgColor: colorWhite, borderColor: colorBorder });
-  cX += c2ValW;
-  drawCell(page, pageHeight, { x: cX, y: currY, w: c3LabelW, h: rowH, text: 'Nº OAB:', font: fontBold, fontSize: 7.8, bgColor: colorGrayHeader, borderColor: colorBorder });
-  cX += c3LabelW;
-  drawCell(page, pageHeight, { x: cX, y: currY, w: c3ValW, h: rowH, text: data.oab, font: fontRegular, fontSize: 7.8, bgColor: colorWhite, borderColor: colorBorder });
-  cX += c3ValW;
-  drawCell(page, pageHeight, { x: cX, y: currY, w: c4LabelW, h: rowH, text: 'Nascimento:', font: fontBold, fontSize: 7.8, bgColor: colorGrayHeader, borderColor: colorBorder });
-  cX += c4LabelW;
-  drawCell(page, pageHeight, { x: cX, y: currY, w: c4ValW, h: rowH, text: data.dataNascto, font: fontRegular, fontSize: 7.8, bgColor: colorWhite, borderColor: colorBorder, align: 'center' });
+  // Linha 3: E-mail & Celular
+  drawCell(page, pageHeight, { x, y: currY, w: colLabelW, h: rowH, text: 'E-mail:', font: fontBold, fontSize: 7.7, bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page, pageHeight, { x: x + colLabelW, y: currY, w: halfW - colLabelW, h: rowH, text: data.email, font: fontRegular, fontSize: 7.7, bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page, pageHeight, { x: x + halfW, y: currY, w: c2LabelW, h: rowH, text: 'Celular:', font: fontBold, fontSize: 7.7, bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page, pageHeight, { x: x + halfW + c2LabelW, y: currY, w: halfW - c2LabelW, h: rowH, text: data.celular, font: fontRegular, fontSize: 7.7, bgColor: colorWhite, borderColor: colorBorder });
   currY += rowH;
 
-  // Linha 4: Endereço Completo
-  drawCell(page, pageHeight, { x, y: currY, w: colLabelW, h: rowH, text: 'Endereço:', font: fontBold, fontSize: 8.0, bgColor: colorGrayHeader, borderColor: colorBorder });
-  drawCell(page, pageHeight, { x: x + colLabelW, y: currY, w: colValW, h: rowH, text: data.enderecoCompleto, font: fontRegular, fontSize: 7.6, bgColor: colorWhite, borderColor: colorBorder });
+  // Linha 4: Endereço
+  drawCell(page, pageHeight, { x, y: currY, w: colLabelW, h: rowH, text: 'Endereço:', font: fontBold, fontSize: 7.7, bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page, pageHeight, { x: x + colLabelW, y: currY, w: colValW, h: rowH, text: data.enderecoCompleto, font: fontRegular, fontSize: 7.5, bgColor: colorWhite, borderColor: colorBorder });
   currY += rowH;
 
-  // Linha 5: Início Profissional & Tratamento de Dados (LGPD)
-  const l5Col1W = 95.0;
-  const l5Col2W = 65.0;
-  const l5Col3W = 95.0;
-  const l5Col4W = w - (l5Col1W + l5Col2W + l5Col3W);
-  const rowH5 = 28.0;
+  // Linha 5: Início Profissional & OAB
+  drawCell(page, pageHeight, { x, y: currY, w: colLabelW, h: rowH, text: 'Início profissional:', font: fontBold, fontSize: 7.7, bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page, pageHeight, { x: x + colLabelW, y: currY, w: halfW - colLabelW, h: rowH, text: data.inicioProfissional, font: fontRegular, fontSize: 7.7, bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page, pageHeight, { x: x + halfW, y: currY, w: c2LabelW, h: rowH, text: 'OAB:', font: fontBold, fontSize: 7.7, bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page, pageHeight, { x: x + halfW + c2LabelW, y: currY, w: halfW - c2LabelW, h: rowH, text: data.oab, font: fontRegular, fontSize: 7.7, bgColor: colorWhite, borderColor: colorBorder });
+  currY += rowH;
 
-  drawCell(page, pageHeight, { x, y: currY, w: l5Col1W, h: rowH5, text: 'Início Profissional:', font: fontBold, fontSize: 7.8, bgColor: colorGrayHeader, borderColor: colorBorder });
-  drawCell(page, pageHeight, { x: x + l5Col1W, y: currY, w: l5Col2W, h: rowH5, text: data.inicioProfissional, font: fontRegular, fontSize: 7.8, bgColor: colorWhite, borderColor: colorBorder, align: 'center' });
-  drawCell(page, pageHeight, { x: x + l5Col1W + l5Col2W, y: currY, w: l5Col3W, h: rowH5, text: 'Tratamento de Dados:', font: fontBold, fontSize: 7.8, bgColor: colorGrayHeader, borderColor: colorBorder });
-
-  // LGPD box com quebra suave e sem transbordamento
-  const lgpdText = '([X]) Concordo que este site armazene minhas informações para que possam responder à minha consulta.';
-  drawCell(page, pageHeight, {
-    x: x + l5Col1W + l5Col2W + l5Col3W,
-    y: currY,
-    w: l5Col4W,
-    h: rowH5,
-    text: lgpdText,
-    font: fontRegular,
-    fontSize: 6.8,
-    lineHeight: 8.5,
-    paddingX: 5,
-    paddingY: 3,
-    bgColor: colorWhite,
-    borderColor: colorBorder,
-  });
-  currY += rowH5;
-
-  return currY + 12.0;
+  return currY + 6.0;
 }
 
 /**
@@ -612,7 +584,7 @@ function drawTextCard(
   x: number,
   yTop: number,
   w: number,
-  h: number,
+  minH: number,
   text: string,
   font: PDFFont,
   fontSize: number,
@@ -621,21 +593,25 @@ function drawTextCard(
   borderColor: Color,
   textColor: Color
 ): number {
+  const wrapped = wrapText(text, font, fontSize, w - 16);
+  const padTop = 8.0;
+  const padBottom = 8.0;
+  const contentHeight = (wrapped.length - 1) * lineHeight + fontSize + padTop + padBottom;
+  const actualH = Math.max(minH, contentHeight);
+
   drawCell(page, pageHeight, {
     x,
     y: yTop,
     w,
-    h,
+    h: actualH,
     bgColor,
     borderColor,
     borderWidth: 0.6,
   });
 
-  const wrapped = wrapText(text, font, fontSize, w - 16);
-  let textY = pageHeight - yTop - 14.0;
+  let textY = pageHeight - yTop - padTop - fontSize;
 
   for (const line of wrapped) {
-    if (textY < pageHeight - yTop - h + 8) break; // Não ultrapassa a borda inferior
     page.drawText(sanitizeForPdf(line), {
       x: x + 8.0,
       y: textY,
@@ -646,7 +622,7 @@ function drawTextCard(
     textY -= lineHeight;
   }
 
-  return yTop + h + 12.0;
+  return yTop + actualH + 6.0;
 }
 
 /**
@@ -678,7 +654,7 @@ function drawCondicoesComercializacao(
   const colW = w / 2;
   const labelW = 105.0;
   const valW = colW - labelW;
-  const rowH = 18.0;
+  const rowH = 16.0;
 
   // Linha 1: Importância Segurada & Forma de Pagamento
   drawCell(page, pageHeight, { x, y: currY, w: labelW, h: rowH, text: 'Importância Segurada:', font: fontBold, fontSize: 7.7, bgColor: colorGrayHeader, borderColor: colorBorder });
@@ -708,7 +684,7 @@ function drawCondicoesComercializacao(
   drawCell(page, pageHeight, { x: x + colW + labelW, y: currY, w: valW, h: rowH, text: cond.franquia, font: fontRegular, fontSize: 7.7, bgColor: colorWhite, borderColor: colorBorder });
   currY += rowH;
 
-  return currY + 16.0;
+  return currY + 6.0;
 }
 
 /**
@@ -726,20 +702,30 @@ function drawAssinaturas(
   fontBold: PDFFont
 ): void {
   // Data e Local centralizado
-  const dateW = fontRegular.widthOfTextAtSize(cidadeDataStr, 9.0);
+  const dateW = fontRegular.widthOfTextAtSize(cidadeDataStr, 8.5);
   page.drawText(sanitizeForPdf(cidadeDataStr), {
     x: (pageWidth - dateW) / 2,
     y: pageHeight - yTop,
-    size: 9.0,
+    size: 8.5,
     font: fontRegular,
     color: rgb(0.12, 0.12, 0.12),
   });
 
-  const signLineY = pageHeight - yTop - 60.0;
-  const colSignW = 215.0;
+  const signLineY = pageHeight - yTop - 46.0;
+  const colSignW = 210.0;
 
-  // 1. Assinatura da Corretora (Esquerda)
-  const leftX = 50.0;
+  // 1. Assinatura da Corretora (Esquerda) - com Âncora ZapSign
+  const leftX = 40.0;
+
+  // Âncora textual em tom quase invisível para a ZapSign identificar o signatário 1 (Corretora)
+  page.drawText('{{assinatura_corretora}}', {
+    x: leftX + 15.0,
+    y: signLineY + 6.0,
+    size: 7.0,
+    font: fontRegular,
+    color: rgb(0.98, 0.98, 0.98),
+  });
+
   page.drawLine({
     start: { x: leftX, y: signLineY },
     end: { x: leftX + colSignW, y: signLineY },
@@ -748,27 +734,37 @@ function drawAssinaturas(
   });
 
   const corNameSanitized = sanitizeForPdf(corretoraNome);
-  const corNameW = fontBold.widthOfTextAtSize(corNameSanitized, 8.5);
+  const corNameW = fontBold.widthOfTextAtSize(corNameSanitized, 8.2);
   page.drawText(corNameSanitized, {
     x: leftX + Math.max(0, (colSignW - corNameW) / 2),
-    y: signLineY - 13.0,
-    size: 8.5,
+    y: signLineY - 12.0,
+    size: 8.2,
     font: fontBold,
     color: rgb(0.1, 0.1, 0.1),
   });
 
-  const lblCor = 'Corretora Intermediadora';
+  const lblCor = 'Corretora';
   const lblCorW = fontRegular.widthOfTextAtSize(lblCor, 8.0);
   page.drawText(lblCor, {
     x: leftX + (colSignW - lblCorW) / 2,
-    y: signLineY - 24.0,
+    y: signLineY - 23.0,
     size: 8.0,
     font: fontRegular,
     color: rgb(0.3, 0.3, 0.3),
   });
 
   // 2. Assinatura do Proponente (Direita) - com Âncora ZapSign
-  const rightX = pageWidth - 50.0 - colSignW;
+  const rightX = pageWidth - 40.0 - colSignW;
+
+  // Âncora textual em tom quase invisível para o ZapSign (signatário 2: Proponente)
+  page.drawText('{{assinatura_proponente}}', {
+    x: rightX + 15.0,
+    y: signLineY + 6.0,
+    size: 7.0,
+    font: fontRegular,
+    color: rgb(0.98, 0.98, 0.98),
+  });
+
   page.drawLine({
     start: { x: rightX, y: signLineY },
     end: { x: rightX + colSignW, y: signLineY },
@@ -776,30 +772,21 @@ function drawAssinaturas(
     color: rgb(0.1, 0.1, 0.1),
   });
 
-  // Âncora textual quase invisível para o ZapSign posicionar a assinatura eletrônica
-  page.drawText('{{ASSINATURA_SEGURADO}}', {
-    x: rightX + 10.0,
-    y: signLineY + 6.0,
-    size: 8.0,
-    font: fontRegular,
-    color: rgb(0.98, 0.98, 0.98),
-  });
-
   const propNameSanitized = sanitizeForPdf(proponenteNome);
-  const propNameW = fontBold.widthOfTextAtSize(propNameSanitized, 8.5);
+  const propNameW = fontBold.widthOfTextAtSize(propNameSanitized, 8.2);
   page.drawText(propNameSanitized, {
     x: rightX + Math.max(0, (colSignW - propNameW) / 2),
-    y: signLineY - 13.0,
-    size: 8.5,
+    y: signLineY - 12.0,
+    size: 8.2,
     font: fontBold,
     color: rgb(0.1, 0.1, 0.1),
   });
 
-  const lblProp = 'Proponente / Segurado';
+  const lblProp = 'Proponente';
   const lblPropW = fontRegular.widthOfTextAtSize(lblProp, 8.0);
   page.drawText(lblProp, {
     x: rightX + (colSignW - lblPropW) / 2,
-    y: signLineY - 24.0,
+    y: signLineY - 23.0,
     size: 8.0,
     font: fontRegular,
     color: rgb(0.3, 0.3, 0.3),
@@ -831,7 +818,7 @@ function drawSeguroAnterior(
   const colW = w / 2;
   const labelW = 110.0;
   const valW = colW - labelW;
-  const rowH = 18.0;
+  const rowH = 16.0;
 
   // Linha 1: Seguradora & Limites Segurados
   drawCell(page, pageHeight, { x, y: currY, w: labelW, h: rowH, text: 'Seguradora:', font: fontBold, fontSize: 7.8, bgColor: colorGrayHeader, borderColor: colorBorder });
@@ -841,17 +828,17 @@ function drawSeguroAnterior(
   currY += rowH;
 
   // Linha 2: Vigência apólice atual & Data de retroatividade
-  drawCell(page, pageHeight, { x, y: currY, w: labelW, h: rowH, text: 'Vigência Apólice Atual:', font: fontBold, fontSize: 7.8, bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page, pageHeight, { x, y: currY, w: labelW, h: rowH, text: 'Vigência apólice atual:', font: fontBold, fontSize: 7.8, bgColor: colorGrayHeader, borderColor: colorBorder });
   drawCell(page, pageHeight, { x: x + labelW, y: currY, w: valW, h: rowH, text: data.vigencia, font: fontRegular, fontSize: 7.8, bgColor: colorWhite, borderColor: colorBorder });
-  drawCell(page, pageHeight, { x: x + colW, y: currY, w: labelW, h: rowH, text: 'Data de Retroatividade:', font: fontBold, fontSize: 7.8, bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page, pageHeight, { x: x + colW, y: currY, w: labelW, h: rowH, text: 'Data de retroatividade:', font: fontBold, fontSize: 7.8, bgColor: colorGrayHeader, borderColor: colorBorder });
   drawCell(page, pageHeight, { x: x + colW + labelW, y: currY, w: valW, h: rowH, text: data.dataRetroativa, font: fontRegular, fontSize: 7.8, bgColor: colorWhite, borderColor: colorBorder });
   currY += rowH;
 
-  return currY + 12.0;
+  return currY + 6.0;
 }
 
 // =========================================================================
-// RENDERIZADOR 1: PROPOSTA RC ADVOGADO FACILITIES - SITE RC - 100k (2 PÁGINAS)
+// RENDERIZADOR 1: PROPOSTA RC ADVOGADO FACILITIES - SITE RC - 100k (1 PÁGINA)
 // =========================================================================
 function renderProposta100kNovo(
   pdfDoc: PDFDocument,
@@ -875,51 +862,47 @@ function renderProposta100kNovo(
   const contentX = 40.0;
   const contentW = pageWidth - 80.0; // 515.28 pt
 
-  // --- PÁGINA 1 ---
-  const page1 = pdfDoc.addPage([pageWidth, pageHeight]);
-  renderTimbradoHeaderAndFooter(page1, pageWidth, pageHeight, assets, params.corretora, fontRegular, fontBold);
+  // --- PÁGINA ÚNICA (1 PÁGINA) ---
+  const page = pdfDoc.addPage([pageWidth, pageHeight]);
+  renderTimbradoHeaderAndFooter(page, pageWidth, pageHeight, assets, params.corretora, fontRegular, fontBold);
 
-  let y = 88.0;
-  y = drawTitleBlock(page1, pageWidth, pageHeight, y, fontRegular, fontBold);
-  y = drawSectionHeader(page1, pageHeight, contentX, y, contentW, 'PROPONENTE', fontBold, colorGrayHeader, colorBorder);
-  y = drawProponenteBlock(page1, pageHeight, contentX, y, contentW, params.proponenteData, fontRegular, fontBold, colorGrayHeader, colorWhite, colorBorder);
+  let y = 86.0;
+  y = drawTitleBlock(page, pageWidth, pageHeight, y, fontRegular, fontBold);
+  y = drawSectionHeader(page, pageHeight, contentX, y, contentW, 'PROPONENTE', fontBold, colorGrayHeader, colorBorder);
+  y = drawProponenteBlock(page, pageHeight, contentX, y, contentW, params.proponenteData, fontRegular, fontBold, colorGrayHeader, colorWhite, colorBorder);
 
-  y += 10.0;
-  y = drawSectionHeader(page1, pageHeight, contentX, y, contentW, 'DECLARAÇÃO DO PROPONENTE', fontBold, colorGrayHeader, colorBorder);
+  y += 6.0;
+  y = drawSectionHeader(page, pageHeight, contentX, y, contentW, 'DECLARAÇÃO DO PROPONENTE', fontBold, colorGrayHeader, colorBorder);
 
   const textoDeclaracao100k =
-    'O Proponente, ao optar pelo pagamento do prêmio do seguro especificado na presente proposta, declara estar ciente das condições gerais do produto, do limite de indenização representado pela "importância segurada" e do valor da franquia aplicável por evento reclamado. Declara, ainda, estar ciente que a Cobertura da Apólice é à base de Reclamações com Notificação. Declara, por fim, sua concordância que o seu Certificado de participação na apólice estipulada pela DUOLIFE PLATAFORMA DE NEGÓCIOS seja emitido unicamente na forma digital que será disponibilizado para acesso imediato após a sua emissão.';
+    'O Proponente, ao optar pelo pagamento do prêmio do seguro especificado na presente proposta, declara estar ciente das condições gerais do produto, do limite de indenização representado pela "importância segurada" e do valor da franquia aplicável por evento reclamado. Declara, ainda, estar ciente que a Cobertura da Apólice é à base de Reclamações com Notificação. Declara, por fim, sua concordância que o seu Certificado de participação na apólice estipulada pela DUOLIFE PLATAFORMA DE NEGÓCIOS seja emitido unicamente na forma digital que será disponibilizado para acesso após a sua emissão.';
 
-  drawTextCard(
-    page1,
+  y = drawTextCard(
+    page,
     pageHeight,
     contentX,
     y,
     contentW,
-    115.0,
+    66.0,
     textoDeclaracao100k,
     fontRegular,
-    8.2,
-    13.0,
+    7.6,
+    11.2,
     colorWhite,
     colorBorder,
     rgb(0.12, 0.12, 0.12)
   );
 
-  // --- PÁGINA 2 ---
-  const page2 = pdfDoc.addPage([pageWidth, pageHeight]);
-  renderTimbradoHeaderAndFooter(page2, pageWidth, pageHeight, assets, params.corretora, fontRegular, fontBold);
+  y += 6.0;
+  y = drawSectionHeader(page, pageHeight, contentX, y, contentW, 'CONDIÇÕES DE COMERCIALIZAÇÃO', fontBold, colorGrayHeader, colorBorder);
+  y = drawCondicoesComercializacao(page, pageHeight, contentX, y, contentW, params.condicoes, fontRegular, fontBold, colorGrayHeader, colorWhite, colorBorder);
 
-  let y2 = 95.0;
-  y2 = drawSectionHeader(page2, pageHeight, contentX, y2, contentW, 'CONDIÇÕES DE COMERCIALIZAÇÃO', fontBold, colorGrayHeader, colorBorder);
-  y2 = drawCondicoesComercializacao(page2, pageHeight, contentX, y2, contentW, params.condicoes, fontRegular, fontBold, colorGrayHeader, colorWhite, colorBorder);
-
-  y2 += 40.0;
+  y += 18.0;
   drawAssinaturas(
-    page2,
+    page,
     pageWidth,
     pageHeight,
-    y2,
+    y,
     params.condicoes.corretora,
     params.proponenteData.nome,
     params.cidadeDataStr,
@@ -929,7 +912,7 @@ function renderProposta100kNovo(
 }
 
 // =========================================================================
-// RENDERIZADOR 2: PROPOSTA RC ADVOGADO FACILITIES - SITE RC - 100k RENOVACAO (2 PÁGINAS)
+// RENDERIZADOR 2: PROPOSTA RC ADVOGADO FACILITIES - SITE RC - 100k RENOVACAO (1 PÁGINA)
 // =========================================================================
 function renderProposta100kRenovacao(
   pdfDoc: PDFDocument,
@@ -952,55 +935,53 @@ function renderProposta100kRenovacao(
   colorBorder: Color
 ) {
   const contentX = 40.0;
-  const contentW = pageWidth - 80.0;
+  const contentW = pageWidth - 80.0; // 515.28 pt
 
-  // --- PÁGINA 1 ---
-  const page1 = pdfDoc.addPage([pageWidth, pageHeight]);
-  renderTimbradoHeaderAndFooter(page1, pageWidth, pageHeight, assets, params.corretora, fontRegular, fontBold);
+  // --- PÁGINA ÚNICA (1 PÁGINA) ---
+  const page = pdfDoc.addPage([pageWidth, pageHeight]);
+  renderTimbradoHeaderAndFooter(page, pageWidth, pageHeight, assets, params.corretora, fontRegular, fontBold);
 
-  let y = 88.0;
-  y = drawTitleBlock(page1, pageWidth, pageHeight, y, fontRegular, fontBold);
-  y = drawSectionHeader(page1, pageHeight, contentX, y, contentW, 'PROPONENTE', fontBold, colorGrayHeader, colorBorder);
-  y = drawProponenteBlock(page1, pageHeight, contentX, y, contentW, params.proponenteData, fontRegular, fontBold, colorGrayHeader, colorWhite, colorBorder);
+  let y = 86.0;
+  y = drawTitleBlock(page, pageWidth, pageHeight, y, fontRegular, fontBold);
+  y = drawSectionHeader(page, pageHeight, contentX, y, contentW, 'PROPONENTE', fontBold, colorGrayHeader, colorBorder);
+  y = drawProponenteBlock(page, pageHeight, contentX, y, contentW, params.proponenteData, fontRegular, fontBold, colorGrayHeader, colorWhite, colorBorder);
 
-  y = drawSectionHeader(page1, pageHeight, contentX, y, contentW, 'SOBRE RESPONSABILIDADE CIVIL NOS ÚLTIMOS 2 ANOS', fontBold, colorGrayHeader, colorBorder);
-  drawSeguroAnterior(page1, pageHeight, contentX, y, contentW, params.seguroAnterior, fontRegular, fontBold, colorGrayHeader, colorWhite, colorBorder);
+  y += 4.0;
+  y = drawSectionHeader(page, pageHeight, contentX, y, contentW, 'INFORMAÇÕES DO SEGURO DE RESPONSABILIDADE CIVIL ANTERIOR', fontBold, colorGrayHeader, colorBorder);
+  y = drawSeguroAnterior(page, pageHeight, contentX, y, contentW, params.seguroAnterior, fontRegular, fontBold, colorGrayHeader, colorWhite, colorBorder);
 
-  // --- PÁGINA 2 ---
-  const page2 = pdfDoc.addPage([pageWidth, pageHeight]);
-  renderTimbradoHeaderAndFooter(page2, pageWidth, pageHeight, assets, params.corretora, fontRegular, fontBold);
-
-  let y2 = 95.0;
-  y2 = drawSectionHeader(page2, pageHeight, contentX, y2, contentW, 'DECLARAÇÃO DO PROPONENTE', fontBold, colorGrayHeader, colorBorder);
+  y += 4.0;
+  y = drawSectionHeader(page, pageHeight, contentX, y, contentW, 'DECLARAÇÃO DO PROPONENTE', fontBold, colorGrayHeader, colorBorder);
 
   const textoDeclaracao100k =
     'O Proponente, ao optar pelo pagamento do prêmio do seguro especificado na presente proposta, declara estar ciente das condições gerais do produto, do limite de indenização representado pela "importância segurada" e do valor da franquia aplicável por evento reclamado. Declara, ainda, estar ciente que a Cobertura da Apólice é à base de Reclamações com Notificação. Declara, por fim, sua concordância que o seu Certificado de participação na apólice estipulada pela DUOLIFE PLATAFORMA DE NEGÓCIOS seja emitido unicamente na forma digital que será disponibilizado para acesso após a sua emissão.';
 
-  y2 = drawTextCard(
-    page2,
+  y = drawTextCard(
+    page,
     pageHeight,
     contentX,
-    y2,
+    y,
     contentW,
-    115.0,
+    64.0,
     textoDeclaracao100k,
     fontRegular,
-    8.2,
-    13.0,
+    7.5,
+    11.0,
     colorWhite,
     colorBorder,
     rgb(0.12, 0.12, 0.12)
   );
 
-  y2 = drawSectionHeader(page2, pageHeight, contentX, y2, contentW, 'CONDIÇÕES DE COMERCIALIZAÇÃO', fontBold, colorGrayHeader, colorBorder);
-  y2 = drawCondicoesComercializacao(page2, pageHeight, contentX, y2, contentW, params.condicoes, fontRegular, fontBold, colorGrayHeader, colorWhite, colorBorder);
+  y += 4.0;
+  y = drawSectionHeader(page, pageHeight, contentX, y, contentW, 'CONDIÇÕES DE COMERCIALIZAÇÃO', fontBold, colorGrayHeader, colorBorder);
+  y = drawCondicoesComercializacao(page, pageHeight, contentX, y, contentW, params.condicoes, fontRegular, fontBold, colorGrayHeader, colorWhite, colorBorder);
 
-  y2 += 30.0;
+  y += 16.0;
   drawAssinaturas(
-    page2,
+    page,
     pageWidth,
     pageHeight,
-    y2,
+    y,
     params.condicoes.corretora,
     params.proponenteData.nome,
     params.cidadeDataStr,
@@ -1010,7 +991,7 @@ function renderProposta100kRenovacao(
 }
 
 // =========================================================================
-// RENDERIZADOR 3: PROPOSTA RC ADVOGADO FACILITIES - SITE RC - OFICIAL (4 PÁGINAS)
+// RENDERIZADOR 3: PROPOSTA RC ADVOGADO FACILITIES - SITE RC - OFICIAL (2 PÁGINAS)
 // Para 300K, 500K, 1MI, 1.5MI, 2MI, 3MI ou superior
 // =========================================================================
 function renderPropostaOficial(
@@ -1058,138 +1039,113 @@ function renderPropostaOficial(
   colorBorder: Color
 ) {
   const contentX = 40.0;
-  const contentW = pageWidth - 80.0;
+  const contentW = pageWidth - 80.0; // 515.28 pt
 
-  // --- PÁGINA 1: Título, Proponente e Informações Profissionais ---
+  // =======================================================================
+  // --- PÁGINA 1: PROPONENTE, INFORMAÇÕES PROFISSIONAIS, ATUAÇÕES, PPE ---
+  // =======================================================================
   const page1 = pdfDoc.addPage([pageWidth, pageHeight]);
   renderTimbradoHeaderAndFooter(page1, pageWidth, pageHeight, assets, params.corretora, fontRegular, fontBold);
 
-  let y1 = 88.0;
+  let y1 = 86.0;
   y1 = drawTitleBlock(page1, pageWidth, pageHeight, y1, fontRegular, fontBold);
   y1 = drawSectionHeader(page1, pageHeight, contentX, y1, contentW, 'PROPONENTE', fontBold, colorGrayHeader, colorBorder);
   y1 = drawProponenteBlock(page1, pageHeight, contentX, y1, contentW, params.proponenteData, fontRegular, fontBold, colorGrayHeader, colorWhite, colorBorder);
 
+  y1 += 4.0;
   y1 = drawSectionHeader(page1, pageHeight, contentX, y1, contentW, 'INFORMAÇÕES PROFISSIONAIS', fontBold, colorGrayHeader, colorBorder);
 
-  // Pergunta 1: Escritório
+  // Pergunta 1: Escritório associado
+  const profLabelW = 230.0;
+  const profValW = contentW - profLabelW;
+  const profRowH = 15.5;
+
   drawCell(page1, pageHeight, {
     x: contentX,
     y: y1,
-    w: contentW,
-    h: 17.0,
-    text: 'O profissional é associado a algum escritório? Caso positivo, informar detalhes:',
+    w: profLabelW,
+    h: profRowH,
+    text: 'O profissional é associado a algum escritório?',
     font: fontBold,
     fontSize: 7.7,
     bgColor: colorGrayHeader,
     borderColor: colorBorder,
   });
   drawCell(page1, pageHeight, {
-    x: contentX,
-    y: y1 + 17.0,
-    w: contentW,
-    h: 19.0,
+    x: contentX + profLabelW,
+    y: y1,
+    w: profValW,
+    h: profRowH,
     text: params.infoProfissional.escritorio,
     font: fontRegular,
     fontSize: 7.7,
     bgColor: colorWhite,
     borderColor: colorBorder,
   });
-  y1 += 41.0;
+  y1 += profRowH;
 
-  // Pergunta 2: Titularidade
+  // Linha 2: Faturamento Antes
   drawCell(page1, pageHeight, {
     x: contentX,
     y: y1,
-    w: contentW,
-    h: 17.0,
-    text: 'O profissional possui algum tipo de titularidade tais como, pós-graduação, mestrado, doutorado e/ou similares?',
-    font: fontBold,
-    fontSize: 7.7,
-    bgColor: colorGrayHeader,
-    borderColor: colorBorder,
-  });
-  drawCell(page1, pageHeight, {
-    x: contentX,
-    y: y1 + 17.0,
-    w: contentW,
-    h: 19.0,
-    text: params.infoProfissional.titularidade,
-    font: fontRegular,
-    fontSize: 7.7,
-    bgColor: colorWhite,
-    borderColor: colorBorder,
-  });
-  y1 += 41.0;
-
-  // Linha: Faturamento Antes
-  const fatLabelW = 240.0;
-  drawCell(page1, pageHeight, {
-    x: contentX,
-    y: y1,
-    w: fatLabelW,
-    h: 20.0,
+    w: profLabelW,
+    h: profRowH,
     text: 'Faturamento Bruto referente aos últimos 12 meses:',
     font: fontBold,
-    fontSize: 7.8,
+    fontSize: 7.7,
     bgColor: colorGrayHeader,
     borderColor: colorBorder,
   });
   drawCell(page1, pageHeight, {
-    x: contentX + fatLabelW,
+    x: contentX + profLabelW,
     y: y1,
-    w: contentW - fatLabelW,
-    h: 20.0,
+    w: profValW,
+    h: profRowH,
     text: params.infoProfissional.faturamentoAntes,
     font: fontRegular,
-    fontSize: 7.8,
+    fontSize: 7.7,
     bgColor: colorWhite,
     borderColor: colorBorder,
   });
+  y1 += profRowH;
 
-  // --- PÁGINA 2: Faturamento Estimado, Áreas de Atuação e PPE ---
-  const page2 = pdfDoc.addPage([pageWidth, pageHeight]);
-  renderTimbradoHeaderAndFooter(page2, pageWidth, pageHeight, assets, params.corretora, fontRegular, fontBold);
-
-  let y2 = 88.0;
-
-  // Linha: Faturamento Depois
-  drawCell(page2, pageHeight, {
+  // Linha 3: Faturamento Depois
+  drawCell(page1, pageHeight, {
     x: contentX,
-    y: y2,
-    w: fatLabelW,
-    h: 20.0,
+    y: y1,
+    w: profLabelW,
+    h: profRowH,
     text: 'Faturamento Bruto Estimado nos próximos 12 meses:',
     font: fontBold,
-    fontSize: 7.8,
+    fontSize: 7.7,
     bgColor: colorGrayHeader,
     borderColor: colorBorder,
   });
-  drawCell(page2, pageHeight, {
-    x: contentX + fatLabelW,
-    y: y2,
-    w: contentW - fatLabelW,
-    h: 20.0,
+  drawCell(page1, pageHeight, {
+    x: contentX + profLabelW,
+    y: y1,
+    w: profValW,
+    h: profRowH,
     text: params.infoProfissional.faturamentoDepois,
     font: fontRegular,
-    fontSize: 7.8,
+    fontSize: 7.7,
     bgColor: colorWhite,
     borderColor: colorBorder,
   });
-  y2 += 28.0;
+  y1 += profRowH + 6.0;
 
   // Áreas de Atuação
-  y2 = drawSectionHeader(page2, pageHeight, contentX, y2, contentW, 'ÁREAS DE ATUAÇÃO PROFISSIONAL', fontBold, colorGrayHeader, colorBorder);
+  y1 = drawSectionHeader(page1, pageHeight, contentX, y1, contentW, 'ATUAÇÕES PROFISSIONAIS', fontBold, colorGrayHeader, colorBorder);
 
-  page2.drawText('Favor indicar à atuação do Profissional nas áreas abaixo:', {
+  page1.drawText('Favor indicar à atuação do Profissional nas áreas abaixo:', {
     x: contentX + 4.0,
-    y: pageHeight - y2 - 10.0,
-    size: 8.2,
+    y: pageHeight - y1 - 9.0,
+    size: 7.8,
     font: fontBold,
     color: rgb(0.15, 0.15, 0.15),
   });
-  y2 += 18.0;
+  y1 += 14.0;
 
-  // 12 áreas em grid de 3 colunas x 4 linhas
   const areasConfig = [
     { key: 'civil', label: 'Civil' },
     { key: 'direitoInternacional', label: 'Direito Internacional' },
@@ -1206,50 +1162,50 @@ function renderPropostaOficial(
   ];
 
   const gridColW = contentW / 3;
-  const gridRowH = 18.0;
+  const gridRowH = 14.5;
 
   for (let row = 0; row < 4; row++) {
     for (let col = 0; col < 3; col++) {
       const idx = row * 3 + col;
       const area = areasConfig[idx];
       const isChecked = params.areasAtuacao.includes(area.key);
-      const mark = isChecked ? '[X]' : '[  ]';
+      const mark = isChecked ? '(X)' : '(  )';
       const cellText = `${mark}  ${area.label}`;
 
-      drawCell(page2, pageHeight, {
+      drawCell(page1, pageHeight, {
         x: contentX + col * gridColW,
-        y: y2,
+        y: y1,
         w: gridColW,
         h: gridRowH,
         text: cellText,
         font: isChecked ? fontBold : fontRegular,
-        fontSize: 7.8,
+        fontSize: 7.7,
         bgColor: isChecked ? rgb(0.94, 0.97, 0.98) : colorWhite,
         borderColor: colorBorder,
-        paddingX: 8,
+        paddingX: 6,
       });
     }
-    y2 += gridRowH;
+    y1 += gridRowH;
   }
-  y2 += 12.0;
+  y1 += 6.0;
 
   // PPE - Pessoa Politicamente Exposta
-  y2 = drawSectionHeader(page2, pageHeight, contentX, y2, contentW, 'PPE – PESSOA POLITICAMENTE EXPOSTA', fontBold, colorGrayHeader, colorBorder);
+  y1 = drawSectionHeader(page1, pageHeight, contentX, y1, contentW, 'PPE – PESSOA POLITICAMENTE EXPOSTA', fontBold, colorGrayHeader, colorBorder);
 
   const textoSusepPpe =
     'Conforme o Art. 4º da Circular SUSEP 612/20, consideram-se expostas politicamente as pessoas naturais que ocupem ou tenham ocupado, nos 5 (cinco) anos anteriores, empregos ou funções públicas relevantes, assim como funções relevantes em organizações internacionais, para fins de classificação, conforme o Art. 23, também serão consideradas expostas politicamente os representantes legais, familiares ou estreitos colaboradores dessas pessoas.';
 
-  y2 = drawTextCard(
-    page2,
+  y1 = drawTextCard(
+    page1,
     pageHeight,
     contentX,
-    y2,
+    y1,
     contentW,
-    58.0,
+    44.0,
     textoSusepPpe,
     fontRegular,
-    7.0,
-    10.5,
+    6.8,
+    9.5,
     rgb(0.97, 0.97, 0.97),
     colorBorder,
     rgb(0.2, 0.2, 0.2)
@@ -1257,83 +1213,83 @@ function renderPropostaOficial(
 
   // Perguntas PPE (2 colunas)
   const ppeColW = contentW / 2;
-  const ppeHeaderH = 36.0;
-  const ppeValH = 18.0;
+  const ppeHeaderH = 24.0;
+  const ppeValH = 15.0;
 
   // Coluna 1
-  drawCell(page2, pageHeight, {
+  drawCell(page1, pageHeight, {
     x: contentX,
-    y: y2,
+    y: y1,
     w: ppeColW,
     h: ppeHeaderH,
     text: 'Desempenha ou já desempenhou algum dos cargos relacionados a PPE, nos últimos 5 anos?',
     font: fontBold,
-    fontSize: 7.0,
-    lineHeight: 8.8,
+    fontSize: 6.9,
+    lineHeight: 8.5,
     paddingX: 6,
-    paddingY: 4,
+    paddingY: 3,
     bgColor: colorGrayHeader,
     borderColor: colorBorder,
   });
-  drawCell(page2, pageHeight, {
+  drawCell(page1, pageHeight, {
     x: contentX,
-    y: y2 + ppeHeaderH,
+    y: y1 + ppeHeaderH,
     w: ppeColW,
     h: ppeValH,
     text: params.ppe.ppeCargos,
     font: fontRegular,
-    fontSize: 7.8,
+    fontSize: 7.6,
     bgColor: colorWhite,
     borderColor: colorBorder,
     align: 'center',
   });
 
   // Coluna 2
-  drawCell(page2, pageHeight, {
+  drawCell(page1, pageHeight, {
     x: contentX + ppeColW,
-    y: y2,
+    y: y1,
     w: ppeColW,
     h: ppeHeaderH,
     text: 'É representante legal, familiar ou estreito colaborador de ocupante de algum cargo relacionado a PPE, nos últimos 5 anos?',
     font: fontBold,
-    fontSize: 7.0,
-    lineHeight: 8.8,
+    fontSize: 6.9,
+    lineHeight: 8.5,
     paddingX: 6,
-    paddingY: 4,
+    paddingY: 3,
     bgColor: colorGrayHeader,
     borderColor: colorBorder,
   });
-  drawCell(page2, pageHeight, {
+  drawCell(page1, pageHeight, {
     x: contentX + ppeColW,
-    y: y2 + ppeHeaderH,
+    y: y1 + ppeHeaderH,
     w: ppeColW,
     h: ppeValH,
     text: params.ppe.ppeRepresenta,
     font: fontRegular,
-    fontSize: 7.8,
+    fontSize: 7.6,
     bgColor: colorWhite,
     borderColor: colorBorder,
     align: 'center',
   });
-  y2 += ppeHeaderH + ppeValH + 6.0;
+  y1 += ppeHeaderH + ppeValH + 4.0;
 
   // Cargos PPE selecionados
-  drawCell(page2, pageHeight, {
+  drawCell(page1, pageHeight, {
     x: contentX,
-    y: y2,
-    w: 140.0,
-    h: 20.0,
+    y: y1,
+    w: 130.0,
+    h: 16.0,
     text: 'Cargos PPE selecionados:',
     font: fontBold,
     fontSize: 7.7,
     bgColor: colorGrayHeader,
     borderColor: colorBorder,
   });
-  drawCell(page2, pageHeight, {
-    x: contentX + 140.0,
-    y: y2,
-    w: contentW - 140.0,
-    h: 20.0,
+  drawCell(page1, pageHeight, {
+    x: contentX + 130.0,
+    y: y1,
+    w: contentW - 130.0,
+    h: 16.0,
     text: params.ppe.ppeCargoSelect,
     font: fontRegular,
     fontSize: 7.7,
@@ -1341,305 +1297,214 @@ function renderPropostaOficial(
     borderColor: colorBorder,
   });
 
-  // --- PÁGINA 3: Seguro Anterior nos últimos 2 anos e Histórico de Reclamações ---
-  const page3 = pdfDoc.addPage([pageWidth, pageHeight]);
-  renderTimbradoHeaderAndFooter(page3, pageWidth, pageHeight, assets, params.corretora, fontRegular, fontBold);
+  // =======================================================================
+  // --- PÁGINA 2: SEGURO ANTERIOR, HISTÓRICO, DECLARAÇÃO, CONDIÇÕES, ASSINATURAS ---
+  // =======================================================================
+  const page2 = pdfDoc.addPage([pageWidth, pageHeight]);
+  renderTimbradoHeaderAndFooter(page2, pageWidth, pageHeight, assets, params.corretora, fontRegular, fontBold);
 
-  let y3 = 88.0;
-  y3 = drawSectionHeader(page3, pageHeight, contentX, y3, contentW, 'SOBRE RESPONSABILIDADE CIVIL NOS ÚLTIMOS 2 ANOS', fontBold, colorGrayHeader, colorBorder);
-  y3 = drawSeguroAnterior(page3, pageHeight, contentX, y3, contentW, params.seguroAnterior, fontRegular, fontBold, colorGrayHeader, colorWhite, colorBorder);
+  let y2 = 86.0;
+  y2 = drawSectionHeader(page2, pageHeight, contentX, y2, contentW, 'INFORMAÇÕES DO SEGURO DE RESPONSABILIDADE CIVIL ANTERIOR', fontBold, colorGrayHeader, colorBorder);
+  y2 = drawSeguroAnterior(page2, pageHeight, contentX, y2, contentW, params.seguroAnterior, fontRegular, fontBold, colorGrayHeader, colorWhite, colorBorder);
 
   // Recusa de proposta
-  drawCell(page3, pageHeight, {
+  const recusaValW = 65.0;
+  const recusaLabelW = contentW - recusaValW;
+  drawCell(page2, pageHeight, {
     x: contentX,
-    y: y3,
-    w: contentW - 80.0,
-    h: 18.0,
+    y: y2,
+    w: recusaLabelW,
+    h: 15.5,
     text: 'Foi recusada alguma proposta para seguro semelhante feita pelo profissional?',
     font: fontBold,
-    fontSize: 7.7,
+    fontSize: 7.6,
     bgColor: colorGrayHeader,
     borderColor: colorBorder,
   });
-  drawCell(page3, pageHeight, {
-    x: contentX + contentW - 80.0,
-    y: y3,
-    w: 80.0,
-    h: 18.0,
+  drawCell(page2, pageHeight, {
+    x: contentX + recusaLabelW,
+    y: y2,
+    w: recusaValW,
+    h: 15.5,
     text: params.questionario.propostaRecusada,
     font: fontBold,
-    fontSize: 7.7,
+    fontSize: 7.6,
     bgColor: colorWhite,
     borderColor: colorBorder,
     align: 'center',
   });
-  y3 += 18.0;
+  y2 += 15.5;
 
-  drawCell(page3, pageHeight, {
-    x: contentX,
-    y: y3,
-    w: 130.0,
-    h: 18.0,
-    text: 'Se afirmativo, informar detalhes:',
-    font: fontRegular,
-    fontSize: 7.4,
-    bgColor: colorGrayHeader,
-    borderColor: colorBorder,
-  });
-  drawCell(page3, pageHeight, {
-    x: contentX + 130.0,
-    y: y3,
-    w: contentW - 130.0,
-    h: 18.0,
-    text: params.questionario.propostaDetalhe,
-    font: fontRegular,
-    fontSize: 7.4,
-    bgColor: colorWhite,
-    borderColor: colorBorder,
-  });
-  y3 += 26.0;
+  if (params.questionario.propostaRecusada === 'Sim') {
+    drawCell(page2, pageHeight, {
+      x: contentX,
+      y: y2,
+      w: 120.0,
+      h: 15.5,
+      text: 'Se afirmativo, detalhes:',
+      font: fontRegular,
+      fontSize: 7.4,
+      bgColor: colorGrayHeader,
+      borderColor: colorBorder,
+    });
+    drawCell(page2, pageHeight, {
+      x: contentX + 120.0,
+      y: y2,
+      w: contentW - 120.0,
+      h: 15.5,
+      text: params.questionario.propostaDetalhe,
+      font: fontRegular,
+      fontSize: 7.4,
+      bgColor: colorWhite,
+      borderColor: colorBorder,
+    });
+    y2 += 15.5;
+  }
+  y2 += 4.0;
 
   // Histórico de Reclamação
-  y3 = drawSectionHeader(page3, pageHeight, contentX, y3, contentW, 'INFORMAR HISTÓRICO DE RECLAMAÇÃO', fontBold, colorGrayHeader, colorBorder);
+  y2 = drawSectionHeader(page2, pageHeight, contentX, y2, contentW, 'HISTÓRICO DE RECLAMAÇÃO', fontBold, colorGrayHeader, colorBorder);
+
+  const questValW = 65.0;
+  const questLabelW = contentW - questValW;
 
   // Pergunta 1: Reclamações contra o profissional
-  drawCell(page3, pageHeight, {
+  drawCell(page2, pageHeight, {
     x: contentX,
-    y: y3,
-    w: contentW - 80.0,
-    h: 22.0,
+    y: y2,
+    w: questLabelW,
+    h: 16.0,
     text: 'Existem reclamações contra o profissional por danos causados pela prestação de seus serviços?',
     font: fontBold,
-    fontSize: 7.6,
+    fontSize: 7.4,
     bgColor: colorGrayHeader,
     borderColor: colorBorder,
   });
-  drawCell(page3, pageHeight, {
-    x: contentX + contentW - 80.0,
-    y: y3,
-    w: 80.0,
-    h: 22.0,
+  drawCell(page2, pageHeight, {
+    x: contentX + questLabelW,
+    y: y2,
+    w: questValW,
+    h: 16.0,
     text: params.questionario.reclamacaoProfissional,
     font: fontBold,
-    fontSize: 7.6,
+    fontSize: 7.4,
     bgColor: colorWhite,
     borderColor: colorBorder,
     align: 'center',
   });
-  y3 += 22.0;
-
-  drawCell(page3, pageHeight, {
-    x: contentX,
-    y: y3,
-    w: 130.0,
-    h: 18.0,
-    text: 'Se afirmativo, informar detalhes:',
-    font: fontRegular,
-    fontSize: 7.4,
-    bgColor: colorGrayHeader,
-    borderColor: colorBorder,
-  });
-  drawCell(page3, pageHeight, {
-    x: contentX + 130.0,
-    y: y3,
-    w: contentW - 130.0,
-    h: 18.0,
-    text: params.questionario.reclamacaoDetalhe,
-    font: fontRegular,
-    fontSize: 7.4,
-    bgColor: colorWhite,
-    borderColor: colorBorder,
-  });
-  y3 += 24.0;
+  y2 += 16.0;
 
   // Pergunta 2: Ação disciplinar ou investigações
-  drawCell(page3, pageHeight, {
+  drawCell(page2, pageHeight, {
     x: contentX,
-    y: y3,
-    w: contentW - 80.0,
-    h: 22.0,
-    text: 'O profissional sofreu reclamação(ões), ação disciplinar ou investigações por autoridade fiscal, conselhos (ex: OAB/TED) e instituições?',
+    y: y2,
+    w: questLabelW,
+    h: 17.0,
+    text: 'O profissional sofreu reclamação(ões), ação disciplinar ou investigações por qualquer autoridade fiscal de órgão oficial, conselhos e instituições?',
     font: fontBold,
-    fontSize: 7.4,
+    fontSize: 7.1,
     bgColor: colorGrayHeader,
     borderColor: colorBorder,
   });
-  drawCell(page3, pageHeight, {
-    x: contentX + contentW - 80.0,
-    y: y3,
-    w: 80.0,
-    h: 22.0,
+  drawCell(page2, pageHeight, {
+    x: contentX + questLabelW,
+    y: y2,
+    w: questValW,
+    h: 17.0,
     text: params.questionario.investigacaoAutoridade,
     font: fontBold,
-    fontSize: 7.6,
+    fontSize: 7.4,
     bgColor: colorWhite,
     borderColor: colorBorder,
     align: 'center',
   });
-  y3 += 22.0;
-
-  drawCell(page3, pageHeight, {
-    x: contentX,
-    y: y3,
-    w: 130.0,
-    h: 18.0,
-    text: 'Se afirmativo, informar detalhes:',
-    font: fontRegular,
-    fontSize: 7.4,
-    bgColor: colorGrayHeader,
-    borderColor: colorBorder,
-  });
-  drawCell(page3, pageHeight, {
-    x: contentX + 130.0,
-    y: y3,
-    w: contentW - 130.0,
-    h: 18.0,
-    text: params.questionario.investigacaoDetalhe,
-    font: fontRegular,
-    fontSize: 7.4,
-    bgColor: colorWhite,
-    borderColor: colorBorder,
-  });
-  y3 += 24.0;
+  y2 += 17.0;
 
   // Pergunta 3: Conhecimento de fatos ou circunstâncias
-  drawCell(page3, pageHeight, {
+  drawCell(page2, pageHeight, {
     x: contentX,
-    y: y3,
-    w: contentW - 80.0,
-    h: 22.0,
+    y: y2,
+    w: questLabelW,
+    h: 16.0,
     text: 'O profissional tem conhecimento de algum fato ou circunstância que possa gerar reclamação de terceiros?',
     font: fontBold,
-    fontSize: 7.6,
+    fontSize: 7.4,
     bgColor: colorGrayHeader,
     borderColor: colorBorder,
   });
-  drawCell(page3, pageHeight, {
-    x: contentX + contentW - 80.0,
-    y: y3,
-    w: 80.0,
-    h: 22.0,
+  drawCell(page2, pageHeight, {
+    x: contentX + questLabelW,
+    y: y2,
+    w: questValW,
+    h: 16.0,
     text: params.questionario.fatoTerceiros,
     font: fontBold,
-    fontSize: 7.6,
+    fontSize: 7.4,
     bgColor: colorWhite,
     borderColor: colorBorder,
     align: 'center',
   });
-  y3 += 22.0;
-
-  drawCell(page3, pageHeight, {
-    x: contentX,
-    y: y3,
-    w: 130.0,
-    h: 18.0,
-    text: 'Se afirmativo, informar detalhes:',
-    font: fontRegular,
-    fontSize: 7.4,
-    bgColor: colorGrayHeader,
-    borderColor: colorBorder,
-  });
-  drawCell(page3, pageHeight, {
-    x: contentX + 130.0,
-    y: y3,
-    w: contentW - 130.0,
-    h: 18.0,
-    text: params.questionario.fatoDetalhe,
-    font: fontRegular,
-    fontSize: 7.4,
-    bgColor: colorWhite,
-    borderColor: colorBorder,
-  });
-  y3 += 24.0;
+  y2 += 16.0;
 
   // Pergunta 4: Pagamento com Fundos Próprios
-  drawCell(page3, pageHeight, {
+  drawCell(page2, pageHeight, {
     x: contentX,
-    y: y3,
-    w: contentW - 80.0,
-    h: 20.0,
+    y: y2,
+    w: questLabelW,
+    h: 16.0,
     text: 'O profissional alguma vez pagou por uma reclamação com fundos próprios?',
     font: fontBold,
-    fontSize: 7.6,
+    fontSize: 7.4,
     bgColor: colorGrayHeader,
     borderColor: colorBorder,
   });
-  drawCell(page3, pageHeight, {
-    x: contentX + contentW - 80.0,
-    y: y3,
-    w: 80.0,
-    h: 20.0,
+  drawCell(page2, pageHeight, {
+    x: contentX + questLabelW,
+    y: y2,
+    w: questValW,
+    h: 16.0,
     text: params.questionario.pagouReclamacao,
     font: fontBold,
-    fontSize: 7.6,
+    fontSize: 7.4,
     bgColor: colorWhite,
     borderColor: colorBorder,
     align: 'center',
   });
-  y3 += 20.0;
+  y2 += 16.0 + 4.0;
 
-  drawCell(page3, pageHeight, {
-    x: contentX,
-    y: y3,
-    w: 130.0,
-    h: 18.0,
-    text: 'Se afirmativo, informar detalhes:',
-    font: fontRegular,
-    fontSize: 7.4,
-    bgColor: colorGrayHeader,
-    borderColor: colorBorder,
-  });
-  drawCell(page3, pageHeight, {
-    x: contentX + 130.0,
-    y: y3,
-    w: contentW - 130.0,
-    h: 18.0,
-    text: params.questionario.pagouDetalhe,
-    font: fontRegular,
-    fontSize: 7.4,
-    bgColor: colorWhite,
-    borderColor: colorBorder,
-  });
-  y3 += 24.0;
-
-  // --- PÁGINA 4: Declaração, Comercialização e Assinaturas ---
-  const page4 = pdfDoc.addPage([pageWidth, pageHeight]);
-  renderTimbradoHeaderAndFooter(page4, pageWidth, pageHeight, assets, params.corretora, fontRegular, fontBold);
-
-  let y4 = 88.0;
-
-  // Declaração de Veracidade e Risco
-  y4 = drawSectionHeader(page4, pageHeight, contentX, y4, contentW, 'DECLARAÇÃO DE VERACIDADE E RISCO', fontBold, colorGrayHeader, colorBorder);
+  // Declaração do Proponente
+  y2 = drawSectionHeader(page2, pageHeight, contentX, y2, contentW, 'DECLARAÇÃO DO PROPONENTE', fontBold, colorGrayHeader, colorBorder);
 
   const textoDeclaracaoOficial =
-    'O Proponente, declara que todas as informações aqui apresentadas são a expressão da verdade e que nenhum fato ou acontecimento que se relacione com a sua responsabilidade legal foi omitido. Declara, também, seu compromisso em informar, antes da finalização dos procedimentos para contratação da Apólice, quaisquer alterações nos dados e informações aqui expressas. Declara, ainda, estar ciente que a Cobertura da Apólice é à base de Reclamações com Notificação. Declara, por fim, sua concordância em que este Questionário sirva de base para análise e aceitação do risco de sua empresa, para fixação do Prêmio da Apólice, e que, emitida a Apólice, este Questionário passe a integrá-la como se a ela pertencesse. As Condições Gerais do seguro de Responsabilidade Civil para Advogados ora em contratação está disponível no site que originou a presente Proposta e o proponente abaixo assinado declara ter lido e aceito.';
+    'O Proponente, ao optar pelo pagamento do prêmio do seguro especificado na presente proposta, declara estar ciente das condições gerais do produto, do limite de indenização representado pela "importância segurada" e do valor da franquia aplicável por evento reclamado. Declara, ainda, estar ciente que a Cobertura da Apólice é à base de Reclamações com Notificação. Declara, por fim, sua concordância que o seu Certificado de participação na apólice estipulada pela DUOLIFE PLATAFORMA DE NEGÓCIOS seja emitido unicamente na forma digital que será disponibilizado para acesso após a sua emissão.';
 
-  y4 = drawTextCard(
-    page4,
+  y2 = drawTextCard(
+    page2,
     pageHeight,
     contentX,
-    y4,
+    y2,
     contentW,
-    110.0,
+    64.0,
     textoDeclaracaoOficial,
     fontRegular,
     7.5,
-    11.5,
+    11.0,
     colorWhite,
     colorBorder,
     rgb(0.12, 0.12, 0.12)
   );
 
+  y2 += 4.0;
   // Condições de Comercialização
-  y4 = drawSectionHeader(page4, pageHeight, contentX, y4, contentW, 'CONDIÇÕES DE COMERCIALIZAÇÃO', fontBold, colorGrayHeader, colorBorder);
-  y4 = drawCondicoesComercializacao(page4, pageHeight, contentX, y4, contentW, params.condicoes, fontRegular, fontBold, colorGrayHeader, colorWhite, colorBorder);
+  y2 = drawSectionHeader(page2, pageHeight, contentX, y2, contentW, 'CONDIÇÕES DE COMERCIALIZAÇÃO', fontBold, colorGrayHeader, colorBorder);
+  y2 = drawCondicoesComercializacao(page2, pageHeight, contentX, y2, contentW, params.condicoes, fontRegular, fontBold, colorGrayHeader, colorWhite, colorBorder);
 
-  y4 += 25.0;
+  y2 += 16.0;
   drawAssinaturas(
-    page4,
+    page2,
     pageWidth,
     pageHeight,
-    y4,
+    y2,
     params.condicoes.corretora,
     params.proponenteData.nome,
     params.cidadeDataStr,
@@ -1956,6 +1821,17 @@ export async function renderContratoPdf(params: RenderContratoPdfParams): Promis
     docName,
     tipoContrato,
     signatario: {
+      nome: cotacao.client_name,
+      email: cotacao.client_email || 'suporte@duolife.net.br',
+      phone: cotacao.client_phone || '',
+      cpfCnpj: cotacao.client_cpf_cnpj,
+    },
+    signatarioCorretora: {
+      nome: corretora.nomeFantasia || corretora.razaoSocial,
+      email: corretora.email || 'contato@net4life.com.br',
+      phone: corretora.phone,
+    },
+    signatarioProponente: {
       nome: cotacao.client_name,
       email: cotacao.client_email || 'suporte@duolife.net.br',
       phone: cotacao.client_phone || '',

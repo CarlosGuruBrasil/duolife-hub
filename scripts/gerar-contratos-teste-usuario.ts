@@ -225,9 +225,9 @@ async function main() {
 
   console.log('===============================================================');
   console.log('OS 3 CONTRATOS TESTE FORAM GERADOS COM SUCESSO NO DESKTOP:');
-  console.log(`1. 100K Novo (2 páginas): ${path100k}`);
-  console.log(`2. 100K Renovação (2 páginas): ${path100kRen}`);
-  console.log(`3. 300K Oficial (4 páginas): ${path300k}`);
+  console.log(`1. 100K Novo (1 página): ${path100k}`);
+  console.log(`2. 100K Renovação (1 página): ${path100kRen}`);
+  console.log(`3. 300K Oficial (2 páginas): ${path300k}`);
   console.log('===============================================================');
 }
 

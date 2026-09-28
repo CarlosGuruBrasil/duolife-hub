@@ -29,6 +29,15 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         c.metadata,
         c.logo_base64,
         c.logo_mime_type,
+        c.banco,
+        c.agencia,
+        c.conta,
+        c.pix_tipo_chave,
+        c.pix_chave,
+        c.contrato_social_mime_type,
+        c.contrato_social_nome_arquivo,
+        c.contrato_social_uploaded_at,
+        (c.contrato_social_base64 IS NOT NULL) AS has_contrato_social,
         c.created_at,
         c.updated_at
       FROM corretoras c
@@ -83,10 +92,18 @@ const updateCorretoraSchema = z.object({
   email: z.string().trim().email().optional(),
   phone: z.string().trim().min(8).optional(),
   status: z.enum(['active', 'pending', 'suspended']).optional(),
+  banco: z.string().trim().optional(),
+  agencia: z.string().trim().optional(),
+  conta: z.string().trim().optional(),
+  pix_tipo_chave: z.enum(['cnpj', 'cpf', 'email', 'telefone', 'aleatoria']).optional(),
+  pix_chave: z.string().trim().optional(),
   whiteLabel: z.record(z.string(), z.unknown()).optional(),
   address: z.record(z.string(), z.unknown()).optional(),
   logo_base64: z.string().nullable().optional(),
   logo_mime_type: z.string().nullable().optional(),
+  contrato_social_base64: z.string().nullable().optional(),
+  contrato_social_mime_type: z.string().nullable().optional(),
+  contrato_social_nome_arquivo: z.string().nullable().optional(),
 });
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -133,6 +150,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
     }
 
+    // Processamento de Contrato Social (limite máximo de 10MB)
+    const updateContrato = body.contrato_social_base64 !== undefined;
+    let contratoBase64: string | null = null;
+    let contratoMimeType: string | null = null;
+    let contratoNomeArquivo: string | null = null;
+
+    if (updateContrato) {
+      if (body.contrato_social_base64 && body.contrato_social_base64.trim() !== '') {
+        const cleanBase64 = body.contrato_social_base64.replace(/^data:[^;]+;base64,/, '');
+        const sizeBytes = Buffer.byteLength(cleanBase64, 'base64');
+        if (sizeBytes > 10 * 1024 * 1024) {
+          return Response.json({ error: 'O arquivo de Contrato Social excede o limite máximo permitido de 10MB' }, { status: 400 });
+        }
+        contratoBase64 = cleanBase64;
+        contratoMimeType = body.contrato_social_mime_type || (body.contrato_social_nome_arquivo?.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/pdf');
+        contratoNomeArquivo = body.contrato_social_nome_arquivo || 'contrato-social.pdf';
+      } else {
+        contratoBase64 = null;
+        contratoMimeType = null;
+        contratoNomeArquivo = null;
+      }
+    }
+
     let nextMetadata = (current.metadata as Record<string, unknown>) || {};
     if (body.whiteLabel) {
       nextMetadata = mergeWhiteLabelConfig(nextMetadata, body.whiteLabel as any);
@@ -154,13 +194,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         email = COALESCE(${body.email ? body.email.toLowerCase() : null}, email),
         phone = COALESCE(${body.phone ?? null}, phone),
         status = COALESCE(${body.status ?? null}, status),
+        banco = COALESCE(${body.banco ?? null}, banco),
+        agencia = COALESCE(${body.agencia ?? null}, agencia),
+        conta = COALESCE(${body.conta ?? null}, conta),
+        pix_tipo_chave = COALESCE(${body.pix_tipo_chave ?? null}, pix_tipo_chave),
+        pix_chave = COALESCE(${body.pix_chave ?? null}, pix_chave),
         logo_base64 = CASE WHEN ${updateLogo}::boolean THEN ${logoBase64} ELSE logo_base64 END,
         logo_mime_type = CASE WHEN ${updateLogo}::boolean THEN ${logoMimeType} ELSE logo_mime_type END,
+        contrato_social_base64 = CASE WHEN ${updateContrato}::boolean THEN ${contratoBase64} ELSE contrato_social_base64 END,
+        contrato_social_mime_type = CASE WHEN ${updateContrato}::boolean THEN ${contratoMimeType} ELSE contrato_social_mime_type END,
+        contrato_social_nome_arquivo = CASE WHEN ${updateContrato}::boolean THEN ${contratoNomeArquivo} ELSE contrato_social_nome_arquivo END,
+        contrato_social_uploaded_at = CASE WHEN ${updateContrato && contratoBase64 !== null}::boolean THEN NOW() ELSE contrato_social_uploaded_at END,
         address = ${JSON.stringify(nextAddress)}::jsonb,
         metadata = ${JSON.stringify(nextMetadata)}::jsonb,
         updated_at = NOW()
       WHERE id = ${id}
-      RETURNING id, razao_social, nome_fantasia, cnpj, susep, email, phone, status, logo_base64, logo_mime_type, metadata, updated_at
+      RETURNING
+        id, razao_social, nome_fantasia, cnpj, susep, email, phone, status,
+        logo_base64, logo_mime_type, banco, agencia, conta, pix_tipo_chave, pix_chave,
+        contrato_social_mime_type, contrato_social_nome_arquivo, contrato_social_uploaded_at,
+        (contrato_social_base64 IS NOT NULL) AS has_contrato_social,
+        metadata, updated_at
     `;
 
     logger.info({ adminId: admin.userId, corretoraId: id, updatedLogo: updateLogo }, 'admin.corretora.updated');
