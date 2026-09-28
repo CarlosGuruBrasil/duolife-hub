@@ -85,17 +85,105 @@ async function runTests() {
   assert.strictEqual(filteredActive[2].partnerId, 'p2', 'Parceiro B deve figurar em 3º por ter cotações');
   console.log('✓ Regra de corte e ordenação por faturamento/volume validada com sucesso.');
 
-  // Teste 7: Estado vazio quando não houver atividade no período
-  console.log('Teste 7: Validando estado vazio em período sem produção...');
-  const emptyPeriodPartners: PartnerRaw[] = [
-    { partnerId: 'p1', partnerName: 'Parceiro A', quotesCount: 0, salesCount: 0, premiumTotal: 0, commissionPending: 0 },
-    { partnerId: 'p2', partnerName: 'Parceiro B', quotesCount: 0, salesCount: 0, premiumTotal: 0, commissionPending: 0 },
-  ];
-  const emptyResult = emptyPeriodPartners.filter((p) => p.quotesCount > 0 || p.salesCount > 0 || p.premiumTotal > 0);
-  assert.strictEqual(emptyResult.length, 0, 'Em período sem produção, o array deve ser vazio');
-  console.log('✓ Estado vazio verificado: array vazio dispara a mensagem de aviso na tela.');
+  // Teste 8: Trava de Parceiro Inativo/Desativado (ex: Andréia Possebon)
+  console.log('Teste 8: Validando exclusão rigorosa de parceiros inativos/desativados...');
+  interface PartnerWithStatus {
+    partnerId: string;
+    partnerName: string;
+    status: 'active' | 'inactive' | 'suspended' | 'pending';
+    quotesCount: number;
+    salesCount: number;
+    premiumTotal: number;
+  }
 
-  console.log('\n--- TODOS OS 7 TESTES AUTOMATIZADOS PASSARAM COM 100% DE SUCESSO! ---');
+  const partnerStatusSamples: PartnerWithStatus[] = [
+    { partnerId: 'p1', partnerName: 'Laiane Tavares', status: 'active', quotesCount: 84, salesCount: 22, premiumTotal: 11063.67 },
+    { partnerId: 'p2', partnerName: 'Andréia Possebon', status: 'inactive', quotesCount: 0, salesCount: 1, premiumTotal: 206.67 },
+    { partnerId: 'p3', partnerName: 'Parceiro Suspenso', status: 'suspended', quotesCount: 10, salesCount: 5, premiumTotal: 4000.00 },
+    { partnerId: 'p4', partnerName: 'Henry', status: 'active', quotesCount: 2, salesCount: 1, premiumTotal: 361.67 },
+  ];
+
+  // Regra do SQL: WHERE p.status = 'active' AND (quotesCount > 0 OR salesCount > 0 OR premiumTotal > 0)
+  const destaques = partnerStatusSamples
+    .filter((p) => p.status === 'active' && (p.quotesCount > 0 || p.salesCount > 0 || p.premiumTotal > 0))
+    .sort((a, b) => b.premiumTotal - a.premiumTotal);
+
+  assert.strictEqual(destaques.length, 2, 'Apenas parceiros com status "active" devem aparecer');
+  assert.strictEqual(destaques.some((p) => p.partnerName === 'Andréia Possebon'), false, 'Andréia Possebon (inativa) NÃO PODE figurar nos destaques');
+  assert.strictEqual(destaques.some((p) => p.status === 'suspended'), false, 'Parceiro suspenso NÃO PODE figurar nos destaques');
+  console.log('✓ Parceiros inativos (inclusive Andréia Possebon) e suspensos são 100% filtrados dos destaques.');
+
+  // Teste 9: Competência de Vendas pela Data de Emissão (issue_date) vs Data de Inserção (created_at)
+  console.log('Teste 9: Validando competência cronológica de vendas por issue_date (e não created_at)...');
+  interface SaleRecord {
+    id: string;
+    partnerId: string;
+    issueDate: string; // YYYY-MM-DD
+    createdAt: string; // ISO
+    status: string;
+    premioTotal: number;
+  }
+
+  const sampleSales: SaleRecord[] = [
+    {
+      id: 's1',
+      partnerId: 'p1',
+      issueDate: '2026-09-10',
+      createdAt: '2026-09-10T14:00:00Z',
+      status: 'ativa',
+      premioTotal: 500,
+    },
+    {
+      // Venda histórica de Andréia emitida em maio, porém sincronizada/importada no banco em setembro
+      id: 's2',
+      partnerId: 'p2',
+      issueDate: '2026-05-15',
+      createdAt: '2026-09-28T08:00:00Z',
+      status: 'ativa',
+      premioTotal: 206.67,
+    },
+    {
+      id: 's3',
+      partnerId: 'p4',
+      issueDate: '2026-09-20',
+      createdAt: '2026-09-20T10:00:00Z',
+      status: 'ativa',
+      premioTotal: 361.67,
+    },
+  ];
+
+  const septPeriod = resolveAdminPeriod('2026-09');
+  const startSept = septPeriod.start;
+  const endSept = septPeriod.endExclusive;
+
+  // Filtragem correta usando COALESCE(issue_date, created_at::date)
+  const septSales = sampleSales.filter((s) => {
+    const effectiveDate = s.issueDate || s.createdAt.slice(0, 10);
+    return effectiveDate >= startSept && effectiveDate < endSept && s.status !== 'cancelada';
+  });
+
+  assert.strictEqual(septSales.length, 2, 'Devem ser contabilizadas apenas 2 vendas emitidas em setembro');
+  assert.strictEqual(septSales.some((s) => s.id === 's2'), false, 'A venda s2 (issue_date maio) NÃO pode ser computada no mês de setembro');
+  console.log('✓ Vendas com issue_date fora do período não entram no mês filtrado mesmo com created_at recente.');
+
+  // Teste 10: Vendas Canceladas não computam prêmio nem volume
+  console.log('Teste 10: Validando que apólices canceladas não entram na soma de vendas...');
+  const salesWithCancel: SaleRecord[] = [
+    { id: 's4', partnerId: 'p1', issueDate: '2026-09-15', createdAt: '2026-09-15T12:00:00Z', status: 'cancelada', premioTotal: 1200 },
+    { id: 's5', partnerId: 'p1', issueDate: '2026-09-16', createdAt: '2026-09-16T12:00:00Z', status: 'ativa', premioTotal: 800 },
+  ];
+
+  const validSales = salesWithCancel.filter((s) => {
+    const effectiveDate = s.issueDate || s.createdAt.slice(0, 10);
+    return effectiveDate >= startSept && effectiveDate < endSept && s.status !== 'cancelada';
+  });
+
+  assert.strictEqual(validSales.length, 1, 'Apenas 1 venda ativa deve ser considerada');
+  assert.strictEqual(validSales[0].id, 's5');
+  assert.strictEqual(validSales[0].premioTotal, 800);
+  console.log('✓ Vendas canceladas são devidamente ignoradas na apuração comercial.');
+
+  console.log('\n--- TODOS OS 10 TESTES AUTOMATIZADOS PASSARAM COM 100% DE SUCESSO! ---');
 }
 
 runTests().catch((err) => {

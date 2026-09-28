@@ -326,7 +326,8 @@ async function getSummary(start: string, endExclusive: string, isAll = false): P
         COUNT(*) FILTER (WHERE status = 'ativa')::int AS active_policies,
         COALESCE(SUM(premio_total), 0) AS total_premium
       FROM sales
-      WHERE (${isAll} OR (created_at >= ${start}::date AND created_at < ${endExclusive}::date))
+      WHERE status != 'cancelada'
+        AND (${isAll} OR (COALESCE(issue_date, created_at::date) >= ${start}::date AND COALESCE(issue_date, created_at::date) < ${endExclusive}::date))
     ),
     commission_summary AS (
       SELECT
@@ -448,7 +449,8 @@ export async function getAdminDashboardData(
           COALESCE(SUM(premio_total), 0) AS premium_total,
           COALESCE(SUM(commission_amount), 0) AS commission_total
         FROM sales
-        WHERE (${isAll} OR (created_at >= ${period.start}::date AND created_at < ${period.endExclusive}::date))
+        WHERE status != 'cancelada'
+          AND (${isAll} OR (COALESCE(issue_date, created_at::date) >= ${period.start}::date AND COALESCE(issue_date, created_at::date) < ${period.endExclusive}::date))
         GROUP BY product_id
       )
       SELECT
@@ -485,7 +487,8 @@ export async function getAdminDashboardData(
           COUNT(*)::int AS sales_count,
           COALESCE(SUM(premio_total), 0) AS premium_total
         FROM sales
-        WHERE (${isAll} OR (created_at >= ${period.start}::date AND created_at < ${period.endExclusive}::date))
+        WHERE status != 'cancelada'
+          AND (${isAll} OR (COALESCE(issue_date, created_at::date) >= ${period.start}::date AND COALESCE(issue_date, created_at::date) < ${period.endExclusive}::date))
         GROUP BY partner_id
       ),
       cm_agg AS (
@@ -507,7 +510,8 @@ export async function getAdminDashboardData(
       LEFT JOIN q_agg q ON q.partner_id = p.id
       LEFT JOIN s_agg s ON s.partner_id = p.id
       LEFT JOIN cm_agg cm ON cm.partner_id = p.id
-      WHERE (COALESCE(q.quotes_count, 0) > 0 OR COALESCE(s.sales_count, 0) > 0 OR COALESCE(s.premium_total, 0) > 0)
+      WHERE p.status = 'active'
+        AND (COALESCE(q.quotes_count, 0) > 0 OR COALESCE(s.sales_count, 0) > 0 OR COALESCE(s.premium_total, 0) > 0)
       ORDER BY premium_total DESC, sales_count DESC, quotes_count DESC, partner_name ASC
       LIMIT 8
     `,
@@ -531,7 +535,7 @@ export async function getAdminDashboardData(
           c.client_name AS title,
           COALESCE(s.policy_number, 'Apólice em emissão') AS subtitle,
           s.status,
-          s.created_at::text AS "createdAt",
+          COALESCE(s.issue_date::text, s.created_at::text) AS "createdAt",
           s.premio_total::numeric AS amount
         FROM sales s
         JOIN cotacoes c ON c.id = s.cotacao_id
@@ -674,7 +678,8 @@ export async function getAdminReportData(
           COUNT(*)::int AS sales_count,
           COALESCE(SUM(premio_total), 0) AS premium_total
         FROM sales
-        WHERE (${isAll} OR (created_at >= ${period.start}::date AND created_at < ${period.endExclusive}::date))
+        WHERE status != 'cancelada'
+          AND (${isAll} OR (COALESCE(issue_date, created_at::date) >= ${period.start}::date AND COALESCE(issue_date, created_at::date) < ${period.endExclusive}::date))
         GROUP BY partner_id
       ),
       po_agg AS (
@@ -929,7 +934,7 @@ export async function getAdminRankingData(
   >`
     SELECT id, razao_social, nome_fantasia, cnpj, cpf, person_type, status, metadata
     FROM partners
-    WHERE status != 'suspended'
+    WHERE status = 'active'
     ORDER BY razao_social ASC
   `;
 
@@ -1001,7 +1006,8 @@ export async function getAdminRankingData(
           COUNT(*)::int AS sales_count,
           COALESCE(SUM(NULLIF(regexp_replace(premio_total::text, '[^0-9.]', '', 'g'), '')::numeric), 0) AS premium_total
         FROM sales
-        WHERE (${isAll} OR (created_at >= ${period.start}::date AND created_at < ${period.endExclusive}::date))
+        WHERE status != 'cancelada'
+          AND (${isAll} OR (COALESCE(issue_date, created_at::date) >= ${period.start}::date AND COALESCE(issue_date, created_at::date) < ${period.endExclusive}::date))
         GROUP BY partner_id
       ),
       po_agg AS (
@@ -1033,7 +1039,7 @@ export async function getAdminRankingData(
       LEFT JOIN s_agg s ON s.partner_id = p.id
       LEFT JOIN po_agg po ON po.partner_id = p.id
       LEFT JOIN cm_agg cm ON cm.partner_id = p.id
-      WHERE p.status != 'suspended'
+      WHERE p.status = 'active'
     `;
 
     for (const r of duoRows) {
