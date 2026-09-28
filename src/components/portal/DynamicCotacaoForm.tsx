@@ -2004,6 +2004,81 @@ export default function DynamicCotacaoForm({
             </div>
           )}
 
+          {/* NOVO: Pergunta sobre Associação a Escritório (Todos os planos, exceto 100k) */}
+          {!isPlano100k && (
+            <div className="bg-gray-50 border border-gray-200 p-5 rounded-xl space-y-4">
+              <div>
+                <span className="field-label text-gray-900 block text-sm font-semibold">
+                  O profissional é associado a algum escritório? *
+                </span>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Esta informação constará no contrato emitido e na apólice de seguro.
+                </p>
+
+                <div className="flex items-center space-x-6 pt-3">
+                  <label className="flex items-center space-x-2.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={form.associadoEscritorio === 'Sim'}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        updateField('associadoEscritorio', checked ? 'Sim' : 'Não');
+                        if (!checked) {
+                          updateField('nomeEscritorio', '');
+                          updateField('escritorioAssociado', 'Não associado');
+                        }
+                      }}
+                      className="w-4 h-4 rounded text-primary focus:ring-primary border-gray-300 cursor-pointer"
+                    />
+                    <span className="text-sm font-medium text-gray-800">Sim</span>
+                  </label>
+
+                  <label className="flex items-center space-x-2.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={form.associadoEscritorio === 'Não'}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        updateField('associadoEscritorio', checked ? 'Não' : 'Sim');
+                        if (checked) {
+                          updateField('nomeEscritorio', '');
+                          updateField('escritorioAssociado', 'Não associado');
+                        }
+                      }}
+                      className="w-4 h-4 rounded text-primary focus:ring-primary border-gray-300 cursor-pointer"
+                    />
+                    <span className="text-sm font-medium text-gray-800">Não</span>
+                  </label>
+                </div>
+              </div>
+
+              {form.associadoEscritorio === 'Sim' && (
+                <div className="pt-3 border-t border-gray-200/80 animate-fadeIn">
+                  <label className="block">
+                    <span className="field-label text-gray-900 font-semibold block mb-1">
+                      Nome do Escritório *
+                    </span>
+                    <input
+                      type="text"
+                      required
+                      value={form.nomeEscritorio || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        updateField('nomeEscritorio', val);
+                        updateField('escritorioAssociado', val);
+                      }}
+                      placeholder="Ex: Albuquerque & Silveira Sociedade de Advogados"
+                      className="form-input"
+                    />
+                    <span className="text-[11px] text-gray-500 mt-1 block font-normal">
+                      Informe a razão social ou nome comercial do escritório parceiro ou associado.
+                    </span>
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Faturamento Anual se aplicável e não for plano 100k */}
           {!isPlano100k && resolvedRamoConfig.hasFaturamento && (
             <div className="grid gap-5 md:grid-cols-2">
