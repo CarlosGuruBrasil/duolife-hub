@@ -6,6 +6,7 @@ import { rcOdontoConfig } from './definitions/rc-odonto';
 import { rcEngenheirosConfig } from './definitions/rc-engenheiros';
 import { rcContadoresConfig } from './definitions/rc-contadores';
 import { doExecutivosConfig } from './definitions/do-executivos';
+import { validarCpf, validarCnpj } from '@/lib/documento';
 
 /**
  * Registro Central de Todos os Ramos de Seguro Suportados pelo DuoLife Hub.
@@ -216,11 +217,13 @@ function cleanDigits(val: unknown): string {
 }
 
 /**
- * Validador sintático de CPF (11 dígitos) e CNPJ (14 dígitos).
+ * Validador estrito de CPF (11 dígitos) e CNPJ (14 dígitos) com dígito verificador.
  */
-function isCleanCpfOrCnpj(val: string): boolean {
+function isValidCpfOrCnpj(val: string): boolean {
   const digits = cleanDigits(val);
-  return digits.length === 11 || digits.length === 14;
+  if (digits.length === 11) return validarCpf(digits);
+  if (digits.length === 14) return validarCnpj(digits);
+  return false;
 }
 
 /**
@@ -265,7 +268,7 @@ export function buildRamoStep2Schema(ramo: RamoConfig) {
       .string()
       .trim()
       .min(11, 'CPF ou CNPJ inválido.')
-      .refine(isCleanCpfOrCnpj, 'Formato de CPF (11 dígitos) ou CNPJ (14 dígitos) inválido.'),
+      .refine(isValidCpfOrCnpj, 'CPF ou CNPJ inválido (dígitos verificadores incorretos).'),
     email: z.string().trim().email('Informe um endereço de e-mail válido.'),
     celular: z
       .string()

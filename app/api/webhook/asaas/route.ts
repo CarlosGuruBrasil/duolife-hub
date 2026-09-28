@@ -242,7 +242,7 @@ export async function POST(req: NextRequest) {
               OR regexp_replace(c.client_cpf_cnpj, '\\D', '', 'g') = regexp_replace(${payment.cpfCnpj}, '\\D', '', 'g')
             ))
           )
-          AND c.status NOT IN ('cancelada', 'recusada', 'expirada')
+          AND c.status IN ('pagamento_gerado', 'assinado', 'contrato_gerado', 'enviada', 'rascunho')
           ORDER BY c.created_at DESC
           LIMIT 1
         `;
@@ -258,19 +258,48 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ success: true, ignored: true });
       }
 
-      // Garante que a ordem de pagamento reflita a quitação no banco local
-      await sql`
-        UPDATE payment_orders
-        SET
-          status = 'paid',
-          billing_type = COALESCE(${payment.billingType || null}, billing_type),
-          paid_installments = COALESCE(installment_count, 1),
-          paid_amount = COALESCE(amount_total, ${Number(payment.value) || 0}),
-          external_payment_id = COALESCE(external_payment_id, ${payment.id}),
-          updated_at = NOW()
-        WHERE cotacao_id = ${cotacao.id}
-          AND status != 'paid'
+      // Garante que a ordem de pagamento reflita a situação real de quitação (sem forçar quitação total em carnê parcelado)
+      const [orderSummary] = await sql<{
+        id: string;
+        installment_count: number;
+        paid_count: number;
+        paid_amount: number;
+        amount_total: number;
+      }[]>`
+        SELECT
+          po.id,
+          COALESCE(po.installment_count, 1)::int AS installment_count,
+          COUNT(pi.id) FILTER (WHERE pi.status IN ('received', 'confirmed'))::int AS paid_count,
+          COALESCE(SUM(pi.amount) FILTER (WHERE pi.status IN ('received', 'confirmed')), 0)::numeric AS paid_amount,
+          COALESCE(po.amount_total, 0)::numeric AS amount_total
+        FROM payment_orders po
+        LEFT JOIN payment_installments pi ON pi.payment_order_id = po.id
+        WHERE po.cotacao_id = ${cotacao.id}
+        GROUP BY po.id, po.installment_count, po.amount_total
+        LIMIT 1
       `;
+
+      if (orderSummary) {
+        const isInstallment = orderSummary.installment_count > 1;
+        const paidCount = Math.max(orderSummary.paid_count, 1);
+        const isFullyPaid = !isInstallment || paidCount >= orderSummary.installment_count;
+        const newOrderStatus = isFullyPaid ? 'paid' : 'partially_paid';
+        const paidAmountVal = isInstallment
+          ? (Number(orderSummary.paid_amount) || Number(payment.value) || 0)
+          : (Number(orderSummary.amount_total) || Number(payment.value) || 0);
+
+        await sql`
+          UPDATE payment_orders
+          SET
+            status = ${newOrderStatus},
+            billing_type = COALESCE(${payment.billingType || null}, billing_type),
+            paid_installments = ${isInstallment ? paidCount : 1},
+            paid_amount = ${paidAmountVal},
+            external_payment_id = COALESCE(external_payment_id, ${payment.id}),
+            updated_at = NOW()
+          WHERE id = ${orderSummary.id}
+        `;
+      }
 
       // Obtém o valor total da apólice (nunca apenas da parcela individual)
       const [orderRow] = await sql<{ amount_total: number }[]>`

@@ -12,7 +12,7 @@ export async function GET() {
   try {
     await ensureSchema();
 
-    const vendas = access.visibleUserIds === null
+    const vendas = access.isCorretoraUser
       ? await sql`
           SELECT
             s.id,
@@ -30,10 +30,32 @@ export async function GET() {
           FROM sales s
           JOIN products p ON p.id = s.product_id
           JOIN cotacoes c ON c.id = s.cotacao_id
-          WHERE s.partner_id = ${access.partnerId}
+          WHERE (s.corretora_id = ${access.corretoraId} OR s.partner_id IN (SELECT id FROM partners WHERE corretora_id = ${access.corretoraId}))
           ORDER BY s.issue_date DESC, s.created_at DESC
           LIMIT 100
         `
+      : access.visibleUserIds === null
+        ? await sql`
+            SELECT
+              s.id,
+              s.policy_number,
+              s.importancia_segurada,
+              s.premio_total,
+              s.commission_rate,
+              s.commission_amount,
+              s.status,
+              s.issue_date,
+              s.expiry_date,
+              s.created_at,
+              p.name AS product_name,
+              c.client_name
+            FROM sales s
+            JOIN products p ON p.id = s.product_id
+            JOIN cotacoes c ON c.id = s.cotacao_id
+            WHERE s.partner_id = ${access.partnerId}
+            ORDER BY s.issue_date DESC, s.created_at DESC
+            LIMIT 100
+          `
       : access.visibleUserIds.length === 0
         ? []
         : await sql`

@@ -1,10 +1,12 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { XCircle } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 
 export function RecusarCotacaoButton({ id, clientName }: { id: string; clientName: string }) {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
 
   async function handleRecusar() {
@@ -25,7 +27,7 @@ export function RecusarCotacaoButton({ id, clientName }: { id: string; clientNam
         return;
       }
       toast.success('Cotação recusada com sucesso.');
-      setTimeout(() => window.location.reload(), 1000);
+      router.refresh();
     } catch {
       toast.error('Erro de comunicação ao tentar recusar cotação');
     } finally {

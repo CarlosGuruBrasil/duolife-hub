@@ -110,8 +110,16 @@ export async function ensureSaleForPaidQuote(input: {
     `;
 
     const commissionRate = rateRow ? Number(rateRow.rate) : 0;
-    const commissionAmount = input.premioFinal * (commissionRate / 100);
+    const IOF_RATE = 0.0738;
+    const premioLiquido = input.premioFinal / (1 + IOF_RATE);
+    const commissionAmount = Number((premioLiquido * (commissionRate / 100)).toFixed(2));
     const policyNumber = `${rateRow?.policy_prefix || 'DL'}-${input.cotacaoId.slice(0, 8).toUpperCase()}`;
+
+    // Obtém corretora vinculada ao parceiro da cotação
+    const [partnerCorretora] = await tx<{ corretora_id: string | null }[]>`
+      SELECT corretora_id FROM partners WHERE id = ${input.partnerId} LIMIT 1
+    `;
+    const corretoraId = partnerCorretora?.corretora_id || null;
 
     // 4. Insere venda
     const [sale] = await tx<{ id: string }[]>`
@@ -119,6 +127,7 @@ export async function ensureSaleForPaidQuote(input: {
         cotacao_id,
         client_id,
         partner_id,
+        corretora_id,
         product_id,
         policy_number,
         importancia_segurada,
@@ -133,6 +142,7 @@ export async function ensureSaleForPaidQuote(input: {
         ${input.cotacaoId},
         ${input.clientId},
         ${input.partnerId},
+        ${corretoraId},
         ${input.productId},
         ${policyNumber},
         ${input.importanciaSegurada || 0},
@@ -152,6 +162,7 @@ export async function ensureSaleForPaidQuote(input: {
         INSERT INTO commissions (
           sale_id,
           partner_id,
+          corretora_id,
           amount,
           rate,
           status,
@@ -160,6 +171,7 @@ export async function ensureSaleForPaidQuote(input: {
         VALUES (
           ${sale.id},
           ${input.partnerId},
+          ${corretoraId},
           ${commissionAmount},
           ${commissionRate},
           'pendente',

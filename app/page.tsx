@@ -17,9 +17,10 @@ import {
   Phone,
   ShieldCheck,
   Sparkles,
+  Check,
   Star,
-  Check
 } from 'lucide-react';
+import { maskPhone } from '@/components/modals/masks';
 
 const fadeUp = {
   hidden: { opacity: 0, y: 30 },
@@ -815,7 +816,7 @@ export default function Home() {
                     <div className="grid sm:grid-cols-2 gap-4">
                       <div>
                         <label className="block text-[9px] font-black text-primary uppercase tracking-wider mb-1.5">WhatsApp *</label>
-                        <input required value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-xs text-primary placeholder-secondary/60 focus:outline-none focus:border-accent transition-colors" placeholder="(47) 99999-9999" />
+                        <input required value={form.phone} onChange={e => setForm({ ...form, phone: maskPhone(e.target.value) })} className="w-full bg-surface border border-border rounded-xl px-4 py-3 text-xs text-primary placeholder-secondary/60 focus:outline-none focus:border-accent transition-colors" placeholder="(47) 99999-9999" />
                       </div>
                       <div>
                         <label className="block text-[9px] font-black text-primary uppercase tracking-wider mb-1.5">Nome da Corretora *</label>

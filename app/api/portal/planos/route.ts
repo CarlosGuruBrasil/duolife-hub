@@ -158,7 +158,7 @@ export async function GET(req: Request) {
     return Response.json({
       ok: true,
       planos,
-      commissionRate,
+      commissionRate: publicToken ? undefined : commissionRate,
       flowKey: resolvedFlowKey,
       code: productCode,
       category: productCategory,

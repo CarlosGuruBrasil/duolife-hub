@@ -142,6 +142,8 @@ export default function ClienteSearchSelector({
       return;
     }
 
+    const controller = new AbortController();
+
     const timer = setTimeout(async () => {
       setLoading(true);
       setSearched(true);
@@ -153,7 +155,10 @@ export default function ClienteSearchSelector({
           url.searchParams.set('partnerId', adminSelectedPartnerId);
         }
 
-        const res = await fetch(url.toString(), { headers });
+        const res = await fetch(url.toString(), {
+          headers,
+          signal: controller.signal,
+        });
         const data = await res.json();
         if (data.clients) {
           setResults(data.clients);
@@ -161,7 +166,8 @@ export default function ClienteSearchSelector({
         } else {
           setResults([]);
         }
-      } catch (err) {
+      } catch (err: any) {
+        if (err?.name === 'AbortError') return;
         console.error('Erro na pesquisa de clientes:', err);
         setResults([]);
       } finally {
@@ -169,7 +175,10 @@ export default function ClienteSearchSelector({
       }
     }, 280);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [query, adminSelectedPartnerId, publicToken]);
 
   function handleSelect(c: ClienteBuscaResult) {

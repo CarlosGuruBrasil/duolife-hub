@@ -56,6 +56,7 @@ export async function criarDocumentoZapSignDireto(
         phone_country: phoneCountry,
         phone_number: phoneNumber || undefined,
         auth_mode: 'signature',
+        signature_pattern: '{{ASSINATURA_SEGURADO}}',
         send_automatic_email: false,
         send_automatic_whatsapp: false,
       },

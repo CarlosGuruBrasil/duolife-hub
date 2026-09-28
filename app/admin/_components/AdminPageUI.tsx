@@ -83,11 +83,19 @@ export function AdminCard({ children, className = '' }: { children: React.ReactN
   );
 }
 
-export function AdminTableContainer({ children }: { children: React.ReactNode }) {
+export function AdminTableContainer({
+  children,
+  minWidth = 'min-w-[850px]',
+  className = '',
+}: {
+  children: React.ReactNode;
+  minWidth?: string;
+  className?: string;
+}) {
   return (
-    <div className="card p-0 overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="w-full text-left border-collapse">
+    <div className={`card p-0 overflow-hidden ${className}`}>
+      <div className="overflow-x-auto overscroll-x-contain">
+        <table className={`w-full ${minWidth} text-left border-collapse`}>
           {children}
         </table>
       </div>

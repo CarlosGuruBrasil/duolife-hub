@@ -531,6 +531,8 @@ textarea::selection {
   padding: 0.82rem 1rem;
   transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
   width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .form-input::placeholder {

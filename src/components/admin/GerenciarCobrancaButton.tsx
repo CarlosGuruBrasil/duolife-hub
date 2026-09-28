@@ -35,9 +35,6 @@ export function GerenciarCobrancaButton({
       onSuccess();
     }
     router.refresh();
-    setTimeout(() => {
-      window.location.reload();
-    }, 600);
   }
 
   const defaultLabel =

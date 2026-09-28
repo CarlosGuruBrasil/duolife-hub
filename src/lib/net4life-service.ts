@@ -102,7 +102,7 @@ async function callNet4LifeApi<T = any>(
         port: parsed.port ? Number(parsed.port) : 443,
         path: fullPath,
         method,
-        rejectUnauthorized: false, // O servidor web do Net4Life Info não emite o certificado intermediário completo
+        rejectUnauthorized: process.env.NET4LIFE_INSECURE_SSL === 'true' ? false : true,
         headers,
         timeout: 15000,
       },

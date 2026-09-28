@@ -109,6 +109,62 @@ export async function GET(req: NextRequest) {
           LIMIT 8
         `;
       }
+    } else if (access?.isCorretoraUser) {
+      // Corretora pesquisa clientes da sua carteira e de seus parceiros vinculados
+      const corretoraId = access.corretoraId;
+      const isExactDoc = digitsOnly.length >= 11;
+
+      if (isExactDoc) {
+        clients = await sql`
+          SELECT DISTINCT ic.id, ic.document_number, ic.document_type, ic.full_name, ic.email, ic.phone, ic.birth_date, ic.metadata, ic.created_at
+          FROM insurance_clients ic
+          LEFT JOIN cotacoes c ON c.client_id = ic.id AND (c.corretora_id = ${corretoraId} OR c.partner_id IN (SELECT id FROM partners WHERE corretora_id = ${corretoraId}))
+          LEFT JOIN sales s ON s.client_id = ic.id AND (s.corretora_id = ${corretoraId} OR s.partner_id IN (SELECT id FROM partners WHERE corretora_id = ${corretoraId}))
+          WHERE (
+            c.id IS NOT NULL OR s.id IS NOT NULL OR (ic.metadata->>'corretoraId') = ${corretoraId}
+          )
+          AND ic.document_number = ${digitsOnly}
+          LIMIT 1
+        `;
+      }
+
+      if (clients.length === 0) {
+        if (digitsLike) {
+          clients = await sql`
+            SELECT DISTINCT ic.id, ic.document_number, ic.document_type, ic.full_name, ic.email, ic.phone, ic.birth_date, ic.metadata, ic.created_at
+            FROM insurance_clients ic
+            LEFT JOIN cotacoes c ON c.client_id = ic.id AND (c.corretora_id = ${corretoraId} OR c.partner_id IN (SELECT id FROM partners WHERE corretora_id = ${corretoraId}))
+            LEFT JOIN sales s ON s.client_id = ic.id AND (s.corretora_id = ${corretoraId} OR s.partner_id IN (SELECT id FROM partners WHERE corretora_id = ${corretoraId}))
+            WHERE (
+              c.id IS NOT NULL OR s.id IS NOT NULL OR (ic.metadata->>'corretoraId') = ${corretoraId}
+            )
+            AND (
+              ic.full_name ILIKE ${textLike}
+              OR ic.email ILIKE ${textLike}
+              OR ic.document_number ILIKE ${digitsLike}
+              OR ic.phone ILIKE ${digitsLike}
+            )
+            ORDER BY ic.created_at DESC
+            LIMIT 8
+          `;
+        } else {
+          clients = await sql`
+            SELECT DISTINCT ic.id, ic.document_number, ic.document_type, ic.full_name, ic.email, ic.phone, ic.birth_date, ic.metadata, ic.created_at
+            FROM insurance_clients ic
+            LEFT JOIN cotacoes c ON c.client_id = ic.id AND (c.corretora_id = ${corretoraId} OR c.partner_id IN (SELECT id FROM partners WHERE corretora_id = ${corretoraId}))
+            LEFT JOIN sales s ON s.client_id = ic.id AND (s.corretora_id = ${corretoraId} OR s.partner_id IN (SELECT id FROM partners WHERE corretora_id = ${corretoraId}))
+            WHERE (
+              c.id IS NOT NULL OR s.id IS NOT NULL OR (ic.metadata->>'corretoraId') = ${corretoraId}
+            )
+            AND (
+              ic.full_name ILIKE ${textLike}
+              OR ic.email ILIKE ${textLike}
+            )
+            ORDER BY ic.created_at DESC
+            LIMIT 8
+          `;
+        }
+      }
     } else if (access) {
       // Parceiro pesquisa exclusivamente clientes da sua carteira (isolamento multi-tenant contra IDOR / LGPD)
       const isExactDoc = digitsOnly.length >= 11;

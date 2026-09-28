@@ -47,6 +47,7 @@ import {
   formatCurrencyBRL,
   parseCurrencyToNumber,
 } from '@/components/modals/masks';
+import { validarCpf, validarCnpj, somenteDigitos } from '@/lib/documento';
 
 export interface Plano {
   tipoDePlano: string;
@@ -307,6 +308,10 @@ export default function DynamicCotacaoForm({
     const resolved = getRamoConfig(productId || 'prod-rc-001');
     return resolved || rcAdvogadosConfig;
   });
+  const resolvedRamoConfigRef = useRef(resolvedRamoConfig);
+  useEffect(() => {
+    resolvedRamoConfigRef.current = resolvedRamoConfig;
+  }, [resolvedRamoConfig]);
 
   // Atualiza ramoConfig se a override mudar
   useEffect(() => {
@@ -402,6 +407,7 @@ export default function DynamicCotacaoForm({
   const [paymentDueDate, setPaymentDueDate] = useState('');
   const [checkoutId, setCheckoutId] = useState('');
   const [paymentBlockedReason, setPaymentBlockedReason] = useState<string | null>(null);
+  const [gerandoPagamento, setGerandoPagamento] = useState(false);
 
   // Cliente pesquisado e renovação
   const [selectedCliente, setSelectedCliente] = useState<ClienteBuscaResult | null>(null);
@@ -472,22 +478,24 @@ export default function DynamicCotacaoForm({
       }
 
       // Fallback: planos do ramoConfig
-      if (resolvedRamoConfig && Array.isArray(resolvedRamoConfig.planos) && resolvedRamoConfig.planos.length > 0) {
-        setPlanos(resolvedRamoConfig.planos as Plano[]);
+      const currentRamoConfig = resolvedRamoConfigRef.current;
+      if (currentRamoConfig && Array.isArray(currentRamoConfig.planos) && currentRamoConfig.planos.length > 0) {
+        setPlanos(currentRamoConfig.planos as Plano[]);
       } else {
         setPlanos(rcAdvogadosConfig.planos as Plano[]);
       }
     } catch (err) {
       console.error('Erro ao buscar planos da API, usando fallback do ramo:', err);
-      if (resolvedRamoConfig && Array.isArray(resolvedRamoConfig.planos) && resolvedRamoConfig.planos.length > 0) {
-        setPlanos(resolvedRamoConfig.planos as Plano[]);
+      const currentRamoConfig = resolvedRamoConfigRef.current;
+      if (currentRamoConfig && Array.isArray(currentRamoConfig.planos) && currentRamoConfig.planos.length > 0) {
+        setPlanos(currentRamoConfig.planos as Plano[]);
       } else {
         setPlanos(rcAdvogadosConfig.planos as Plano[]);
       }
     } finally {
       setLoadingPlanos(false);
     }
-  }, [adminSelectedPartnerId, productId, getHeaders, ramoConfigOverride, resolvedRamoConfig]);
+  }, [adminSelectedPartnerId, productId, getHeaders, ramoConfigOverride]);
 
   useEffect(() => {
     loadPlanos();
@@ -867,6 +875,7 @@ export default function DynamicCotacaoForm({
       if (data.ok) {
         setCupomDesconto(Number(data.desconto) || 0);
         setCupomAplicado(true);
+        setParcelaSel(null);
       } else {
         setCupomError(data.error || 'Cupom inválido ou expirado');
       }
@@ -943,6 +952,25 @@ export default function DynamicCotacaoForm({
 
       if (!form.nome || !form.cpfCnpj || !form.email || !form.celular) {
         setError('Preencha todos os dados pessoais obrigatórios (Nome, CPF/CNPJ, E-mail, Celular).');
+        return;
+      }
+
+      const docDigits = somenteDigitos(form.cpfCnpj);
+      const isDocValid = docDigits.length === 11 ? validarCpf(docDigits) : docDigits.length === 14 ? validarCnpj(docDigits) : false;
+      if (!isDocValid) {
+        setError('O CPF ou CNPJ informado é inválido. Verifique os números digitados.');
+        return;
+      }
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(form.email.trim())) {
+        setError('Por favor, informe um endereço de e-mail válido.');
+        return;
+      }
+
+      const phoneDigits = somenteDigitos(form.celular);
+      if (phoneDigits.length < 10 || phoneDigits.length > 11) {
+        setError('Informe um número de celular válido com DDD (10 ou 11 dígitos).');
         return;
       }
 
@@ -1035,7 +1063,9 @@ export default function DynamicCotacaoForm({
     try {
       const maiorDesconto = Math.max(descontoPercentual, cupomDesconto);
       const valorTotal = Math.round(parseMoneyToFloat(planoSel.parcela) * (1 - maiorDesconto / 100) * 100) / 100;
-      const valorParcela = parcelaSel.valor;
+      const valorParcela = parcelaSel.qtd === 1 
+        ? valorTotal 
+        : Math.round((valorTotal / parcelaSel.qtd) * 100) / 100;
 
       const formatDateForIso = (dateStr: string) => {
         if (!dateStr) return null;
@@ -1215,6 +1245,8 @@ export default function DynamicCotacaoForm({
   }
 
   async function handleGerarPagamento() {
+    if (gerandoPagamento) return;
+    setGerandoPagamento(true);
     try {
       const res = await fetch(`/api/portal/cotacoes/${cotacaoId}/gerar-pagamento`, {
         method: 'POST',
@@ -1235,6 +1267,8 @@ export default function DynamicCotacaoForm({
       }
     } catch {
       setError('Erro ao gerar pagamento no Asaas.');
+    } finally {
+      setGerandoPagamento(false);
     }
   }
 
@@ -2165,39 +2199,68 @@ export default function DynamicCotacaoForm({
                 {resolvedRamoConfig.questionarioRisco.map((item) => {
                   const respostaAtual = (form[item.id] || 'Não') as string;
                   const detalheAtual = (form[item.detailKey] || '') as string;
+                  const isSim = respostaAtual === 'Sim';
 
                   return (
                     <div
                       key={item.id}
-                      className="bg-gray-50 border border-gray-200 p-4 rounded-xl space-y-3 transition-colors hover:border-gray-300"
+                      className={`p-4 rounded-xl border transition-all ${
+                        isSim
+                          ? 'bg-rose-50/40 border-rose-200 shadow-xs'
+                          : 'bg-gray-50 border-gray-200 hover:border-gray-300'
+                      } space-y-3`}
                     >
-                      <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3">
-                        <span className="text-sm text-gray-800 font-medium leading-relaxed">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <p className="text-sm text-gray-800 font-medium leading-relaxed flex-1 min-w-0 pr-0 sm:pr-4">
                           {item.question}
-                        </span>
-                        <select
-                          value={respostaAtual}
-                          onChange={(e) => updateField(item.id, e.target.value)}
-                          className={`form-input md:w-32 flex-shrink-0 font-bold ${
-                            respostaAtual === 'Sim' ? 'text-rose-700 border-rose-300 bg-rose-50/50' : 'text-gray-900'
-                          }`}
+                        </p>
+
+                        <div
+                          role="radiogroup"
+                          aria-label={item.question}
+                          className="inline-flex items-center gap-1.5 shrink-0 self-start sm:self-center bg-gray-200/80 p-1 rounded-xl border border-gray-200"
                         >
-                          <option value="Não">Não</option>
-                          <option value="Sim">Sim</option>
-                        </select>
+                          <button
+                            type="button"
+                            role="radio"
+                            aria-checked={!isSim}
+                            onClick={() => updateField(item.id, 'Não')}
+                            className={`min-w-[64px] min-h-[44px] px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center ${
+                              !isSim
+                                ? 'bg-white text-gray-900 shadow-xs border border-gray-200/80 font-bold'
+                                : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+                            }`}
+                          >
+                            Não
+                          </button>
+                          <button
+                            type="button"
+                            role="radio"
+                            aria-checked={isSim}
+                            onClick={() => updateField(item.id, 'Sim')}
+                            className={`min-w-[64px] min-h-[44px] px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center ${
+                              isSim
+                                ? 'bg-rose-600 text-white shadow-xs font-bold'
+                                : 'text-gray-600 hover:text-rose-600 hover:bg-white/50'
+                            }`}
+                          >
+                            Sim
+                          </button>
+                        </div>
                       </div>
 
-                      {respostaAtual === 'Sim' && (
-                        <label className="block pt-1 animate-fadeIn">
-                          <span className="field-label text-rose-700 font-semibold flex items-center space-x-1.5">
-                            <AlertCircle className="w-3.5 h-3.5" />
+                      {isSim && (
+                        <label className="block pt-2 border-t border-rose-200/70 animate-fadeIn">
+                          <span className="field-label text-rose-700 font-semibold flex items-center space-x-1.5 mb-1.5">
+                            <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
                             <span>{item.detailLabel || 'Descreva os detalhes, datas, partes e valores envolvidos:'} *</span>
                           </span>
                           <textarea
                             required
+                            rows={3}
                             value={detalheAtual}
                             onChange={(e) => updateField(item.detailKey, e.target.value)}
-                            className="form-input min-h-20 border-rose-300 focus:border-rose-500 bg-white"
+                            className="form-input min-h-[80px] border-rose-300 focus:border-rose-500 bg-white"
                             placeholder="Forneça os detalhes circunstanciados para análise da subscrição de riscos..."
                           />
                         </label>
@@ -2750,9 +2813,10 @@ export default function DynamicCotacaoForm({
                       <button
                         type="button"
                         onClick={handleGerarPagamento}
-                        className="btn btn-secondary text-xs px-4 py-2 mt-1 cursor-pointer"
+                        disabled={gerandoPagamento}
+                        className="btn btn-secondary text-xs px-4 py-2 mt-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        Tentar emitir fatura novamente
+                        {gerandoPagamento ? 'Emitindo fatura...' : 'Tentar emitir fatura novamente'}
                       </button>
                     </>
                   )}

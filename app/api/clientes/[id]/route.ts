@@ -57,7 +57,15 @@ export async function GET(
     // Se parceiro, valida se o cliente possui cotações acessíveis
     if (!isAdmin && access) {
       let hasAccess = false;
-      if (access.visibleUserIds === null) {
+      if (access.isCorretoraUser) {
+        const [row] = await sql`
+          SELECT 1 FROM cotacoes
+          WHERE client_id = ${id}
+            AND (corretora_id = ${access.corretoraId} OR partner_id IN (SELECT id FROM partners WHERE corretora_id = ${access.corretoraId}))
+          LIMIT 1
+        `;
+        hasAccess = !!row;
+      } else if (access.visibleUserIds === null) {
         const [row] = await sql`
           SELECT 1 FROM cotacoes
           WHERE client_id = ${id} AND partner_id = ${access.partnerId}

@@ -180,7 +180,6 @@ export async function POST(
     return NextResponse.json({
       ok: true,
       message: `Convite e nova senha enviados com sucesso para ${partner.email}`,
-      temporaryPassword: novaSenhaProvisoria,
     });
   } catch (err) {
     logger.error({ err }, 'portal.equipe.resend_invite.error');

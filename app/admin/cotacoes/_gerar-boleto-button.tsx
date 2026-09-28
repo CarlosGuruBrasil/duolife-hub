@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Receipt, Loader2 } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 
@@ -11,6 +12,7 @@ interface GerarBoletoButtonProps {
 }
 
 export function GerarBoletoButton({ id, clientName, variant = 'table' }: GerarBoletoButtonProps) {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
 
   async function handleGerar(e: React.MouseEvent) {
@@ -37,7 +39,7 @@ export function GerarBoletoButton({ id, clientName, variant = 'table' }: GerarBo
       }
 
       toast.success('Boleto / fatura gerado com sucesso no Asaas!');
-      setTimeout(() => window.location.reload(), 1200);
+      router.refresh();
     } catch {
       toast.error('Erro de comunicação ao tentar gerar cobrança no Asaas.');
     } finally {

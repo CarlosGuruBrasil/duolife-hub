@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { getPartnerAccessContext, isPlatformAdmin, isInternalUser, verifyAuth, unauthorized } from '@/lib/auth';
+import { getPartnerAccessContext, isPlatformAdmin, isInternalUser, roleIsCorretora, verifyAuth, unauthorized } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { ensureSchema, seedInitialData } from '@/lib/schema';
@@ -29,15 +29,14 @@ export async function GET(req: NextRequest) {
   const url = new URL(req.url);
   const requestedPartnerId = url.searchParams.get('partnerId');
 
-  // Se for parceiro, força o ID dele. Se for admin, usa o solicitado ou busca todos (se não enviar)
+  // Se for parceiro ou corretora, resolve o contexto de acesso
   let targetPartnerId = user.partnerId;
   let access = null;
   if (isInternalUser(user)) {
     targetPartnerId = requestedPartnerId || null;
-  } else if (!targetPartnerId) {
-    return unauthorized();
   } else {
     access = await getPartnerAccessContext(user);
+    if (!access) return unauthorized();
   }
 
   try {
@@ -53,7 +52,7 @@ export async function GET(req: NextRequest) {
         AND status IN ('rascunho', 'enviada', 'contrato_gerado')
     `;
 
-    const cotacoes = !targetPartnerId
+    const cotacoes = isInternalUser(user) && !targetPartnerId
       ? await sql`
           SELECT
             c.id,
@@ -72,6 +71,26 @@ export async function GET(req: NextRequest) {
           ORDER BY c.created_at DESC
           LIMIT 100
         `
+      : access?.isCorretoraUser
+        ? await sql`
+            SELECT
+              c.id,
+              c.client_name,
+              c.client_cpf_cnpj,
+              c.client_email,
+              c.client_phone,
+              c.importancia_segurada,
+              c.premio_final,
+              c.status,
+              c.valid_until,
+              c.created_at,
+              p.name AS product_name
+            FROM cotacoes c
+            JOIN products p ON p.id = c.product_id
+            WHERE (c.corretora_id = ${access.corretoraId} OR c.partner_id IN (SELECT id FROM partners WHERE corretora_id = ${access.corretoraId}))
+            ORDER BY c.created_at DESC
+            LIMIT 100
+          `
       : !access || access.visibleUserIds === null
         ? await sql`
             SELECT
@@ -136,6 +155,7 @@ export async function POST(req: NextRequest) {
     let publicLinkDiscountPercent = 0;
     let isInternal = false;
     let canBypassProductAvailability = false;
+    let user: any = null;
 
     if (publicToken) {
       const [link] = await sql`
@@ -163,7 +183,7 @@ export async function POST(req: NextRequest) {
     const data = parsed.data as any;
 
     if (!publicToken) {
-      const user = await verifyAuth();
+      user = await verifyAuth();
       if (!user) return unauthorized();
 
       userId = user.userId;
@@ -183,6 +203,28 @@ export async function POST(req: NextRequest) {
           LIMIT 1
         `;
         userId = pu?.id || null;
+      } else if (roleIsCorretora(user.role)) {
+        canBypassProductAvailability = true;
+        if (data.adminSelectedPartnerId) {
+          const [partnerCheck] = await sql`
+            SELECT id FROM partners WHERE id = ${data.adminSelectedPartnerId} AND corretora_id = ${user.corretoraId || null} LIMIT 1
+          `;
+          if (partnerCheck) {
+            targetPartnerId = partnerCheck.id;
+          }
+        }
+        if (!targetPartnerId && user.corretoraId) {
+          const [defaultPartner] = await sql`
+            SELECT id FROM partners WHERE corretora_id = ${user.corretoraId || null} ORDER BY created_at ASC LIMIT 1
+          `;
+          targetPartnerId = defaultPartner?.id || null;
+        }
+        if (targetPartnerId) {
+          const [pu] = await sql`
+            SELECT id FROM partner_users WHERE partner_id = ${targetPartnerId} ORDER BY created_at ASC LIMIT 1
+          `;
+          userId = pu?.id || user.userId;
+        }
       } else if (!targetPartnerId) {
         return unauthorized();
       }
@@ -405,10 +447,16 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const [partnerCorretora] = targetPartnerId ? await sql<{ corretora_id: string | null }[]>`
+      SELECT corretora_id FROM partners WHERE id = ${targetPartnerId} LIMIT 1
+    ` : [];
+    const targetCorretoraId = user?.corretoraId || partnerCorretora?.corretora_id || null;
+
     const [cotacao] = await sql`
       INSERT INTO cotacoes (
         client_id,
         partner_id,
+        corretora_id,
         partner_user_id,
         product_id,
         client_name,
@@ -428,6 +476,7 @@ export async function POST(req: NextRequest) {
       VALUES (
         ${client.id},
         ${targetPartnerId},
+        ${targetCorretoraId},
         ${userId},
         ${product.id},
         ${data.clientName},

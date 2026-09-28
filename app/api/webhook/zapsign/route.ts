@@ -23,16 +23,21 @@ async function isAuthorized(req: NextRequest) {
   return verifyWebhookToken(bearer ?? null, secret);
 }
 
-function normalizeStatus(payload: any) {
-  const status =
+function normalizeStatus(payload: any, eventType?: string) {
+  const raw =
     payload?.status ||
     payload?.document?.status ||
     payload?.doc?.status ||
     payload?.event?.status ||
+    eventType ||
     '';
 
-  if (status === 'completed') return 'signed';
-  return String(status || 'pending').toLowerCase();
+  const s = String(raw || 'pending').toLowerCase();
+  if (['completed', 'signed', 'doc_signed'].includes(s)) return 'signed';
+  if (['expired', 'deadline_exceeded'].includes(s)) return 'expired';
+  if (['refused', 'rejected', 'signature_request_refused', 'signature_refused'].includes(s)) return 'refused';
+  if (['canceled', 'cancelled', 'doc_deleted'].includes(s)) return 'canceled';
+  return s;
 }
 
 function extractDocumentId(payload: any) {
@@ -95,7 +100,7 @@ export async function POST(req: NextRequest) {
   );
   const externalDocumentId = extractDocumentId(payload);
   const externalId = extractExternalId(payload);
-  const normalizedStatus = normalizeStatus(payload);
+  const normalizedStatus = normalizeStatus(payload, eventType);
   const signedFileUrl = extractSignedFileUrl(payload);
 
   const eventUniqueKey = payload?.event_id || payload?.id
@@ -291,27 +296,58 @@ export async function POST(req: NextRequest) {
           logger.error({ dispatchErr, cotacaoId: document.cotacao_id }, 'Falha ao despachar evento CONTRATO_ASSINADO');
         }
 
-        // Gera cobrança/boleto Asaas automaticamente em background se permitido pela regra de vigência
-        try {
-          const paymentResult = await generateAsaasPaymentForQuote(document.cotacao_id, { isManualAdmin: false });
-          if (paymentResult.ok) {
-            logger.info(
-              { cotacaoId: document.cotacao_id, checkoutId: paymentResult.checkoutId },
-              'zapsign.webhook.asaas_payment_generated'
-            );
-          } else {
-            logger.warn(
-              { cotacaoId: document.cotacao_id, reason: paymentResult.error },
-              'zapsign.webhook.asaas_payment_retained_or_failed'
+        // Verifica se já existe ordem de pagamento ativa ou paga para esta cotação
+        const [existingOrder] = await sql<{ id: string; status: string }[]>`
+          SELECT id, status FROM payment_orders
+          WHERE cotacao_id = ${document.cotacao_id}
+            AND status IN ('pending', 'partially_paid', 'paid')
+          LIMIT 1
+        `;
+
+        if (existingOrder) {
+          logger.info(
+            { cotacaoId: document.cotacao_id, orderId: existingOrder.id, status: existingOrder.status },
+            'zapsign.webhook.asaas_payment_skipped_existing_order'
+          );
+        } else {
+          // Gera cobrança/boleto Asaas automaticamente em background se permitido pela regra de vigência
+          try {
+            const paymentResult = await generateAsaasPaymentForQuote(document.cotacao_id, { isManualAdmin: false });
+            if (paymentResult.ok) {
+              logger.info(
+                { cotacaoId: document.cotacao_id, checkoutId: paymentResult.checkoutId },
+                'zapsign.webhook.asaas_payment_generated'
+              );
+            } else {
+              logger.warn(
+                { cotacaoId: document.cotacao_id, reason: paymentResult.error },
+                'zapsign.webhook.asaas_payment_retained_or_failed'
+              );
+            }
+          } catch (paymentErr) {
+            logger.error(
+              { paymentErr, cotacaoId: document.cotacao_id },
+              'zapsign.webhook.asaas_payment_exception'
             );
           }
-        } catch (paymentErr) {
-          logger.error(
-            { paymentErr, cotacaoId: document.cotacao_id },
-            'zapsign.webhook.asaas_payment_exception'
-          );
         }
       }
+    } else if (normalizedStatus === 'expired') {
+      await sql`
+        UPDATE cotacoes
+        SET status = 'expirada', updated_at = NOW()
+        WHERE id = ${document.cotacao_id}
+          AND status IN ('contrato_gerado', 'enviada', 'rascunho')
+      `;
+      logger.info({ cotacaoId: document.cotacao_id }, 'zapsign.webhook.quote_expired');
+    } else if (normalizedStatus === 'refused') {
+      await sql`
+        UPDATE cotacoes
+        SET status = 'recusada', updated_at = NOW()
+        WHERE id = ${document.cotacao_id}
+          AND status IN ('contrato_gerado', 'enviada', 'rascunho')
+      `;
+      logger.info({ cotacaoId: document.cotacao_id }, 'zapsign.webhook.quote_refused');
     }
 
     await sql`

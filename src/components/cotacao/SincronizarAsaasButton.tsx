@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { RefreshCw, Loader2, CreditCard } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 
@@ -19,6 +20,7 @@ export function SincronizarAsaasButton({
   label,
   onSuccess,
 }: SincronizarAsaasButtonProps) {
+  const router = useRouter();
   const [loading, setLoading] = useState(false);
 
   async function handleSincronizar(e: React.MouseEvent) {
@@ -47,9 +49,8 @@ export function SincronizarAsaasButton({
         toast.success(`Pagamento CONFIRMADO no Asaas! Cotação atualizada para ${body.statusAfter?.toUpperCase() || 'APROVADA'}.`);
         if (onSuccess) {
           onSuccess();
-        } else {
-          setTimeout(() => window.location.reload(), 1200);
         }
+        router.refresh();
       } else if (body.chargesFound > 0) {
         toast.warning(`Foram localizadas ${body.chargesFound} cobrança(s) no Asaas, porém nenhuma consta como paga/confirmada.`);
       } else {

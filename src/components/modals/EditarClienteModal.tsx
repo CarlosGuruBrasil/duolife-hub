@@ -12,6 +12,7 @@ import {
   formatDateToInput,
   cleanDigits,
 } from './masks';
+import { validarCpf, validarCnpj } from '@/lib/documento';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 
 export interface EditarClienteModalProps {
@@ -169,8 +170,9 @@ export default function EditarClienteModal({
     }
 
     const docDigits = cleanDigits(documentNumber);
-    if (docDigits.length !== 11 && docDigits.length !== 14) {
-      setErrorMessage('Informe um CPF válido (11 dígitos) ou CNPJ válido (14 dígitos).');
+    const isDocValid = docDigits.length === 11 ? validarCpf(docDigits) : docDigits.length === 14 ? validarCnpj(docDigits) : false;
+    if (!isDocValid) {
+      setErrorMessage('Informe um CPF ou CNPJ válido com dígitos verificadores corretos.');
       return;
     }
 

@@ -187,7 +187,11 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
     }
     if (!matchedPaidCharge && paidCharges.length > 0) {
       const targetValue = Number(cotacao.premio_final || cotacao.premio_calculado || order?.amount_total || 0);
-      matchedPaidCharge = paidCharges.find((c) => Math.abs(c.value - targetValue) < 0.05) || paidCharges[0];
+      const qtdParcelas = Number(order?.installment_count) || 1;
+      const targetParcelaValue = qtdParcelas > 0 ? targetValue / qtdParcelas : targetValue;
+      matchedPaidCharge = paidCharges.find(
+        (c) => Math.abs(c.value - targetValue) < 0.10 || (qtdParcelas > 1 && Math.abs(c.value - targetParcelaValue) < 0.10)
+      );
     }
 
     if (!matchedPaidCharge) {

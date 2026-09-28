@@ -283,7 +283,7 @@ export async function POST(req: NextRequest) {
       ok: true,
       partner: newPartner,
       user: newUser,
-      passwordGenerated: plainPassword,
+      passwordGenerated: !emailEnviado && !password ? plainPassword : undefined,
       emailSent: emailEnviado,
     });
   } catch (err) {
