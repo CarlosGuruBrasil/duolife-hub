@@ -158,6 +158,9 @@ export interface MultiRamoFormState {
   associadoEscritorio?: 'Sim' | 'Não' | string;
   nomeEscritorio?: string;
   escritorioAssociado?: string;
+  titularidade?: string;
+  titularidadeTipo?: string;
+  titularidadeOutro?: string;
   faturamentoAntes?: string;
   faturamentoDepois?: string;
   especialidades?: string[];

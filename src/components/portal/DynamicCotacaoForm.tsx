@@ -118,6 +118,9 @@ export interface DynamicFormState {
   associadoEscritorio: 'Sim' | 'Não' | string;
   nomeEscritorio: string;
   escritorioAssociado: string;
+  titularidade: string;
+  titularidadeTipo: string;
+  titularidadeOutro: string;
   faturamentoAntes: string;
   faturamentoDepois: string;
   especialidades: string[];
@@ -197,6 +200,9 @@ const initialFormState: DynamicFormState = {
   associadoEscritorio: 'Não',
   nomeEscritorio: '',
   escritorioAssociado: 'Não associado',
+  titularidade: 'Graduação',
+  titularidadeTipo: 'Graduação',
+  titularidadeOutro: '',
   faturamentoAntes: '',
   faturamentoDepois: '',
   especialidades: [],
@@ -615,6 +621,13 @@ export default function DynamicCotacaoForm({
             associadoEscritorio: (cd.associadoEscritorio === 'Sim' || (cd.escritorioAssociado && cd.escritorioAssociado !== 'Não associado' && cd.escritorioAssociado !== 'Não')) ? 'Sim' : 'Não',
             nomeEscritorio: cd.nomeEscritorio || (cd.escritorioAssociado && cd.escritorioAssociado !== 'Não associado' && cd.escritorioAssociado !== 'Não' ? cd.escritorioAssociado : ''),
             escritorioAssociado: cd.escritorioAssociado || '',
+            titularidadeTipo: ['Graduação', 'Especialização', 'Mestrado', 'Doutorado', 'Pós-Doutorado'].includes(cd.titularidade)
+              ? cd.titularidade
+              : (cd.titularidade ? 'Outro' : 'Graduação'),
+            titularidadeOutro: ['Graduação', 'Especialização', 'Mestrado', 'Doutorado', 'Pós-Doutorado'].includes(cd.titularidade)
+              ? ''
+              : (cd.titularidade || ''),
+            titularidade: cd.titularidade || 'Graduação',
             faturamentoAntes: cd.faturamentoAntes || '',
             faturamentoDepois: cd.faturamentoDepois || '',
             especialidades: atuacaoArray,
@@ -1006,6 +1019,11 @@ export default function DynamicCotacaoForm({
           return;
         }
 
+        if (form.titularidadeTipo === 'Outro' && (!form.titularidadeOutro || !form.titularidadeOutro.trim())) {
+          setError('Por favor, especifique a titularidade do profissional.');
+          return;
+        }
+
         if (resolvedRamoConfig.hasFaturamento) {
           if (!form.faturamentoAntes || !form.faturamentoDepois) {
             setError('Informe o faturamento bruto anual dos períodos indicados.');
@@ -1111,6 +1129,12 @@ export default function DynamicCotacaoForm({
         associadoEscritorio: form.associadoEscritorio || 'Não',
         nomeEscritorio: (form.nomeEscritorio || '').trim(),
         escritorioAssociado: form.associadoEscritorio === 'Sim' ? (form.nomeEscritorio || '').trim() : 'Não associado',
+        // Titularidade Profissional
+        titularidade: form.titularidadeTipo === 'Outro'
+          ? (form.titularidadeOutro || '').trim() || 'Outro'
+          : (form.titularidadeTipo || form.titularidade || 'Graduação'),
+        titularidadeTipo: form.titularidadeTipo || 'Graduação',
+        titularidadeOutro: (form.titularidadeOutro || '').trim(),
         // Especialidades & Atuação unificadas
         especialidades: form.especialidades,
         atuacao: form.especialidades.length > 0 ? form.especialidades.join(':') : (form.atuacao.length > 0 ? form.atuacao.join(':') : ''),
@@ -2072,6 +2096,66 @@ export default function DynamicCotacaoForm({
                     />
                     <span className="text-[11px] text-gray-500 mt-1 block font-normal">
                       Informe a razão social ou nome comercial do escritório parceiro ou associado.
+                    </span>
+                  </label>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Titularidade Profissional (Todos os planos, exceto 100k) */}
+          {!isPlano100k && (
+            <div className="bg-gray-50 border border-gray-200 p-5 rounded-xl space-y-4">
+              <label className="block">
+                <span className="field-label text-gray-900 block text-sm font-semibold">
+                  Titularidade do Profissional *
+                </span>
+                <p className="text-xs text-gray-500 mt-0.5 mb-2.5">
+                  Informe o grau acadêmico ou titulação do proponente. Esta informação constará no contrato emitido.
+                </p>
+                <select
+                  value={form.titularidadeTipo || 'Graduação'}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    updateField('titularidadeTipo', val);
+                    if (val !== 'Outro') {
+                      updateField('titularidade', val);
+                      updateField('titularidadeOutro', '');
+                    } else {
+                      updateField('titularidade', form.titularidadeOutro || '');
+                    }
+                  }}
+                  className="form-input bg-white"
+                >
+                  <option value="Graduação">Graduação</option>
+                  <option value="Especialização">Especialização</option>
+                  <option value="Mestrado">Mestrado</option>
+                  <option value="Doutorado">Doutorado</option>
+                  <option value="Pós-Doutorado">Pós-Doutorado</option>
+                  <option value="Outro">Outro (especificar)</option>
+                </select>
+              </label>
+
+              {form.titularidadeTipo === 'Outro' && (
+                <div className="pt-3 border-t border-gray-200/80 animate-fadeIn">
+                  <label className="block">
+                    <span className="field-label text-gray-900 font-semibold block mb-1">
+                      Especifique a Titularidade *
+                    </span>
+                    <input
+                      type="text"
+                      required
+                      value={form.titularidadeOutro || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        updateField('titularidadeOutro', val);
+                        updateField('titularidade', val);
+                      }}
+                      placeholder="Ex: Residência Médica, MBA Executivo, etc."
+                      className="form-input bg-white"
+                    />
+                    <span className="text-[11px] text-gray-500 mt-1 block font-normal">
+                      Descreva detalhadamente a formação, título ou especialidade complementar.
                     </span>
                   </label>
                 </div>

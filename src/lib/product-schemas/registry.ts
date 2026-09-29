@@ -376,6 +376,9 @@ export function buildRamoStep3Schema(ramo: RamoConfig) {
     associadoEscritorio: z.enum(['Sim', 'Não']).default('Não'),
     nomeEscritorio: z.string().optional(),
     escritorioAssociado: z.string().optional(),
+    titularidade: z.string().optional(),
+    titularidadeTipo: z.string().optional(),
+    titularidadeOutro: z.string().optional(),
     faturamentoAntes: z.string().optional(),
     faturamentoDepois: z.string().optional(),
     especialidades: z.array(z.string()).optional(),
@@ -399,6 +402,17 @@ export function buildRamoStep3Schema(ramo: RamoConfig) {
           code: 'custom',
           path: ['nomeEscritorio'],
           message: 'Informe o nome do escritório ao qual o profissional é associado.',
+        });
+      }
+    }
+
+    // Se a titularidade for 'Outro' (exceto plano 100k simplificado)
+    if (!isPlano100k && data.titularidadeTipo === 'Outro') {
+      if (!data.titularidadeOutro || data.titularidadeOutro.trim().length === 0) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['titularidadeOutro'],
+          message: 'Especifique a titularidade do profissional.',
         });
       }
     }
