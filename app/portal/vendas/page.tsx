@@ -7,7 +7,7 @@ import { ensureSchema } from '@/lib/schema';
 import { PortalVendasFilterSection } from './_components/PortalVendasFilterSection';
 import { PortalVendasPagination } from './_components/PortalVendasPagination';
 import { PeriodPreset, resolveDateRange, getPeriodLabel } from '@/lib/date-filters';
-import { formatCurrency, formatDate, formatStatusLabel } from '@/lib/format';
+import { formatCurrency, formatDate, formatStatusLabel, formatPlanLabel } from '@/lib/format';
 import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
 
 export const dynamic = 'force-dynamic';
@@ -15,6 +15,7 @@ export const dynamic = 'force-dynamic';
 interface VendaRow {
   id: string;
   policy_number: string;
+  importancia_segurada?: number | string | null;
   premio_total: number;
   commission_amount: number;
   commission_rate: number | null;
@@ -27,6 +28,7 @@ interface VendaRow {
   product_name: string;
   partner_name: string;
   client_cpf_cnpj: string | null;
+  client_data?: any;
 }
 
 const statusLabel: Record<string, string> = {
@@ -161,6 +163,7 @@ export default async function PortalVendasPage({
     SELECT
       s.id,
       s.policy_number,
+      COALESCE(s.importancia_segurada, c.importancia_segurada) AS importancia_segurada,
       s.premio_total,
       s.commission_rate,
       s.commission_amount,
@@ -171,6 +174,7 @@ export default async function PortalVendasPage({
       p.name AS product_name,
       c.client_name,
       c.client_cpf_cnpj,
+      c.client_data,
       pt.razao_social AS partner_name
     FROM sales s
     JOIN products p ON p.id = s.product_id
@@ -271,8 +275,7 @@ export default async function PortalVendasPage({
                   <tr>
                     <th className="px-5 py-3.5 table-sticky-col-head rounded-tl-2xl">Cliente</th>
                     {isCorretora && <th className="px-5 py-3.5 border-b border-gray-200">Corretor</th>}
-                    <th className="px-5 py-3.5 border-b border-gray-200">Apólice</th>
-                    <th className="px-5 py-3.5 border-b border-gray-200">Produto</th>
+                    <th className="px-5 py-3.5 border-b border-gray-200">Plano</th>
                     <th className="px-5 py-3.5 border-b border-gray-200">Prêmio</th>
                     <th className="px-5 py-3.5 border-b border-gray-200">Comissão</th>
                     <th className="px-5 py-3.5 border-b border-gray-200">Vigência</th>
@@ -301,8 +304,11 @@ export default async function PortalVendasPage({
                             {venda.partner_name || 'Corretora'}
                           </td>
                         )}
-                        <td className="px-5 py-4 text-gray-600 font-medium border-b border-gray-100">{venda.policy_number || '-'}</td>
-                        <td className="px-5 py-4 text-gray-700 font-medium border-b border-gray-100">{venda.product_name}</td>
+                        <td className="px-5 py-4 border-b border-gray-100">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-gray-100 text-gray-800 border border-gray-200">
+                            {formatPlanLabel(venda.importancia_segurada, venda.client_data, venda.product_name)}
+                          </span>
+                        </td>
                         <td className="px-5 py-4 text-gray-900 font-semibold border-b border-gray-100">{formatCurrency(venda.premio_total)}</td>
                         <td className="px-5 py-4 text-gray-600 border-b border-gray-100">
                           <div className="font-semibold text-gray-900">{formatCurrency(venda.commission_amount)}</div>

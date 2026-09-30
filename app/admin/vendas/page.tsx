@@ -8,7 +8,7 @@ import WixSalesSyncButton from './_sync-button';
 import { VendasFilterSection } from './_components/VendasFilterSection';
 import { VendasPagination } from './_components/VendasPagination';
 import { PeriodPreset, resolveDateRange, getPeriodLabel } from '@/lib/date-filters';
-import { formatCurrency, formatDate, formatStatusLabel } from '@/lib/format';
+import { formatCurrency, formatDate, formatStatusLabel, formatPlanLabel } from '@/lib/format';
 import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
 
 export const dynamic = 'force-dynamic';
@@ -16,6 +16,7 @@ export const dynamic = 'force-dynamic';
 interface VendaRow {
   id: string;
   policy_number: string;
+  importancia_segurada?: number | string | null;
   premio_total: number;
   commission_amount: number;
   commission_rate: number | null;
@@ -27,6 +28,7 @@ interface VendaRow {
   product_name: string;
   partner_name: string;
   client_cpf_cnpj: string | null;
+  client_data?: any;
   source?: string | null;
 }
 
@@ -175,7 +177,7 @@ export default async function AdminVendasPage({
     SELECT
       s.id,
       s.policy_number,
-      s.importancia_segurada,
+      COALESCE(s.importancia_segurada, c.importancia_segurada) AS importancia_segurada,
       s.premio_total,
       s.commission_rate,
       s.commission_amount,
@@ -187,7 +189,8 @@ export default async function AdminVendasPage({
       COALESCE(p.razao_social, 'Sem parceiro') AS partner_name,
       pr.name AS product_name,
       c.client_name,
-      c.client_cpf_cnpj
+      c.client_cpf_cnpj,
+      c.client_data
     FROM sales s
     JOIN products pr ON pr.id = s.product_id
     JOIN cotacoes c ON c.id = s.cotacao_id
@@ -274,14 +277,13 @@ export default async function AdminVendasPage({
           </div>
         ) : (
           <>
-            <TableScrollContainer minWidth="1100px">
-              <table className="w-full min-w-[1100px] text-left text-sm border-separate border-spacing-0">
+            <TableScrollContainer minWidth="880px">
+              <table className="w-full min-w-[880px] text-left text-sm border-separate border-spacing-0">
                 <thead className="table-sticky-head bg-gray-50/95 text-xs font-semibold uppercase tracking-wider text-gray-600">
                   <tr>
                     <th className="px-5 py-3.5 table-sticky-col-head rounded-tl-2xl">Cliente</th>
                     <th className="px-5 py-3.5 border-b border-gray-200">Vendedor</th>
-                    <th className="px-5 py-3.5 border-b border-gray-200">Apólice</th>
-                    <th className="px-5 py-3.5 border-b border-gray-200">Produto</th>
+                    <th className="px-5 py-3.5 border-b border-gray-200">Plano</th>
                     <th className="px-5 py-3.5 border-b border-gray-200">Prêmio</th>
                     <th className="px-5 py-3.5 border-b border-gray-200">Comissão</th>
                     <th className="px-5 py-3.5 border-b border-gray-200">Vigência</th>
@@ -298,19 +300,11 @@ export default async function AdminVendasPage({
                         )}
                       </td>
                       <td className="px-5 py-4 text-xs font-semibold text-gray-700 border-b border-gray-100">{venda.partner_name}</td>
-                      <td className="px-5 py-4 text-gray-600 border-b border-gray-100">
-                        <div className="font-semibold text-gray-800">{venda.policy_number || '-'}</div>
-                        {venda.source === 'wix' ? (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-cyan-50 border border-cyan-200 text-[#0e4a5a] mt-0.5">
-                            Wix Import
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 mt-0.5">
-                            DuoLife Direct
-                          </span>
-                        )}
+                      <td className="px-5 py-4 border-b border-gray-100">
+                        <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-gray-100 text-gray-800 border border-gray-200">
+                          {formatPlanLabel(venda.importancia_segurada, venda.client_data, venda.product_name)}
+                        </span>
                       </td>
-                      <td className="px-5 py-4 text-gray-700 font-medium border-b border-gray-100">{venda.product_name}</td>
                       <td className="px-5 py-4 font-semibold text-gray-900 border-b border-gray-100">{formatCurrency(venda.premio_total)}</td>
                       <td className="px-5 py-4 text-gray-600 border-b border-gray-100">
                         <div className="font-semibold text-gray-900">{formatCurrency(venda.commission_amount)}</div>

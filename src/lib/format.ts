@@ -196,3 +196,108 @@ export function sanitizePlanFinancials(options: {
   return { cobertura, premio };
 }
 
+/**
+ * Formata o plano de seguro em formato padronizado e compacto (ex: '100k', '300k', '500k', '1mi', '1.5mi', '2mi', '3mi').
+ * Extrai a informação a partir da importância segurada (LMI), metadados da cotação/cliente (tipoDePlano, nomePlano, plano)
+ * e corrige automaticamente anomalias legadas de pontuação e escala.
+ */
+export function formatPlanLabel(
+  importanciaSegurada?: number | string | null,
+  clientData?: any,
+  fallback?: string | null
+): string {
+  // 1. Tenta extrair de clientData se disponível
+  let parsedClientData: Record<string, any> | null = null;
+  if (clientData) {
+    if (typeof clientData === 'string') {
+      try {
+        parsedClientData = JSON.parse(clientData);
+      } catch {
+        parsedClientData = null;
+      }
+    } else if (typeof clientData === 'object') {
+      parsedClientData = clientData;
+    }
+  }
+
+  const rawCandidates = [
+    parsedClientData?.tipoDePlano,
+    parsedClientData?.plano,
+    parsedClientData?.nomePlano,
+    parsedClientData?.tipo,
+    parsedClientData?.planName,
+  ]
+    .filter(Boolean)
+    .map(String);
+
+  for (const raw of rawCandidates) {
+    const clean = raw.trim().toLowerCase();
+
+    // Casos diretos como '100k', '200k', '300k', '400k', '500k', etc.
+    const kMatch = clean.match(/^(\d+)\s*k$/i);
+    if (kMatch) {
+      return `${kMatch[1]}k`;
+    }
+
+    // Casos diretos como '1m', '1mi', '1.5m', '1.5mi', '1,5m', '1,5mi', '2m', '2mi', etc.
+    const mMatch = clean.match(/^([\d.,]+)\s*m(?:i)?$/i);
+    if (mMatch) {
+      const numStr = mMatch[1].replace(',', '.');
+      const n = parseFloat(numStr);
+      if (!isNaN(n)) {
+        return n % 1 === 0 ? `${n}mi` : `${n}mi`;
+      }
+    }
+
+    // Nomes com "mil" (ex: "Plano 100 Mil", "100 mil", "100.000")
+    if (clean.includes('100 mil') || clean.includes('100.000') || clean === '100') return '100k';
+    if (clean.includes('200 mil') || clean.includes('200.000') || clean === '200') return '200k';
+    if (clean.includes('300 mil') || clean.includes('300.000') || clean === '300') return '300k';
+    if (clean.includes('400 mil') || clean.includes('400.000') || clean === '400') return '400k';
+    if (clean.includes('500 mil') || clean.includes('500.000') || clean === '500') return '500k';
+
+    // Nomes com "milhão" / "milhões"
+    if (clean.includes('1,5 milh') || clean.includes('1.5 milh') || clean.includes('1.500.000')) return '1.5mi';
+    if (clean.includes('1 milh') || clean.includes('1.000.000')) return '1mi';
+    if (clean.includes('2 milh') || clean.includes('2.000.000')) return '2mi';
+    if (clean.includes('3 milh') || clean.includes('3.000.000')) return '3mi';
+    if (clean.includes('5 milh') || clean.includes('5.000.000')) return '5mi';
+  }
+
+  // 2. Tenta extrair a partir de valor monetário / importância segurada
+  let rawValor = importanciaSegurada;
+  if (!rawValor && parsedClientData) {
+    rawValor =
+      parsedClientData.valorCobertura ||
+      parsedClientData.cobertura ||
+      parsedClientData.coverageAmount ||
+      parsedClientData.limite;
+  }
+
+  let num = parseCurrencyToNumber(rawValor, 0);
+
+  // Tratamento de anomalia histórica de multiplicação por 100
+  if (num >= 10000000 && num <= 50000000 && num % 1000000 === 0) {
+    num = num / 100;
+  }
+
+  if (num > 0) {
+    if (num >= 1000000) {
+      const inMillions = num / 1000000;
+      return inMillions % 1 === 0 ? `${inMillions}mi` : `${inMillions}mi`;
+    }
+    if (num >= 1000) {
+      const inThousands = num / 1000;
+      return inThousands % 1 === 0 ? `${inThousands}k` : `${inThousands}k`;
+    }
+    return `${num}`;
+  }
+
+  // 3. Fallback
+  if (fallback) {
+    return fallback;
+  }
+
+  return '-';
+}
+

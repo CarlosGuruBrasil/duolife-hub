@@ -53,8 +53,16 @@ export function SincronizarAsaasButton({
         router.refresh();
       } else if (body.chargesFound > 0) {
         toast.warning(`Foram localizadas ${body.chargesFound} cobrança(s) no Asaas, porém nenhuma consta como paga/confirmada.`);
+        if (onSuccess) {
+          onSuccess();
+        }
+        router.refresh();
       } else {
         toast.info('Nenhuma cobrança localizada no Asaas para este cliente ou cotação.');
+        if (onSuccess) {
+          onSuccess();
+        }
+        router.refresh();
       }
     } catch {
       toast.error('Erro de comunicação ao tentar sincronizar com o Asaas.');
@@ -66,9 +74,10 @@ export function SincronizarAsaasButton({
   if (variant === 'card') {
     return (
       <button
+        type="button"
         onClick={handleSincronizar}
         disabled={loading}
-        className="inline-flex items-center gap-1.5 bg-[#0e4a5a] hover:bg-[#072a33] text-white font-bold px-3.5 py-1.5 rounded-lg text-xs transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+        className="inline-flex items-center gap-1.5 bg-primary hover:bg-primary-dark text-white font-bold px-3.5 py-1.5 rounded-lg text-xs transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         title="Consultar pagamentos e cartão de crédito no Asaas"
       >
         {loading ? (
@@ -78,7 +87,7 @@ export function SincronizarAsaasButton({
           </>
         ) : (
           <>
-            <CreditCard size={13} />
+            <RefreshCw size={13} />
             <span>{label || 'Sincronizar Pagamento Asaas'}</span>
           </>
         )}
@@ -89,19 +98,20 @@ export function SincronizarAsaasButton({
   if (variant === 'compact') {
     return (
       <button
+        type="button"
         onClick={handleSincronizar}
         disabled={loading}
-        className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-700 hover:text-[#0e4a5a] bg-slate-50 hover:bg-teal-50 border border-slate-200 hover:border-teal-300 px-2.5 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs"
-        title="Sincronizar pagamento com o Asaas"
+        className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary-dark bg-white hover:bg-gray-50 border border-gray-200 hover:border-gray-300 px-2.5 py-1 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
+        title="Sincronizar situação de pagamento com o Asaas"
       >
         {loading ? (
           <>
-            <Loader2 size={11} className="animate-spin" />
-            <span>Verificando...</span>
+            <Loader2 size={12} className="animate-spin text-primary" />
+            <span>Sincronizando...</span>
           </>
         ) : (
           <>
-            <RefreshCw size={11} />
+            <RefreshCw size={12} className="text-primary" />
             <span>{label || 'Sincronizar Asaas'}</span>
           </>
         )}
@@ -111,19 +121,20 @@ export function SincronizarAsaasButton({
 
   return (
     <button
+      type="button"
       onClick={handleSincronizar}
       disabled={loading}
-      className="inline-flex items-center gap-1.5 border border-[#0e4a5a]/30 text-[#0e4a5a] hover:bg-[#0e4a5a]/5 font-semibold px-3 py-1.5 rounded-lg text-xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs"
+      className="inline-flex items-center gap-1.5 border border-primary/30 text-primary hover:bg-primary/5 font-semibold px-3 py-1.5 rounded-lg text-xs transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shadow-xs"
       title="Sincronizar pagamentos e cartão de crédito no Asaas"
     >
       {loading ? (
         <>
-          <Loader2 size={13} className="animate-spin" />
+          <Loader2 size={13} className="animate-spin text-primary" />
           <span>Consultando Asaas...</span>
         </>
       ) : (
         <>
-          <CreditCard size={13} />
+          <RefreshCw size={13} className="text-primary" />
           <span>{label || 'Sincronizar Asaas'}</span>
         </>
       )}

@@ -1,11 +1,23 @@
 import { sql } from './pg';
 import { logger } from './logger';
 import { parseJsonbField } from './json-safe';
-import { listAsaasChargesForClient, AsaasCharge } from './asaas-charges';
+import {
+  listAsaasChargesForClient,
+  getAsaasPayment,
+  listAsaasInstallmentPayments,
+  AsaasCharge,
+} from './asaas-charges';
 import { ensureSaleForPaidQuote } from './insurance-ops';
 import { dispatchDomainEvent } from './triggers/dispatcher';
 
-const PAID_ASAAS_STATUSES = ['RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'];
+const PAID_ASAAS_STATUSES = [
+  'RECEIVED',
+  'CONFIRMED',
+  'RECEIVED_IN_CASH',
+  'received',
+  'confirmed',
+  'received_in_cash',
+];
 
 export interface AsaasReconcileQuoteResult {
   ok: boolean;
@@ -115,17 +127,34 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
       status: string;
       provider_customer_id: string | null;
       external_payment_id: string | null;
+      external_installment_id: string | null;
+      billing_type: string | null;
       amount_total: number;
       installment_count: number;
       paid_installments: number;
     }>>`
       SELECT
         id, status, provider_customer_id, external_payment_id,
+        external_installment_id, billing_type,
         amount_total, installment_count, paid_installments
       FROM payment_orders
       WHERE cotacao_id = ${cotacaoId}
       ORDER BY created_at DESC
       LIMIT 1
+    `;
+
+    // Buscar parcelas já gravadas no banco para esta cotação
+    const existingInstallments = await sql<Array<{
+      id: string;
+      external_payment_id: string;
+      external_installment_id: string | null;
+      status: string;
+      installment_number: number;
+    }>>`
+      SELECT id, external_payment_id, external_installment_id, status, installment_number
+      FROM payment_installments
+      WHERE cotacao_id = ${cotacaoId}
+      ORDER BY installment_number ASC
     `;
 
     // CustomerId em metadata do cliente
@@ -142,19 +171,125 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
       }
     }
 
-    // Consulta cobranças no Asaas por customerId e CPF/CNPJ
-    const lookup = await listAsaasChargesForClient({
-      customerIds: [
-        typeof clientData.clienteId === 'string' ? clientData.clienteId : null,
-        typeof clientData.asaasCustomerId === 'string' ? clientData.asaasCustomerId : null,
-        order?.provider_customer_id ?? null,
-        clientMetaCustomerId,
-      ],
-      cpfCnpj: clientDoc,
-    });
+    // Identificação de IDs diretos para consulta
+    const directPaymentIds = new Set<string>();
+    if (typeof clientData.checkoutId === 'string' && clientData.checkoutId.trim()) {
+      directPaymentIds.add(clientData.checkoutId.trim());
+    }
+    if (order?.external_payment_id && order.external_payment_id.trim()) {
+      directPaymentIds.add(order.external_payment_id.trim());
+    }
+    for (const inst of existingInstallments) {
+      if (inst.external_payment_id && inst.external_payment_id.trim()) {
+        directPaymentIds.add(inst.external_payment_id.trim());
+      }
+    }
 
-    const charges = lookup.charges || [];
-    if (charges.length === 0) {
+    let directInstallmentId: string | null = null;
+    if (typeof clientData.externalInstallmentId === 'string' && clientData.externalInstallmentId.trim()) {
+      directInstallmentId = clientData.externalInstallmentId.trim();
+    } else if (order?.external_installment_id && order.external_installment_id.trim()) {
+      directInstallmentId = order.external_installment_id.trim();
+    } else {
+      for (const inst of existingInstallments) {
+        if (inst.external_installment_id && inst.external_installment_id.trim()) {
+          directInstallmentId = inst.external_installment_id.trim();
+          break;
+        }
+      }
+    }
+
+    let resolvedCharges: AsaasCharge[] = [];
+
+    // 1. Tenta consulta direta por installmentId se já conhecido
+    if (directInstallmentId) {
+      const instResult = await listAsaasInstallmentPayments(directInstallmentId);
+      if (instResult.ok && instResult.charges.length > 0) {
+        resolvedCharges = instResult.charges;
+      }
+    }
+
+    // 2. Tenta consulta direta pelos IDs de pagamento
+    if (resolvedCharges.length === 0 && directPaymentIds.size > 0) {
+      for (const payId of directPaymentIds) {
+        const payRes = await getAsaasPayment(payId);
+        if (payRes.ok && payRes.charge) {
+          const ch = payRes.charge;
+          // Se a cobrança for parcelada, busca todas as parcelas do carnê
+          if (ch.installment) {
+            const instResult = await listAsaasInstallmentPayments(ch.installment);
+            if (instResult.ok && instResult.charges.length > 0) {
+              resolvedCharges = instResult.charges;
+              break;
+            }
+          }
+          resolvedCharges = [ch];
+          break;
+        }
+      }
+    }
+
+    // 3. Fallback: consulta cobranças no Asaas por customerId e CPF/CNPJ
+    if (resolvedCharges.length === 0) {
+      const lookup = await listAsaasChargesForClient({
+        customerIds: [
+          typeof clientData.clienteId === 'string' ? clientData.clienteId : null,
+          typeof clientData.asaasCustomerId === 'string' ? clientData.asaasCustomerId : null,
+          order?.provider_customer_id ?? null,
+          clientMetaCustomerId,
+        ],
+        cpfCnpj: clientDoc,
+      });
+
+      const clientCharges = lookup.charges || [];
+      if (clientCharges.length > 0) {
+        const targetValue = Number(cotacao.premio_final || cotacao.premio_calculado || order?.amount_total || 0);
+        const qtdParcelas = Number(order?.installment_count) || 1;
+        const targetParcelaValue = qtdParcelas > 0 ? targetValue / qtdParcelas : targetValue;
+
+        // Prioridade 1: ID exato
+        let matchedCharge = clientCharges.find((c) => directPaymentIds.has(c.id));
+
+        // Prioridade 2: Cobrança paga com mesmo valor ou valor de parcela
+        if (!matchedCharge) {
+          matchedCharge = clientCharges.find(
+            (c) =>
+              PAID_ASAAS_STATUSES.includes(c.status) &&
+              !c.deleted &&
+              (Math.abs(c.value - targetValue) < 0.10 || (qtdParcelas > 1 && Math.abs(c.value - targetParcelaValue) < 0.10))
+          );
+        }
+
+        // Prioridade 3: Cobrança paga mais recente
+        if (!matchedCharge) {
+          matchedCharge = clientCharges.find((c) => PAID_ASAAS_STATUSES.includes(c.status) && !c.deleted);
+        }
+
+        // Prioridade 4: Cobrança do mesmo valor mesmo não paga
+        if (!matchedCharge && targetValue > 0) {
+          matchedCharge = clientCharges.find(
+            (c) =>
+              !c.deleted &&
+              (Math.abs(c.value - targetValue) < 0.10 || (qtdParcelas > 1 && Math.abs(c.value - targetParcelaValue) < 0.10))
+          );
+        }
+
+        if (matchedCharge) {
+          if (matchedCharge.installment) {
+            const instResult = await listAsaasInstallmentPayments(matchedCharge.installment);
+            if (instResult.ok && instResult.charges.length > 0) {
+              resolvedCharges = instResult.charges;
+            } else {
+              resolvedCharges = [matchedCharge];
+            }
+          } else {
+            resolvedCharges = [matchedCharge];
+          }
+        }
+      }
+    }
+
+    if (resolvedCharges.length === 0) {
       return {
         ok: true,
         cotacaoId,
@@ -167,70 +302,19 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
       };
     }
 
-    // Identifica a cobrança correspondente
-    const targetChargeIds = new Set<string>();
-    if (typeof clientData.checkoutId === 'string') targetChargeIds.add(clientData.checkoutId);
-    if (order?.external_payment_id) targetChargeIds.add(order.external_payment_id);
-
-    // Seleciona as cobranças pagas ou confirmadas
-    const paidCharges = charges.filter((c) =>
-      PAID_ASAAS_STATUSES.includes(c.status?.toUpperCase() ?? '') && !c.deleted
-    );
-
-    // Encontra a melhor cobrança paga/confirmada:
-    // 1º Prioridade: correspondência exata de ID (checkoutId ou external_payment_id)
-    // 2º Prioridade: cobrança confirmada do mesmo valor do prêmio
-    // 3º Prioridade: cobrança confirmada mais recente do cliente
-    let matchedPaidCharge: AsaasCharge | undefined;
-    if (targetChargeIds.size > 0) {
-      matchedPaidCharge = paidCharges.find((c) => targetChargeIds.has(c.id));
-    }
-    if (!matchedPaidCharge && paidCharges.length > 0) {
-      const targetValue = Number(cotacao.premio_final || cotacao.premio_calculado || order?.amount_total || 0);
-      const qtdParcelas = Number(order?.installment_count) || 1;
-      const targetParcelaValue = qtdParcelas > 0 ? targetValue / qtdParcelas : targetValue;
-      matchedPaidCharge = paidCharges.find(
-        (c) => Math.abs(c.value - targetValue) < 0.10 || (qtdParcelas > 1 && Math.abs(c.value - targetParcelaValue) < 0.10)
-      );
-    }
-
-    if (!matchedPaidCharge) {
-      // Nenhuma cobrança paga localizada
-      return {
-        ok: true,
-        cotacaoId,
-        clientName: cotacao.client_name || undefined,
-        statusBefore: cotacao.status,
-        statusAfter: cotacao.status,
-        updated: false,
-        paid: false,
-        chargesFound: charges.length,
-      };
-    }
-
-    // Cobrança confirmada/paga localizada! Atualiza ordem e parcelas no banco
     const totalApolice = Number(
-      order?.amount_total || cotacao.premio_final || cotacao.premio_calculado || matchedPaidCharge.value
+      order?.amount_total || cotacao.premio_final || cotacao.premio_calculado ||
+      resolvedCharges.reduce((acc, c) => acc + (c.value || 0), 0)
     );
-    const qtdParcelas = order?.installment_count || 1;
+    const resolvedInstallmentCount = resolvedCharges.length > 1
+      ? resolvedCharges.length
+      : (order?.installment_count || 1);
 
-    // 1. Atualiza ou insere a ordem de pagamento
-    if (order) {
-      await sql`
-        UPDATE payment_orders
-        SET
-          status = 'paid',
-          paid_installments = ${qtdParcelas},
-          paid_amount = ${totalApolice},
-          external_payment_id = COALESCE(${matchedPaidCharge.id}, external_payment_id),
-          invoice_url = COALESCE(${matchedPaidCharge.invoiceUrl || null}, invoice_url),
-          bank_slip_url = COALESCE(${matchedPaidCharge.bankSlipUrl || null}, bank_slip_url),
-          raw_payload = ${JSON.stringify(matchedPaidCharge)}::jsonb,
-          updated_at = NOW()
-        WHERE id = ${order.id}
-      `;
-    } else {
-      await sql`
+    const primaryCharge = resolvedCharges[0];
+    let paymentOrderId = order?.id;
+
+    if (!paymentOrderId) {
+      const [newOrder] = await sql<Array<{ id: string }>>`
         INSERT INTO payment_orders (
           cotacao_id,
           client_id,
@@ -239,12 +323,14 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
           provider,
           provider_customer_id,
           external_payment_id,
+          external_installment_id,
           billing_type,
           status,
           amount_total,
           installment_count,
           paid_installments,
           paid_amount,
+          due_date,
           invoice_url,
           bank_slip_url,
           raw_payload,
@@ -256,45 +342,170 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
           ${cotacao.partner_id},
           ${cotacao.product_id},
           'asaas',
-          ${matchedPaidCharge.customer || null},
-          ${matchedPaidCharge.id},
-          ${matchedPaidCharge.billingType || 'CREDIT_CARD'},
-          'paid',
+          ${primaryCharge.customer || null},
+          ${primaryCharge.id},
+          ${primaryCharge.installment || null},
+          ${primaryCharge.billingType || 'UNDEFINED'},
+          'pending',
           ${totalApolice},
-          ${qtdParcelas},
-          ${qtdParcelas},
-          ${totalApolice},
-          ${matchedPaidCharge.invoiceUrl || null},
-          ${matchedPaidCharge.bankSlipUrl || null},
-          ${JSON.stringify(matchedPaidCharge)}::jsonb,
+          ${resolvedInstallmentCount},
+          0,
+          0,
+          ${primaryCharge.dueDate ? primaryCharge.dueDate : null}::date,
+          ${primaryCharge.invoiceUrl || null},
+          ${primaryCharge.bankSlipUrl || null},
+          ${JSON.stringify(primaryCharge)}::jsonb,
           NOW()
         )
         ON CONFLICT (cotacao_id)
         DO UPDATE SET
-          status = 'paid',
-          paid_installments = EXCLUDED.paid_installments,
-          paid_amount = EXCLUDED.paid_amount,
-          external_payment_id = EXCLUDED.external_payment_id,
-          invoice_url = EXCLUDED.invoice_url,
-          bank_slip_url = EXCLUDED.bank_slip_url,
+          provider_customer_id = COALESCE(EXCLUDED.provider_customer_id, payment_orders.provider_customer_id),
+          external_payment_id = COALESCE(EXCLUDED.external_payment_id, payment_orders.external_payment_id),
+          external_installment_id = COALESCE(EXCLUDED.external_installment_id, payment_orders.external_installment_id),
+          updated_at = NOW()
+        RETURNING id
+      `;
+      paymentOrderId = newOrder.id;
+    }
+
+    let paidCount = 0;
+    let paidAmount = 0;
+    let firstPaidCharge: AsaasCharge | undefined;
+
+    // Sincronizar/atualizar cada registro correspondente na tabela payment_installments
+    for (const charge of resolvedCharges) {
+      const isPaid = PAID_ASAAS_STATUSES.includes(charge.status) && !charge.deleted;
+      const normalizedStatus = (charge.status || 'PENDING').toLowerCase();
+      const paidAtVal = isPaid
+        ? (charge.paymentDate ? charge.paymentDate : new Date().toISOString())
+        : null;
+
+      if (isPaid) {
+        paidCount++;
+        paidAmount += charge.value;
+        if (!firstPaidCharge) firstPaidCharge = charge;
+      }
+
+      await sql`
+        INSERT INTO payment_installments (
+          payment_order_id,
+          cotacao_id,
+          client_id,
+          provider,
+          external_payment_id,
+          external_installment_id,
+          installment_number,
+          status,
+          billing_type,
+          amount,
+          net_amount,
+          due_date,
+          paid_at,
+          invoice_url,
+          bank_slip_url,
+          raw_payload,
+          updated_at
+        )
+        VALUES (
+          ${paymentOrderId},
+          ${cotacao.id},
+          ${cotacao.client_id},
+          'asaas',
+          ${charge.id},
+          ${charge.installment || null},
+          ${charge.installmentNumber || 1},
+          ${normalizedStatus},
+          ${charge.billingType || 'UNDEFINED'},
+          ${charge.value},
+          ${charge.netValue != null ? charge.netValue : null},
+          ${charge.dueDate ? charge.dueDate : null}::date,
+          ${paidAtVal ? paidAtVal : null}::timestamptz,
+          ${charge.invoiceUrl || null},
+          ${charge.bankSlipUrl || null},
+          ${JSON.stringify(charge)}::jsonb,
+          NOW()
+        )
+        ON CONFLICT (provider, external_payment_id)
+        DO UPDATE SET
+          payment_order_id = EXCLUDED.payment_order_id,
+          status = EXCLUDED.status,
+          net_amount = EXCLUDED.net_amount,
+          due_date = EXCLUDED.due_date,
+          paid_at = COALESCE(EXCLUDED.paid_at, payment_installments.paid_at),
+          invoice_url = COALESCE(EXCLUDED.invoice_url, payment_installments.invoice_url),
+          bank_slip_url = COALESCE(EXCLUDED.bank_slip_url, payment_installments.bank_slip_url),
           raw_payload = EXCLUDED.raw_payload,
           updated_at = NOW()
       `;
     }
 
-    // 2. Atualiza client_data na cotação
-    clientData.checkoutId = matchedPaidCharge.id;
-    if (matchedPaidCharge.invoiceUrl) clientData.linkBoleto = matchedPaidCharge.invoiceUrl;
-    if (matchedPaidCharge.dueDate) clientData.dataVencimento = matchedPaidCharge.dueDate;
+    const hasAtLeastOnePaid = paidCount > 0;
+    const isInstallmentCarnet = resolvedInstallmentCount > 1;
+    const isFullyPaid = !isInstallmentCarnet || paidCount >= resolvedInstallmentCount;
+    const orderStatus = hasAtLeastOnePaid
+      ? (isFullyPaid ? 'paid' : 'partially_paid')
+      : 'pending';
+
+    const activeCharge = firstPaidCharge || primaryCharge;
+
+    // Atualiza a ordem de pagamento
+    await sql`
+      UPDATE payment_orders
+      SET
+        status = ${orderStatus},
+        paid_installments = ${paidCount},
+        paid_amount = ${paidAmount},
+        amount_total = COALESCE(amount_total, ${totalApolice}),
+        installment_count = ${resolvedInstallmentCount},
+        external_payment_id = COALESCE(external_payment_id, ${activeCharge.id}),
+        external_installment_id = COALESCE(external_installment_id, ${activeCharge.installment || null}),
+        billing_type = COALESCE(${activeCharge.billingType || null}, billing_type),
+        invoice_url = COALESCE(${activeCharge.invoiceUrl || null}, invoice_url),
+        bank_slip_url = COALESCE(${activeCharge.bankSlipUrl || null}, bank_slip_url),
+        raw_payload = ${JSON.stringify(activeCharge)}::jsonb,
+        updated_at = NOW()
+      WHERE id = ${paymentOrderId}
+    `;
+
+    // Atualiza client_data na cotação
+    clientData.checkoutId = activeCharge.id;
+    if (activeCharge.installment) clientData.externalInstallmentId = activeCharge.installment;
+    if (activeCharge.invoiceUrl) clientData.linkBoleto = activeCharge.invoiceUrl;
+    if (activeCharge.dueDate) clientData.dataVencimento = activeCharge.dueDate;
+
+    if (!hasAtLeastOnePaid) {
+      await sql`
+        UPDATE cotacoes
+        SET
+          client_data = ${JSON.stringify(clientData)}::jsonb,
+          updated_at = NOW()
+        WHERE id = ${cotacao.id}
+      `;
+
+      return {
+        ok: true,
+        cotacaoId,
+        clientName: cotacao.client_name || undefined,
+        statusBefore: cotacao.status,
+        statusAfter: cotacao.status,
+        updated: false,
+        paid: false,
+        chargesFound: resolvedCharges.length,
+      };
+    }
+
+    // Se está paga, atualiza cotação para 'aprovada' e premio_final
     await sql`
       UPDATE cotacoes
       SET
+        status = 'aprovada',
+        premio_final = ${totalApolice},
         client_data = ${JSON.stringify(clientData)}::jsonb,
         updated_at = NOW()
       WHERE id = ${cotacao.id}
     `;
 
-    // 3. Emite a venda e comissões se aplicável
+    // Emite a venda e comissões se aplicável
     const saleResult = await ensureSaleForPaidQuote({
       cotacaoId: cotacao.id,
       clientId: cotacao.client_id,
@@ -304,7 +515,7 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
       premioFinal: totalApolice,
     });
 
-    // 4. Se a venda foi criada pela primeira vez, despacha evento PAGAMENTO_CONFIRMADO
+    // Se a venda foi criada pela primeira vez, despacha evento PAGAMENTO_CONFIRMADO
     if (saleResult.created) {
       try {
         const [clientRow] = cotacao.client_id
@@ -345,9 +556,9 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
           dados: {
             cotacaoId: cotacao.id,
             valor: totalApolice,
-            formaPagamento: matchedPaidCharge.billingType,
-            statusPagamento: matchedPaidCharge.status,
-            chargeId: matchedPaidCharge.id,
+            formaPagamento: activeCharge.billingType,
+            statusPagamento: activeCharge.status,
+            chargeId: activeCharge.id,
           },
         });
       } catch (eventErr) {
@@ -356,8 +567,8 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
     }
 
     logger.info(
-      { cotacaoId: cotacao.id, chargeId: matchedPaidCharge.id, durationMs: Date.now() - startTime },
-      'Asaas reconcile success: quote approved and payment orders set to paid'
+      { cotacaoId: cotacao.id, chargeId: activeCharge.id, durationMs: Date.now() - startTime },
+      'Asaas reconcile success: quote approved and payment orders updated'
     );
 
     return {
@@ -368,8 +579,8 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
       statusAfter: 'aprovada',
       updated: true,
       paid: true,
-      chargesFound: charges.length,
-      paidChargeId: matchedPaidCharge.id,
+      chargesFound: resolvedCharges.length,
+      paidChargeId: activeCharge.id,
       saleId: saleResult.saleId,
     };
   } catch (err) {
@@ -396,17 +607,28 @@ export async function reconcileAsaasBatch(
   const startTime = Date.now();
   const limit = Math.max(1, Math.min(options.limit || 50, 100));
 
-  // Seleciona cotações pendentes que possuem cliente associado e ainda não estão aprovadas/emitidas
+  // Seleciona cotações pendentes que possuem checkoutId ou que estejam em status elegíveis,
+  // mesmo se o registro payment_orders ainda não tiver sido gravado
   const quotes = await sql<Array<{ id: string }>>`
     SELECT c.id
     FROM cotacoes c
-    WHERE c.status IN ('enviada', 'rascunho', 'pagamento_gerado', 'contrato_gerado', 'assinado')
+    WHERE (
+      c.status IN ('enviada', 'rascunho', 'pagamento_gerado', 'contrato_gerado', 'assinado')
+      OR (c.client_data->>'checkoutId' IS NOT NULL AND c.status != 'aprovada')
+    )
       ${options.partnerId ? sql`AND c.partner_id = ${options.partnerId}` : sql``}
       ${options.onlyPending !== false ? sql`
-        AND EXISTS (
-          SELECT 1 FROM payment_orders po
-          WHERE po.cotacao_id = c.id
-            AND po.status NOT IN ('paid', 'confirmed', 'received')
+        AND (
+          EXISTS (
+            SELECT 1 FROM payment_orders po
+            WHERE po.cotacao_id = c.id
+              AND po.status NOT IN ('paid', 'confirmed', 'received')
+          )
+          OR NOT EXISTS (
+            SELECT 1 FROM payment_orders po
+            WHERE po.cotacao_id = c.id
+          )
+          OR (c.client_data->>'checkoutId' IS NOT NULL)
         )
       ` : sql``}
     ORDER BY c.updated_at DESC

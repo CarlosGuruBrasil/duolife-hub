@@ -1,18 +1,20 @@
 import Link from 'next/link';
 import { CopiarLinkAssinaturaButton } from '@/components/cotacao/CopiarLinkAssinaturaButton';
 import { notFound, redirect } from 'next/navigation';
-import { ArrowLeft, ExternalLink, FileText, CreditCard, ShieldCheck, FileCheck, Play, CheckCircle2, Clock, Download, Eye, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, ExternalLink, FileText, CreditCard, ShieldCheck, FileCheck, Play, CheckCircle2, Clock, Download, Eye, AlertTriangle, AlertCircle } from 'lucide-react';
 import { verifyPartnerAuth, getPartnerAccessContext } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { PagamentosPanel } from '@/components/portal/PagamentosPanel';
 import { formatCurrency, formatDate, formatDateTime, formatAtuacao, formatStatusLabel, sanitizePlanFinancials } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
+import { isDateBeforeToday } from '@/lib/business-days';
 import EditarPropostaButton from '@/components/modals/EditarPropostaButton';
 import { EnviarFaturaEmailButton } from '@/components/cotacao/EnviarFaturaEmailButton';
 import { EnviarPropostaEmailButton } from '@/components/cotacao/EnviarPropostaEmailButton';
 import { VerificarZapSignButton } from '@/components/cotacao/VerificarZapSignButton';
 import RegerarMinutaButton from '@/components/cotacao/RegerarMinutaButton';
+import { SincronizarAsaasButton } from '@/components/cotacao/SincronizarAsaasButton';
 
 const statusLabel: Record<string, string> = {
   rascunho: 'Rascunho',
@@ -148,12 +150,35 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
     billing_type: string;
     amount_total: string;
     status: string;
+    due_date: string;
   }>>`
-    SELECT id, installment_count, billing_type, amount_total, status
+    SELECT id, installment_count, billing_type, amount_total, status, due_date::text AS due_date
     FROM payment_orders
     WHERE cotacao_id = ${id}
     ORDER BY created_at DESC
     LIMIT 1
+  `;
+
+  // Busca Parcelas em payment_installments
+  const installments = await sql<Array<{
+    id: string;
+    installment_number: number;
+    status: string;
+    amount: number;
+    net_amount: number | null;
+    due_date: string;
+    billing_type: string;
+    invoice_url: string | null;
+    bank_slip_url: string | null;
+    pix_qr_code_url: string | null;
+    paid_at: string | null;
+    raw_payload: any;
+  }>>`
+    SELECT id, installment_number, status, amount, net_amount, due_date::text AS due_date,
+           billing_type, invoice_url, bank_slip_url, pix_qr_code_url, paid_at::text AS paid_at, raw_payload
+    FROM payment_installments
+    WHERE cotacao_id = ${id}
+    ORDER BY installment_number ASC
   `;
 
   // Busca Contrato / Documento de Assinatura ZapSign se houver
@@ -289,6 +314,83 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
   const prazoLimiteFormatado = prazoLimiteMs > 0 ? new Date(prazoLimiteMs).toISOString() : null;
   const isMinutaOutdated = Boolean(clientData.minutaDesatualizada) ||
     (cotacao.status === 'contrato_gerado' && dataCriacaoMs > 0 && cotacaoUpdatedAtMs - dataCriacaoMs > 5000);
+
+  // Determinação dos estados reais de pagamento
+  const paidStatuses = ['paid', 'confirmed', 'received', 'received_in_cash'];
+  const quoteStatusLower = String(cotacao.status || '').toLowerCase();
+  const orderStatusLower = String(paymentOrder?.status || '').toLowerCase();
+
+  const totalInstallmentsCount = installments.length;
+  const paidInstallments = installments.filter((inst) =>
+    paidStatuses.includes(String(inst.status || '').toLowerCase())
+  );
+  const paidInstallmentsCount = paidInstallments.length;
+
+  const overdueInstallments = installments.filter((inst) => {
+    const s = String(inst.status || '').toLowerCase();
+    if (paidStatuses.includes(s)) return false;
+    if (s === 'overdue') return true;
+    return inst.due_date ? isDateBeforeToday(inst.due_date) : false;
+  });
+
+  const isOrderOverdue =
+    orderStatusLower === 'overdue' ||
+    (Boolean(paymentOrder?.due_date) &&
+      !paidStatuses.includes(orderStatusLower) &&
+      isDateBeforeToday(String(paymentOrder?.due_date))) ||
+    (Boolean(clientData.dataVencimento) &&
+      !paidStatuses.includes(orderStatusLower) &&
+      isDateBeforeToday(String(clientData.dataVencimento)));
+
+  const allInstallmentsPaid = totalInstallmentsCount > 0 && paidInstallmentsCount === totalInstallmentsCount;
+
+  // Estados de pagamento
+  const isPaid =
+    paidStatuses.includes(orderStatusLower) ||
+    ['aprovada', 'emitida', 'ativa', 'active'].includes(quoteStatusLower) ||
+    allInstallmentsPaid;
+
+  const isPartiallyPaid =
+    !isPaid &&
+    (orderStatusLower === 'partially_paid' || (paidInstallmentsCount > 0 && paidInstallmentsCount < totalInstallmentsCount));
+
+  const isOverdue =
+    !isPaid &&
+    !isPartiallyPaid &&
+    (overdueInstallments.length > 0 || isOrderOverdue);
+
+  const hasCharges = Boolean(checkoutId || linkBoleto || paymentOrder || installments.length > 0);
+  const isPending = hasCharges && !isPaid && !isPartiallyPaid && !isOverdue;
+
+  // Metadados adicionais para exibição de pagamento
+  const paidAtDate =
+    paidInstallments.find((i) => i.paid_at)?.paid_at ||
+    (clientData.paidAt as string | undefined) ||
+    (clientData.pagoEm as string | undefined) ||
+    (clientData.assinadoEm as string | undefined) ||
+    null;
+
+  const invoiceUrl =
+    linkBoleto ||
+    installments.find((i) => i.invoice_url || i.bank_slip_url)?.invoice_url ||
+    installments.find((i) => i.invoice_url || i.bank_slip_url)?.bank_slip_url ||
+    null;
+
+  const paymentBillingType =
+    paymentOrder?.billing_type ||
+    installments[0]?.billing_type ||
+    (clientData.billingType as string | undefined) ||
+    (clientData.formaPagamento as string | undefined) ||
+    null;
+
+  const billingTypeFormatted =
+    paymentBillingType === 'BOLETO'
+      ? 'Boleto Bancário (com PIX)'
+      : paymentBillingType === 'PIX'
+      ? 'PIX Instantâneo'
+      : paymentBillingType === 'CREDIT_CARD'
+      ? 'Cartão de Crédito'
+      : 'Fatura (Cliente escolhe)';
 
   return (
     <div className="space-y-6 max-w-[1100px] mx-auto">
@@ -465,42 +567,455 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
           
           {/* Fatura & Pagamento Asaas */}
           <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4">
-            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2 border-b border-slate-100 pb-3">
-              <CreditCard size={16} className="text-amber-600" /> Situação de Pagamento (Asaas)
-            </h2>
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 gap-2 flex-wrap">
+              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                <CreditCard size={16} className={isPaid ? 'text-emerald-700' : isPartiallyPaid ? 'text-sky-700' : isOverdue ? 'text-rose-600' : 'text-amber-600'} /> Situação de Pagamento (Asaas)
+              </h2>
+              <SincronizarAsaasButton id={cotacao.id} isAdmin={false} variant="compact" label="Sincronizar Asaas" />
+            </div>
 
-            {checkoutId || linkBoleto ? (
-              <div className="space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs bg-amber-50/80 border border-amber-200/80 p-3 rounded-xl">
-                  <div>
-                    <span className="font-bold text-amber-900 block">Cobrança Asaas Gerada</span>
-                    <span className="text-amber-700 text-[11px] block">
-                      Forma: <strong>{
-                        paymentOrder?.billing_type === 'BOLETO'
-                          ? 'Boleto Bancário (com PIX)'
-                          : paymentOrder?.billing_type === 'PIX'
-                          ? 'PIX Instantâneo'
-                          : paymentOrder?.billing_type === 'CREDIT_CARD'
-                          ? 'Cartão de Crédito'
-                          : 'Fatura (Cliente escolhe)'
-                      }</strong> &bull; ID: {checkoutId || 'Asaas'}
+            {isPaid ? (
+              /* ESTADO: PAGO / CONFIRMADO */
+              <div className="space-y-4">
+                <div className="bg-emerald-50/80 border border-emerald-200/90 text-emerald-950 p-4 rounded-xl space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <CheckCircle2 size={22} className="text-emerald-700 shrink-0" />
+                      <div>
+                        <span className="font-bold text-emerald-950 text-sm block">Pagamento Confirmado (Quitado)</span>
+                        <span className="text-emerald-800 text-xs block">
+                          Cobrança liquidada com sucesso via Asaas &bull; ID: {checkoutId || paymentOrder?.id?.slice(0, 12) || 'Asaas'}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                      Quitado
                     </span>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {linkBoleto && (
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t border-emerald-200/80 text-xs">
+                    <div>
+                      <span className="text-emerald-800 font-medium block text-[11px]">Valor Total Pago</span>
+                      <strong className="text-emerald-950 text-sm font-black block">{valorTotalCalculado}</strong>
+                    </div>
+                    <div>
+                      <span className="text-emerald-800 font-medium block text-[11px]">Forma de Pagamento</span>
+                      <strong className="text-emerald-950 block">{billingTypeFormatted}</strong>
+                    </div>
+                    <div>
+                      <span className="text-emerald-800 font-medium block text-[11px]">Data da Compensação</span>
+                      <strong className="text-emerald-950 block">
+                        {paidAtDate ? formatDateTime(String(paidAtDate)) : 'Confirmado'}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {installments.length > 0 && (
+                    <div className="pt-2 border-t border-emerald-200/80 space-y-1.5">
+                      <span className="text-emerald-900 font-semibold block text-[11px] uppercase tracking-wider">
+                        Parcelas Quitadas ({installments.length})
+                      </span>
+                      <div className="grid gap-1.5 sm:grid-cols-2">
+                        {installments.map((inst) => (
+                          <div
+                            key={inst.id}
+                            className="bg-white/95 border border-emerald-200 rounded-lg p-2.5 flex items-center justify-between text-xs"
+                          >
+                            <div>
+                              <span className="font-semibold text-slate-800 block">
+                                Parcela {inst.installment_number}/{installments.length} &bull; {formatCurrency(Number(inst.amount))}
+                              </span>
+                              <span className="text-slate-500 block text-[11px]">
+                                Vencimento: {formatDate(inst.due_date)} {inst.paid_at ? `· Pago em ${formatDate(inst.paid_at)}` : ''}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-md">
+                                <CheckCircle2 size={11} className="text-emerald-700" /> Quitada
+                              </span>
+                              {(inst.invoice_url || inst.bank_slip_url) && (
+                                <a
+                                  href={(inst.invoice_url || inst.bank_slip_url)!}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="p-1 rounded-md bg-slate-100 hover:bg-emerald-100 text-slate-600 hover:text-emerald-800 transition-colors"
+                                  title="Abrir recibo desta parcela"
+                                >
+                                  <ExternalLink size={12} />
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="pt-3 border-t border-emerald-200/80 flex flex-wrap items-center gap-2">
+                    {invoiceUrl && (
                       <a
-                        href={linkBoleto}
+                        href={invoiceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs transition-colors shadow-xs"
+                      >
+                        <span>📄</span>
+                        <span>Abrir Recibo / Fatura</span>
+                        <ExternalLink size={12} className="shrink-0" />
+                      </a>
+                    )}
+                    <EnviarFaturaEmailButton
+                      cotacaoId={cotacao.id}
+                      clientName={cotacao.client_name || String(clientData.nome || '')}
+                      clientEmail={cotacao.client_email || String(clientData.email || '')}
+                      valor={cotacao.premio_final || cotacao.premio_calculado}
+                      vencimento={clientData.dataVencimento ? String(clientData.dataVencimento) : undefined}
+                      hasLink={Boolean(invoiceUrl)}
+                      variant="card"
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : isPartiallyPaid ? (
+              /* ESTADO: PAGAMENTO PARCIAL */
+              <div className="space-y-4">
+                <div className="bg-sky-50/80 border border-sky-200/90 text-sky-950 p-4 rounded-xl space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <Clock size={22} className="text-sky-700 shrink-0" />
+                      <div>
+                        <span className="font-bold text-sky-950 text-sm block">
+                          Pagamento Parcial ({paidInstallmentsCount} de {totalInstallmentsCount || numParcelas} parcelas pagas)
+                        </span>
+                        <span className="text-sky-800 text-xs block">
+                          Parte das parcelas já foi quitada. Cobrança ativa no Asaas &bull; ID: {checkoutId || paymentOrder?.id?.slice(0, 12) || 'Asaas'}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-sky-100 text-sky-800 border border-sky-300">
+                      Parcial
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t border-sky-200/80 text-xs">
+                    <div>
+                      <span className="text-sky-800 font-medium block text-[11px]">Valor Total</span>
+                      <strong className="text-sky-950 text-sm font-black block">{valorTotalCalculado}</strong>
+                    </div>
+                    <div>
+                      <span className="text-sky-800 font-medium block text-[11px]">Forma de Pagamento</span>
+                      <strong className="text-sky-950 block">{billingTypeFormatted}</strong>
+                    </div>
+                    <div>
+                      <span className="text-sky-800 font-medium block text-[11px]">Parcelas Pagas</span>
+                      <strong className="text-sky-950 block">
+                        {paidInstallmentsCount} de {totalInstallmentsCount || numParcelas}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {installments.length > 0 && (
+                    <div className="pt-2 border-t border-sky-200/80 space-y-1.5">
+                      <span className="text-sky-900 font-semibold block text-[11px] uppercase tracking-wider">
+                        Detalhamento das Parcelas
+                      </span>
+                      <div className="grid gap-1.5 sm:grid-cols-2">
+                        {installments.map((inst) => {
+                          const isInstPaid = paidStatuses.includes(String(inst.status || '').toLowerCase());
+                          const isInstOverdue = !isInstPaid && (inst.status === 'overdue' || (inst.due_date ? isDateBeforeToday(inst.due_date) : false));
+                          const instUrl = inst.invoice_url || inst.bank_slip_url;
+
+                          return (
+                            <div
+                              key={inst.id}
+                              className="bg-white/95 border border-sky-200 rounded-lg p-2.5 flex items-center justify-between text-xs gap-2"
+                            >
+                              <div>
+                                <span className="font-semibold text-slate-800 block">
+                                  Parcela {inst.installment_number}/{installments.length} &bull; {formatCurrency(Number(inst.amount))}
+                                </span>
+                                <span className="text-slate-500 block text-[11px]">
+                                  Vencimento: {formatDate(inst.due_date)} {isInstPaid && inst.paid_at ? `· Pago em ${formatDate(inst.paid_at)}` : ''}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {isInstPaid ? (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-md">
+                                    <CheckCircle2 size={11} className="text-emerald-700" /> Quitada
+                                  </span>
+                                ) : isInstOverdue ? (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-300 px-2 py-0.5 rounded-md">
+                                    <AlertCircle size={11} className="text-rose-700" /> Vencida
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300 px-2 py-0.5 rounded-md">
+                                    Aguardando
+                                  </span>
+                                )}
+                                {instUrl && (
+                                  <a
+                                    href={instUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-1 rounded-md bg-slate-100 hover:bg-sky-100 text-slate-600 hover:text-sky-800 transition-colors"
+                                    title="Abrir fatura desta parcela"
+                                  >
+                                    <ExternalLink size={12} />
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="pt-3 border-t border-sky-200/80 flex flex-wrap items-center gap-2">
+                    {invoiceUrl && (
+                      <a
+                        href={invoiceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 bg-sky-700 hover:bg-sky-800 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs transition-colors shadow-xs"
+                      >
+                        <span>📄</span>
+                        <span>Abrir Fatura / Pagamento</span>
+                        <ExternalLink size={12} className="shrink-0" />
+                      </a>
+                    )}
+                    <EnviarFaturaEmailButton
+                      cotacaoId={cotacao.id}
+                      clientName={cotacao.client_name || String(clientData.nome || '')}
+                      clientEmail={cotacao.client_email || String(clientData.email || '')}
+                      valor={cotacao.premio_final || cotacao.premio_calculado}
+                      vencimento={clientData.dataVencimento ? String(clientData.dataVencimento) : undefined}
+                      hasLink={Boolean(invoiceUrl)}
+                      variant="card"
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : isOverdue ? (
+              /* ESTADO: VENCIDO */
+              <div className="space-y-4">
+                <div className="bg-rose-50/80 border border-rose-200/90 text-rose-950 p-4 rounded-xl space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <AlertCircle size={22} className="text-rose-600 shrink-0" />
+                      <div>
+                        <span className="font-bold text-rose-950 text-sm block">Cobrança Vencida</span>
+                        <span className="text-rose-800 text-xs block">
+                          O prazo de vencimento expirou sem identificação de liquidação no Asaas &bull; ID: {checkoutId || paymentOrder?.id?.slice(0, 12) || 'Asaas'}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                      Vencida
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t border-rose-200/80 text-xs">
+                    <div>
+                      <span className="text-rose-800 font-medium block text-[11px]">Valor</span>
+                      <strong className="text-rose-950 text-sm font-black block">{valorTotalCalculado}</strong>
+                    </div>
+                    <div>
+                      <span className="text-rose-800 font-medium block text-[11px]">Forma de Pagamento</span>
+                      <strong className="text-rose-950 block">{billingTypeFormatted}</strong>
+                    </div>
+                    <div>
+                      <span className="text-rose-800 font-medium block text-[11px]">Vencimento Expirado</span>
+                      <strong className="text-rose-900 font-bold block">
+                        {clientData.dataVencimento || paymentOrder?.due_date || installments[0]?.due_date
+                          ? formatDate(String(clientData.dataVencimento || paymentOrder?.due_date || installments[0]?.due_date))
+                          : 'Vencida'}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {installments.length > 0 && (
+                    <div className="pt-2 border-t border-rose-200/80 space-y-1.5">
+                      <span className="text-rose-900 font-semibold block text-[11px] uppercase tracking-wider">
+                        Parcelas ({installments.length})
+                      </span>
+                      <div className="grid gap-1.5 sm:grid-cols-2">
+                        {installments.map((inst) => {
+                          const isInstPaid = paidStatuses.includes(String(inst.status || '').toLowerCase());
+                          const instUrl = inst.invoice_url || inst.bank_slip_url;
+
+                          return (
+                            <div
+                              key={inst.id}
+                              className="bg-white/95 border border-rose-200 rounded-lg p-2.5 flex items-center justify-between text-xs gap-2"
+                            >
+                              <div>
+                                <span className="font-semibold text-slate-800 block">
+                                  Parcela {inst.installment_number}/{installments.length} &bull; {formatCurrency(Number(inst.amount))}
+                                </span>
+                                <span className="text-rose-700 font-medium block text-[11px]">
+                                  Vencimento: {formatDate(inst.due_date)}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {isInstPaid ? (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-md">
+                                    <CheckCircle2 size={11} className="text-emerald-700" /> Quitada
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-300 px-2 py-0.5 rounded-md">
+                                    <AlertCircle size={11} className="text-rose-700" /> Vencida
+                                  </span>
+                                )}
+                                {instUrl && (
+                                  <a
+                                    href={instUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-1 rounded-md bg-slate-100 hover:bg-rose-100 text-slate-600 hover:text-rose-800 transition-colors"
+                                    title="Abrir fatura desta parcela"
+                                  >
+                                    <ExternalLink size={12} />
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="pt-3 border-t border-rose-200/80 flex flex-wrap items-center gap-2">
+                    {invoiceUrl && (
+                      <a
+                        href={invoiceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 bg-rose-700 hover:bg-rose-800 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs transition-colors shadow-xs"
+                      >
+                        <span>📄</span>
+                        <span>Abrir Cobrança / PIX</span>
+                        <ExternalLink size={12} className="shrink-0" />
+                      </a>
+                    )}
+                    <EnviarFaturaEmailButton
+                      cotacaoId={cotacao.id}
+                      clientName={cotacao.client_name || String(clientData.nome || '')}
+                      clientEmail={cotacao.client_email || String(clientData.email || '')}
+                      valor={cotacao.premio_final || cotacao.premio_calculado}
+                      vencimento={clientData.dataVencimento ? String(clientData.dataVencimento) : undefined}
+                      hasLink={Boolean(invoiceUrl)}
+                      variant="card"
+                    />
+                  </div>
+                </div>
+              </div>
+            ) : isPending ? (
+              /* ESTADO: AGUARDANDO PAGAMENTO */
+              <div className="space-y-4">
+                <div className="bg-amber-50/80 border border-amber-200/90 text-amber-950 p-4 rounded-xl space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <Clock size={22} className="text-amber-700 shrink-0" />
+                      <div>
+                        <span className="font-bold text-amber-950 text-sm block">Aguardando Pagamento</span>
+                        <span className="text-amber-800 text-xs block">
+                          Cobrança emitida e aguardando liquidação pelo cliente &bull; ID: {checkoutId || paymentOrder?.id?.slice(0, 12) || 'Asaas'}
+                        </span>
+                      </div>
+                    </div>
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                      Pendente
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2 border-t border-amber-200/80 text-xs">
+                    <div>
+                      <span className="text-amber-800 font-medium block text-[11px]">Valor</span>
+                      <strong className="text-amber-950 text-sm font-black block">{valorTotalCalculado}</strong>
+                    </div>
+                    <div>
+                      <span className="text-amber-800 font-medium block text-[11px]">Forma de Pagamento</span>
+                      <strong className="text-amber-950 block">{billingTypeFormatted}</strong>
+                    </div>
+                    <div>
+                      <span className="text-amber-800 font-medium block text-[11px]">Data de Vencimento</span>
+                      <strong className="text-amber-950 block">
+                        {clientData.dataVencimento || paymentOrder?.due_date || installments[0]?.due_date
+                          ? formatDate(String(clientData.dataVencimento || paymentOrder?.due_date || installments[0]?.due_date))
+                          : 'Não informada'}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {installments.length > 1 && (
+                    <div className="pt-2 border-t border-amber-200/80 space-y-1.5">
+                      <span className="text-amber-900 font-semibold block text-[11px] uppercase tracking-wider">
+                        Parcelas ({installments.length})
+                      </span>
+                      <div className="grid gap-1.5 sm:grid-cols-2">
+                        {installments.map((inst) => {
+                          const isInstPaid = paidStatuses.includes(String(inst.status || '').toLowerCase());
+                          const instUrl = inst.invoice_url || inst.bank_slip_url;
+
+                          return (
+                            <div
+                              key={inst.id}
+                              className="bg-white/95 border border-amber-200 rounded-lg p-2.5 flex items-center justify-between text-xs gap-2"
+                            >
+                              <div>
+                                <span className="font-semibold text-slate-800 block">
+                                  Parcela {inst.installment_number}/{installments.length} &bull; {formatCurrency(Number(inst.amount))}
+                                </span>
+                                <span className="text-slate-500 block text-[11px]">
+                                  Vencimento: {formatDate(inst.due_date)}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {isInstPaid ? (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-md">
+                                    <CheckCircle2 size={11} className="text-emerald-700" /> Quitada
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300 px-2 py-0.5 rounded-md">
+                                    Aguardando
+                                  </span>
+                                )}
+                                {instUrl && (
+                                  <a
+                                    href={instUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-1 rounded-md bg-slate-100 hover:bg-amber-100 text-slate-600 hover:text-amber-800 transition-colors"
+                                    title="Abrir fatura desta parcela"
+                                  >
+                                    <ExternalLink size={12} />
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="pt-3 border-t border-amber-200/80 flex flex-wrap items-center gap-2">
+                    {invoiceUrl && (
+                      <a
+                        href={invoiceUrl}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 !text-white text-white font-bold px-3.5 py-1.5 rounded-lg text-xs transition-colors shadow-xs"
                       >
                         <span>📄</span>
                         <span className="!text-white text-white">
-                          {paymentOrder?.billing_type === 'CREDIT_CARD'
+                          {paymentBillingType === 'CREDIT_CARD'
                             ? 'Abrir Fatura / Cartão'
-                            : paymentOrder?.billing_type === 'PIX'
+                            : paymentBillingType === 'PIX'
                             ? 'Abrir PIX'
-                            : paymentOrder?.billing_type === 'BOLETO'
+                            : paymentBillingType === 'BOLETO'
                             ? 'Abrir Boleto / Pix'
                             : 'Abrir Fatura'}
                         </span>
@@ -513,19 +1028,14 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
                       clientEmail={cotacao.client_email || String(clientData.email || '')}
                       valor={cotacao.premio_final || cotacao.premio_calculado}
                       vencimento={clientData.dataVencimento ? String(clientData.dataVencimento) : undefined}
-                      hasLink={Boolean(linkBoleto)}
+                      hasLink={Boolean(invoiceUrl)}
                       variant="card"
                     />
                   </div>
                 </div>
-
-                {Boolean(clientData.dataVencimento) && (
-                  <p className="text-xs text-slate-500 font-medium">
-                    Data de Vencimento: <strong className="text-slate-900">{formatDate(String(clientData.dataVencimento))}</strong>
-                  </p>
-                )}
               </div>
             ) : (
+              /* ESTADO: NENHUMA FATURA GERADA */
               <div className="space-y-3">
                 <p className="text-xs text-slate-500 font-medium">Nenhuma fatura do Asaas foi gerada para esta cotação ainda.</p>
                 {cotacao.status === 'assinado' && (

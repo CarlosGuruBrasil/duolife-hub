@@ -183,7 +183,7 @@ export async function POST(req: NextRequest) {
     if (isPaidEvent(event)) {
       
       // 1. Encontra a cotação vinculada a este pagamento
-      let [cotacao] = await sql<{
+      let cotacao: {
         id: string;
         client_id: string | null;
         partner_id: string;
@@ -192,11 +192,43 @@ export async function POST(req: NextRequest) {
         status: string;
         premio_final: number | null;
         premio_calculado: number | null;
-      }[]>`
-        SELECT id, client_id, partner_id, product_id, importancia_segurada, status, premio_final, premio_calculado 
-        FROM cotacoes 
-        WHERE id = COALESCE(${installment?.cotacao_id || null}, id)
-          AND (
+      } | undefined;
+
+      // Se já temos a cotação identificada pela parcela, busca diretamente por ID
+      if (installment?.cotacao_id) {
+        const [directCotacao] = await sql<{
+          id: string;
+          client_id: string | null;
+          partner_id: string;
+          product_id: string;
+          importancia_segurada: number;
+          status: string;
+          premio_final: number | null;
+          premio_calculado: number | null;
+        }[]>`
+          SELECT id, client_id, partner_id, product_id, importancia_segurada, status, premio_final, premio_calculado 
+          FROM cotacoes 
+          WHERE id = ${installment.cotacao_id}
+          LIMIT 1
+        `;
+        cotacao = directCotacao;
+      }
+
+      // Se não encontrou por parcela, busca por checkoutId, parcelamento ou ordens
+      if (!cotacao) {
+        const [matchingCotacao] = await sql<{
+          id: string;
+          client_id: string | null;
+          partner_id: string;
+          product_id: string;
+          importancia_segurada: number;
+          status: string;
+          premio_final: number | null;
+          premio_calculado: number | null;
+        }[]>`
+          SELECT id, client_id, partner_id, product_id, importancia_segurada, status, premio_final, premio_calculado 
+          FROM cotacoes 
+          WHERE (
             client_data->>'checkoutId' = ${payment.id}
             OR client_data->>'externalInstallmentId' = ${payment.installment || null}
             OR EXISTS (
@@ -209,8 +241,10 @@ export async function POST(req: NextRequest) {
                 )
             )
           )
-        LIMIT 1
-      `;
+          LIMIT 1
+        `;
+        cotacao = matchingCotacao;
+      }
 
       // Fallback resiliente: se não encontrou cotação pelo ID exato da cobrança,
       // busca pela identificação do cliente no Asaas (customer ID) ou documento
@@ -311,6 +345,16 @@ export async function POST(req: NextRequest) {
       const premioTotalApolice = Number(
         orderRow?.amount_total || cotacao.premio_final || cotacao.premio_calculado || payment.value
       );
+
+      // Atualiza a cotação para aprovada e garante premio_final
+      await sql`
+        UPDATE cotacoes
+        SET
+          status = 'aprovada',
+          premio_final = COALESCE(premio_final, ${premioTotalApolice}),
+          updated_at = NOW()
+        WHERE id = ${cotacao.id}
+      `;
 
       try {
         const sale = await ensureSaleForPaidQuote({

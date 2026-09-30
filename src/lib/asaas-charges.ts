@@ -72,7 +72,7 @@ function normalizeCharge(raw: Record<string, unknown>): AsaasCharge {
     paymentDate: toStringOrNull(raw.paymentDate) ?? toStringOrNull(raw.clientPaymentDate),
     invoiceUrl: toStringOrNull(raw.invoiceUrl),
     bankSlipUrl: toStringOrNull(raw.bankSlipUrl),
-    transactionReceiptUrl: toStringOrNull(raw.transactionReceiptUrl),
+    transactionReceiptUrl: toStringOrNull(raw.transactionReceiptUrl) ?? toStringOrNull(raw.receiptUrl),
     invoiceNumber: toStringOrNull(raw.invoiceNumber),
     externalReference: toStringOrNull(raw.externalReference),
     deleted: raw.deleted === true,
@@ -91,6 +91,99 @@ async function asaasGet(
   });
   const body = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   return { ok: res.ok, status: res.status, body };
+}
+
+/**
+ * Consulta uma cobrança individual diretamente na API do Asaas por ID (/payments/{id}).
+ */
+export async function getAsaasPayment(
+  paymentId: string
+): Promise<{ ok: boolean; charge?: AsaasCharge; error?: string }> {
+  if (!paymentId || !paymentId.trim()) {
+    return { ok: false, error: 'ID da cobrança Asaas inválido' };
+  }
+
+  const { apiKey, baseUrl } = await getAsaasConfig();
+  if (!apiKey) {
+    return { ok: false, error: 'Chave de API do Asaas não configurada' };
+  }
+
+  const cleanId = paymentId.trim();
+
+  try {
+    const { ok, status, body } = await asaasGet(
+      baseUrl,
+      apiKey,
+      `/payments/${encodeURIComponent(cleanId)}`
+    );
+
+    if (!ok || !body || !body.id) {
+      const firstError = Array.isArray(body?.errors) && body.errors.length > 0
+        ? (body.errors[0] as Record<string, unknown>).description
+        : body?.message;
+      return {
+        ok: false,
+        error: String(firstError || `Cobrança ${cleanId} não encontrada no Asaas (HTTP ${status})`),
+      };
+    }
+
+    return { ok: true, charge: normalizeCharge(body) };
+  } catch (err) {
+    logger.error({ err, paymentId: cleanId }, 'asaas.payment.get_failed');
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'Falha ao consultar cobrança no Asaas',
+    };
+  }
+}
+
+/**
+ * Consulta todas as cobranças filhas de um carnê parcelado (/payments?installment={id}&limit=100).
+ */
+export async function listAsaasInstallmentPayments(
+  installmentId: string
+): Promise<{ ok: boolean; charges: AsaasCharge[]; error?: string }> {
+  if (!installmentId || !installmentId.trim()) {
+    return { ok: false, charges: [], error: 'ID do parcelamento Asaas inválido' };
+  }
+
+  const { apiKey, baseUrl } = await getAsaasConfig();
+  if (!apiKey) {
+    return { ok: false, charges: [], error: 'Chave de API do Asaas não configurada' };
+  }
+
+  const cleanId = installmentId.trim();
+
+  try {
+    const { ok, status, body } = await asaasGet(
+      baseUrl,
+      apiKey,
+      `/payments?installment=${encodeURIComponent(cleanId)}&limit=100`
+    );
+
+    if (!ok || !Array.isArray(body?.data)) {
+      const firstError = Array.isArray(body?.errors) && body.errors.length > 0
+        ? (body.errors[0] as Record<string, unknown>).description
+        : body?.message;
+      return {
+        ok: false,
+        charges: [],
+        error: String(firstError || `Erro ao listar parcelas do carnê ${cleanId} (HTTP ${status})`),
+      };
+    }
+
+    const charges = (body.data as Array<Record<string, unknown>>).map(normalizeCharge);
+    charges.sort((a, b) => (a.installmentNumber ?? 0) - (b.installmentNumber ?? 0));
+
+    return { ok: true, charges };
+  } catch (err) {
+    logger.error({ err, installmentId: cleanId }, 'asaas.installment.list_failed');
+    return {
+      ok: false,
+      charges: [],
+      error: err instanceof Error ? err.message : 'Falha ao listar parcelas do carnê no Asaas',
+    };
+  }
 }
 
 /** Resolve os IDs de cliente no Asaas a partir do CPF/CNPJ. */
