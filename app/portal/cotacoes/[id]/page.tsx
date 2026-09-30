@@ -59,7 +59,13 @@ function parseClientData(data: unknown): Record<string, unknown> {
   return {};
 }
 
-export default async function PortalCotacaoDetailPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PortalCotacaoDetailPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const user = await verifyPartnerAuth();
   if (!user) redirect('/login');
   const access = await getPartnerAccessContext(user);
@@ -67,6 +73,8 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
 
   await ensureSchema();
   const { id } = await params;
+  const sp = searchParams ? await searchParams : {};
+  const isFromVendas = sp.from === 'vendas';
 
   const isCorretora = Boolean(access.isCorretoraUser && access.corretoraId);
   const hasVisibleUsers = access.visibleUserIds !== null && access.visibleUserIds.length > 0;
@@ -136,8 +144,18 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
   if (!cotacao) notFound();
 
   // Busca Venda / Apólice se houver
-  const [sale] = await sql`
-    SELECT id, policy_number, premio_total, status, issue_date, expiry_date, commission_amount
+  const [sale] = await sql<Array<{
+    id: string;
+    policy_number: string;
+    premio_total: number;
+    status: string;
+    issue_date: string | null;
+    expiry_date: string | null;
+    commission_amount: number;
+    commission_rate: number | null;
+    created_at: string;
+  }>>`
+    SELECT id, policy_number, premio_total, status, issue_date, expiry_date, commission_amount, commission_rate, created_at
     FROM sales
     WHERE cotacao_id = ${id}
     LIMIT 1
@@ -395,17 +413,25 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
   return (
     <div className="space-y-6 max-w-[1100px] mx-auto">
       {/* Voltar */}
-      <Link href="/portal/cotacoes" className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 transition-colors">
-        <ArrowLeft size={14} /> Voltar para Cotações
+      <Link
+        href={isFromVendas ? "/portal/vendas" : "/portal/cotacoes"}
+        className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-900 transition-colors"
+      >
+        <ArrowLeft size={14} /> {isFromVendas ? 'Voltar para Vendas' : 'Voltar para Cotações'}
       </Link>
 
       {/* Header Principal da Cotação */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border ${statusColor[cotacao.status] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
               {statusLabel[cotacao.status] || cotacao.status}
             </span>
+            {sale?.policy_number && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-300">
+                <ShieldCheck size={13} className="text-emerald-700" /> Apólice: {sale.policy_number}
+              </span>
+            )}
             <span className="text-xs text-slate-400 font-mono">ID: {cotacao.id.slice(0, 8)}</span>
           </div>
           <h1 className="text-2xl font-bold text-slate-900 mt-2">{cotacao.client_name}</h1>
@@ -478,6 +504,52 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
           >
             <Play size={12} className="fill-current" /> Continuar Preenchimento
           </Link>
+        </div>
+      )}
+      {/* Card Destaque: Venda & Apólice Emitida */}
+      {sale && (
+        <div className="bg-emerald-50/80 border border-emerald-200/90 p-5 rounded-2xl shadow-xs">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-emerald-200/80 pb-3 mb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-emerald-100/90 text-emerald-800">
+                <ShieldCheck size={22} />
+              </div>
+              <div>
+                <div className="text-xs font-bold uppercase tracking-wider text-emerald-900">
+                  Apólice Emitida &bull; KEV Seguros
+                </div>
+                <div className="text-lg font-black text-emerald-950 font-mono">
+                  {sale.policy_number}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 uppercase">
+                {formatStatusLabel(sale.status)}
+              </span>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs text-emerald-950 font-medium">
+            <div>
+              <span className="text-emerald-800 text-[11px] block">Início da Vigência</span>
+              <strong className="block text-sm font-bold">{formatDate(sale.issue_date)}</strong>
+            </div>
+            <div>
+              <span className="text-emerald-800 text-[11px] block">Fim da Vigência</span>
+              <strong className="block text-sm font-bold">{formatDate(sale.expiry_date)}</strong>
+            </div>
+            <div>
+              <span className="text-emerald-800 text-[11px] block">Prêmio Emitido</span>
+              <strong className="block text-sm font-bold">{formatCurrency(sale.premio_total)}</strong>
+            </div>
+            <div>
+              <span className="text-emerald-800 text-[11px] block">Comissão</span>
+              <strong className="block text-sm font-bold">
+                {formatCurrency(sale.commission_amount)}
+                {sale.commission_rate ? ` (${Number(sale.commission_rate)}%)` : ''}
+              </strong>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1293,21 +1365,6 @@ export default async function PortalCotacaoDetailPage({ params }: { params: Prom
               </div>
             )}
           </div>
-
-          {/* Venda Finalizada & Apólice Emitida (se houver) */}
-          {sale && (
-            <div className="bg-emerald-50/80 border border-emerald-200 p-6 rounded-2xl shadow-xs space-y-3">
-              <h2 className="text-sm font-bold text-emerald-900 uppercase tracking-wider flex items-center gap-2">
-                <ShieldCheck size={16} className="text-emerald-700" /> Apólice Emitida (KEV Seguros)
-              </h2>
-              <div className="grid grid-cols-2 gap-3 text-xs text-emerald-950 font-medium">
-                <div><span>Número da Apólice:</span> <strong className="block text-sm font-bold">{sale.policy_number}</strong></div>
-                <div><span>Status da Venda:</span> <strong className="block text-sm font-bold">{formatStatusLabel(sale.status)}</strong></div>
-                <div><span>Vigência Início:</span> <strong>{formatDate(sale.issue_date)}</strong></div>
-                <div><span>Vigência Fim:</span> <strong>{formatDate(sale.expiry_date)}</strong></div>
-              </div>
-            </div>
-          )}
 
         </div>
       </div>

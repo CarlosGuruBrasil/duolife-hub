@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Plus, RefreshCw, FileText, Search } from 'lucide-react';
+import { Plus, RefreshCw, FileText, Search, ExternalLink } from 'lucide-react';
 import { getPartnerAccessContext, verifyPartnerAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
@@ -14,6 +14,7 @@ export const dynamic = 'force-dynamic';
 
 interface VendaRow {
   id: string;
+  cotacao_id?: string;
   policy_number: string;
   importancia_segurada?: number | string | null;
   premio_total: number;
@@ -162,6 +163,7 @@ export default async function PortalVendasPage({
   const vendas = await sql<VendaRow[]>`
     SELECT
       s.id,
+      s.cotacao_id,
       s.policy_number,
       COALESCE(s.importancia_segurada, c.importancia_segurada) AS importancia_segurada,
       s.premio_total,
@@ -294,7 +296,14 @@ export default async function PortalVendasPage({
                     return (
                       <tr key={venda.id} className="group hover:bg-gray-50/75 transition-colors">
                         <td className="px-5 py-4 table-sticky-col-cell">
-                          <div className="font-semibold text-gray-900">{venda.client_name}</div>
+                          <Link
+                            href={venda.cotacao_id ? `/portal/cotacoes/${venda.cotacao_id}?from=vendas` : `/portal/vendas/${venda.id}`}
+                            className="font-semibold text-gray-900 hover:text-[#0e4a5a] hover:underline transition-colors inline-flex items-center gap-1.5 group/name"
+                            title="Ver detalhes completos da venda, contrato e cobrança"
+                          >
+                            <span>{venda.client_name}</span>
+                            <ExternalLink size={12} className="text-gray-400 opacity-0 group-hover/name:opacity-100 transition-opacity shrink-0" />
+                          </Link>
                           {venda.client_cpf_cnpj && (
                             <div className="text-xs text-gray-500">{venda.client_cpf_cnpj}</div>
                           )}
