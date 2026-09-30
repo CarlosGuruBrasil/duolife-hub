@@ -335,7 +335,11 @@ export async function processAsaasPayload(rawPayload: any): Promise<{ success: b
         cotacao = matchingCotacao;
       }
 
-      if (!cotacao && (payment.customer || payment.cpfCnpj)) {
+      const customerId = payment.customer || null;
+      const cpfCnpj = payment.cpfCnpj || null;
+      const cleanCpfCnpj = cpfCnpj ? String(cpfCnpj).replace(/\D/g, '') : null;
+
+      if (!cotacao && (customerId || cpfCnpj)) {
         const [fallbackCotacao] = await sql<{
           id: string;
           client_id: string | null;
@@ -351,16 +355,16 @@ export async function processAsaasPayload(rawPayload: any): Promise<{ success: b
           LEFT JOIN insurance_clients ic ON ic.id = c.client_id
           LEFT JOIN payment_orders po ON po.cotacao_id = c.id
           WHERE (
-            (${payment.customer || null}::text IS NOT NULL AND (
-              c.client_data->>'clienteId' = ${payment.customer}
-              OR c.client_data->>'asaasCustomerId' = ${payment.customer}
-              OR po.provider_customer_id = ${payment.customer}
-              OR ic.metadata->>'asaasCustomerId' = ${payment.customer}
+            (${customerId}::text IS NOT NULL AND (
+              c.client_data->>'clienteId' = ${customerId}
+              OR c.client_data->>'asaasCustomerId' = ${customerId}
+              OR po.provider_customer_id = ${customerId}
+              OR ic.metadata->>'asaasCustomerId' = ${customerId}
             ))
-            OR (${payment.cpfCnpj || null}::text IS NOT NULL AND (
-              c.client_cpf_cnpj = ${payment.cpfCnpj}
-              OR ic.document_number = ${payment.cpfCnpj}
-              OR regexp_replace(c.client_cpf_cnpj, '\\D', '', 'g') = regexp_replace(${payment.cpfCnpj}, '\\D', '', 'g')
+            OR (${cpfCnpj}::text IS NOT NULL AND (
+              c.client_cpf_cnpj = ${cpfCnpj}
+              OR ic.document_number = ${cpfCnpj}
+              OR (${cleanCpfCnpj}::text IS NOT NULL AND regexp_replace(c.client_cpf_cnpj, '\\D', '', 'g') = ${cleanCpfCnpj})
             ))
           )
           AND c.status IN ('pagamento_gerado', 'assinado', 'contrato_gerado', 'enviada', 'rascunho')
@@ -1067,28 +1071,52 @@ export async function reprocessWebhookEvent(id: string): Promise<{
 
     const hadEmptyPayload = Object.keys(normalizeWebhookPayload(event.payload)).length === 0 && Object.keys(rawPayload).length > 0;
 
-    if (result.success) {
-      await sql`
-        UPDATE webhook_events
-        SET
-          processed = true,
-          error_message = NULL,
-          retry_count = retry_count + 1,
-          last_retried_at = NOW()
-          ${hadEmptyPayload ? sql`, payload = ${JSON.stringify(rawPayload)}::jsonb` : sql``}
-        WHERE id = ${id}
-      `;
+    if (hadEmptyPayload) {
+      if (result.success) {
+        await sql`
+          UPDATE webhook_events
+          SET
+            processed = true,
+            error_message = NULL,
+            retry_count = retry_count + 1,
+            last_retried_at = NOW(),
+            payload = ${JSON.stringify(rawPayload)}::jsonb
+          WHERE id = ${id}
+        `;
+      } else {
+        await sql`
+          UPDATE webhook_events
+          SET
+            processed = false,
+            error_message = ${result.message || 'Erro durante reprocessamento'},
+            retry_count = retry_count + 1,
+            last_retried_at = NOW(),
+            payload = ${JSON.stringify(rawPayload)}::jsonb
+          WHERE id = ${id}
+        `;
+      }
     } else {
-      await sql`
-        UPDATE webhook_events
-        SET
-          processed = false,
-          error_message = ${result.message || 'Erro durante reprocessamento'},
-          retry_count = retry_count + 1,
-          last_retried_at = NOW()
-          ${hadEmptyPayload ? sql`, payload = ${JSON.stringify(rawPayload)}::jsonb` : sql``}
-        WHERE id = ${id}
-      `;
+      if (result.success) {
+        await sql`
+          UPDATE webhook_events
+          SET
+            processed = true,
+            error_message = NULL,
+            retry_count = retry_count + 1,
+            last_retried_at = NOW()
+          WHERE id = ${id}
+        `;
+      } else {
+        await sql`
+          UPDATE webhook_events
+          SET
+            processed = false,
+            error_message = ${result.message || 'Erro durante reprocessamento'},
+            retry_count = retry_count + 1,
+            last_retried_at = NOW()
+          WHERE id = ${id}
+        `;
+      }
     }
 
     const [updatedEvent] = await sql<any[]>`

@@ -280,7 +280,11 @@ export async function POST(req: NextRequest) {
 
       // Fallback resiliente: se não encontrou cotação pelo ID exato da cobrança,
       // busca pela identificação do cliente no Asaas (customer ID) ou documento
-      if (!cotacao && (payment.customer || payment.cpfCnpj)) {
+      const customerId = payment.customer || null;
+      const cpfCnpj = payment.cpfCnpj || null;
+      const cleanCpfCnpj = cpfCnpj ? String(cpfCnpj).replace(/\D/g, '') : null;
+
+      if (!cotacao && (customerId || cpfCnpj)) {
         const [fallbackCotacao] = await sql<{
           id: string;
           client_id: string | null;
@@ -296,16 +300,16 @@ export async function POST(req: NextRequest) {
           LEFT JOIN insurance_clients ic ON ic.id = c.client_id
           LEFT JOIN payment_orders po ON po.cotacao_id = c.id
           WHERE (
-            (${payment.customer || null}::text IS NOT NULL AND (
-              c.client_data->>'clienteId' = ${payment.customer}
-              OR c.client_data->>'asaasCustomerId' = ${payment.customer}
-              OR po.provider_customer_id = ${payment.customer}
-              OR ic.metadata->>'asaasCustomerId' = ${payment.customer}
+            (${customerId}::text IS NOT NULL AND (
+              c.client_data->>'clienteId' = ${customerId}
+              OR c.client_data->>'asaasCustomerId' = ${customerId}
+              OR po.provider_customer_id = ${customerId}
+              OR ic.metadata->>'asaasCustomerId' = ${customerId}
             ))
-            OR (${payment.cpfCnpj || null}::text IS NOT NULL AND (
-              c.client_cpf_cnpj = ${payment.cpfCnpj}
-              OR ic.document_number = ${payment.cpfCnpj}
-              OR regexp_replace(c.client_cpf_cnpj, '\\D', '', 'g') = regexp_replace(${payment.cpfCnpj}, '\\D', '', 'g')
+            OR (${cpfCnpj}::text IS NOT NULL AND (
+              c.client_cpf_cnpj = ${cpfCnpj}
+              OR ic.document_number = ${cpfCnpj}
+              OR (${cleanCpfCnpj}::text IS NOT NULL AND regexp_replace(c.client_cpf_cnpj, '\\D', '', 'g') = ${cleanCpfCnpj})
             ))
           )
           AND c.status IN ('pagamento_gerado', 'assinado', 'contrato_gerado', 'enviada', 'rascunho')
