@@ -29,6 +29,7 @@ import {
   GitFork,
   FileSpreadsheet,
   MailCheck,
+  Webhook,
 } from 'lucide-react';
 import type { AuthUser } from '@/lib/auth';
 import { roleIsDev } from '@/lib/roles';
@@ -132,6 +133,12 @@ export default function AdminShell({ children, user }: AdminShellProps) {
                 icon: MailCheck,
                 description: 'Rastreamento, logs de envio e depuração.',
               },
+              {
+                href: '/admin/auditoria-webhooks',
+                label: 'Auditoria de Webhooks',
+                icon: Webhook,
+                description: 'Rastreamento, logs de payload e reprocessamento.',
+              },
             ],
           },
         ]
@@ -170,6 +177,8 @@ export default function AdminShell({ children, user }: AdminShellProps) {
     currentPathLabel = 'Importar CSV (Clientes & Vendas)';
   } else if (pathname === '/admin/auditoria-emails') {
     currentPathLabel = 'Auditoria de E-mails (Logs & Diagnóstico)';
+  } else if (pathname === '/admin/auditoria-webhooks') {
+    currentPathLabel = 'Auditoria de Webhooks';
   } else if (pathname.startsWith('/admin/produtos/novo')) {
     currentPathLabel = 'Produtos / Novo Produto';
   } else if (pathname.startsWith('/admin/produtos/')) {

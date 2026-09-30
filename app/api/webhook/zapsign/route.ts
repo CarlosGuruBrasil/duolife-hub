@@ -119,6 +119,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, ignored: true, message: 'Evento já processado com sucesso' });
   }
 
+  const requestHeaders: Record<string, string> = {};
+  req.headers.forEach((val, key) => {
+    if (!['authorization', 'x-zapsign-webhook-secret', 'x-webhook-secret'].includes(key.toLowerCase())) {
+      requestHeaders[key] = val;
+    }
+  });
+
   const [eventRow] = await sql<{ id: string }[]>`
     INSERT INTO webhook_events (
       provider,
@@ -126,6 +133,7 @@ export async function POST(req: NextRequest) {
       external_id,
       signature_valid,
       payload,
+      request_headers,
       processed
     )
     VALUES (
@@ -134,6 +142,7 @@ export async function POST(req: NextRequest) {
       ${eventUniqueKey},
       true,
       ${JSON.stringify(payload)}::jsonb,
+      ${JSON.stringify(requestHeaders)}::jsonb,
       false
     )
     RETURNING id
@@ -352,7 +361,7 @@ export async function POST(req: NextRequest) {
 
     await sql`
       UPDATE webhook_events
-      SET processed = true
+      SET processed = true, error_message = NULL
       WHERE id = ${eventRow.id}
     `;
 

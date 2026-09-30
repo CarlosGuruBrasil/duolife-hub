@@ -60,6 +60,7 @@ export async function OPTIONS() {
 }
 
 export async function POST(req: NextRequest) {
+  let webhookEventId: string | null = null;
   try {
     await ensureSchema();
     const authHeader = req.headers.get('asaas-access-token');
@@ -95,7 +96,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, ignored: true, message: 'Evento já processado com sucesso' });
     }
 
-    logger.info({ event, paymentId: payment.id, eventKey }, 'Asaas Webhook received');
+    const requestHeaders: Record<string, string> = {};
+    req.headers.forEach((val, key) => {
+      if (!['authorization', 'asaas-access-token'].includes(key.toLowerCase())) {
+        requestHeaders[key] = val;
+      }
+    });
 
     const [webhookEvent] = await sql<{ id: string }[]>`
       INSERT INTO webhook_events (
@@ -104,6 +110,7 @@ export async function POST(req: NextRequest) {
         external_id,
         signature_valid,
         payload,
+        request_headers,
         processed
       )
       VALUES (
@@ -112,10 +119,12 @@ export async function POST(req: NextRequest) {
         ${eventKey},
         true,
         ${JSON.stringify(payload)}::jsonb,
+        ${JSON.stringify(requestHeaders)}::jsonb,
         false
       )
       RETURNING id
     `;
+    webhookEventId = webhookEvent.id;
 
     const paymentStatus = normalizeAsaasStatus(payment.status);
 
@@ -445,6 +454,13 @@ export async function POST(req: NextRequest) {
         }
       } catch (err) {
         logger.error({ err, cotacaoId: cotacao.id }, 'Error saving sale data from webhook');
+        if (webhookEventId) {
+          await sql`
+            UPDATE webhook_events
+            SET error_message = ${err instanceof Error ? err.message : 'Falha ao salvar dados de venda'}
+            WHERE id = ${webhookEventId}
+          `.catch(() => null);
+        }
         return NextResponse.json({ error: 'Failed to process sale' }, { status: 500 });
       }
     } else if (isOverdueEvent(event) && installment?.cotacao_id) {
@@ -550,12 +566,19 @@ export async function POST(req: NextRequest) {
 
     await sql`
       UPDATE webhook_events
-      SET processed = true
+      SET processed = true, error_message = NULL
       WHERE id = ${webhookEvent.id}
     `;
 
     return NextResponse.json({ success: true });
   } catch (err) {
+    if (webhookEventId) {
+      await sql`
+        UPDATE webhook_events
+        SET error_message = ${err instanceof Error ? err.message : 'Internal Server Error'}
+        WHERE id = ${webhookEventId}
+      `.catch(() => null);
+    }
     logger.error({ err }, 'asaas.webhook.failed');
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }

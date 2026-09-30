@@ -73,6 +73,41 @@ export async function POST(req: NextRequest) {
   const partner = await findPartnerByWixCode(normalized.partnerWixCode);
   const partnerId = partner?.id ?? null;
 
+  const requestHeaders: Record<string, string> = {};
+  req.headers.forEach((val, key) => {
+    if (!['authorization', 'x-duolife-webhook-secret', 'x-webhook-secret', 'x-wix-webhook-secret'].includes(key.toLowerCase())) {
+      requestHeaders[key] = val;
+    }
+  });
+
+  let webhookEventId: string | null = null;
+  try {
+    const [webhookEvent] = await sql<{ id: string }[]>`
+      INSERT INTO webhook_events (
+        provider,
+        event_type,
+        external_id,
+        signature_valid,
+        payload,
+        request_headers,
+        processed
+      )
+      VALUES (
+        'wix',
+        'lead_sync',
+        ${normalized.externalId || normalized.documentNumber || null},
+        true,
+        ${JSON.stringify(body)}::jsonb,
+        ${JSON.stringify(requestHeaders)}::jsonb,
+        false
+      )
+      RETURNING id
+    `;
+    webhookEventId = webhookEvent.id;
+  } catch (logErr) {
+    logger.error({ logErr }, 'wix.webhook.failed_to_log_event');
+  }
+
   try {
     const existingLead = await resolveLead(partnerId, normalized.externalId, normalized.documentNumber);
 
@@ -149,12 +184,28 @@ export async function POST(req: NextRequest) {
       documentNumber: normalized.documentNumber,
     }, 'wix.webhook.synced');
 
+    if (webhookEventId) {
+      await sql`
+        UPDATE webhook_events
+        SET processed = true, error_message = NULL
+        WHERE id = ${webhookEventId}
+      `.catch(() => null);
+    }
+
     return Response.json({
       ok: true,
       leadId: leadId.id,
       partnerId,
     });
   } catch (err) {
+    if (webhookEventId) {
+      await sql`
+        UPDATE webhook_events
+        SET error_message = ${err instanceof Error ? err.message : 'Erro interno'}
+        WHERE id = ${webhookEventId}
+      `.catch(() => null);
+    }
+
     await logSyncEvent({
       entityType: 'lead',
       entityId: normalized.externalId || normalized.documentNumber || 'unknown',

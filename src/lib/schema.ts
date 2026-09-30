@@ -766,6 +766,11 @@ async function runRuntimeSchemaSetup(): Promise<void> {
     )
   `;
   await sql`CREATE INDEX IF NOT EXISTS webhook_events_provider_created_at ON webhook_events (provider, created_at DESC)`;
+  await sql`ALTER TABLE webhook_events ADD COLUMN IF NOT EXISTS retry_count INT NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE webhook_events ADD COLUMN IF NOT EXISTS last_retried_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE webhook_events ADD COLUMN IF NOT EXISTS request_headers JSONB`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_webhook_events_processed ON webhook_events (processed)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_webhook_events_created_at ON webhook_events (created_at DESC)`;
 
   // Usuários admin internos da DuoLife
   await sql`
