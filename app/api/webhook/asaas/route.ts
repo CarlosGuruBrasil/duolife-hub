@@ -37,6 +37,17 @@ function extractPixPayload(pixTransaction: unknown): string | null {
   return null;
 }
 
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    service: 'DuoLife Hub - Asaas Webhook Service',
+    status: 'active',
+    methodAllowed: ['POST'],
+    message: 'Endpoint ativo e pronto para receber notificações de webhook do Asaas.',
+    timestamp: new Date().toISOString(),
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
     await ensureSchema();
