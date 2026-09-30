@@ -4,6 +4,7 @@ import { roleIsInternal } from '@/lib/roles';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
 import { ensureSchema } from '@/lib/schema';
+import { normalizeWebhookPayload } from '@/lib/webhook-processor';
 
 export async function GET(req: NextRequest) {
   const user = await verifyAuth();
@@ -108,9 +109,15 @@ export async function GET(req: NextRequest) {
         )
     `;
 
+    const normalizedLogs = logs.map((row) => ({
+      ...row,
+      payload: normalizeWebhookPayload(row.payload),
+      request_headers: row.request_headers ? normalizeWebhookPayload(row.request_headers) : null,
+    }));
+
     return Response.json({
       ok: true,
-      logs,
+      logs: normalizedLogs,
       totalFiltered: filteredCountRow?.count || 0,
       stats: {
         total,

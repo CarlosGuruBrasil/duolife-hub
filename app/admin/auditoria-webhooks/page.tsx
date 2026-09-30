@@ -854,9 +854,9 @@ export default function AuditoriaWebhooksPage() {
                     </button>
                   </div>
 
-                  <div className="rounded-xl border border-gray-800 bg-gray-900 overflow-hidden shadow-inner">
-                    <pre className="p-4 font-mono text-[11px] text-emerald-400 select-all whitespace-pre-wrap max-h-[440px] overflow-auto">
-                      {selectedLog.payload
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 overflow-hidden shadow-2xs">
+                    <pre className="p-4 font-mono text-xs text-gray-900 select-all whitespace-pre-wrap max-h-[440px] overflow-auto leading-relaxed">
+                      {selectedLog.payload && Object.keys(selectedLog.payload).length > 0
                         ? JSON.stringify(selectedLog.payload, null, 2)
                         : 'Nenhum payload registrado para este evento.'}
                     </pre>
@@ -892,9 +892,9 @@ export default function AuditoriaWebhooksPage() {
                     )}
                   </div>
 
-                  {selectedLog.request_headers ? (
-                    <div className="rounded-xl border border-gray-800 bg-gray-900 overflow-hidden shadow-inner">
-                      <pre className="p-4 font-mono text-[11px] text-sky-400 select-all whitespace-pre-wrap max-h-[440px] overflow-auto">
+                  {selectedLog.request_headers && Object.keys(selectedLog.request_headers).length > 0 ? (
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 overflow-hidden shadow-2xs">
+                      <pre className="p-4 font-mono text-xs text-gray-900 select-all whitespace-pre-wrap max-h-[440px] overflow-auto leading-relaxed">
                         {JSON.stringify(selectedLog.request_headers, null, 2)}
                       </pre>
                     </div>

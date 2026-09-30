@@ -120,22 +120,70 @@ async function resolveLead(partnerId: string | null, externalId: string | null, 
   return null;
 }
 
+// ==========================================
+// Normalizador Seguro de Payloads
+// ==========================================
+
+export function normalizeWebhookPayload(input: unknown): Record<string, any> {
+  if (!input) return {};
+
+  let current: any = input;
+  let iterations = 0;
+
+  // Desembrulha caso venha como string ou double-encoded string JSON
+  while (typeof current === 'string' && iterations < 5) {
+    iterations++;
+    const trimmed = current.trim();
+    if (!trimmed || trimmed === 'null' || trimmed === 'undefined') {
+      return {};
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed === current) break;
+      current = parsed;
+    } catch {
+      break;
+    }
+  }
+
+  if (current && typeof current === 'object' && !Array.isArray(current)) {
+    // Se o payload vier encapsulado em { payload: {...} } ou { body: {...} } ou { data: {...} }
+    if (current.payload && typeof current.payload === 'object' && !Array.isArray(current.payload) && !current.event && !current.payment) {
+      return normalizeWebhookPayload(current.payload);
+    }
+    if (current.body && typeof current.body === 'object' && !Array.isArray(current.body) && !current.event && !current.payment) {
+      return normalizeWebhookPayload(current.body);
+    }
+    if (current.data && typeof current.data === 'object' && !Array.isArray(current.data) && !current.event && !current.payment) {
+      return normalizeWebhookPayload(current.data);
+    }
+    return current;
+  }
+
+  return {};
+}
+
 // =========================================================================
 // Processador de Payloads Asaas
 // =========================================================================
 
-export async function processAsaasPayload(payload: any): Promise<{ success: boolean; message?: string }> {
+export async function processAsaasPayload(rawPayload: any): Promise<{ success: boolean; message?: string }> {
   try {
-    if (!payload || typeof payload !== 'object') {
+    const payload = normalizeWebhookPayload(rawPayload);
+
+    if (!payload || typeof payload !== 'object' || Object.keys(payload).length === 0) {
       return { success: false, message: 'Payload Asaas inválido ou vazio' };
     }
 
-    const event = String(payload.event || '');
-    const payment = payload.payment;
+    const event = String(payload.event || payload.eventType || payload.type || '');
+    const payment = payload.payment || (payload.id && (String(payload.id).startsWith('pay_') || payload.value !== undefined || payload.status !== undefined) ? payload : null);
 
     if (!payment || !payment.id) {
-      logger.info({ event, payload }, 'processAsaasPayload: Ping ou evento de teste reconhecido');
-      return { success: true, message: 'Ping ou evento de teste reconhecido com sucesso' };
+      if (!event || event.toLowerCase().includes('ping') || event.toLowerCase().includes('test')) {
+        logger.info({ event, payload }, 'processAsaasPayload: Ping ou evento de teste reconhecido');
+        return { success: true, message: 'Ping ou evento de teste reconhecido com sucesso' };
+      }
+      return { success: false, message: 'Payload Asaas não contém identificador de cobrança (payment.id)' };
     }
 
     const paymentStatus = normalizeAsaasStatus(payment.status);
@@ -568,9 +616,11 @@ export async function processAsaasPayload(payload: any): Promise<{ success: bool
 // Processador de Payloads ZapSign
 // =========================================================================
 
-export async function processZapSignPayload(payload: any): Promise<{ success: boolean; message?: string }> {
+export async function processZapSignPayload(rawPayload: any): Promise<{ success: boolean; message?: string }> {
   try {
-    if (!payload || typeof payload !== 'object') {
+    const payload = normalizeWebhookPayload(rawPayload);
+
+    if (!payload || typeof payload !== 'object' || Object.keys(payload).length === 0) {
       return { success: false, message: 'Payload ZapSign inválido ou vazio' };
     }
 
@@ -799,9 +849,11 @@ export async function processZapSignPayload(payload: any): Promise<{ success: bo
 // Processador de Payloads Wix
 // =========================================================================
 
-export async function processWixPayload(payload: any): Promise<{ success: boolean; message?: string }> {
+export async function processWixPayload(rawPayload: any): Promise<{ success: boolean; message?: string }> {
   try {
-    if (!payload || typeof payload !== 'object') {
+    const payload = normalizeWebhookPayload(rawPayload);
+
+    if (!payload || typeof payload !== 'object' || Object.keys(payload).length === 0) {
       return { success: false, message: 'Payload Wix inválido ou vazio' };
     }
 
@@ -923,20 +975,97 @@ export async function reprocessWebhookEvent(id: string): Promise<{
     }
 
     const provider = String(event.provider || '').toLowerCase();
+    let rawPayload = normalizeWebhookPayload(event.payload);
+
+    // Fallback de recuperação caso o payload no banco esteja vazio:
+    if (Object.keys(rawPayload).length === 0 && event.external_id) {
+      if (provider === 'asaas') {
+        const paymentIdMatch = event.external_id.match(/pay_[a-zA-Z0-9]+/);
+        const paymentId = paymentIdMatch ? paymentIdMatch[0] : event.external_id;
+
+        const [installment] = await sql<{ raw_payload: any; status: string }[]>`
+          SELECT raw_payload, status
+          FROM payment_installments
+          WHERE provider = 'asaas' AND external_payment_id = ${paymentId}
+          LIMIT 1
+        `;
+
+        if (installment?.raw_payload) {
+          const parsedRaw = normalizeWebhookPayload(installment.raw_payload);
+          rawPayload = {
+            event: event.event_type || 'PAYMENT_RECEIVED',
+            payment: parsedRaw,
+          };
+          logger.info({ id, paymentId }, 'reprocessWebhookEvent: Payload Asaas recuperado via payment_installments');
+        } else {
+          const [order] = await sql<{ raw_payload: any; status: string }[]>`
+            SELECT raw_payload, status
+            FROM payment_orders
+            WHERE external_payment_id = ${paymentId}
+            LIMIT 1
+          `;
+          if (order?.raw_payload) {
+            const parsedRaw = normalizeWebhookPayload(order.raw_payload);
+            rawPayload = {
+              event: event.event_type || 'PAYMENT_RECEIVED',
+              payment: parsedRaw,
+            };
+            logger.info({ id, paymentId }, 'reprocessWebhookEvent: Payload Asaas recuperado via payment_orders');
+          }
+        }
+      } else if (provider === 'zapsign') {
+        const [doc] = await sql<{ external_document_id: string; cotacao_id: string; status: string; signed_file_url: string | null }[]>`
+          SELECT external_document_id, cotacao_id, status, signed_file_url
+          FROM signature_documents
+          WHERE external_document_id = ${event.external_id}
+             OR cotacao_id = ${event.external_id}
+          LIMIT 1
+        `;
+        if (doc) {
+          rawPayload = {
+            event_type: event.event_type || 'doc_signed',
+            doc_token: doc.external_document_id,
+            status: doc.status,
+            signed_file_url: doc.signed_file_url,
+          };
+          logger.info({ id, docId: doc.external_document_id }, 'reprocessWebhookEvent: Payload ZapSign recuperado via signature_documents');
+        }
+      }
+    }
+
+    if (Object.keys(rawPayload).length === 0) {
+      const emptyMsg = `O payload do evento ${provider.toUpperCase()} está vazio no banco de dados e não pôde ser recuperado pelo identificador (${event.external_id || 'sem ID'}).`;
+      await sql`
+        UPDATE webhook_events
+        SET
+          processed = false,
+          error_message = ${emptyMsg},
+          retry_count = retry_count + 1,
+          last_retried_at = NOW()
+        WHERE id = ${id}
+      `;
+      return {
+        success: false,
+        message: emptyMsg,
+      };
+    }
+
     let result: { success: boolean; message?: string };
 
     if (provider === 'asaas') {
-      result = await processAsaasPayload(event.payload);
+      result = await processAsaasPayload(rawPayload);
     } else if (provider === 'zapsign') {
-      result = await processZapSignPayload(event.payload);
+      result = await processZapSignPayload(rawPayload);
     } else if (provider === 'wix') {
-      result = await processWixPayload(event.payload);
+      result = await processWixPayload(rawPayload);
     } else {
       result = {
         success: false,
         message: `Provedor de webhook desconhecido: "${event.provider}"`,
       };
     }
+
+    const hadEmptyPayload = Object.keys(normalizeWebhookPayload(event.payload)).length === 0 && Object.keys(rawPayload).length > 0;
 
     if (result.success) {
       await sql`
@@ -946,6 +1075,7 @@ export async function reprocessWebhookEvent(id: string): Promise<{
           error_message = NULL,
           retry_count = retry_count + 1,
           last_retried_at = NOW()
+          ${hadEmptyPayload ? sql`, payload = ${JSON.stringify(rawPayload)}::jsonb` : sql``}
         WHERE id = ${id}
       `;
     } else {
@@ -956,6 +1086,7 @@ export async function reprocessWebhookEvent(id: string): Promise<{
           error_message = ${result.message || 'Erro durante reprocessamento'},
           retry_count = retry_count + 1,
           last_retried_at = NOW()
+          ${hadEmptyPayload ? sql`, payload = ${JSON.stringify(rawPayload)}::jsonb` : sql``}
         WHERE id = ${id}
       `;
     }
