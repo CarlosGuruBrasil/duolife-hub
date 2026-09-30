@@ -45,6 +45,7 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  skipTrailingSlashRedirect: true,
   turbopack: {
     root: __dirname,
   },

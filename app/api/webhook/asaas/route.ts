@@ -48,6 +48,17 @@ export async function GET() {
   });
 }
 
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      'Allow': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, asaas-access-token, Authorization',
+    },
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
     await ensureSchema();
@@ -61,12 +72,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const payload = await req.json();
-    const event = payload.event;
-    const payment = payload.payment;
+    const payload = await req.json().catch(() => ({}));
+    const event = payload?.event;
+    const payment = payload?.payment;
 
     if (!payment || !payment.id) {
-      return NextResponse.json({ error: 'Payload inválido' }, { status: 400 });
+      logger.info({ event, payload }, 'Asaas Webhook ping/teste recebido sem payment');
+      return NextResponse.json({ ok: true, ignored: true, message: 'Ping ou evento de teste reconhecido com sucesso' });
     }
 
     const eventKey = payload.id ? String(payload.id) : `${event}:${payment.id}:${payment.status || ''}`;
