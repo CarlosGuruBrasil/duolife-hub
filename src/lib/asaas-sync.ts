@@ -800,3 +800,324 @@ export async function reconcileAsaasBatch(
     details,
   };
 }
+
+export interface AnachronicQuoteAuditItem {
+  cotacaoId: string;
+  clientName: string;
+  clientCpfCnpj: string;
+  statusAtual: string;
+  cotacaoValor: number;
+  cotacaoCriadaEm: string;
+  orderId: string | null;
+  orderStatus: string | null;
+  orderAmount: number | null;
+  orderDueDate: string | null;
+  orderCreatedAt: string | null;
+  externalPaymentId: string | null;
+  saleId: string | null;
+  policyNumber: string | null;
+  checkoutId: string | null;
+  hasSignedContract: boolean;
+  motivoAnacronismo: string[];
+}
+
+export interface AnachronicAuditResult {
+  totalQuotesAudited: number;
+  totalAnachronicFound: number;
+  items: AnachronicQuoteAuditItem[];
+}
+
+export interface PurgeAndReconcileResult {
+  totalProcessed: number;
+  purgedCount: number;
+  reconciledCount: number;
+  errorsCount: number;
+  dryRun: boolean;
+  details: Array<{
+    cotacaoId: string;
+    clientName: string;
+    statusBefore: string;
+    statusAfter: string;
+    purged: boolean;
+    reconciled: boolean;
+    newChargeFound: boolean;
+    error?: string;
+  }>;
+}
+
+/**
+ * Realiza uma auditoria no banco de dados buscando todas as cotações
+ * que possuem ordens, parcelas ou vínculos de cobranças do Asaas anacrônicos
+ * (gerados antes da data de criação da cotação).
+ */
+export async function auditAnachronicQuotes(): Promise<AnachronicAuditResult> {
+  const [{ totalCount }] = await sql<Array<{ totalCount: number }>>`
+    SELECT COUNT(*)::int AS "totalCount" FROM cotacoes
+  `;
+
+  const rows = await sql<Array<{
+    cotacao_id: string;
+    client_name: string | null;
+    client_cpf_cnpj: string | null;
+    status_atual: string;
+    cotacao_valor: number | null;
+    cotacao_criada_em: string;
+    payment_order_id: string | null;
+    order_status: string | null;
+    order_amount: number | null;
+    order_due_date: string | null;
+    order_created_at: string | null;
+    external_payment_id: string | null;
+    sale_id: string | null;
+    policy_number: string | null;
+    checkout_id: string | null;
+    link_boleto: string | null;
+    json_vencimento: string | null;
+    json_paid_at: string | null;
+    json_pago_em: string | null;
+    has_signed_contract: boolean;
+    is_order_due_anachronic: boolean;
+    is_order_created_anachronic: boolean;
+    has_anachronic_installments: boolean;
+    is_json_vencimento_anachronic: boolean;
+    is_json_paid_anachronic: boolean;
+  }>>`
+    SELECT
+      c.id AS cotacao_id,
+      c.client_name,
+      c.client_cpf_cnpj,
+      c.status AS status_atual,
+      COALESCE(c.premio_final, c.premio_calculado) AS cotacao_valor,
+      c.created_at::text AS cotacao_criada_em,
+      po.id AS payment_order_id,
+      po.status AS order_status,
+      po.amount_total AS order_amount,
+      po.due_date::text AS order_due_date,
+      po.created_at::text AS order_created_at,
+      po.external_payment_id,
+      s.id AS sale_id,
+      s.policy_number,
+      c.client_data->>'checkoutId' AS checkout_id,
+      c.client_data->>'linkBoleto' AS link_boleto,
+      c.client_data->>'dataVencimento' AS json_vencimento,
+      c.client_data->>'paidAt' AS json_paid_at,
+      c.client_data->>'pagoEm' AS json_pago_em,
+      EXISTS(SELECT 1 FROM signature_documents sd WHERE sd.cotacao_id = c.id AND sd.status = 'signed') AS has_signed_contract,
+      (po.due_date IS NOT NULL AND po.due_date < (c.created_at - INTERVAL '24 hours')::date) AS is_order_due_anachronic,
+      (po.created_at IS NOT NULL AND po.created_at < (c.created_at - INTERVAL '24 hours')) AS is_order_created_anachronic,
+      EXISTS (
+        SELECT 1 FROM payment_installments pi
+        WHERE pi.cotacao_id = c.id
+          AND (
+            (pi.due_date IS NOT NULL AND pi.due_date < (c.created_at - INTERVAL '24 hours')::date)
+            OR (pi.paid_at IS NOT NULL AND pi.paid_at < (c.created_at - INTERVAL '24 hours'))
+            OR (
+              pi.raw_payload->>'dateCreated' IS NOT NULL 
+              AND (pi.raw_payload->>'dateCreated')::timestamptz < (c.created_at - INTERVAL '24 hours')
+            )
+          )
+      ) AS has_anachronic_installments,
+      (
+        c.client_data->>'dataVencimento' IS NOT NULL 
+        AND (c.client_data->>'dataVencimento')::date < (c.created_at - INTERVAL '24 hours')::date
+      ) AS is_json_vencimento_anachronic,
+      (
+        (c.client_data->>'paidAt' IS NOT NULL AND (c.client_data->>'paidAt')::timestamptz < (c.created_at - INTERVAL '24 hours'))
+        OR (c.client_data->>'pagoEm' IS NOT NULL AND (c.client_data->>'pagoEm')::timestamptz < (c.created_at - INTERVAL '24 hours'))
+      ) AS is_json_paid_anachronic
+    FROM cotacoes c
+    LEFT JOIN payment_orders po ON po.cotacao_id = c.id
+    LEFT JOIN sales s ON s.cotacao_id = c.id
+    WHERE (
+      (po.due_date IS NOT NULL AND po.due_date < (c.created_at - INTERVAL '24 hours')::date)
+      OR (po.created_at IS NOT NULL AND po.created_at < (c.created_at - INTERVAL '24 hours'))
+      OR EXISTS (
+        SELECT 1 FROM payment_installments pi
+        WHERE pi.cotacao_id = c.id
+          AND (
+            (pi.due_date IS NOT NULL AND pi.due_date < (c.created_at - INTERVAL '24 hours')::date)
+            OR (pi.paid_at IS NOT NULL AND pi.paid_at < (c.created_at - INTERVAL '24 hours'))
+            OR (
+              pi.raw_payload->>'dateCreated' IS NOT NULL 
+              AND (pi.raw_payload->>'dateCreated')::timestamptz < (c.created_at - INTERVAL '24 hours')
+            )
+          )
+      )
+      OR (
+        c.client_data->>'dataVencimento' IS NOT NULL 
+        AND (c.client_data->>'dataVencimento')::date < (c.created_at - INTERVAL '24 hours')::date
+      )
+      OR (
+        c.client_data->>'paidAt' IS NOT NULL 
+        AND (c.client_data->>'paidAt')::timestamptz < (c.created_at - INTERVAL '24 hours')
+      )
+      OR (
+        c.client_data->>'pagoEm' IS NOT NULL 
+        AND (c.client_data->>'pagoEm')::timestamptz < (c.created_at - INTERVAL '24 hours')
+      )
+    )
+    ORDER BY c.created_at DESC
+  `;
+
+  const items: AnachronicQuoteAuditItem[] = rows.map((r) => {
+    const motivos: string[] = [];
+    if (r.is_order_due_anachronic) motivos.push('Vencimento da ordem anterior à cotação');
+    if (r.is_order_created_anachronic) motivos.push('Ordem criada no banco/Asaas antes da cotação');
+    if (r.has_anachronic_installments) motivos.push('Parcelas vinculadas com datas anteriores à cotação');
+    if (r.is_json_vencimento_anachronic) motivos.push('Vencimento em metadados anterior à cotação');
+    if (r.is_json_paid_anachronic) motivos.push('Data de pagamento em metadados anterior à cotação');
+
+    return {
+      cotacaoId: r.cotacao_id,
+      clientName: r.client_name || 'Não informado',
+      clientCpfCnpj: r.client_cpf_cnpj || 'Não informado',
+      statusAtual: r.status_atual,
+      cotacaoValor: Number(r.cotacao_valor || 0),
+      cotacaoCriadaEm: r.cotacao_criada_em,
+      orderId: r.payment_order_id,
+      orderStatus: r.order_status,
+      orderAmount: r.order_amount ? Number(r.order_amount) : null,
+      orderDueDate: r.order_due_date,
+      orderCreatedAt: r.order_created_at,
+      externalPaymentId: r.external_payment_id,
+      saleId: r.sale_id,
+      policyNumber: r.policy_number,
+      checkoutId: r.checkout_id,
+      hasSignedContract: Boolean(r.has_signed_contract),
+      motivoAnacronismo: motivos,
+    };
+  });
+
+  return {
+    totalQuotesAudited: Number(totalCount || 0),
+    totalAnachronicFound: items.length,
+    items,
+  };
+}
+
+/**
+ * Executa a limpeza e reconciliação em lote para as cotações com cobrança anacrônica.
+ */
+export async function purgeAndReconcileAnachronicBatch(options: {
+  ids?: string[];
+  dryRun?: boolean;
+} = {}): Promise<PurgeAndReconcileResult> {
+  const isDryRun = options.dryRun !== false;
+
+  // Primeiro faz a auditoria
+  const audit = await auditAnachronicQuotes();
+  let targetItems = audit.items;
+
+  if (options.ids && options.ids.length > 0) {
+    const idSet = new Set(options.ids);
+    targetItems = targetItems.filter((i) => idSet.has(i.cotacaoId));
+  }
+
+  let purgedCount = 0;
+  let reconciledCount = 0;
+  let errorsCount = 0;
+  const details: PurgeAndReconcileResult['details'] = [];
+
+  for (const item of targetItems) {
+    if (isDryRun) {
+      details.push({
+        cotacaoId: item.cotacaoId,
+        clientName: item.clientName,
+        statusBefore: item.statusAtual,
+        statusAfter: item.hasSignedContract ? 'assinado' : 'contrato_gerado',
+        purged: true,
+        reconciled: false,
+        newChargeFound: false,
+      });
+      purgedCount++;
+      continue;
+    }
+
+    try {
+      // 1. Limpeza Atômica no Banco
+      await sql.begin(async (tx) => {
+        await tx`DELETE FROM delinquency_notifications WHERE cotacao_id = ${item.cotacaoId}`;
+        if (item.orderId) {
+          await tx`DELETE FROM delinquency_notifications WHERE payment_order_id = ${item.orderId}`;
+        }
+        await tx`DELETE FROM payment_installments WHERE cotacao_id = ${item.cotacaoId}`;
+        await tx`DELETE FROM payment_orders WHERE cotacao_id = ${item.cotacaoId}`;
+        
+        // Remove venda espúria que não tenha apólice formal definitiva
+        await tx`
+          DELETE FROM sales
+          WHERE cotacao_id = ${item.cotacaoId}
+            AND (policy_number IS NULL OR policy_number LIKE 'PRE-%')
+        `;
+
+        const [quoteRow] = await tx<Array<{ client_data: unknown }>>`
+          SELECT client_data FROM cotacoes WHERE id = ${item.cotacaoId}
+        `;
+        const cData = parseJsonbField<Record<string, unknown>>(quoteRow?.client_data);
+        delete cData.checkoutId;
+        delete cData.linkBoleto;
+        delete cData.dataVencimento;
+        delete cData.faturaId;
+        delete cData.externalInstallmentId;
+        delete cData.paidAt;
+        delete cData.pagoEm;
+
+        const [sigDoc] = await tx<Array<{ status: string }>>`
+          SELECT status FROM signature_documents WHERE cotacao_id = ${item.cotacaoId} AND status = 'signed' LIMIT 1
+        `;
+        const restoredStatus = sigDoc
+          ? 'assinado'
+          : (['aprovada', 'emitida', 'pagamento_gerado'].includes(item.statusAtual) ? 'contrato_gerado' : item.statusAtual);
+
+        await tx`
+          UPDATE cotacoes
+          SET status = ${restoredStatus},\n              client_data = ${JSON.stringify(cData)}::jsonb,\n              updated_at = NOW()
+          WHERE id = ${item.cotacaoId}
+        `;
+      });
+
+      purgedCount++;
+
+      // 2. Tenta reconciliar cobrança legítima com Asaas pós-criação da proposta
+      const syncResult = await reconcileAsaasForQuote(item.cotacaoId);
+      const isReconciled = syncResult.ok && syncResult.updated;
+      if (isReconciled) {
+        reconciledCount++;
+      }
+
+      details.push({
+        cotacaoId: item.cotacaoId,
+        clientName: item.clientName,
+        statusBefore: item.statusAtual,
+        statusAfter: syncResult.statusAfter || 'assinado',
+        purged: true,
+        reconciled: isReconciled,
+        newChargeFound: syncResult.chargesFound > 0,
+      });
+
+      // Throttle de segurança para o Asaas
+      await new Promise((r) => setTimeout(r, 150));
+    } catch (err) {
+      errorsCount++;
+      details.push({
+        cotacaoId: item.cotacaoId,
+        clientName: item.clientName,
+        statusBefore: item.statusAtual,
+        statusAfter: item.statusAtual,
+        purged: false,
+        reconciled: false,
+        newChargeFound: false,
+        error: err instanceof Error ? err.message : 'Erro ao processar',
+      });
+    }
+  }
+
+  return {
+    totalProcessed: targetItems.length,
+    purgedCount,
+    reconciledCount,
+    errorsCount,
+    dryRun: isDryRun,
+    details,
+  };
+}

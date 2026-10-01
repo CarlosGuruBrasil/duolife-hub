@@ -19,11 +19,14 @@ import {
   FileSignature,
   FileCheck,
   CreditCard,
+  AlertTriangle,
+  Unlink2,
+  ShieldAlert,
 } from 'lucide-react';
-import { formatDateTime } from '@/lib/format';
+import { formatDateTime, formatCurrency } from '@/lib/format';
 import type { WixCollectionStatusInfo, WixPullResult, WixPullEntitiesSelection } from '@/lib/wix-pull';
 import type { ZapSignSyncSummary } from '@/lib/zapsign-sync';
-import type { AsaasSyncSummary, AsaasBatchReconcileResult } from '@/lib/asaas-sync';
+import type { AsaasSyncSummary, AsaasBatchReconcileResult, AnachronicAuditResult, PurgeAndReconcileResult } from '@/lib/asaas-sync';
 
 interface Props {
   collectionsCount: number;
@@ -108,6 +111,13 @@ export default function WixPullClient({
   const [asaasOnlyPending, setAsaasOnlyPending] = useState(true);
   const [asaasMessage, setAsaasMessage] = useState('');
   const [asaasResult, setAsaasResult] = useState<AsaasBatchReconcileResult | null>(null);
+
+  // Módulo de Auditoria e Limpeza de Faturas Anacrônicas
+  const [runningAnachronicAudit, setRunningAnachronicAudit] = useState(false);
+  const [runningAnachronicPurge, setRunningAnachronicPurge] = useState(false);
+  const [anachronicAuditResult, setAnachronicAuditResult] = useState<AnachronicAuditResult | null>(null);
+  const [anachronicPurgeResult, setAnachronicPurgeResult] = useState<PurgeAndReconcileResult | null>(null);
+  const [anachronicMessage, setAnachronicMessage] = useState('');
 
   // Alternar seleção de coleção
   function toggleCollection(id: string) {
@@ -323,6 +333,76 @@ export default function WixPullClient({
       setAsaasMessage('Falha de rede ao conectar com a API do Asaas.');
     } finally {
       setRunningAsaas(false);
+    }
+  }
+
+  async function runAuditAnachronic() {
+    setRunningAnachronicAudit(true);
+    setAnachronicMessage('Auditando banco de dados e procurando cobranças anacrônicas vinculadas a cotações...');
+    setAnachronicAuditResult(null);
+    setAnachronicPurgeResult(null);
+
+    try {
+      const response = await fetch('/api/admin/sync/asaas/anachronic');
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        setAnachronicMessage(data.error || 'Falha ao auditar cotações anacrônicas.');
+        return;
+      }
+
+      setAnachronicAuditResult(data);
+      if (data.totalAnachronicFound === 0) {
+        setAnachronicMessage('Base 100% íntegra: nenhuma cotação vinculada a cobranças anacrônicas foi identificada!');
+      } else {
+        setAnachronicMessage(
+          `Atenção: ${data.totalAnachronicFound} cotação(ões) com faturas históricas antigas encontrada(s). Revise a lista abaixo.`
+        );
+      }
+    } catch {
+      setAnachronicMessage('Falha de rede ao auditar cotações com o servidor.');
+    } finally {
+      setRunningAnachronicAudit(false);
+    }
+  }
+
+  async function runPurgeAnachronic() {
+    if (
+      !window.confirm(
+        'Confirmar expurgo e reconciliação em lote?\n\nAs amarrações locais com faturas anteriores à cotação serão removidas com segurança, restaurando as cotações para o status correto e permitindo a reconexão apenas com faturas legítimas vigentes.'
+      )
+    ) {
+      return;
+    }
+
+    setRunningAnachronicPurge(true);
+    setAnachronicMessage('Executando expurgo e reconciliação em lote com o Asaas...');
+    setAnachronicPurgeResult(null);
+
+    try {
+      const response = await fetch('/api/admin/sync/asaas/anachronic', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dryRun: false }),
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        setAnachronicMessage(data.error || 'Falha ao processar expurgo em lote.');
+        return;
+      }
+
+      setAnachronicPurgeResult(data);
+      setAnachronicMessage(
+        `Expurgo concluído! ${data.purgedCount} cotação(ões) limpa(s) e restaurada(s). ${data.reconciledCount} reconectada(s) a faturas legítimas.`
+      );
+
+      // Re-executa auditoria para atualizar o painel
+      await runAuditAnachronic();
+    } catch {
+      setAnachronicMessage('Falha de rede ao enviar solicitação de expurgo.');
+    } finally {
+      setRunningAnachronicPurge(false);
     }
   }
 
@@ -1127,6 +1207,176 @@ export default function WixPullClient({
               <div className="rounded-xl border border-amber-200 bg-white p-3">
                 <div className="text-[11px] uppercase tracking-wide text-amber-700 font-bold">Ainda Pendentes</div>
                 <div className="mt-1 text-xl font-black text-amber-800">{asaasResult.stillPending ?? 0}</div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* CARD QUINTO: AUDITORIA E CORREÇÃO DE COBRANÇAS ANACRÔNICAS DO ASAAS */}
+      <div className="card space-y-5 bg-white border border-gray-200">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-200 pb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <ShieldAlert size={18} className="text-amber-600" />
+              <h2 className="text-lg font-black text-gray-900">Auditoria e Blindagem de Faturas Anacrônicas</h2>
+            </div>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Identifica e expurga vínculos indevidos de propostas com faturas históricas antigas do cliente no Asaas. Restaura as cotações para o status legítimo e reconecta apenas com cobranças vigentes emitidas pós-cotação.
+            </p>
+          </div>
+        </div>
+
+        {/* Controles de Disparo da Auditoria */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              className="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              onClick={runAuditAnachronic}
+              disabled={runningAnachronicAudit || runningAnachronicPurge}
+            >
+              {runningAnachronicAudit ? (
+                <>
+                  <RefreshCw size={14} className="animate-spin" />
+                  <span>Auditando Base de Cotações...</span>
+                </>
+              ) : (
+                <>
+                  <AlertTriangle size={14} />
+                  <span>1. Auditar Cotações Afetadas (Diagnóstico)</span>
+                </>
+              )}
+            </button>
+
+            {anachronicAuditResult && anachronicAuditResult.totalAnachronicFound > 0 && (
+              <button
+                type="button"
+                className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                onClick={runPurgeAnachronic}
+                disabled={runningAnachronicPurge || runningAnachronicAudit}
+              >
+                {runningAnachronicPurge ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" />
+                    <span>Expurgando e Reconciliando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Unlink2 size={14} />
+                    <span>2. Executar Limpeza e Reconciliação ({anachronicAuditResult.totalAnachronicFound})</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+
+          <div className="text-xs text-gray-500 font-medium">
+            {anachronicMessage || 'Clique em "Auditar Cotações Afetadas" para verificar inconsistências temporais.'}
+          </div>
+        </div>
+
+        {/* Feedback: Nenhuma Inconsistência */}
+        {anachronicAuditResult && anachronicAuditResult.totalAnachronicFound === 0 && (
+          <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/70 text-emerald-950 flex items-center gap-3">
+            <CheckCircle2 size={20} className="text-emerald-700 shrink-0" />
+            <div className="text-xs">
+              <strong className="block text-sm font-bold text-emerald-900">Base 100% Íntegra!</strong>
+              <span>
+                Nenhuma cotação com fatura antiga ou data anterior foi encontrada entre as {anachronicAuditResult.totalQuotesAudited} cotações avaliadas.
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Tabela de Cotações Anacrônicas Identificadas */}
+        {anachronicAuditResult && anachronicAuditResult.items.length > 0 && (
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-950 uppercase tracking-wider flex items-center gap-1.5">
+                <AlertTriangle size={14} className="text-amber-600" />
+                Cotações com Faturas Históricas Vinculadas ({anachronicAuditResult.totalAnachronicFound})
+              </span>
+            </div>
+
+            <div className="overflow-x-auto rounded-xl border border-amber-200 bg-white">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-amber-50/80 border-b border-amber-200 text-amber-950 font-bold">
+                    <th className="py-2.5 px-3">Cotação ID</th>
+                    <th className="py-2.5 px-3">Cliente / CPF</th>
+                    <th className="py-2.5 px-3">Criação Proposta</th>
+                    <th className="py-2.5 px-3">Valor Cotação</th>
+                    <th className="py-2.5 px-3">Fatura Antiga Vinculada</th>
+                    <th className="py-2.5 px-3">Motivo da Inconsistência</th>
+                    <th className="py-2.5 px-3 text-right">Ação</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 text-gray-700 font-medium">
+                  {anachronicAuditResult.items.map((it) => (
+                    <tr key={it.cotacaoId} className="hover:bg-amber-50/30 transition-colors">
+                      <td className="py-2.5 px-3 font-mono text-gray-900 font-bold">
+                        {it.cotacaoId.slice(0, 8)}...
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span className="block font-bold text-gray-900">{it.clientName}</span>
+                        <span className="block text-[11px] text-gray-500 font-mono">{it.clientCpfCnpj}</span>
+                      </td>
+                      <td className="py-2.5 px-3 text-gray-600">
+                        {it.cotacaoCriadaEm ? formatDateTime(it.cotacaoCriadaEm) : 'N/A'}
+                      </td>
+                      <td className="py-2.5 px-3 font-bold text-gray-900">
+                        {formatCurrency(it.cotacaoValor)}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span className="block text-rose-700 font-bold">
+                          {it.orderAmount ? formatCurrency(it.orderAmount) : 'Valor desconhecido'}
+                        </span>
+                        <span className="block text-[11px] text-gray-500">
+                          Venc: {it.orderDueDate || 'N/A'} · ID: {it.orderId ? it.orderId.slice(0, 8) : it.externalPaymentId || 'N/A'}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-[11px] text-amber-800">
+                        {it.motivoAnacronismo.join('; ')}
+                      </td>
+                      <td className="py-2.5 px-3 text-right">
+                        <a
+                          href={`/admin/cotacoes/${it.cotacaoId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-[11px] font-bold transition-colors"
+                        >
+                          Ver Detalhes
+                        </a>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Feedback do Expurgo */}
+        {anachronicPurgeResult && (
+          <div className="p-4 rounded-xl border border-teal-200 bg-teal-50/70 text-teal-950 space-y-2 text-xs">
+            <strong className="block text-sm font-bold text-teal-900">Relatório da Limpeza e Reconciliação:</strong>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center pt-1">
+              <div className="p-2 bg-white rounded-lg border border-teal-200">
+                <span className="text-[11px] text-gray-500 block">Processadas</span>
+                <strong className="text-base text-gray-900 block">{anachronicPurgeResult.totalProcessed}</strong>
+              </div>
+              <div className="p-2 bg-white rounded-lg border border-teal-200">
+                <span className="text-[11px] text-teal-700 block">Expurgadas</span>
+                <strong className="text-base text-teal-800 block">{anachronicPurgeResult.purgedCount}</strong>
+              </div>
+              <div className="p-2 bg-white rounded-lg border border-teal-200">
+                <span className="text-[11px] text-emerald-700 block">Reconectadas Asaas</span>
+                <strong className="text-base text-emerald-800 block">{anachronicPurgeResult.reconciledCount}</strong>
+              </div>
+              <div className="p-2 bg-white rounded-lg border border-teal-200">
+                <span className="text-[11px] text-rose-700 block">Erros</span>
+                <strong className="text-base text-rose-800 block">{anachronicPurgeResult.errorsCount}</strong>
               </div>
             </div>
           </div>
