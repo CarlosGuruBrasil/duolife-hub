@@ -26,7 +26,14 @@ import {
 import { formatDateTime, formatCurrency } from '@/lib/format';
 import type { WixCollectionStatusInfo, WixPullResult, WixPullEntitiesSelection } from '@/lib/wix-pull';
 import type { ZapSignSyncSummary } from '@/lib/zapsign-sync';
-import type { AsaasSyncSummary, AsaasBatchReconcileResult, AnachronicAuditResult, PurgeAndReconcileResult } from '@/lib/asaas-sync';
+import type {
+  AsaasSyncSummary,
+  AsaasBatchReconcileResult,
+  AnachronicAuditResult,
+  PurgeAndReconcileResult,
+  SignedWithoutInvoiceAuditResult,
+  GenerateInvoicesBatchResult,
+} from '@/lib/asaas-sync';
 
 interface Props {
   collectionsCount: number;
@@ -118,6 +125,13 @@ export default function WixPullClient({
   const [anachronicAuditResult, setAnachronicAuditResult] = useState<AnachronicAuditResult | null>(null);
   const [anachronicPurgeResult, setAnachronicPurgeResult] = useState<PurgeAndReconcileResult | null>(null);
   const [anachronicMessage, setAnachronicMessage] = useState('');
+
+  // Módulo de Cotações Assinadas sem Fatura no Asaas
+  const [runningSignedAudit, setRunningSignedAudit] = useState(false);
+  const [runningSignedGenerate, setRunningSignedGenerate] = useState(false);
+  const [signedAuditResult, setSignedAuditResult] = useState<SignedWithoutInvoiceAuditResult | null>(null);
+  const [signedGenerateResult, setSignedGenerateResult] = useState<GenerateInvoicesBatchResult | null>(null);
+  const [signedMessage, setSignedMessage] = useState('');
 
   // Alternar seleção de coleção
   function toggleCollection(id: string) {
@@ -403,6 +417,81 @@ export default function WixPullClient({
       setAnachronicMessage('Falha de rede ao enviar solicitação de expurgo.');
     } finally {
       setRunningAnachronicPurge(false);
+    }
+  }
+
+  async function runAuditSignedWithoutInvoice() {
+    setRunningSignedAudit(true);
+    setSignedMessage('Buscando propostas com contrato assinado no ZapSign pendentes de emissão de fatura no Asaas...');
+    setSignedAuditResult(null);
+    setSignedGenerateResult(null);
+
+    try {
+      const response = await fetch('/api/admin/sync/asaas/assinadas-sem-fatura');
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        setSignedMessage(data.error || 'Falha ao auditar cotações assinadas sem fatura.');
+        return;
+      }
+
+      setSignedAuditResult(data);
+      if (data.totalSignedWithoutInvoice === 0) {
+        setSignedMessage('Tudo em dia! Todas as cotações com contrato assinado já possuem fatura/ordem no Asaas.');
+      } else {
+        setSignedMessage(
+          `Localizada(s) ${data.totalSignedWithoutInvoice} cotação(ões) com contrato assinado aguardando emissão da fatura.`
+        );
+      }
+    } catch {
+      setSignedMessage('Falha de rede ao conectar com o servidor para auditoria.');
+    } finally {
+      setRunningSignedAudit(false);
+    }
+  }
+
+  async function runGenerateInvoicesForSigned(targetIds?: string[]) {
+    const isSingle = targetIds && targetIds.length === 1;
+    const count = targetIds ? targetIds.length : (signedAuditResult?.totalSignedWithoutInvoice || 0);
+
+    if (
+      !window.confirm(
+        isSingle
+          ? 'Confirmar a geração da cobrança no Asaas para esta proposta assinada?'
+          : `Confirmar a geração de faturas no Asaas em lote para as ${count} cotação(ões) assinada(s)?`
+      )
+    ) {
+      return;
+    }
+
+    setRunningSignedGenerate(true);
+    setSignedMessage(`Emitindo cobrança(s) no Asaas... Por favor, aguarde.`);
+    setSignedGenerateResult(null);
+
+    try {
+      const response = await fetch('/api/admin/sync/asaas/assinadas-sem-fatura', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: targetIds }),
+      });
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        setSignedMessage(data.error || 'Falha ao emitir cobranças no Asaas.');
+        return;
+      }
+
+      setSignedGenerateResult(data);
+      setSignedMessage(
+        `Sucesso! ${data.generatedCount} fatura(s) gerada(s) no Asaas com link de pagamento e PIX.`
+      );
+
+      // Re-executa auditoria para atualizar o painel
+      await runAuditSignedWithoutInvoice();
+    } catch {
+      setSignedMessage('Falha de rede ao solicitar geração de cobranças.');
+    } finally {
+      setRunningSignedGenerate(false);
     }
   }
 
@@ -1377,6 +1466,173 @@ export default function WixPullClient({
               <div className="p-2 bg-white rounded-lg border border-teal-200">
                 <span className="text-[11px] text-rose-700 block">Erros</span>
                 <strong className="text-base text-rose-800 block">{anachronicPurgeResult.errorsCount}</strong>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* CARD SEXTO: COTAÇÕES COM CONTRATO ASSINADO SEM FATURA (ASAAS) */}
+      <div className="card space-y-5 bg-white border border-gray-200">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-gray-200 pb-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <FileSignature size={18} className="text-purple-700" />
+              <h2 className="text-lg font-black text-gray-900">Cotações Assinadas sem Fatura no Asaas</h2>
+            </div>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Identifica propostas com contrato assinado no ZapSign que ainda não tiveram suas cobranças emitidas no Asaas. Permite gerar a fatura de cada cliente ou emitir em lote com 1 clique.
+            </p>
+          </div>
+        </div>
+
+        {/* Controles de Disparo */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              className="px-4 py-2.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold transition-colors shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              onClick={runAuditSignedWithoutInvoice}
+              disabled={runningSignedAudit || runningSignedGenerate}
+            >
+              {runningSignedAudit ? (
+                <>
+                  <RefreshCw size={14} className="animate-spin" />
+                  <span>Buscando Propostas Assinadas...</span>
+                </>
+              ) : (
+                <>
+                  <FileSignature size={14} />
+                  <span>1. Auditar Assinadas sem Fatura (Diagnóstico)</span>
+                </>
+              )}
+            </button>
+
+            {signedAuditResult && signedAuditResult.totalSignedWithoutInvoice > 0 && (
+              <button
+                type="button"
+                className="px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-colors shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                onClick={() => runGenerateInvoicesForSigned()}
+                disabled={runningSignedGenerate || runningSignedAudit}
+              >
+                {runningSignedGenerate ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" />
+                    <span>Emitindo Cobranças no Asaas...</span>
+                  </>
+                ) : (
+                  <>
+                    <CreditCard size={14} />
+                    <span>2. Gerar Faturas no Asaas em Lote ({signedAuditResult.totalSignedWithoutInvoice})</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+
+          <div className="text-xs text-gray-500 font-medium">
+            {signedMessage || 'Clique em "Auditar Assinadas sem Fatura" para consultar propostas pendentes de cobrança.'}
+          </div>
+        </div>
+
+        {/* Feedback: Nenhuma Proposta Pendente */}
+        {signedAuditResult && signedAuditResult.totalSignedWithoutInvoice === 0 && (
+          <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/70 text-emerald-950 flex items-center gap-3">
+            <CheckCircle2 size={20} className="text-emerald-700 shrink-0" />
+            <div className="text-xs">
+              <strong className="block text-sm font-bold text-emerald-900">Tudo em Dia!</strong>
+              <span>
+                Todas as cotações com contrato assinado já possuem ordens financeiras e faturas registradas no Asaas.
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Tabela de Cotações Assinadas sem Fatura */}
+        {signedAuditResult && signedAuditResult.items.length > 0 && (
+          <div className="space-y-3 pt-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-purple-950 uppercase tracking-wider flex items-center gap-1.5">
+                <FileSignature size={14} className="text-purple-700" />
+                Propostas Assinadas Aguardando Emissão de Fatura ({signedAuditResult.totalSignedWithoutInvoice})
+              </span>
+            </div>
+
+            <div className="overflow-x-auto rounded-xl border border-purple-200 bg-white">
+              <table className="w-full text-left text-xs border-collapse">
+                <thead>
+                  <tr className="bg-purple-50/80 border-b border-purple-200 text-purple-950 font-bold">
+                    <th className="py-2.5 px-3">Cotação ID</th>
+                    <th className="py-2.5 px-3">Cliente / Contato</th>
+                    <th className="py-2.5 px-3">Assinado Em</th>
+                    <th className="py-2.5 px-3">Parceiro / Corretora</th>
+                    <th className="py-2.5 px-3">Valor do Seguro</th>
+                    <th className="py-2.5 px-3 text-right">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 text-gray-700 font-medium">
+                  {signedAuditResult.items.map((it) => (
+                    <tr key={it.cotacaoId} className="hover:bg-purple-50/30 transition-colors">
+                      <td className="py-2.5 px-3 font-mono text-gray-900 font-bold">
+                        {it.cotacaoId.slice(0, 8)}...
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span className="block font-bold text-gray-900">{it.clientName}</span>
+                        <span className="block text-[11px] text-gray-500 font-mono">
+                          CPF: {it.clientCpfCnpj} {it.clientPhone ? `· ${it.clientPhone}` : ''}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-gray-700">
+                        {it.assinadoEm ? formatDateTime(it.assinadoEm) : 'Assinado'}
+                      </td>
+                      <td className="py-2.5 px-3 text-gray-600">
+                        {it.partnerName || 'DUOLife'}
+                      </td>
+                      <td className="py-2.5 px-3 font-bold text-gray-900">
+                        {formatCurrency(it.valor)}
+                      </td>
+                      <td className="py-2.5 px-3 text-right space-x-1.5">
+                        <a
+                          href={`/admin/cotacoes/${it.cotacaoId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-lg text-[11px] font-bold transition-colors"
+                        >
+                          Ver Detalhes
+                        </a>
+                        <button
+                          type="button"
+                          disabled={runningSignedGenerate}
+                          onClick={() => runGenerateInvoicesForSigned([it.cotacaoId])}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer disabled:opacity-50"
+                        >
+                          Emitir Fatura
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Feedback da Geração de Faturas */}
+        {signedGenerateResult && (
+          <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50/70 text-emerald-950 space-y-2 text-xs">
+            <strong className="block text-sm font-bold text-emerald-900">Relatório da Emissão de Faturas:</strong>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-center pt-1">
+              <div className="p-2 bg-white rounded-lg border border-emerald-200">
+                <span className="text-[11px] text-gray-500 block">Processadas</span>
+                <strong className="text-base text-gray-900 block">{signedGenerateResult.totalProcessed}</strong>
+              </div>
+              <div className="p-2 bg-white rounded-lg border border-emerald-200">
+                <span className="text-[11px] text-emerald-700 block">Faturas Geradas</span>
+                <strong className="text-base text-emerald-800 block">{signedGenerateResult.generatedCount}</strong>
+              </div>
+              <div className="p-2 bg-white rounded-lg border border-emerald-200">
+                <span className="text-[11px] text-rose-700 block">Erros</span>
+                <strong className="text-base text-rose-800 block">{signedGenerateResult.errorsCount}</strong>
               </div>
             </div>
           </div>

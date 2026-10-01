@@ -9,6 +9,7 @@ import {
 } from './asaas-charges';
 import { ensureSaleForPaidQuote } from './insurance-ops';
 import { dispatchDomainEvent } from './triggers/dispatcher';
+import { generateAsaasPaymentForQuote } from './asaas-service';
 
 const PAID_ASAAS_STATUSES = [
   'RECEIVED',
@@ -1118,6 +1119,206 @@ export async function purgeAndReconcileAnachronicBatch(options: {
     reconciledCount,
     errorsCount,
     dryRun: isDryRun,
+    details,
+  };
+}
+
+export interface SignedWithoutInvoiceAuditItem {
+  cotacaoId: string;
+  clientName: string;
+  clientCpfCnpj: string;
+  clientEmail: string | null;
+  clientPhone: string | null;
+  status: string;
+  valor: number;
+  cotacaoCriadaEm: string;
+  assinadoEm: string | null;
+  externalDocumentId: string | null;
+  signUrl: string | null;
+  signedFileUrl: string | null;
+  partnerName: string | null;
+}
+
+export interface SignedWithoutInvoiceAuditResult {
+  totalQuotesAudited: number;
+  totalSignedWithoutInvoice: number;
+  items: SignedWithoutInvoiceAuditItem[];
+}
+
+export interface GenerateInvoicesBatchResult {
+  totalProcessed: number;
+  generatedCount: number;
+  errorsCount: number;
+  details: Array<{
+    cotacaoId: string;
+    clientName: string;
+    ok: boolean;
+    checkoutId?: string;
+    linkBoleto?: string;
+    dueDate?: string;
+    error?: string;
+  }>;
+}
+
+/**
+ * Audita o banco de dados em busca de cotações com contrato formalmente assinado
+ * (via ZapSign ou metadados de assinatura), mas que ainda não possuem fatura/ordem
+ * de pagamento gerada no Asaas.
+ */
+export async function auditSignedQuotesWithoutInvoice(): Promise<SignedWithoutInvoiceAuditResult> {
+  const [{ totalCount }] = await sql<Array<{ totalCount: number }>>`
+    SELECT COUNT(*)::int AS "totalCount" FROM cotacoes
+  `;
+
+  const rows = await sql<Array<{
+    cotacao_id: string;
+    client_name: string | null;
+    client_cpf_cnpj: string | null;
+    client_email: string | null;
+    client_phone: string | null;
+    status: string;
+    valor: number | null;
+    cotacao_criada_em: string;
+    assinado_em: string | null;
+    external_document_id: string | null;
+    sign_url: string | null;
+    signed_file_url: string | null;
+    partner_name: string | null;
+  }>>`
+    SELECT
+      c.id AS cotacao_id,
+      c.client_name,
+      c.client_cpf_cnpj,
+      c.client_email,
+      c.client_phone,
+      c.status,
+      COALESCE(c.premio_final, c.premio_calculado) AS valor,
+      c.created_at::text AS cotacao_criada_em,
+      COALESCE(
+        sd.signed_at::text,
+        c.client_data->>'assinadoEm',
+        c.client_data->>'signedAt'
+      ) AS assinado_em,
+      sd.external_document_id,
+      sd.sign_url,
+      COALESCE(sd.signed_file_url, c.client_data->>'signedFileUrl', c.client_data->>'contratoPdf') AS signed_file_url,
+      COALESCE(part.nome_fantasia, part.razao_social) AS partner_name
+    FROM cotacoes c
+    JOIN partners part ON part.id = c.partner_id
+    LEFT JOIN signature_documents sd ON sd.cotacao_id = c.id AND sd.status = 'signed'
+    WHERE (
+      -- Contrato assinado (status 'assinado' ou documento ZapSign 'signed' ou data de assinatura)
+      c.status = 'assinado'
+      OR sd.status = 'signed'
+      OR c.client_data->>'assinadoEm' IS NOT NULL
+      OR c.client_data->>'signedFileUrl' IS NOT NULL
+    )
+    -- Exclui status de cancelamento/desistência ou já quitadas/emitidas
+    AND c.status NOT IN ('recusada', 'expirada', 'aprovada', 'emitida', 'ativa', 'active')
+    -- NÃO possui ordem de pagamento quitada ou ativa
+    AND NOT EXISTS (
+      SELECT 1 FROM payment_orders po
+      WHERE po.cotacao_id = c.id
+        AND po.status IN ('paid', 'confirmed', 'received')
+    )
+    -- E NÃO possui checkoutId ativo registrado
+    AND (
+      c.client_data->>'checkoutId' IS NULL 
+      OR c.client_data->>'checkoutId' = ''
+    )
+    -- E não possui parcelas ativas gravadas
+    AND NOT EXISTS (
+      SELECT 1 FROM payment_installments pi
+      WHERE pi.cotacao_id = c.id
+    )
+    ORDER BY c.created_at DESC
+  `;
+
+  const items: SignedWithoutInvoiceAuditItem[] = rows.map((r) => ({
+    cotacaoId: r.cotacao_id,
+    clientName: r.client_name || 'Não informado',
+    clientCpfCnpj: r.client_cpf_cnpj || 'Não informado',
+    clientEmail: r.client_email,
+    clientPhone: r.client_phone,
+    status: r.status,
+    valor: Number(r.valor || 0),
+    cotacaoCriadaEm: r.cotacao_criada_em,
+    assinadoEm: r.assinado_em,
+    externalDocumentId: r.external_document_id,
+    signUrl: r.sign_url,
+    signedFileUrl: r.signed_file_url,
+    partnerName: r.partner_name,
+  }));
+
+  return {
+    totalQuotesAudited: Number(totalCount || 0),
+    totalSignedWithoutInvoice: items.length,
+    items,
+  };
+}
+
+/**
+ * Gera as faturas no Asaas em lote para cotações que possuem contrato assinado
+ * mas que ainda não tiveram suas cobranças emitidas.
+ */
+export async function generateInvoicesForSignedQuotesBatch(options: {
+  ids?: string[];
+} = {}): Promise<GenerateInvoicesBatchResult> {
+  const audit = await auditSignedQuotesWithoutInvoice();
+  let targetItems = audit.items;
+
+  if (options.ids && options.ids.length > 0) {
+    const idSet = new Set(options.ids);
+    targetItems = targetItems.filter((i) => idSet.has(i.cotacaoId));
+  }
+
+  let generatedCount = 0;
+  let errorsCount = 0;
+  const details: GenerateInvoicesBatchResult['details'] = [];
+
+  for (const item of targetItems) {
+    try {
+      const result = await generateAsaasPaymentForQuote(item.cotacaoId, {
+        isManualAdmin: true,
+      });
+
+      if (result.ok && result.checkoutId) {
+        generatedCount++;
+        details.push({
+          cotacaoId: item.cotacaoId,
+          clientName: item.clientName,
+          ok: true,
+          checkoutId: result.checkoutId,
+          linkBoleto: result.linkBoleto,
+          dueDate: result.dueDate,
+        });
+      } else {
+        errorsCount++;
+        details.push({
+          cotacaoId: item.cotacaoId,
+          clientName: item.clientName,
+          ok: false,
+          error: result.error || 'Falha ao emitir cobrança no Asaas',
+        });
+      }
+
+      // Throttle de segurança de 200ms entre as requisições para o Asaas
+      await new Promise((r) => setTimeout(r, 200));
+    } catch (err) {
+      errorsCount++;
+      details.push({
+        cotacaoId: item.cotacaoId,
+        clientName: item.clientName,
+        ok: false,
+        error: err instanceof Error ? err.message : 'Erro interno ao gerar cobrança',
+      });
+    }
+  }
+
+  return {
+    totalProcessed: targetItems.length,
+    generatedCount,
+    errorsCount,
     details,
   };
 }
