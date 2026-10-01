@@ -20,6 +20,7 @@ export interface AsaasCharge {
   status: string;
   value: number;
   netValue: number | null;
+  dateCreated: string | null;
   dueDate: string | null;
   originalDueDate: string | null;
   paymentDate: string | null;
@@ -67,6 +68,7 @@ function normalizeCharge(raw: Record<string, unknown>): AsaasCharge {
     status: String(raw.status ?? 'UNKNOWN'),
     value: toNumber(raw.value),
     netValue: raw.netValue == null ? null : toNumber(raw.netValue),
+    dateCreated: toStringOrNull(raw.dateCreated),
     dueDate: toStringOrNull(raw.dueDate),
     originalDueDate: toStringOrNull(raw.originalDueDate),
     paymentDate: toStringOrNull(raw.paymentDate) ?? toStringOrNull(raw.clientPaymentDate),

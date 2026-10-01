@@ -246,7 +246,30 @@ export async function POST(req: NextRequest) {
         cotacao = directCotacao;
       }
 
-      // Se não encontrou por parcela, busca por checkoutId, parcelamento ou ordens
+      // Se há externalReference, busca prioritariamente pela cotação exata
+      if (!cotacao && payment.externalReference) {
+        const [refCotacao] = await sql<{
+          id: string;
+          client_id: string | null;
+          partner_id: string;
+          product_id: string;
+          importancia_segurada: number;
+          status: string;
+          premio_final: number | null;
+          premio_calculado: number | null;
+          created_at: string | Date;
+        }[]>`
+          SELECT id, client_id, partner_id, product_id, importancia_segurada, status, premio_final, premio_calculado, created_at 
+          FROM cotacoes 
+          WHERE id = ${payment.externalReference}
+          LIMIT 1
+        `;
+        if (refCotacao) {
+          cotacao = refCotacao;
+        }
+      }
+
+      // Se não encontrou por parcela ou externalReference, busca por checkoutId, parcelamento ou ordens
       if (!cotacao) {
         const [matchingCotacao] = await sql<{
           id: string;
@@ -257,8 +280,9 @@ export async function POST(req: NextRequest) {
           status: string;
           premio_final: number | null;
           premio_calculado: number | null;
+          created_at: string | Date;
         }[]>`
-          SELECT id, client_id, partner_id, product_id, importancia_segurada, status, premio_final, premio_calculado 
+          SELECT id, client_id, partner_id, product_id, importancia_segurada, status, premio_final, premio_calculado, created_at 
           FROM cotacoes 
           WHERE (
             client_data->>'checkoutId' = ${payment.id}
@@ -278,8 +302,22 @@ export async function POST(req: NextRequest) {
         cotacao = matchingCotacao;
       }
 
-      // Fallback resiliente: se não encontrou cotação pelo ID exato da cobrança,
-      // busca pela identificação do cliente no Asaas (customer ID) ou documento
+      // Validação temporal: se cotação foi localizada, confirma que a cobrança não foi criada antes dela
+      if (cotacao && payment.dateCreated) {
+        const paymentCreatedMs = new Date(payment.dateCreated).getTime();
+        const quoteCreatedMs = new Date((cotacao as any).created_at || 0).getTime();
+        if (quoteCreatedMs > 0 && paymentCreatedMs < quoteCreatedMs - (24 * 60 * 60 * 1000)) {
+          logger.warn(
+            { paymentId: payment.id, paymentDateCreated: payment.dateCreated, cotacaoId: cotacao.id },
+            'Asaas Webhook: Pagamento descartado por ter sido criado antes da cotação vigente'
+          );
+          return NextResponse.json({ ok: true, ignored: true, reason: 'Charge created before quote' });
+        }
+      }
+
+      // Fallback estrito: se não encontrou cotação pelo ID exato da cobrança,
+      // busca pela identificação do cliente no Asaas (customer ID) ou documento,
+      // exigindo que a cotação tenha sido criada na mesma época e tenha valor compatível.
       const customerId = payment.customer || null;
       const cpfCnpj = payment.cpfCnpj || null;
       const cleanCpfCnpj = cpfCnpj ? String(cpfCnpj).replace(/\D/g, '') : null;
@@ -294,8 +332,9 @@ export async function POST(req: NextRequest) {
           status: string;
           premio_final: number | null;
           premio_calculado: number | null;
+          created_at: string | Date;
         }[]>`
-          SELECT c.id, c.client_id, c.partner_id, c.product_id, c.importancia_segurada, c.status, c.premio_final, c.premio_calculado
+          SELECT c.id, c.client_id, c.partner_id, c.product_id, c.importancia_segurada, c.status, c.premio_final, c.premio_calculado, c.created_at
           FROM cotacoes c
           LEFT JOIN insurance_clients ic ON ic.id = c.client_id
           LEFT JOIN payment_orders po ON po.cotacao_id = c.id
@@ -313,13 +352,25 @@ export async function POST(req: NextRequest) {
             ))
           )
           AND c.status IN ('pagamento_gerado', 'assinado', 'contrato_gerado', 'enviada', 'rascunho')
+          AND c.created_at <= (COALESCE(${payment.dateCreated}::timestamptz, NOW()) + interval '24 hours')
           ORDER BY c.created_at DESC
           LIMIT 1
         `;
 
         if (fallbackCotacao) {
-          cotacao = fallbackCotacao;
-          logger.info({ paymentId: payment.id, cotacaoId: cotacao.id, customer: payment.customer }, 'Asaas Webhook: cotação localizada por fallback de cliente/CPF');
+          const quoteVal = Number(fallbackCotacao.premio_final || fallbackCotacao.premio_calculado || 0);
+          const payVal = Number(payment.value || 0);
+          const isTotalMatch = Math.abs(payVal - quoteVal) < 0.15;
+          const isInstMatch = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].some(
+            (n) => Math.abs(payVal - (quoteVal / n)) < 0.15
+          );
+
+          if (quoteVal > 0 && payVal > 0 && (isTotalMatch || isInstMatch)) {
+            cotacao = fallbackCotacao;
+            logger.info({ paymentId: payment.id, cotacaoId: cotacao.id, customer: payment.customer }, 'Asaas Webhook: cotação localizada por fallback com validação de valor e data');
+          } else {
+            logger.warn({ paymentId: payment.id, payVal, quoteVal }, 'Asaas Webhook: fallback descartado por incompatibilidade de valor');
+          }
         }
       }
 

@@ -45,7 +45,13 @@ export function SincronizarAsaasButton({
         return;
       }
 
-      if (body.paid) {
+      if (body.anachronicPurged) {
+        toast.info(body.message || 'Cobrança antiga histórica desvinculada com sucesso! A cotação foi restaurada para emissão da cobrança correta.');
+        if (onSuccess) {
+          onSuccess();
+        }
+        router.refresh();
+      } else if (body.paid) {
         toast.success(`Pagamento CONFIRMADO no Asaas! Cotação atualizada para ${body.statusAfter?.toUpperCase() || 'APROVADA'}.`);
         if (onSuccess) {
           onSuccess();

@@ -30,6 +30,8 @@ export interface AsaasReconcileQuoteResult {
   chargesFound: number;
   paidChargeId?: string | null;
   saleId?: string | null;
+  anachronicPurged?: boolean;
+  message?: string;
   error?: string;
 }
 
@@ -80,6 +82,41 @@ export async function getAsaasSyncStatus(): Promise<AsaasSyncSummary> {
  * ou RECEIVED, atualiza payment_orders, payment_installments, emite a venda e
  * promove o status da cotação para 'aprovada'.
  */
+function isChargeAnachronic(
+  charge: { dateCreated?: string | null; paymentDate?: string | null; dueDate?: string | null; externalReference?: string | null },
+  minTimestampMs: number,
+  cotacaoId: string
+): boolean {
+  // Se a cobrança contiver externalReference explicitamente igual a esta cotação, foi emitida para ela
+  if (charge.externalReference === cotacaoId) return false;
+
+  // Se tiver dateCreated, valida a data de criação
+  if (charge.dateCreated) {
+    const t = new Date(charge.dateCreated).getTime();
+    if (!isNaN(t) && t < minTimestampMs) return true;
+  }
+
+  // Se tiver paymentDate, valida pagamento
+  if (charge.paymentDate) {
+    const t = new Date(charge.paymentDate).getTime();
+    if (!isNaN(t) && t < minTimestampMs) return true;
+  }
+
+  // Se tiver dueDate, valida vencimento
+  if (charge.dueDate) {
+    const t = new Date(charge.dueDate).getTime();
+    if (!isNaN(t) && t < minTimestampMs) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Reconcilia uma cotação individual consultando a API do Asaas em tempo real.
+ * Se o pagamento constar como CONFIRMED (Cartão de Crédito ou Boleto/Pix compensado)
+ * ou RECEIVED, atualiza payment_orders, payment_installments, emite a venda e
+ * promove o status da cotação para 'aprovada'.
+ */
 export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasReconcileQuoteResult> {
   const startTime = Date.now();
 
@@ -96,11 +133,13 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
       premio_calculado: number | null;
       status: string;
       client_data: unknown;
+      created_at: string | Date;
     }>>`
       SELECT
         id, client_id, partner_id, product_id,
         client_name, client_cpf_cnpj, importancia_segurada,
-        premio_final, premio_calculado, status, client_data
+        premio_final, premio_calculado, status, client_data,
+        created_at
       FROM cotacoes
       WHERE id = ${cotacaoId}
       LIMIT 1
@@ -119,10 +158,14 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
       };
     }
 
+    const cotacaoCreatedAtMs = new Date(cotacao.created_at).getTime();
+    // Tolerância de segurança de 24h para variações de fuso horário / relógio
+    const minValidChargeMs = cotacaoCreatedAtMs - (24 * 60 * 60 * 1000);
+
     const clientData = parseJsonbField<Record<string, unknown>>(cotacao.client_data);
 
     // Ordem de pagamento atual no banco local
-    const [order] = await sql<Array<{
+    let [order] = await sql<Array<{
       id: string;
       status: string;
       provider_customer_id: string | null;
@@ -132,11 +175,13 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
       amount_total: number;
       installment_count: number;
       paid_installments: number;
+      due_date: string | null;
     }>>`
       SELECT
         id, status, provider_customer_id, external_payment_id,
         external_installment_id, billing_type,
-        amount_total, installment_count, paid_installments
+        amount_total, installment_count, paid_installments,
+        due_date::text AS due_date
       FROM payment_orders
       WHERE cotacao_id = ${cotacaoId}
       ORDER BY created_at DESC
@@ -150,8 +195,11 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
       external_installment_id: string | null;
       status: string;
       installment_number: number;
+      due_date: string | null;
+      paid_at: string | null;
     }>>`
-      SELECT id, external_payment_id, external_installment_id, status, installment_number
+      SELECT id, external_payment_id, external_installment_id, status, installment_number,
+             due_date::text AS due_date, paid_at::text AS paid_at
       FROM payment_installments
       WHERE cotacao_id = ${cotacaoId}
       ORDER BY installment_number ASC
@@ -205,7 +253,15 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
     if (directInstallmentId) {
       const instResult = await listAsaasInstallmentPayments(directInstallmentId);
       if (instResult.ok && instResult.charges.length > 0) {
-        resolvedCharges = instResult.charges;
+        const first = instResult.charges[0];
+        if (first && isChargeAnachronic(first, minValidChargeMs, cotacao.id)) {
+          logger.warn(
+            { cotacaoId: cotacao.id, installmentId: directInstallmentId, dateCreated: first.dateCreated },
+            'asaas.sync.anachronic_installment_discarded'
+          );
+        } else {
+          resolvedCharges = instResult.charges;
+        }
       }
     }
 
@@ -215,18 +271,81 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
         const payRes = await getAsaasPayment(payId);
         if (payRes.ok && payRes.charge) {
           const ch = payRes.charge;
+
+          // Se a cobrança for anacrônica (data anterior à cotação), descarta sumariamente!
+          if (isChargeAnachronic(ch, minValidChargeMs, cotacao.id)) {
+            logger.warn(
+              { cotacaoId: cotacao.id, payId: ch.id, dateCreated: ch.dateCreated, paymentDate: ch.paymentDate },
+              'asaas.sync.anachronic_direct_charge_discarded'
+            );
+            continue;
+          }
+
           // Se a cobrança for parcelada, busca todas as parcelas do carnê
           if (ch.installment) {
             const instResult = await listAsaasInstallmentPayments(ch.installment);
             if (instResult.ok && instResult.charges.length > 0) {
-              resolvedCharges = instResult.charges;
-              break;
+              const firstInst = instResult.charges[0];
+              if (firstInst && !isChargeAnachronic(firstInst, minValidChargeMs, cotacao.id)) {
+                resolvedCharges = instResult.charges;
+                break;
+              }
             }
           }
           resolvedCharges = [ch];
           break;
         }
       }
+    }
+
+    // Auto-correção e expurgo se a ordem existente no banco local era anacrônica
+    let anachronicPurged = false;
+    const existingOrderIsAnachronic = Boolean(
+      order && (
+        (order.due_date && new Date(order.due_date).getTime() < minValidChargeMs) ||
+        (existingInstallments.some((inst) => inst.due_date && new Date(inst.due_date).getTime() < minValidChargeMs)) ||
+        (existingInstallments.some((inst) => inst.paid_at && new Date(inst.paid_at).getTime() < minValidChargeMs)) ||
+        (order.external_payment_id && directPaymentIds.has(order.external_payment_id) && resolvedCharges.length === 0)
+      )
+    );
+
+    if (existingOrderIsAnachronic && order) {
+      logger.warn(
+        { cotacaoId: cotacao.id, orderId: order.id, externalId: order.external_payment_id },
+        'asaas.sync.purging_anachronic_database_linkage'
+      );
+
+      await sql.begin(async (tx) => {
+        await tx`DELETE FROM delinquency_notifications WHERE payment_order_id = ${order!.id}`;
+        await tx`DELETE FROM payment_installments WHERE cotacao_id = ${cotacao.id}`;
+        await tx`DELETE FROM payment_orders WHERE id = ${order!.id}`;
+        await tx`DELETE FROM sales WHERE cotacao_id = ${cotacao.id} AND (policy_number IS NULL OR policy_number LIKE 'PRE-%')`;
+
+        delete clientData.checkoutId;
+        delete clientData.linkBoleto;
+        delete clientData.dataVencimento;
+        delete clientData.faturaId;
+        delete clientData.externalInstallmentId;
+        delete clientData.paidAt;
+        delete clientData.pagoEm;
+
+        const [sigDoc] = await tx<Array<{ status: string }>>`
+          SELECT status FROM signature_documents WHERE cotacao_id = ${cotacao.id} AND status = 'signed' LIMIT 1
+        `;
+        const restoredStatus = sigDoc ? 'assinado' : (cotacao.status === 'aprovada' ? 'contrato_gerado' : cotacao.status);
+
+        await tx`
+          UPDATE cotacoes
+          SET status = ${restoredStatus},
+              client_data = ${JSON.stringify(clientData)}::jsonb,
+              updated_at = NOW()
+          WHERE id = ${cotacao.id}
+        `;
+        cotacao.status = restoredStatus;
+      });
+
+      order = undefined as any;
+      anachronicPurged = true;
     }
 
     // 3. Fallback: consulta cobranças no Asaas por customerId e CPF/CNPJ
@@ -241,36 +360,44 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
         cpfCnpj: clientDoc,
       });
 
-      const clientCharges = lookup.charges || [];
-      if (clientCharges.length > 0) {
+      // Filtra estritamente cobranças candidatas:
+      // - Não deletadas
+      // - Sem externalReference divergente
+      // - Não anacrônicas (criadas na data da cotação vigente ou após)
+      const eligibleCharges = (lookup.charges || []).filter((c) => {
+        if (c.deleted) return false;
+        if (c.externalReference && c.externalReference !== cotacao.id) return false;
+        if (isChargeAnachronic(c, minValidChargeMs, cotacao.id)) return false;
+        return true;
+      });
+
+      if (eligibleCharges.length > 0) {
         const targetValue = Number(cotacao.premio_final || cotacao.premio_calculado || order?.amount_total || 0);
         const qtdParcelas = Number(order?.installment_count) || 1;
         const targetParcelaValue = qtdParcelas > 0 ? targetValue / qtdParcelas : targetValue;
 
-        // Prioridade 1: ID exato
-        let matchedCharge = clientCharges.find((c) => directPaymentIds.has(c.id));
+        // Prioridade 1: externalReference idêntica a esta cotação
+        let matchedCharge = eligibleCharges.find((c) => c.externalReference === cotacao.id);
 
-        // Prioridade 2: Cobrança paga com mesmo valor ou valor de parcela
+        // Prioridade 2: ID exato válido
         if (!matchedCharge) {
-          matchedCharge = clientCharges.find(
+          matchedCharge = eligibleCharges.find((c) => directPaymentIds.has(c.id));
+        }
+
+        // Prioridade 3: Cobrança paga com mesmo valor ou valor de parcela
+        if (!matchedCharge && targetValue > 0) {
+          matchedCharge = eligibleCharges.find(
             (c) =>
               PAID_ASAAS_STATUSES.includes(c.status) &&
-              !c.deleted &&
-              (Math.abs(c.value - targetValue) < 0.10 || (qtdParcelas > 1 && Math.abs(c.value - targetParcelaValue) < 0.10))
+              (Math.abs(c.value - targetValue) < 0.15 || (qtdParcelas > 1 && Math.abs(c.value - targetParcelaValue) < 0.15))
           );
         }
 
-        // Prioridade 3: Cobrança paga mais recente
-        if (!matchedCharge) {
-          matchedCharge = clientCharges.find((c) => PAID_ASAAS_STATUSES.includes(c.status) && !c.deleted);
-        }
-
-        // Prioridade 4: Cobrança do mesmo valor mesmo não paga
+        // Prioridade 4: Cobrança pendente com mesmo valor ou valor de parcela
         if (!matchedCharge && targetValue > 0) {
-          matchedCharge = clientCharges.find(
+          matchedCharge = eligibleCharges.find(
             (c) =>
-              !c.deleted &&
-              (Math.abs(c.value - targetValue) < 0.10 || (qtdParcelas > 1 && Math.abs(c.value - targetParcelaValue) < 0.10))
+              (Math.abs(c.value - targetValue) < 0.15 || (qtdParcelas > 1 && Math.abs(c.value - targetParcelaValue) < 0.15))
           );
         }
 
@@ -296,9 +423,13 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
         clientName: cotacao.client_name || undefined,
         statusBefore: cotacao.status,
         statusAfter: cotacao.status,
-        updated: false,
+        updated: anachronicPurged,
         paid: false,
         chargesFound: 0,
+        anachronicPurged,
+        message: anachronicPurged
+          ? 'Cobrança antiga histórica do cliente foi desvinculada com sucesso. Nenhuma cobrança referente a esta cotação foi localizada.'
+          : undefined,
       };
     }
 

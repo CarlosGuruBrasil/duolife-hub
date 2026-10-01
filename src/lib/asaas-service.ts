@@ -29,6 +29,7 @@ export interface GeneratePaymentOptions {
   isManualAdmin?: boolean;
   customValues?: GeneratePaymentCustomValues;
   forceRecreate?: boolean;
+  overrideAnachronic?: boolean;
 }
 
 export interface GeneratePaymentResult {
@@ -82,11 +83,11 @@ export async function generateAsaasPaymentForQuote(
       };
     }
 
-    // Se já houver apólice emitida em sales, não permitir recriação acidental
+    // Se já houver apólice emitida em sales, não permitir recriação acidental (a menos que seja override de cobrança anacrônica pelo Admin)
     const [existingSale] = await sql<any[]>`
-      SELECT id, status FROM sales WHERE cotacao_id = ${cotacao.id} LIMIT 1
+      SELECT id, status, policy_number FROM sales WHERE cotacao_id = ${cotacao.id} LIMIT 1
     `;
-    if (existingSale && !options?.isManualAdmin) {
+    if (existingSale && !options?.isManualAdmin && !options?.overrideAnachronic) {
       return {
         ok: false,
         error: 'Esta cotação já possui apólice/venda emitida e não pode ter a cobrança regerada.',
@@ -108,31 +109,51 @@ export async function generateAsaasPaymentForQuote(
           existingOrderToCancel.status
         );
         if (isPaid) {
-          return {
-            ok: false,
-            error: 'Esta cobrança já foi compensada/paga no Asaas e não pode ser cancelada ou substituída.',
-          };
+          if (options?.overrideAnachronic && options?.isManualAdmin) {
+            // Desvinculação forçada de cobrança indevida/anacrônica:
+            // Não tenta cancelar no Asaas (pois a cobrança histórica não pertence a esta cotação),
+            // mas limpa registros locais espúrios vinculados a esta cotação!
+            await sql.begin(async (tx) => {
+              await tx`DELETE FROM delinquency_notifications WHERE payment_order_id = ${existingOrderToCancel.id}`;
+              await tx`DELETE FROM payment_installments WHERE payment_order_id = ${existingOrderToCancel.id}`;
+              await tx`DELETE FROM payment_orders WHERE id = ${existingOrderToCancel.id}`;
+              await tx`DELETE FROM sales WHERE cotacao_id = ${cotacao.id} AND (policy_number IS NULL OR policy_number LIKE 'PRE-%')`;
+            });
+
+            delete clientData.checkoutId;
+            delete clientData.linkBoleto;
+            delete clientData.dataVencimento;
+            delete clientData.faturaId;
+            delete clientData.externalInstallmentId;
+            delete clientData.paidAt;
+            delete clientData.pagoEm;
+          } else {
+            return {
+              ok: false,
+              error: 'Esta cobrança já foi compensada/paga no Asaas e não pode ser cancelada ou substituída.',
+            };
+          }
+        } else {
+          // Deleta cobrança pendente/não paga no Asaas
+          if (existingOrderToCancel.external_installment_id) {
+            await deleteAsaasInstallment(existingOrderToCancel.external_installment_id).catch(() => {});
+          } else if (existingOrderToCancel.external_payment_id) {
+            await deleteAsaasPayment(existingOrderToCancel.external_payment_id).catch(() => {});
+          }
+
+          // Limpa registros locais vinculados
+          await sql.begin(async (tx) => {
+            await tx`DELETE FROM delinquency_notifications WHERE payment_order_id = ${existingOrderToCancel.id}`;
+            await tx`DELETE FROM payment_installments WHERE payment_order_id = ${existingOrderToCancel.id}`;
+            await tx`DELETE FROM payment_orders WHERE id = ${existingOrderToCancel.id}`;
+          });
+
+          delete clientData.checkoutId;
+          delete clientData.linkBoleto;
+          delete clientData.dataVencimento;
+          delete clientData.faturaId;
+          delete clientData.externalInstallmentId;
         }
-
-        // Deleta no Asaas
-        if (existingOrderToCancel.external_installment_id) {
-          await deleteAsaasInstallment(existingOrderToCancel.external_installment_id).catch(() => {});
-        } else if (existingOrderToCancel.external_payment_id) {
-          await deleteAsaasPayment(existingOrderToCancel.external_payment_id).catch(() => {});
-        }
-
-        // Limpa registros locais vinculados
-        await sql.begin(async (tx) => {
-          await tx`DELETE FROM delinquency_notifications WHERE payment_order_id = ${existingOrderToCancel.id}`;
-          await tx`DELETE FROM payment_installments WHERE payment_order_id = ${existingOrderToCancel.id}`;
-          await tx`DELETE FROM payment_orders WHERE id = ${existingOrderToCancel.id}`;
-        });
-
-        delete clientData.checkoutId;
-        delete clientData.linkBoleto;
-        delete clientData.dataVencimento;
-        delete clientData.faturaId;
-        delete clientData.externalInstallmentId;
       }
     } else if (
       !options?.customValues ||
@@ -203,7 +224,7 @@ export async function generateAsaasPaymentForQuote(
         const isPaid = ['paid', 'received', 'confirmed', 'RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'].includes(
           existingOrder.status
         );
-        if (isPaid) {
+        if (isPaid && !options?.overrideAnachronic) {
           return {
             ok: false,
             error: 'Esta cotação já possui uma cobrança com pagamento confirmado/pago.',
@@ -408,6 +429,7 @@ export async function generateAsaasPaymentForQuote(
       billingType,
       dueDate: dueDateStr,
       description: descricao,
+      externalReference: cotacao.id,
     };
 
     if (qtdParcelas > 1) {

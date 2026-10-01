@@ -169,8 +169,9 @@ export default async function PortalCotacaoDetailPage({
     amount_total: string;
     status: string;
     due_date: string;
+    created_at: string;
   }>>`
-    SELECT id, installment_count, billing_type, amount_total, status, due_date::text AS due_date
+    SELECT id, installment_count, billing_type, amount_total, status, due_date::text AS due_date, created_at::text AS created_at
     FROM payment_orders
     WHERE cotacao_id = ${id}
     ORDER BY created_at DESC
@@ -362,24 +363,6 @@ export default async function PortalCotacaoDetailPage({
 
   const allInstallmentsPaid = totalInstallmentsCount > 0 && paidInstallmentsCount === totalInstallmentsCount;
 
-  // Estados de pagamento
-  const isPaid =
-    paidStatuses.includes(orderStatusLower) ||
-    ['aprovada', 'emitida', 'ativa', 'active'].includes(quoteStatusLower) ||
-    allInstallmentsPaid;
-
-  const isPartiallyPaid =
-    !isPaid &&
-    (orderStatusLower === 'partially_paid' || (paidInstallmentsCount > 0 && paidInstallmentsCount < totalInstallmentsCount));
-
-  const isOverdue =
-    !isPaid &&
-    !isPartiallyPaid &&
-    (overdueInstallments.length > 0 || isOrderOverdue);
-
-  const hasCharges = Boolean(checkoutId || linkBoleto || paymentOrder || installments.length > 0);
-  const isPending = hasCharges && !isPaid && !isPartiallyPaid && !isOverdue;
-
   // Metadados adicionais para exibição de pagamento
   const paidAtDate =
     paidInstallments.find((i) => i.paid_at)?.paid_at ||
@@ -387,6 +370,47 @@ export default async function PortalCotacaoDetailPage({
     (clientData.pagoEm as string | undefined) ||
     (clientData.assinadoEm as string | undefined) ||
     null;
+
+  // Blindagem temporal: detecção de cobrança anacrônica (gerada antes da cotação vigente)
+  const cotacaoCreatedAtMs = cotacao.created_at ? new Date(cotacao.created_at).getTime() : 0;
+  const minValidTimestampMs = cotacaoCreatedAtMs > 0 ? cotacaoCreatedAtMs - (24 * 60 * 60 * 1000) : 0;
+
+  const chargeCreatedAtStr = (installments[0]?.raw_payload?.dateCreated as string | undefined) || paymentOrder?.created_at;
+  const chargePaidAtStr = paidInstallments.find((i) => i.paid_at)?.paid_at || (clientData.paidAt as string | undefined) || (clientData.pagoEm as string | undefined);
+  const chargeDueDateStr = paymentOrder?.due_date || installments[0]?.due_date;
+
+  const chargeDateMs = chargeCreatedAtStr
+    ? new Date(chargeCreatedAtStr).getTime()
+    : (chargePaidAtStr
+        ? new Date(chargePaidAtStr).getTime()
+        : (chargeDueDateStr ? new Date(chargeDueDateStr).getTime() : 0));
+
+  const isAnachronicCharge = Boolean(
+    minValidTimestampMs > 0 &&
+    chargeDateMs > 0 &&
+    chargeDateMs < minValidTimestampMs
+  );
+
+  // Estados de pagamento
+  const isPaid =
+    !isAnachronicCharge &&
+    (paidStatuses.includes(orderStatusLower) ||
+      ['aprovada', 'emitida', 'ativa', 'active'].includes(quoteStatusLower) ||
+      allInstallmentsPaid);
+
+  const isPartiallyPaid =
+    !isAnachronicCharge &&
+    !isPaid &&
+    (orderStatusLower === 'partially_paid' || (paidInstallmentsCount > 0 && paidInstallmentsCount < totalInstallmentsCount));
+
+  const isOverdue =
+    !isAnachronicCharge &&
+    !isPaid &&
+    !isPartiallyPaid &&
+    (overdueInstallments.length > 0 || isOrderOverdue);
+
+  const hasCharges = Boolean(checkoutId || linkBoleto || paymentOrder || installments.length > 0);
+  const isPending = !isAnachronicCharge && hasCharges && !isPaid && !isPartiallyPaid && !isOverdue;
 
   const invoiceUrl =
     linkBoleto ||
@@ -646,7 +670,42 @@ export default async function PortalCotacaoDetailPage({
               <SincronizarAsaasButton id={cotacao.id} isAdmin={false} variant="compact" label="Sincronizar Asaas" />
             </div>
 
-            {isPaid ? (
+            {isAnachronicCharge ? (
+              /* ESTADO: COBRANÇA ANACRÔNICA / DESALINHADA */
+              <div className="space-y-4">
+                <div className="bg-amber-50/90 border border-amber-200 text-amber-950 p-4 rounded-xl space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <AlertTriangle size={22} className="text-amber-600 shrink-0" />
+                      <div>
+                        <span className="font-bold text-amber-950 text-sm block">
+                          Fatura da Cotação em Processamento
+                        </span>
+                        <span className="text-amber-800 text-xs block">
+                          A fatura oficial referente a esta cotação vigente ({valorTotalCalculado}) está sendo processada.
+                        </span>
+                      </div>
+                    </div>
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                      Em Alinhamento
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-white/95 rounded-lg border border-amber-200 text-xs text-amber-900 space-y-1">
+                    <p className="font-semibold text-amber-950">
+                      Valor desta Cotação: <span className="font-black text-slate-900">{valorTotalCalculado}</span> ({parcelaInfo})
+                    </p>
+                    <p className="text-slate-600">
+                      Aguarde a disponibilização da fatura ou atualize o status para sincronizar com o Asaas.
+                    </p>
+                  </div>
+
+                  <div className="pt-2 border-t border-amber-200/80 flex items-center gap-2">
+                    <SincronizarAsaasButton id={cotacao.id} isAdmin={false} variant="compact" label="Atualizar Status" />
+                  </div>
+                </div>
+              </div>
+            ) : isPaid ? (
               /* ESTADO: PAGO / CONFIRMADO */
               <div className="space-y-4">
                 <div className="bg-emerald-50/80 border border-emerald-200/90 text-emerald-950 p-4 rounded-xl space-y-3">

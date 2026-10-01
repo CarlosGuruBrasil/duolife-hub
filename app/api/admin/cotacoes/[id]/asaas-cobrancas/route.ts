@@ -25,9 +25,9 @@ export async function GET(
 
   try {
     const [cotacao] = await sql<
-      Array<{ id: string; client_cpf_cnpj: string | null; client_data: unknown; client_id: string | null }>
+      Array<{ id: string; client_cpf_cnpj: string | null; client_data: unknown; client_id: string | null; created_at: string | Date }>
     >`
-      SELECT id, client_cpf_cnpj, client_data, client_id
+      SELECT id, client_cpf_cnpj, client_data, client_id, created_at
       FROM cotacoes
       WHERE id = ${id}
       LIMIT 1
@@ -75,7 +75,33 @@ export async function GET(
       order?.external_payment_id ?? null,
     ].filter((v): v is string => !!v);
 
-    return Response.json({ ...result, currentIds });
+    // Filtrar cobranças: NÃO deve mostrar faturas anteriores à cotação vigente
+    const cotacaoCreatedMs = new Date(cotacao.created_at).getTime() - (24 * 60 * 60 * 1000);
+    const charges = (result.charges || []).filter((c) => {
+      // Se a cobrança pertence explicitamente a esta cotação por externalReference
+      if (c.externalReference === id) return true;
+      if (currentIds.includes(c.id)) return true;
+      if (c.installment && currentIds.includes(c.installment)) return true;
+
+      // Se for de outra cotação por externalReference, descarta
+      if (c.externalReference && c.externalReference !== id) return false;
+
+      // Não exibe cobranças criadas antes da cotação vigente
+      if (c.dateCreated) {
+        const t = new Date(c.dateCreated).getTime();
+        if (!isNaN(t) && t < cotacaoCreatedMs) return false;
+      } else if (c.dueDate) {
+        const t = new Date(c.dueDate).getTime();
+        if (!isNaN(t) && t < cotacaoCreatedMs) return false;
+      } else if (c.paymentDate) {
+        const t = new Date(c.paymentDate).getTime();
+        if (!isNaN(t) && t < cotacaoCreatedMs) return false;
+      }
+
+      return true;
+    });
+
+    return Response.json({ ...result, charges, currentIds });
   } catch (err) {
     logger.error({ err, cotacaoId: id }, 'api.admin.cotacoes.asaas_cobrancas.failed');
     return Response.json(
