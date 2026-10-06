@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { isPlatformAdmin, verifyAdminAuth, unauthorized } from '@/lib/auth';
+import { validarCpf, somenteDigitos } from '@/lib/documento';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { logger } from '@/lib/logger';
@@ -24,6 +25,13 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         c.susep,
         c.email,
         c.phone,
+        c.telefone_cadastro,
+        c.socio_nome,
+        c.socio_cpf,
+        c.socio_rg,
+        c.socio_email,
+        c.socio_telefone,
+        c.socios_adicionais,
         c.address,
         c.status,
         c.metadata,
@@ -37,7 +45,19 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
         c.contrato_social_mime_type,
         c.contrato_social_nome_arquivo,
         c.contrato_social_uploaded_at,
+        c.cartao_cnpj_mime_type,
+        c.cartao_cnpj_nome_arquivo,
+        c.cartao_cnpj_uploaded_at,
+        c.socio_documento_mime_type,
+        c.socio_documento_nome_arquivo,
+        c.socio_documento_uploaded_at,
+        c.comprovante_bancario_mime_type,
+        c.comprovante_bancario_nome_arquivo,
+        c.comprovante_bancario_uploaded_at,
         (c.contrato_social_base64 IS NOT NULL) AS has_contrato_social,
+        (c.cartao_cnpj_base64 IS NOT NULL) AS has_cartao_cnpj,
+        (c.socio_documento_base64 IS NOT NULL) AS has_socio_documento,
+        (c.comprovante_bancario_base64 IS NOT NULL) AS has_comprovante_bancario,
         c.created_at,
         c.updated_at
       FROM corretoras c
@@ -91,6 +111,13 @@ const updateCorretoraSchema = z.object({
   susep: z.string().trim().optional(),
   email: z.string().trim().email().optional(),
   phone: z.string().trim().min(8).optional(),
+  telefone_cadastro: z.string().trim().min(8).optional(),
+  socio_nome: z.string().trim().min(2).optional(),
+  socio_cpf: z.string().trim().optional(),
+  socio_rg: z.string().trim().optional(),
+  socio_email: z.string().trim().email().optional(),
+  socio_telefone: z.string().trim().optional(),
+  socios_adicionais: z.unknown().optional(),
   status: z.enum(['active', 'pending', 'suspended']).optional(),
   banco: z.string().trim().optional(),
   agencia: z.string().trim().optional(),
@@ -104,7 +131,69 @@ const updateCorretoraSchema = z.object({
   contrato_social_base64: z.string().nullable().optional(),
   contrato_social_mime_type: z.string().nullable().optional(),
   contrato_social_nome_arquivo: z.string().nullable().optional(),
+  cartao_cnpj_base64: z.string().nullable().optional(),
+  cartao_cnpj_mime_type: z.string().nullable().optional(),
+  cartao_cnpj_nome_arquivo: z.string().nullable().optional(),
+  socio_documento_base64: z.string().nullable().optional(),
+  socio_documento_mime_type: z.string().nullable().optional(),
+  socio_documento_nome_arquivo: z.string().nullable().optional(),
+  comprovante_bancario_base64: z.string().nullable().optional(),
+  comprovante_bancario_mime_type: z.string().nullable().optional(),
+  comprovante_bancario_nome_arquivo: z.string().nullable().optional(),
+}).superRefine((data, ctx) => {
+  if (data.socio_cpf && data.socio_cpf.trim()) {
+    const clean = somenteDigitos(data.socio_cpf);
+    if (!validarCpf(clean)) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['socio_cpf'],
+        message: 'CPF do sócio inválido',
+      });
+    }
+  }
 });
+
+function parseDocUpdate(
+  val: string | null | undefined,
+  mimeVal: string | null | undefined,
+  nameVal: string | null | undefined,
+  defaultName: string
+) {
+  if (val === undefined) return { isUpdating: false, base64: null, mime: null, name: null };
+  if (!val || val.trim() === '') return { isUpdating: true, base64: null, mime: null, name: null };
+
+  const cleanBase64 = val.replace(/^data:[^;]+;base64,/, '');
+  const sizeBytes = Buffer.byteLength(cleanBase64, 'base64');
+  if (sizeBytes > 10 * 1024 * 1024) {
+    throw new Error(`Arquivo excede o limite máximo permitido de 10MB`);
+  }
+
+  const allowedMimes = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
+  let mime = mimeVal;
+  if (!mime && val.startsWith('data:')) {
+    const match = val.match(/^data:([^;]+);base64,/);
+    if (match) mime = match[1];
+  }
+  if (!mime) {
+    const fn = (nameVal || '').toLowerCase();
+    if (fn.endsWith('.pdf')) mime = 'application/pdf';
+    else if (fn.endsWith('.png')) mime = 'image/png';
+    else if (fn.endsWith('.jpg') || fn.endsWith('.jpeg')) mime = 'image/jpeg';
+    else if (fn.endsWith('.webp')) mime = 'image/webp';
+    else mime = 'application/pdf';
+  }
+
+  if (!allowedMimes.includes(mime)) {
+    throw new Error('Formato do documento inválido. Envie um arquivo PDF ou imagem (PNG/JPEG)');
+  }
+
+  return {
+    isUpdating: true,
+    base64: cleanBase64,
+    mime,
+    name: nameVal || defaultName,
+  };
+}
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const admin = await verifyAdminAuth();
@@ -120,10 +209,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const parsed = updateCorretoraSchema.safeParse(await req.json());
     if (!parsed.success) {
-      return Response.json({ error: 'Dados inválidos' }, { status: 400 });
+      const issue = parsed.error.issues[0]?.message || 'Dados inválidos';
+      return Response.json({ error: issue, issues: parsed.error.issues }, { status: 400 });
     }
 
-    const [current] = await sql`SELECT id, metadata, address, logo_base64, logo_mime_type FROM corretoras WHERE id = ${id} LIMIT 1`;
+    const [current] = await sql`
+      SELECT id, metadata, address, logo_base64, logo_mime_type, socios_adicionais
+      FROM corretoras
+      WHERE id = ${id}
+      LIMIT 1
+    `;
     if (!current) {
       return Response.json({ error: 'Corretora não encontrada' }, { status: 404 });
     }
@@ -150,28 +245,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       }
     }
 
-    // Processamento de Contrato Social (limite máximo de 10MB)
-    const updateContrato = body.contrato_social_base64 !== undefined;
-    let contratoBase64: string | null = null;
-    let contratoMimeType: string | null = null;
-    let contratoNomeArquivo: string | null = null;
-
-    if (updateContrato) {
-      if (body.contrato_social_base64 && body.contrato_social_base64.trim() !== '') {
-        const cleanBase64 = body.contrato_social_base64.replace(/^data:[^;]+;base64,/, '');
-        const sizeBytes = Buffer.byteLength(cleanBase64, 'base64');
-        if (sizeBytes > 10 * 1024 * 1024) {
-          return Response.json({ error: 'O arquivo de Contrato Social excede o limite máximo permitido de 10MB' }, { status: 400 });
-        }
-        contratoBase64 = cleanBase64;
-        contratoMimeType = body.contrato_social_mime_type || (body.contrato_social_nome_arquivo?.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/pdf');
-        contratoNomeArquivo = body.contrato_social_nome_arquivo || 'contrato-social.pdf';
-      } else {
-        contratoBase64 = null;
-        contratoMimeType = null;
-        contratoNomeArquivo = null;
-      }
-    }
+    // Processamento de documentos (limite máximo de 10MB)
+    const docContrato = parseDocUpdate(body.contrato_social_base64, body.contrato_social_mime_type, body.contrato_social_nome_arquivo, 'contrato-social.pdf');
+    const docCnpj = parseDocUpdate(body.cartao_cnpj_base64, body.cartao_cnpj_mime_type, body.cartao_cnpj_nome_arquivo, 'cartao-cnpj.pdf');
+    const docSocio = parseDocUpdate(body.socio_documento_base64, body.socio_documento_mime_type, body.socio_documento_nome_arquivo, 'documento-socio.pdf');
+    const docBanco = parseDocUpdate(body.comprovante_bancario_base64, body.comprovante_bancario_mime_type, body.comprovante_bancario_nome_arquivo, 'comprovante-bancario.pdf');
 
     let nextMetadata = (current.metadata as Record<string, unknown>) || {};
     if (body.whiteLabel) {
@@ -184,6 +262,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
 
     const nextAddress = body.address ? { ...((current.address as Record<string, unknown>) || {}), ...body.address } : current.address;
+    const nextSociosAdicionais = body.socios_adicionais !== undefined ? body.socios_adicionais : current.socios_adicionais;
 
     const [updated] = await sql`
       UPDATE corretoras
@@ -193,6 +272,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         susep = COALESCE(${body.susep ?? null}, susep),
         email = COALESCE(${body.email ? body.email.toLowerCase() : null}, email),
         phone = COALESCE(${body.phone ?? null}, phone),
+        telefone_cadastro = COALESCE(${body.telefone_cadastro ?? null}, telefone_cadastro),
+        socio_nome = COALESCE(${body.socio_nome ?? null}, socio_nome),
+        socio_cpf = COALESCE(${body.socio_cpf ? somenteDigitos(body.socio_cpf) : null}, socio_cpf),
+        socio_rg = COALESCE(${body.socio_rg ?? null}, socio_rg),
+        socio_email = COALESCE(${body.socio_email ? body.socio_email.toLowerCase() : null}, socio_email),
+        socio_telefone = COALESCE(${body.socio_telefone ?? null}, socio_telefone),
+        socios_adicionais = ${JSON.stringify(nextSociosAdicionais)}::jsonb,
         status = COALESCE(${body.status ?? null}, status),
         banco = COALESCE(${body.banco ?? null}, banco),
         agencia = COALESCE(${body.agencia ?? null}, agencia),
@@ -201,19 +287,54 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         pix_chave = COALESCE(${body.pix_chave ?? null}, pix_chave),
         logo_base64 = CASE WHEN ${updateLogo}::boolean THEN ${logoBase64} ELSE logo_base64 END,
         logo_mime_type = CASE WHEN ${updateLogo}::boolean THEN ${logoMimeType} ELSE logo_mime_type END,
-        contrato_social_base64 = CASE WHEN ${updateContrato}::boolean THEN ${contratoBase64} ELSE contrato_social_base64 END,
-        contrato_social_mime_type = CASE WHEN ${updateContrato}::boolean THEN ${contratoMimeType} ELSE contrato_social_mime_type END,
-        contrato_social_nome_arquivo = CASE WHEN ${updateContrato}::boolean THEN ${contratoNomeArquivo} ELSE contrato_social_nome_arquivo END,
-        contrato_social_uploaded_at = CASE WHEN ${updateContrato && contratoBase64 !== null}::boolean THEN NOW() ELSE contrato_social_uploaded_at END,
+        contrato_social_base64 = CASE WHEN ${docContrato.isUpdating}::boolean THEN ${docContrato.base64} ELSE contrato_social_base64 END,
+        contrato_social_mime_type = CASE WHEN ${docContrato.isUpdating}::boolean THEN ${docContrato.mime} ELSE contrato_social_mime_type END,
+        contrato_social_nome_arquivo = CASE WHEN ${docContrato.isUpdating}::boolean THEN ${docContrato.name} ELSE contrato_social_nome_arquivo END,
+        contrato_social_uploaded_at = CASE
+          WHEN ${docContrato.isUpdating && docContrato.base64 !== null}::boolean THEN NOW()
+          WHEN ${docContrato.isUpdating && docContrato.base64 === null}::boolean THEN NULL
+          ELSE contrato_social_uploaded_at
+        END,
+        cartao_cnpj_base64 = CASE WHEN ${docCnpj.isUpdating}::boolean THEN ${docCnpj.base64} ELSE cartao_cnpj_base64 END,
+        cartao_cnpj_mime_type = CASE WHEN ${docCnpj.isUpdating}::boolean THEN ${docCnpj.mime} ELSE cartao_cnpj_mime_type END,
+        cartao_cnpj_nome_arquivo = CASE WHEN ${docCnpj.isUpdating}::boolean THEN ${docCnpj.name} ELSE cartao_cnpj_nome_arquivo END,
+        cartao_cnpj_uploaded_at = CASE
+          WHEN ${docCnpj.isUpdating && docCnpj.base64 !== null}::boolean THEN NOW()
+          WHEN ${docCnpj.isUpdating && docCnpj.base64 === null}::boolean THEN NULL
+          ELSE cartao_cnpj_uploaded_at
+        END,
+        socio_documento_base64 = CASE WHEN ${docSocio.isUpdating}::boolean THEN ${docSocio.base64} ELSE socio_documento_base64 END,
+        socio_documento_mime_type = CASE WHEN ${docSocio.isUpdating}::boolean THEN ${docSocio.mime} ELSE socio_documento_mime_type END,
+        socio_documento_nome_arquivo = CASE WHEN ${docSocio.isUpdating}::boolean THEN ${docSocio.name} ELSE socio_documento_nome_arquivo END,
+        socio_documento_uploaded_at = CASE
+          WHEN ${docSocio.isUpdating && docSocio.base64 !== null}::boolean THEN NOW()
+          WHEN ${docSocio.isUpdating && docSocio.base64 === null}::boolean THEN NULL
+          ELSE socio_documento_uploaded_at
+        END,
+        comprovante_bancario_base64 = CASE WHEN ${docBanco.isUpdating}::boolean THEN ${docBanco.base64} ELSE comprovante_bancario_base64 END,
+        comprovante_bancario_mime_type = CASE WHEN ${docBanco.isUpdating}::boolean THEN ${docBanco.mime} ELSE comprovante_bancario_mime_type END,
+        comprovante_bancario_nome_arquivo = CASE WHEN ${docBanco.isUpdating}::boolean THEN ${docBanco.name} ELSE comprovante_bancario_nome_arquivo END,
+        comprovante_bancario_uploaded_at = CASE
+          WHEN ${docBanco.isUpdating && docBanco.base64 !== null}::boolean THEN NOW()
+          WHEN ${docBanco.isUpdating && docBanco.base64 === null}::boolean THEN NULL
+          ELSE comprovante_bancario_uploaded_at
+        END,
         address = ${JSON.stringify(nextAddress)}::jsonb,
         metadata = ${JSON.stringify(nextMetadata)}::jsonb,
         updated_at = NOW()
       WHERE id = ${id}
       RETURNING
-        id, razao_social, nome_fantasia, cnpj, susep, email, phone, status,
-        logo_base64, logo_mime_type, banco, agencia, conta, pix_tipo_chave, pix_chave,
+        id, razao_social, nome_fantasia, cnpj, susep, email, phone, telefone_cadastro,
+        socio_nome, socio_cpf, socio_rg, socio_email, socio_telefone, socios_adicionais,
+        status, logo_base64, logo_mime_type, banco, agencia, conta, pix_tipo_chave, pix_chave,
         contrato_social_mime_type, contrato_social_nome_arquivo, contrato_social_uploaded_at,
+        cartao_cnpj_mime_type, cartao_cnpj_nome_arquivo, cartao_cnpj_uploaded_at,
+        socio_documento_mime_type, socio_documento_nome_arquivo, socio_documento_uploaded_at,
+        comprovante_bancario_mime_type, comprovante_bancario_nome_arquivo, comprovante_bancario_uploaded_at,
         (contrato_social_base64 IS NOT NULL) AS has_contrato_social,
+        (cartao_cnpj_base64 IS NOT NULL) AS has_cartao_cnpj,
+        (socio_documento_base64 IS NOT NULL) AS has_socio_documento,
+        (comprovante_bancario_base64 IS NOT NULL) AS has_comprovante_bancario,
         metadata, updated_at
     `;
 
@@ -225,8 +346,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         whiteLabel: getWhiteLabelConfig(updated.metadata),
       },
     });
-  } catch (err) {
+  } catch (err: any) {
     logger.error({ err, corretoraId: id }, 'admin.corretora.update.failed');
-    return Response.json({ error: 'Erro interno ao atualizar corretora' }, { status: 500 });
+    return Response.json({ error: err.message || 'Erro interno ao atualizar corretora' }, { status: 500 });
   }
 }

@@ -102,6 +102,25 @@ async function runRuntimeSchemaSetup(): Promise<void> {
   await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS contrato_social_mime_type TEXT`;
   await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS contrato_social_nome_arquivo TEXT`;
   await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS contrato_social_uploaded_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS telefone_cadastro TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS socio_nome TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS socio_cpf TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS socio_rg TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS socio_email TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS socio_telefone TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS socios_adicionais JSONB DEFAULT '[]'`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS cartao_cnpj_base64 TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS cartao_cnpj_mime_type TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS cartao_cnpj_nome_arquivo TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS cartao_cnpj_uploaded_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS socio_documento_base64 TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS socio_documento_mime_type TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS socio_documento_nome_arquivo TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS socio_documento_uploaded_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS comprovante_bancario_base64 TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS comprovante_bancario_mime_type TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS comprovante_bancario_nome_arquivo TEXT`;
+  await sql`ALTER TABLE corretoras ADD COLUMN IF NOT EXISTS comprovante_bancario_uploaded_at TIMESTAMPTZ`;
 
   // Usuários que gerenciam a corretora
   await sql`

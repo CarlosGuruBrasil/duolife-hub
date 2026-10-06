@@ -6,7 +6,8 @@ import Image from 'next/image';
 import {
   Building, CheckCircle, Clock, XCircle, Plus, Users, Briefcase, ExternalLink,
   ShieldCheck, Phone, Mail, MapPin, Copy, Check, Eye, EyeOff, Upload, Trash2,
-  Image as ImageIcon, Landmark, FileText, FileCheck, Download
+  Image as ImageIcon, Landmark, FileText, FileCheck, Download, UserCheck, CreditCard,
+  AlertCircle
 } from 'lucide-react';
 import { formatDate } from '@/lib/format';
 import { maskCnpj, maskPhone, maskCpfCnpj } from '@/components/modals/masks';
@@ -44,6 +45,12 @@ interface Corretora {
   susep: string | null;
   email: string;
   phone: string | null;
+  telefone_cadastro?: string | null;
+  socio_nome?: string | null;
+  socio_cpf?: string | null;
+  socio_rg?: string | null;
+  socio_email?: string | null;
+  socio_telefone?: string | null;
   address: Record<string, unknown>;
   status: string;
   logo_base64?: string | null;
@@ -57,11 +64,29 @@ interface Corretora {
   contrato_social_nome_arquivo?: string | null;
   contrato_social_uploaded_at?: string | null;
   has_contrato_social?: boolean;
+  cartao_cnpj_mime_type?: string | null;
+  cartao_cnpj_nome_arquivo?: string | null;
+  cartao_cnpj_uploaded_at?: string | null;
+  has_cartao_cnpj?: boolean;
+  socio_documento_mime_type?: string | null;
+  socio_documento_nome_arquivo?: string | null;
+  socio_documento_uploaded_at?: string | null;
+  has_socio_documento?: boolean;
+  comprovante_bancario_mime_type?: string | null;
+  comprovante_bancario_nome_arquivo?: string | null;
+  comprovante_bancario_uploaded_at?: string | null;
+  has_comprovante_bancario?: boolean;
   created_at: string;
   partners_count: number;
   cotacoes_count: number;
   sales_count: number;
   whiteLabel: WhiteLabelConfig;
+}
+
+interface UploadedFileInfo {
+  name: string;
+  size: string;
+  mime: string;
 }
 
 const FORM_VAZIO = {
@@ -71,10 +96,16 @@ const FORM_VAZIO = {
   susep: '',
   email: '',
   phone: '',
+  telefone_cadastro: '',
   street: '',
   neighborhood: '',
   city: '',
   state: '',
+  socio_nome: '',
+  socio_cpf: '',
+  socio_rg: '',
+  socio_email: '',
+  socio_telefone: '',
   slug: '',
   primaryColor: '#004172',
   secondaryColor: '#00a0af',
@@ -89,6 +120,15 @@ const FORM_VAZIO = {
   contrato_social_base64: '',
   contrato_social_mime_type: '',
   contrato_social_nome_arquivo: '',
+  cartao_cnpj_base64: '',
+  cartao_cnpj_mime_type: '',
+  cartao_cnpj_nome_arquivo: '',
+  socio_documento_base64: '',
+  socio_documento_mime_type: '',
+  socio_documento_nome_arquivo: '',
+  comprovante_bancario_base64: '',
+  comprovante_bancario_mime_type: '',
+  comprovante_bancario_nome_arquivo: '',
   admin_name: '',
   admin_email: '',
   admin_password: '',
@@ -100,6 +140,13 @@ function formatarCnpj(cnpj: string | null): string {
   const n = cnpj.replace(/\D/g, '');
   if (n.length === 14) return n.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
   return cnpj;
+}
+
+function formatarCpf(cpf: string | null): string {
+  if (!cpf) return '-';
+  const n = cpf.replace(/\D/g, '');
+  if (n.length === 11) return n.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
+  return cpf;
 }
 
 const STATUS_LABELS: Record<string, { label: string; color: string; icon: typeof CheckCircle }> = {
@@ -115,7 +162,13 @@ export default function AdminCorretorasPage() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(FORM_VAZIO);
   const [bancoCustom, setBancoCustom] = useState('');
-  const [contratoFile, setContratoFile] = useState<{ name: string; size: string; mime: string } | null>(null);
+
+  // Estados dos 4 arquivos
+  const [contratoFile, setContratoFile] = useState<UploadedFileInfo | null>(null);
+  const [cartaoCnpjFile, setCartaoCnpjFile] = useState<UploadedFileInfo | null>(null);
+  const [socioDocFile, setSocioDocFile] = useState<UploadedFileInfo | null>(null);
+  const [comprovanteBancarioFile, setComprovanteBancarioFile] = useState<UploadedFileInfo | null>(null);
+
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -178,22 +231,22 @@ export default function AdminCorretorasPage() {
     }));
   }
 
-  function handleContratoChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  // Helper genérico para upload de documento com validação de tipo e tamanho
+  function handleGenericFileUpload(
+    file: File,
+    label: string,
+    onSuccess: (info: UploadedFileInfo, base64: string, mime: string, name: string) => void
+  ) {
     const MAX_SIZE = 10 * 1024 * 1024; // 10MB
     if (file.size > MAX_SIZE) {
-      toast.error('O Contrato Social excede o limite máximo permitido de 10MB.');
-      e.target.value = '';
+      toast.error(`O arquivo de ${label} excede o limite máximo permitido de 10MB.`);
       return;
     }
 
     const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
     const isPdfByName = file.name.toLowerCase().endsWith('.pdf');
     if (!allowedTypes.includes(file.type) && !isPdfByName) {
-      toast.error('Selecione um arquivo de Contrato Social em PDF ou Imagem (PNG, JPEG).');
-      e.target.value = '';
+      toast.error(`Selecione um arquivo de ${label} em PDF ou Imagem (PNG, JPEG, WEBP).`);
       return;
     }
 
@@ -204,19 +257,31 @@ export default function AdminCorretorasPage() {
         ? `${(file.size / (1024 * 1024)).toFixed(2)} MB`
         : `${Math.round(file.size / 1024)} KB`;
 
-      setContratoFile({
-        name: file.name,
-        size: formattedSize,
-        mime: file.type || 'application/pdf',
-      });
-      setForm((prev) => ({
-        ...prev,
-        contrato_social_base64: result,
-        contrato_social_mime_type: file.type || 'application/pdf',
-        contrato_social_nome_arquivo: file.name,
-      }));
+      const mimeType = file.type || 'application/pdf';
+      onSuccess(
+        { name: file.name, size: formattedSize, mime: mimeType },
+        result,
+        mimeType,
+        file.name
+      );
+      toast.success(`${label} carregado com sucesso!`);
     };
     reader.readAsDataURL(file);
+  }
+
+  // 1. Contrato Social
+  function handleContratoChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    handleGenericFileUpload(file, 'Contrato Social', (info, base64, mime, name) => {
+      setContratoFile(info);
+      setForm((prev) => ({
+        ...prev,
+        contrato_social_base64: base64,
+        contrato_social_mime_type: mime,
+        contrato_social_nome_arquivo: name,
+      }));
+    });
   }
 
   function handleRemoveContrato() {
@@ -229,13 +294,95 @@ export default function AdminCorretorasPage() {
     }));
   }
 
-  function handlePreencherPix(tipo: 'cnpj' | 'email' | 'phone') {
+  // 2. Cartão CNPJ
+  function handleCartaoCnpjChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    handleGenericFileUpload(file, 'Cartão CNPJ', (info, base64, mime, name) => {
+      setCartaoCnpjFile(info);
+      setForm((prev) => ({
+        ...prev,
+        cartao_cnpj_base64: base64,
+        cartao_cnpj_mime_type: mime,
+        cartao_cnpj_nome_arquivo: name,
+      }));
+    });
+  }
+
+  function handleRemoveCartaoCnpj() {
+    setCartaoCnpjFile(null);
+    setForm((prev) => ({
+      ...prev,
+      cartao_cnpj_base64: '',
+      cartao_cnpj_mime_type: '',
+      cartao_cnpj_nome_arquivo: '',
+    }));
+  }
+
+  // 3. Documento dos Sócios (RG/CPF)
+  function handleSocioDocChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    handleGenericFileUpload(file, 'Documento de Identidade do Sócio (RG/CPF)', (info, base64, mime, name) => {
+      setSocioDocFile(info);
+      setForm((prev) => ({
+        ...prev,
+        socio_documento_base64: base64,
+        socio_documento_mime_type: mime,
+        socio_documento_nome_arquivo: name,
+      }));
+    });
+  }
+
+  function handleRemoveSocioDoc() {
+    setSocioDocFile(null);
+    setForm((prev) => ({
+      ...prev,
+      socio_documento_base64: '',
+      socio_documento_mime_type: '',
+      socio_documento_nome_arquivo: '',
+    }));
+  }
+
+  // 4. Comprovante Bancário e PIX
+  function handleComprovanteBancarioChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    handleGenericFileUpload(file, 'Comprovante Bancário da Corretora e Pix', (info, base64, mime, name) => {
+      setComprovanteBancarioFile(info);
+      setForm((prev) => ({
+        ...prev,
+        comprovante_bancario_base64: base64,
+        comprovante_bancario_mime_type: mime,
+        comprovante_bancario_nome_arquivo: name,
+      }));
+    });
+  }
+
+  function handleRemoveComprovanteBancario() {
+    setComprovanteBancarioFile(null);
+    setForm((prev) => ({
+      ...prev,
+      comprovante_bancario_base64: '',
+      comprovante_bancario_mime_type: '',
+      comprovante_bancario_nome_arquivo: '',
+    }));
+  }
+
+  // Atalhos para preenchimento rápido do PIX
+  function handlePreencherPix(tipo: 'cnpj' | 'cpf' | 'socio_email' | 'email' | 'telefone_cadastro' | 'phone') {
     if (tipo === 'cnpj' && form.cnpj) {
-      setForm((prev) => ({ ...prev, pix_chave: form.cnpj }));
+      setForm((prev) => ({ ...prev, pix_tipo_chave: 'cnpj', pix_chave: form.cnpj }));
+    } else if (tipo === 'cpf' && form.socio_cpf) {
+      setForm((prev) => ({ ...prev, pix_tipo_chave: 'cpf', pix_chave: form.socio_cpf }));
+    } else if (tipo === 'socio_email' && form.socio_email) {
+      setForm((prev) => ({ ...prev, pix_tipo_chave: 'email', pix_chave: form.socio_email }));
     } else if (tipo === 'email' && form.email) {
-      setForm((prev) => ({ ...prev, pix_chave: form.email }));
+      setForm((prev) => ({ ...prev, pix_tipo_chave: 'email', pix_chave: form.email }));
+    } else if (tipo === 'telefone_cadastro' && form.telefone_cadastro) {
+      setForm((prev) => ({ ...prev, pix_tipo_chave: 'telefone', pix_chave: form.telefone_cadastro }));
     } else if (tipo === 'phone' && form.phone) {
-      setForm((prev) => ({ ...prev, pix_chave: form.phone }));
+      setForm((prev) => ({ ...prev, pix_tipo_chave: 'telefone', pix_chave: form.phone }));
     }
   }
 
@@ -246,8 +393,57 @@ export default function AdminCorretorasPage() {
 
     const bancoFinal = form.banco === 'Outro (informar código/nome)' ? bancoCustom.trim() : form.banco.trim();
 
+    // Validações explícitas dos 4 documentos obrigatórios
     if (!form.contrato_social_base64) {
       toast.error('O upload do Contrato Social é obrigatório.');
+      setSaving(false);
+      return;
+    }
+
+    if (!form.cartao_cnpj_base64) {
+      toast.error('O upload do Cartão CNPJ é obrigatório.');
+      setSaving(false);
+      return;
+    }
+
+    if (!form.socio_documento_base64) {
+      toast.error('O upload do Documento de Identidade do Sócio (RG/CPF) é obrigatório.');
+      setSaving(false);
+      return;
+    }
+
+    if (!form.comprovante_bancario_base64) {
+      toast.error('O upload do Comprovante Bancário e PIX é obrigatório.');
+      setSaving(false);
+      return;
+    }
+
+    if (!form.telefone_cadastro.trim()) {
+      toast.error('Informe o Telefone para cadastro.');
+      setSaving(false);
+      return;
+    }
+
+    if (!form.socio_nome.trim()) {
+      toast.error('Informe o Nome do sócio administrador.');
+      setSaving(false);
+      return;
+    }
+
+    if (!form.socio_cpf.trim()) {
+      toast.error('Informe o CPF do sócio.');
+      setSaving(false);
+      return;
+    }
+
+    if (!form.socio_rg.trim()) {
+      toast.error('Informe o RG do sócio.');
+      setSaving(false);
+      return;
+    }
+
+    if (!form.socio_email.trim()) {
+      toast.error('Informe o E-mail nominal do sócio.');
       setSaving(false);
       return;
     }
@@ -284,6 +480,12 @@ export default function AdminCorretorasPage() {
       susep: form.susep.trim() || undefined,
       email: form.email.trim(),
       phone: form.phone.trim(),
+      telefone_cadastro: form.telefone_cadastro.trim(),
+      socio_nome: form.socio_nome.trim(),
+      socio_cpf: form.socio_cpf.trim(),
+      socio_rg: form.socio_rg.trim(),
+      socio_email: form.socio_email.trim(),
+      socio_telefone: form.socio_telefone.trim() || undefined,
       street: form.street.trim() || undefined,
       neighborhood: form.neighborhood.trim() || undefined,
       city: form.city.trim() || undefined,
@@ -302,8 +504,17 @@ export default function AdminCorretorasPage() {
       contrato_social_base64: form.contrato_social_base64,
       contrato_social_mime_type: form.contrato_social_mime_type,
       contrato_social_nome_arquivo: form.contrato_social_nome_arquivo,
-      admin_name: form.admin_name.trim() || undefined,
-      admin_email: form.admin_email.trim() || undefined,
+      cartao_cnpj_base64: form.cartao_cnpj_base64,
+      cartao_cnpj_mime_type: form.cartao_cnpj_mime_type,
+      cartao_cnpj_nome_arquivo: form.cartao_cnpj_nome_arquivo,
+      socio_documento_base64: form.socio_documento_base64,
+      socio_documento_mime_type: form.socio_documento_mime_type,
+      socio_documento_nome_arquivo: form.socio_documento_nome_arquivo,
+      comprovante_bancario_base64: form.comprovante_bancario_base64,
+      comprovante_bancario_mime_type: form.comprovante_bancario_mime_type,
+      comprovante_bancario_nome_arquivo: form.comprovante_bancario_nome_arquivo,
+      admin_name: form.admin_name.trim() || form.socio_nome.trim() || form.nome_fantasia.trim(),
+      admin_email: form.admin_email.trim() || form.socio_email.trim() || form.email.trim(),
       admin_password: form.admin_password.trim() || undefined,
       send_invite_email: form.send_invite_email,
     };
@@ -321,14 +532,14 @@ export default function AdminCorretorasPage() {
         return;
       }
 
-      const emailLogin = data.adminUser?.email || data.corretora.email;
+      const emailLogin = data.adminUser?.email || payload.admin_email;
       const senhaProvisoria = data.temporaryPassword;
 
       if (senhaProvisoria && emailLogin) {
         toast.success(`Corretora "${data.corretora.nome_fantasia}" cadastrada com sucesso!`, {
           description: (
             <div className="mt-1 flex flex-col gap-1 text-xs">
-              <div>Login: <strong>{emailLogin}</strong></div>
+              <div>Login Gestor: <strong>{emailLogin}</strong></div>
               <div>Senha provisória: <code className="rounded bg-emerald-100 px-1.5 py-0.5 font-mono font-bold text-emerald-900">{senhaProvisoria}</code></div>
             </div>
           ),
@@ -344,6 +555,9 @@ export default function AdminCorretorasPage() {
       setForm(FORM_VAZIO);
       setBancoCustom('');
       setContratoFile(null);
+      setCartaoCnpjFile(null);
+      setSocioDocFile(null);
+      setComprovanteBancarioFile(null);
       setLogoPreview(null);
       setShowPassword(false);
       setShowForm(false);
@@ -360,6 +574,89 @@ export default function AdminCorretorasPage() {
     setCopied(true);
     toast.success('Credenciais de acesso copiadas para a área de transferência!');
     setTimeout(() => setCopied(false), 3000);
+  }
+
+  // Componente interno para Renderizar Caixa de Upload de Documento
+  function renderUploadBox(
+    label: string,
+    descricao: string,
+    fileState: UploadedFileInfo | null,
+    onChangeHandler: (e: React.ChangeEvent<HTMLInputElement>) => void,
+    onRemoveHandler: () => void,
+    inputAccept = '.pdf,image/png,image/jpeg,image/webp'
+  ) {
+    return (
+      <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-bold text-gray-800 uppercase flex items-center gap-1.5">
+            <FileText size={14} className="text-primary" /> {label}
+          </span>
+          <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+            Obrigatório *
+          </span>
+        </div>
+        <p className="text-[11px] text-gray-500 mb-2.5">{descricao}</p>
+
+        {fileState ? (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-lg border border-emerald-200 shadow-xs">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200">
+                <FileCheck size={18} />
+              </div>
+              <div className="min-w-0">
+                <div className="font-semibold text-xs text-gray-900 truncate flex items-center gap-1.5" title={fileState.name}>
+                  <span className="truncate">{fileState.name}</span>
+                  <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1 py-0.2 rounded uppercase shrink-0">
+                    Anexado
+                  </span>
+                </div>
+                <div className="text-[11px] text-gray-500 mt-0.5">
+                  Tamanho: <strong className="text-gray-700">{fileState.size}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <label className="cursor-pointer inline-flex items-center gap-1 px-2.5 py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-300 rounded-md text-xs font-semibold text-gray-700 transition-colors">
+                <Upload size={12} className="text-primary" /> Trocar
+                <input
+                  type="file"
+                  accept={inputAccept}
+                  onChange={onChangeHandler}
+                  className="hidden"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={onRemoveHandler}
+                className="inline-flex items-center gap-1 px-2 py-1.5 text-xs font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-md transition-colors cursor-pointer"
+              >
+                <Trash2 size={12} /> Remover
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-gray-300 rounded-lg bg-white text-center hover:border-primary/50 transition-colors">
+            <div className="text-xs font-semibold text-gray-800">
+              Clique para selecionar o arquivo
+            </div>
+            <p className="text-[10px] text-gray-400 mt-0.5 mb-2.5">
+              Formatos aceitos: PDF, PNG, JPEG ou WEBP (máx 10MB)
+            </p>
+            <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0e4a5a] hover:bg-[#072a33] text-white rounded-lg text-xs font-bold shadow-xs transition-all">
+              <Upload size={13} /> Selecionar Arquivo
+              <input
+                type="file"
+                required
+                accept={inputAccept}
+                onChange={onChangeHandler}
+                className="hidden"
+              />
+            </label>
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
@@ -386,134 +683,251 @@ export default function AdminCorretorasPage() {
 
       {/* Formulário de Cadastro Expansível */}
       {showForm && (
-        <form onSubmit={handleSubmit} className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-5">
+        <form onSubmit={handleSubmit} className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm space-y-6">
           <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-            <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
-              <Building size={18} className="text-primary" />
-              Cadastrar Nova Corretora Master
-            </h2>
-            <span className="text-xs text-gray-500">Preencha os dados institucionais, regulatórios e de acesso</span>
+            <div>
+              <h2 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+                <Building size={18} className="text-primary" />
+                Cadastrar Nova Corretora Master
+              </h2>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Preencha os dados institucionais, societários, bancários e anexe os documentos obrigatórios.
+              </p>
+            </div>
+            <span className="text-[11px] font-semibold text-rose-700 bg-rose-50 px-2.5 py-1 rounded border border-rose-200">
+              * Campos Obrigatórios
+            </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Razão Social *</label>
-              <input
-                type="text"
-                required
-                value={form.razao_social}
-                onChange={(e) => setForm({ ...form, razao_social: e.target.value })}
-                placeholder="Ex: Alfa Corretora de Seguros Ltda"
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
-              />
+          {/* BLOCO 1: DADOS INSTITUCIONAIS DA EMPRESA */}
+          <div className="space-y-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5 border-b border-gray-100 pb-1.5">
+              <Building size={15} className="text-primary" /> 1. Dados da Corretora & Contatos
+            </h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Razão Social *</label>
+                <input
+                  type="text"
+                  required
+                  value={form.razao_social}
+                  onChange={(e) => setForm({ ...form, razao_social: e.target.value })}
+                  placeholder="Ex: Alfa Corretora de Seguros Ltda"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Nome Fantasia *</label>
+                <input
+                  type="text"
+                  required
+                  value={form.nome_fantasia}
+                  onChange={(e) => setForm({ ...form, nome_fantasia: e.target.value })}
+                  placeholder="Ex: Alfa Seguros"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">CNPJ *</label>
+                <input
+                  type="text"
+                  required
+                  value={form.cnpj}
+                  onChange={(e) => setForm({ ...form, cnpj: maskCnpj(e.target.value) })}
+                  placeholder="00.000.000/0000-00"
+                  maxLength={18}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary font-mono"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Nome Fantasia *</label>
-              <input
-                type="text"
-                required
-                value={form.nome_fantasia}
-                onChange={(e) => setForm({ ...form, nome_fantasia: e.target.value })}
-                placeholder="Ex: Alfa Seguros"
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
-              />
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Registro SUSEP</label>
+                <input
+                  type="text"
+                  value={form.susep}
+                  onChange={(e) => setForm({ ...form, susep: e.target.value })}
+                  placeholder="Ex: 202018702"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">E-mail Institucional *</label>
+                <input
+                  type="email"
+                  required
+                  value={form.email}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  placeholder="contato@corretora.com.br"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Telefone da Corretora *</label>
+                <input
+                  type="text"
+                  required
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: maskPhone(e.target.value) })}
+                  placeholder="(00) 00000-0000"
+                  maxLength={15}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1 flex items-center justify-between">
+                  <span>Telefone para Cadastro *</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={form.telefone_cadastro}
+                  onChange={(e) => setForm({ ...form, telefone_cadastro: maskPhone(e.target.value) })}
+                  placeholder="(00) 90000-0000"
+                  maxLength={15}
+                  className="w-full bg-gray-50 border border-emerald-300 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">CNPJ *</label>
-              <input
-                type="text"
-                required
-                value={form.cnpj}
-                onChange={(e) => setForm({ ...form, cnpj: maskCnpj(e.target.value) })}
-                placeholder="00.000.000/0000-00"
-                maxLength={18}
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
-              />
+
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <div className="md:col-span-2">
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Logradouro / Endereço</label>
+                <input
+                  type="text"
+                  value={form.street}
+                  onChange={(e) => setForm({ ...form, street: e.target.value })}
+                  placeholder="Rua, Número, Sala"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Cidade</label>
+                <input
+                  type="text"
+                  value={form.city}
+                  onChange={(e) => setForm({ ...form, city: e.target.value })}
+                  placeholder="Florianópolis"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">UF</label>
+                <input
+                  type="text"
+                  maxLength={2}
+                  value={form.state}
+                  onChange={(e) => setForm({ ...form, state: e.target.value.toUpperCase() })}
+                  placeholder="SC"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
+                />
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Registro SUSEP</label>
-              <input
-                type="text"
-                value={form.susep}
-                onChange={(e) => setForm({ ...form, susep: e.target.value })}
-                placeholder="Ex: 202018702"
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">E-mail Institucional *</label>
-              <input
-                type="email"
-                required
-                value={form.email}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                placeholder="contato@corretora.com.br"
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Telefone / WhatsApp *</label>
-              <input
-                type="text"
-                required
-                value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: maskPhone(e.target.value) })}
-                placeholder="(00) 00000-0000"
-                maxLength={15}
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="md:col-span-2">
-              <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Logradouro / Endereço</label>
-              <input
-                type="text"
-                value={form.street}
-                onChange={(e) => setForm({ ...form, street: e.target.value })}
-                placeholder="Rua, Número, Sala"
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Cidade</label>
-              <input
-                type="text"
-                value={form.city}
-                onChange={(e) => setForm({ ...form, city: e.target.value })}
-                placeholder="Florianópolis"
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">UF</label>
-              <input
-                type="text"
-                maxLength={2}
-                value={form.state}
-                onChange={(e) => setForm({ ...form, state: e.target.value.toUpperCase() })}
-                placeholder="SC"
-                className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
-              />
-            </div>
-          </div>
-
-          {/* Seção: Informações Bancárias & PIX (Obrigatório) */}
-          <div className="border-t border-gray-200/80 pt-4 mt-2">
-            <div className="flex items-center justify-between mb-1">
+          {/* BLOCO 2: QUADRO SOCIETÁRIO & SÓCIOS */}
+          <div className="border-t border-gray-200/80 pt-4 space-y-3">
+            <div className="flex items-center justify-between mb-0.5">
               <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5">
-                <Landmark size={16} className="text-primary" /> Informações Bancárias & Chave PIX
+                <UserCheck size={16} className="text-primary" /> 2. Quadro Societário & Sócio Administrador
+              </h3>
+              <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                Identificação & Documento Obrigatórios
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 mb-2">
+              Dados nominais e documento de identificação pessoal do sócio administrador da corretora.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Nome Completo do Sócio *</label>
+                <input
+                  type="text"
+                  required
+                  value={form.socio_nome}
+                  onChange={(e) => setForm({ ...form, socio_nome: e.target.value })}
+                  placeholder="Ex: Carlos Eduardo de Souza"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">CPF do Sócio *</label>
+                <input
+                  type="text"
+                  required
+                  value={form.socio_cpf}
+                  onChange={(e) => setForm({ ...form, socio_cpf: maskCpfCnpj(e.target.value) })}
+                  placeholder="000.000.000-00"
+                  maxLength={14}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary font-mono"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">RG do Sócio *</label>
+                <input
+                  type="text"
+                  required
+                  value={form.socio_rg}
+                  onChange={(e) => setForm({ ...form, socio_rg: e.target.value })}
+                  placeholder="Ex: 1.234.567 SSP/SC"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">E-mail Nominal do Sócio *</label>
+                <input
+                  type="email"
+                  required
+                  value={form.socio_email}
+                  onChange={(e) => setForm({ ...form, socio_email: e.target.value })}
+                  placeholder="socio@corretora.com.br"
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
+                />
+                <span className="text-[11px] text-gray-400 mt-1 block">E-mail nominal direto para avisos societários e acesso</span>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Telefone / WhatsApp do Sócio</label>
+                <input
+                  type="text"
+                  value={form.socio_telefone}
+                  onChange={(e) => setForm({ ...form, socio_telefone: maskPhone(e.target.value) })}
+                  placeholder="(00) 90000-0000"
+                  maxLength={15}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
+                />
+              </div>
+            </div>
+
+            {/* Upload do Documento de Identidade do Sócio (RG/CPF) */}
+            <div className="mt-2">
+              {renderUploadBox(
+                'Documento de Identidade dos Sócios (RG / CPF / CNH)',
+                'Anexe o documento de identificação com foto do sócio administrador (frente e verso ou CNH digital em PDF/imagem).',
+                socioDocFile,
+                handleSocioDocChange,
+                handleRemoveSocioDoc
+              )}
+            </div>
+          </div>
+
+          {/* BLOCO 3: INFORMAÇÕES BANCÁRIAS, PIX & COMPROVANTE */}
+          <div className="border-t border-gray-200/80 pt-4 space-y-3">
+            <div className="flex items-center justify-between mb-0.5">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5">
+                <Landmark size={16} className="text-primary" /> 3. Informações Bancárias, Chave PIX & Comprovante
               </h3>
               <span className="text-[11px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
                 Obrigatório *
               </span>
             </div>
-            <p className="text-xs text-gray-500 mb-3">
-              Dados da conta e chave PIX para repasse de comissões da corretora.
+            <p className="text-xs text-gray-500 mb-2">
+              Dados da conta e chave PIX para repasse de comissões da corretora, acompanhados de comprovante bancário oficial.
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -570,7 +984,7 @@ export default function AdminCorretorasPage() {
             </div>
 
             {/* Sub-bloco PIX */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-3 pt-3 border-t border-gray-100">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-2 pt-2 border-t border-gray-100">
               <div>
                 <label className="block text-xs font-semibold text-gray-700 uppercase mb-1">Tipo de Chave PIX *</label>
                 <select
@@ -597,7 +1011,7 @@ export default function AdminCorretorasPage() {
               <div className="md:col-span-2">
                 <div className="flex items-center justify-between mb-1">
                   <label className="block text-xs font-semibold text-gray-700 uppercase">Chave PIX *</label>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {form.pix_tipo_chave === 'cnpj' && form.cnpj && (
                       <button
                         type="button"
@@ -607,23 +1021,58 @@ export default function AdminCorretorasPage() {
                         Usar CNPJ da corretora
                       </button>
                     )}
-                    {form.pix_tipo_chave === 'email' && form.email && (
+                    {form.pix_tipo_chave === 'cpf' && form.socio_cpf && (
                       <button
                         type="button"
-                        onClick={() => handlePreencherPix('email')}
+                        onClick={() => handlePreencherPix('cpf')}
                         className="text-[11px] font-medium text-primary hover:underline cursor-pointer"
                       >
-                        Usar e-mail institucional
+                        Usar CPF do sócio
                       </button>
                     )}
-                    {form.pix_tipo_chave === 'telefone' && form.phone && (
-                      <button
-                        type="button"
-                        onClick={() => handlePreencherPix('phone')}
-                        className="text-[11px] font-medium text-primary hover:underline cursor-pointer"
-                      >
-                        Usar telefone
-                      </button>
+                    {form.pix_tipo_chave === 'email' && (
+                      <>
+                        {form.socio_email && (
+                          <button
+                            type="button"
+                            onClick={() => handlePreencherPix('socio_email')}
+                            className="text-[11px] font-medium text-primary hover:underline cursor-pointer"
+                          >
+                            Usar e-mail nominal
+                          </button>
+                        )}
+                        {form.email && (
+                          <button
+                            type="button"
+                            onClick={() => handlePreencherPix('email')}
+                            className="text-[11px] font-medium text-gray-500 hover:underline cursor-pointer"
+                          >
+                            Usar e-mail institucional
+                          </button>
+                        )}
+                      </>
+                    )}
+                    {form.pix_tipo_chave === 'telefone' && (
+                      <>
+                        {form.telefone_cadastro && (
+                          <button
+                            type="button"
+                            onClick={() => handlePreencherPix('telefone_cadastro')}
+                            className="text-[11px] font-medium text-primary hover:underline cursor-pointer"
+                          >
+                            Usar tel. cadastro
+                          </button>
+                        )}
+                        {form.phone && (
+                          <button
+                            type="button"
+                            onClick={() => handlePreencherPix('phone')}
+                            className="text-[11px] font-medium text-gray-500 hover:underline cursor-pointer"
+                          >
+                            Usar tel. corretora
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -650,99 +1099,64 @@ export default function AdminCorretorasPage() {
                 />
               </div>
             </div>
-          </div>
 
-          {/* Seção: Upload de Contrato Social (Obrigatório) */}
-          <div className="border-t border-gray-200/80 pt-4 mt-2">
-            <div className="flex items-center justify-between mb-1">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5">
-                <FileText size={16} className="text-primary" /> Contrato Social da Corretora
-              </h3>
-              <span className="text-[11px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
-                Obrigatório * • Máx 10MB • PDF ou Imagem
-              </span>
-            </div>
-            <p className="text-xs text-gray-500 mb-3">
-              Anexe o Contrato Social consolidado ou a última alteração contratual registrada na Junta Comercial.
-            </p>
-
-            <div className="bg-gray-50 p-3.5 rounded-xl border border-gray-200">
-              {contratoFile ? (
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-lg border border-emerald-200 shadow-xs">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center shrink-0 border border-emerald-200">
-                      <FileCheck size={20} />
-                    </div>
-                    <div>
-                      <div className="font-semibold text-sm text-gray-900 flex items-center gap-2">
-                        {contratoFile.name}
-                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.5 rounded uppercase">
-                          Pronto
-                        </span>
-                      </div>
-                      <div className="text-xs text-gray-500 mt-0.5">
-                        Tamanho: <strong className="text-gray-700">{contratoFile.size}</strong> • Tipo: <span className="font-mono text-[11px]">{contratoFile.mime}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2">
-                    <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 bg-gray-50 hover:bg-gray-100 border border-gray-300 rounded-lg text-xs font-semibold text-gray-700 transition-colors">
-                      <Upload size={13} className="text-primary" /> Substituir
-                      <input
-                        type="file"
-                        accept=".pdf,image/png,image/jpeg,image/webp"
-                        onChange={handleContratoChange}
-                        className="hidden"
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      onClick={handleRemoveContrato}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold text-red-600 hover:text-red-700 hover:bg-red-50 border border-red-200 rounded-lg transition-colors cursor-pointer"
-                    >
-                      <Trash2 size={13} /> Remover
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 rounded-xl bg-white text-center hover:border-primary/50 transition-colors">
-                  <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-2">
-                    <FileText size={24} />
-                  </div>
-                  <div className="text-sm font-semibold text-gray-800">
-                    Clique para selecionar o Contrato Social
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1 mb-3">
-                    Formatos aceitos: PDF, PNG ou JPEG até 10MB
-                  </p>
-                  <label className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-[#0e4a5a] hover:bg-[#072a33] text-white rounded-lg text-xs font-bold shadow-sm transition-all">
-                    <Upload size={14} /> Selecionar Arquivo
-                    <input
-                      type="file"
-                      required
-                      accept=".pdf,image/png,image/jpeg,image/webp"
-                      onChange={handleContratoChange}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
+            {/* Upload do Comprovante Bancário e PIX */}
+            <div className="mt-2">
+              {renderUploadBox(
+                'Comprovante Bancário da Corretora e PIX',
+                'Anexe o extrato bancário oficial, declaração de titularidade da conta ou comprovante com os dados da conta e chave PIX da corretora.',
+                comprovanteBancarioFile,
+                handleComprovanteBancarioChange,
+                handleRemoveComprovanteBancario
               )}
             </div>
           </div>
 
-          {/* Seção: Logotipo e Identidade Visual (PDF e Portal) */}
-          <div className="border-t border-gray-200/80 pt-4 mt-2">
-            <div className="flex items-center justify-between mb-1">
+          {/* BLOCO 4: DOCUMENTOS SOCIETÁRIOS (PJ) */}
+          <div className="border-t border-gray-200/80 pt-4 space-y-3">
+            <div className="flex items-center justify-between mb-0.5">
               <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5">
-                <ImageIcon size={16} className="text-primary" /> Logotipo da Corretora (PDF e Proposta)
+                <FileText size={16} className="text-primary" /> 4. Documentos da Empresa (Pessoa Jurídica)
+              </h3>
+              <span className="text-[11px] font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                Obrigatório *
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 mb-2">
+              Documentos oficiais de constituição e registro da pessoa jurídica na Receita Federal e Junta Comercial.
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {renderUploadBox(
+                'Contrato Social Consolidado',
+                'Anexe o Contrato Social consolidado ou a última alteração contratual registrada na Junta Comercial.',
+                contratoFile,
+                handleContratoChange,
+                handleRemoveContrato
+              )}
+
+              {renderUploadBox(
+                'Cartão CNPJ Atualizado',
+                'Anexe o Comprovante de Inscrição e de Situação Cadastral (Cartão CNPJ emitido no site da Receita Federal).',
+                cartaoCnpjFile,
+                handleCartaoCnpjChange,
+                handleRemoveCartaoCnpj
+              )}
+            </div>
+          </div>
+
+          {/* BLOCO 5: LOGOTIPO E IDENTIDADE VISUAL */}
+          <div className="border-t border-gray-200/80 pt-4 space-y-2">
+            <div className="flex items-center justify-between mb-0.5">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5">
+                <ImageIcon size={16} className="text-primary" /> 5. Logotipo da Corretora (PDF e Proposta)
               </h3>
               <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
                 Máximo 2MB • PNG ou JPEG
               </span>
             </div>
-            <p className="text-xs text-gray-500 mb-3">
-              O logotipo cadastrado será renderizado automaticamente no topo do Contrato/Proposta em PDF. Se nenhum logotipo for enviado, o PDF exibirá apenas o nome da corretora em texto.
+            <p className="text-xs text-gray-500 mb-2">
+              O logotipo cadastrado será renderizado automaticamente no topo do Contrato/Proposta em PDF.
             </p>
 
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 bg-gray-50 p-3.5 rounded-xl border border-gray-200">
@@ -785,13 +1199,13 @@ export default function AdminCorretorasPage() {
             </div>
           </div>
 
-          {/* Seção: Acesso do Administrador Master da Corretora */}
-          <div className="border-t border-gray-200/80 pt-4 mt-2">
+          {/* BLOCO 6: ACESSO DO ADMINISTRADOR MASTER */}
+          <div className="border-t border-gray-200/80 pt-4 space-y-3">
             <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5 mb-1">
-              <ShieldCheck size={16} className="text-emerald-600" /> Acesso do Administrador Master da Corretora
+              <ShieldCheck size={16} className="text-emerald-600" /> 6. Acesso do Administrador Master da Corretora
             </h3>
-            <p className="text-xs text-gray-500 mb-3">
-              Credenciais para o gestor da corretora fazer login no portal e gerenciar seus próprios vendedores e cotações.
+            <p className="text-xs text-gray-500 mb-2">
+              Credenciais para o gestor da corretora fazer login no portal e gerenciar seus próprios corretores e propostas.
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -801,7 +1215,7 @@ export default function AdminCorretorasPage() {
                   type="text"
                   value={form.admin_name}
                   onChange={(e) => setForm({ ...form, admin_name: e.target.value })}
-                  placeholder="Se vazio, usa o Nome Fantasia"
+                  placeholder={form.socio_nome || form.nome_fantasia || 'Nome do Gestor'}
                   className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
                 />
               </div>
@@ -812,7 +1226,7 @@ export default function AdminCorretorasPage() {
                   type="email"
                   value={form.admin_email}
                   onChange={(e) => setForm({ ...form, admin_email: e.target.value })}
-                  placeholder="Se vazio, usa o e-mail institucional"
+                  placeholder={form.socio_email || form.email || 'gestor@corretora.com.br'}
                   className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 focus:outline-none focus:border-primary"
                 />
               </div>
@@ -840,7 +1254,7 @@ export default function AdminCorretorasPage() {
               </div>
             </div>
 
-            <div className="mt-3 flex items-center gap-2">
+            <div className="mt-2 flex items-center gap-2">
               <input
                 type="checkbox"
                 id="send_invite_email"
@@ -854,7 +1268,7 @@ export default function AdminCorretorasPage() {
             </div>
           </div>
 
-          <div className="flex justify-end gap-3 pt-2">
+          <div className="flex justify-end gap-3 pt-3 border-t border-gray-100">
             <button
               type="button"
               onClick={() => {
@@ -870,7 +1284,7 @@ export default function AdminCorretorasPage() {
               disabled={saving}
               className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl bg-[#0e4a5a] hover:bg-[#072a33] text-white font-bold text-sm shadow-md hover:shadow-lg transition-all disabled:opacity-50 cursor-pointer"
             >
-              {saving ? 'Cadastrando...' : 'Confirmar Cadastro'}
+              {saving ? 'Cadastrando e Validando...' : 'Confirmar Cadastro'}
             </button>
           </div>
         </form>
@@ -883,14 +1297,15 @@ export default function AdminCorretorasPage() {
         ) : corretoras.length === 0 ? (
           <div className="p-12 text-center text-sm text-gray-500">Nenhuma corretora cadastrada.</div>
         ) : (
-          <TableScrollContainer minWidth="960px">
-            <table className="w-full min-w-[960px] text-left text-sm text-gray-700 border-separate border-spacing-0">
+          <TableScrollContainer minWidth="1080px">
+            <table className="w-full min-w-[1080px] text-left text-sm text-gray-700 border-separate border-spacing-0">
               <thead className="table-sticky-head bg-gray-50/95 text-xs font-semibold text-gray-600 uppercase tracking-wider">
                 <tr>
                   <th className="py-3.5 px-4 table-sticky-col-head rounded-tl-xl">Corretora</th>
                   <th className="py-3.5 px-4 border-b border-gray-200">CNPJ & SUSEP</th>
-                  <th className="py-3.5 px-4 border-b border-gray-200">Contatos</th>
-                  <th className="py-3.5 px-4 border-b border-gray-200">Bancário & Contrato</th>
+                  <th className="py-3.5 px-4 border-b border-gray-200">Sócio & Contatos</th>
+                  <th className="py-3.5 px-4 border-b border-gray-200">Bancário & PIX</th>
+                  <th className="py-3.5 px-4 border-b border-gray-200">Documentos Anexados</th>
                   <th className="py-3.5 px-4 text-center border-b border-gray-200">Parceiros</th>
                   <th className="py-3.5 px-4 text-center border-b border-gray-200">Cotações</th>
                   <th className="py-3.5 px-4 text-center border-b border-gray-200">Status</th>
@@ -932,27 +1347,48 @@ export default function AdminCorretorasPage() {
                           </div>
                         </div>
                       </td>
+
                       <td className="py-4 px-4 font-mono text-xs text-gray-600 border-b border-gray-100">
                         <div>{formatarCnpj(c.cnpj)}</div>
                         {c.susep && (
                           <div className="text-[11px] text-gray-500 mt-0.5">SUSEP: <span className="font-medium text-gray-700">{c.susep}</span></div>
                         )}
                       </td>
+
+                      {/* Sócio & Contatos */}
                       <td className="py-4 px-4 text-xs text-gray-600 border-b border-gray-100">
-                        <div className="flex items-center gap-1 text-gray-900">
-                          <Mail size={12} className="text-gray-400" /> {c.email}
+                        {c.socio_nome ? (
+                          <div className="font-medium text-gray-900 flex items-center gap-1">
+                            <UserCheck size={12} className="text-primary shrink-0" />
+                            <span className="truncate max-w-[170px]" title={c.socio_nome}>{c.socio_nome}</span>
+                          </div>
+                        ) : null}
+                        {c.socio_cpf && (
+                          <div className="text-[11px] font-mono text-gray-500 mt-0.5">
+                            CPF: {formatarCpf(c.socio_cpf)}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-1 text-gray-700 mt-1">
+                          <Mail size={11} className="text-gray-400" />
+                          <span className="truncate max-w-[170px]" title={c.socio_email || c.email}>{c.socio_email || c.email}</span>
                         </div>
-                        {c.phone && (
+                        {(c.telefone_cadastro || c.phone) && (
                           <div className="flex items-center gap-1 text-gray-500 mt-0.5">
-                            <Phone size={12} className="text-gray-400" /> {c.phone}
+                            <Phone size={11} className="text-gray-400" />
+                            <span>{c.telefone_cadastro || c.phone}</span>
+                            {c.telefone_cadastro && (
+                              <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded uppercase">Cad</span>
+                            )}
                           </div>
                         )}
                       </td>
+
+                      {/* Bancário & PIX */}
                       <td className="py-4 px-4 text-xs border-b border-gray-100">
                         {c.banco ? (
                           <div className="font-medium text-gray-900 flex items-center gap-1">
                             <Landmark size={12} className="text-primary shrink-0" />
-                            <span className="truncate max-w-[170px]" title={c.banco}>{c.banco}</span>
+                            <span className="truncate max-w-[160px]" title={c.banco}>{c.banco}</span>
                           </div>
                         ) : (
                           <span className="text-gray-400 text-[11px]">Não informado</span>
@@ -962,14 +1398,26 @@ export default function AdminCorretorasPage() {
                             Ag {c.agencia} • Cc {c.conta}
                           </div>
                         )}
-                        <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                        {c.pix_tipo_chave && (
+                          <div className="mt-1 flex items-center gap-1">
+                            <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-gray-100 text-gray-600 truncate max-w-[160px]" title={`Chave: ${c.pix_chave || '-'}`}>
+                              PIX ({c.pix_tipo_chave}): {c.pix_chave}
+                            </span>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Documentos Anexados (Contrato Social, Cartão CNPJ, Sócio, Comprovante) */}
+                      <td className="py-4 px-4 text-xs border-b border-gray-100">
+                        <div className="flex flex-col gap-1">
+                          {/* Contrato Social */}
                           {c.has_contrato_social ? (
                             <a
                               href={`/api/admin/corretoras/${c.id}/contrato-social`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-2 py-0.5 rounded border border-emerald-200 transition-colors"
-                              title="Visualizar Contrato Social anexado"
+                              title="Visualizar Contrato Social"
                             >
                               <FileCheck size={11} /> Contrato Social
                             </a>
@@ -978,25 +1426,74 @@ export default function AdminCorretorasPage() {
                               Sem Contrato
                             </span>
                           )}
-                          {c.pix_tipo_chave && (
-                            <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-gray-100 text-gray-600" title={`Chave: ${c.pix_chave || '-'}`}>
-                              PIX: {c.pix_tipo_chave}
+
+                          {/* Cartão CNPJ */}
+                          {c.has_cartao_cnpj ? (
+                            <a
+                              href={`/api/admin/corretoras/${c.id}/cartao-cnpj`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[10px] font-semibold text-sky-700 bg-sky-50 hover:bg-sky-100 px-2 py-0.5 rounded border border-sky-200 transition-colors"
+                              title="Visualizar Cartão CNPJ"
+                            >
+                              <FileCheck size={11} /> Cartão CNPJ
+                            </a>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-200">
+                              Sem Cartão CNPJ
+                            </span>
+                          )}
+
+                          {/* RG/CPF Sócio */}
+                          {c.has_socio_documento ? (
+                            <a
+                              href={`/api/admin/corretoras/${c.id}/socio-documento`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[10px] font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 px-2 py-0.5 rounded border border-purple-200 transition-colors"
+                              title="Visualizar Documento do Sócio"
+                            >
+                              <UserCheck size={11} /> Doc. Sócios
+                            </a>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-200">
+                              Sem Doc. Sócios
+                            </span>
+                          )}
+
+                          {/* Comprovante Bancário */}
+                          {c.has_comprovante_bancario ? (
+                            <a
+                              href={`/api/admin/corretoras/${c.id}/comprovante-bancario`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[10px] font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded border border-indigo-200 transition-colors"
+                              title="Visualizar Comprovante Bancário & PIX"
+                            >
+                              <CreditCard size={11} /> Comp. Bancário
+                            </a>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-medium text-gray-500 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-200">
+                              Sem Comp. Bancário
                             </span>
                           )}
                         </div>
                       </td>
+
                       <td className="py-4 px-4 text-center border-b border-gray-100">
                         <span className="inline-flex items-center gap-1 font-semibold text-gray-900 bg-gray-100 px-2.5 py-1 rounded-full text-xs">
                           <Users size={12} className="text-gray-500" />
                           {c.partners_count}
                         </span>
                       </td>
+
                       <td className="py-4 px-4 text-center border-b border-gray-100">
                         <span className="inline-flex items-center gap-1 font-semibold text-gray-900 bg-gray-100 px-2.5 py-1 rounded-full text-xs">
                           <Briefcase size={12} className="text-gray-500" />
                           {c.cotacoes_count}
                         </span>
                       </td>
+
                       <td className="py-4 px-4 text-center border-b border-gray-100">
                         <span
                           className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-0.5 rounded-full"
@@ -1009,6 +1506,7 @@ export default function AdminCorretorasPage() {
                           {statusInfo.label}
                         </span>
                       </td>
+
                       <td className="py-4 px-4 text-right border-b border-gray-100">
                         <Link
                           href={`/admin/corretoras/${c.id}`}

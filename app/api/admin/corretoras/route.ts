@@ -29,6 +29,13 @@ export async function GET(req: NextRequest) {
         c.susep,
         c.email,
         c.phone,
+        c.telefone_cadastro,
+        c.socio_nome,
+        c.socio_cpf,
+        c.socio_rg,
+        c.socio_email,
+        c.socio_telefone,
+        c.socios_adicionais,
         c.address,
         c.status,
         c.metadata,
@@ -42,7 +49,19 @@ export async function GET(req: NextRequest) {
         c.contrato_social_mime_type,
         c.contrato_social_nome_arquivo,
         c.contrato_social_uploaded_at,
+        c.cartao_cnpj_mime_type,
+        c.cartao_cnpj_nome_arquivo,
+        c.cartao_cnpj_uploaded_at,
+        c.socio_documento_mime_type,
+        c.socio_documento_nome_arquivo,
+        c.socio_documento_uploaded_at,
+        c.comprovante_bancario_mime_type,
+        c.comprovante_bancario_nome_arquivo,
+        c.comprovante_bancario_uploaded_at,
         (c.contrato_social_base64 IS NOT NULL) AS has_contrato_social,
+        (c.cartao_cnpj_base64 IS NOT NULL) AS has_cartao_cnpj,
+        (c.socio_documento_base64 IS NOT NULL) AS has_socio_documento,
+        (c.comprovante_bancario_base64 IS NOT NULL) AS has_comprovante_bancario,
         c.created_at,
         c.updated_at,
         (SELECT COUNT(*)::int FROM partners p WHERE p.corretora_id = c.id) AS partners_count,
@@ -73,6 +92,45 @@ const emptyToUndefined = (val: unknown) => {
   return val;
 };
 
+function processDocumentUpload(
+  base64Raw: string,
+  fileNameRaw: string | undefined | null,
+  mimeTypeRaw: string | undefined | null,
+  docLabel: string,
+  defaultFileName: string
+) {
+  const cleanBase64 = base64Raw.replace(/^data:[^;]+;base64,/, '');
+  const sizeBytes = Buffer.byteLength(cleanBase64, 'base64');
+  if (sizeBytes > 10 * 1024 * 1024) {
+    throw new Error(`O arquivo de ${docLabel} excede o limite máximo permitido de 10MB`);
+  }
+  const allowedMimes = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
+  let mime = mimeTypeRaw;
+  if (!mime && base64Raw.startsWith('data:')) {
+    const match = base64Raw.match(/^data:([^;]+);base64,/);
+    if (match) mime = match[1];
+  }
+  if (!mime) {
+    const fn = (fileNameRaw || '').toLowerCase();
+    if (fn.endsWith('.pdf')) mime = 'application/pdf';
+    else if (fn.endsWith('.png')) mime = 'image/png';
+    else if (fn.endsWith('.jpg') || fn.endsWith('.jpeg')) mime = 'image/jpeg';
+    else if (fn.endsWith('.webp')) mime = 'image/webp';
+    else mime = 'application/pdf';
+  }
+
+  if (!allowedMimes.includes(mime)) {
+    throw new Error(`Formato de ${docLabel} inválido. Envie um arquivo PDF ou imagem (PNG/JPEG)`);
+  }
+
+  const fileName = fileNameRaw?.trim() || defaultFileName;
+  return {
+    cleanBase64,
+    mime,
+    fileName,
+  };
+}
+
 const createCorretoraSchema = z.object({
   razao_social: z.string().trim().min(2, 'Informe a Razão Social'),
   nome_fantasia: z.string().trim().min(2, 'Informe o Nome Fantasia'),
@@ -80,6 +138,25 @@ const createCorretoraSchema = z.object({
   susep: z.preprocess(emptyToUndefined, z.string().trim().optional()),
   email: z.string().trim().email('E-mail institucional inválido'),
   phone: z.string().trim().min(8, 'Informe o telefone'),
+  telefone_cadastro: z.string().trim().min(8, 'Informe o telefone de cadastro'),
+  socio_nome: z.string().trim().min(2, 'Informe o nome do sócio'),
+  socio_cpf: z.string().trim().min(11, 'Informe o CPF do sócio'),
+  socio_rg: z.string().trim().min(2, 'Informe o RG do sócio'),
+  socio_email: z.string().trim().email('E-mail do sócio inválido'),
+  socio_telefone: z.preprocess(emptyToUndefined, z.string().trim().min(8, 'Informe o telefone do sócio com DDD').optional()),
+  socios_adicionais: z.preprocess(
+    (val) => {
+      if (typeof val === 'string') {
+        try {
+          return JSON.parse(val);
+        } catch {
+          return [];
+        }
+      }
+      return val ?? [];
+    },
+    z.array(z.record(z.string(), z.unknown())).optional().default([])
+  ),
   street: z.preprocess(emptyToUndefined, z.string().trim().optional()),
   neighborhood: z.preprocess(emptyToUndefined, z.string().trim().optional()),
   city: z.preprocess(emptyToUndefined, z.string().trim().optional()),
@@ -101,8 +178,17 @@ const createCorretoraSchema = z.object({
   }),
   pix_chave: z.string().trim().min(1, 'Informe a chave PIX'),
   contrato_social_base64: z.string().trim().min(1, 'O upload do Contrato Social é obrigatório'),
-  contrato_social_mime_type: z.string().trim().min(1, 'Tipo de arquivo do Contrato Social inválido'),
-  contrato_social_nome_arquivo: z.string().trim().min(1, 'Nome do arquivo do Contrato Social é obrigatório'),
+  contrato_social_mime_type: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+  contrato_social_nome_arquivo: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+  cartao_cnpj_base64: z.string().trim().min(1, 'O upload do Cartão CNPJ é obrigatório'),
+  cartao_cnpj_mime_type: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+  cartao_cnpj_nome_arquivo: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+  socio_documento_base64: z.string().trim().min(1, 'O upload do Documento do Sócio é obrigatório'),
+  socio_documento_mime_type: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+  socio_documento_nome_arquivo: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+  comprovante_bancario_base64: z.string().trim().min(1, 'O upload do Comprovante Bancário é obrigatório'),
+  comprovante_bancario_mime_type: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+  comprovante_bancario_nome_arquivo: z.preprocess(emptyToUndefined, z.string().trim().optional()),
   admin_name: z.preprocess(emptyToUndefined, z.string().trim().min(2, 'Informe o nome do administrador').optional()),
   admin_email: z.preprocess(emptyToUndefined, z.string().trim().email('E-mail do administrador inválido').optional()),
   admin_password: z.preprocess(emptyToUndefined, z.string().trim().min(6, 'A senha deve ter no mínimo 6 caracteres').optional()),
@@ -114,6 +200,15 @@ const createCorretoraSchema = z.object({
       code: 'custom',
       path: ['cnpj'],
       message: 'CNPJ inválido',
+    });
+  }
+
+  const socioCpfLimpo = somenteDigitos(data.socio_cpf);
+  if (!validarCpf(socioCpfLimpo)) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['socio_cpf'],
+      message: 'CPF do sócio inválido',
     });
   }
 
@@ -188,21 +283,48 @@ export async function POST(req: NextRequest) {
     logoMimeType = data.logo_mime_type || (data.logo_base64.includes('image/jpeg') ? 'image/jpeg' : 'image/png');
   }
 
-  // Processamento do Contrato Social da Corretora (obrigatório, máximo 10MB)
-  const cleanContratoBase64 = data.contrato_social_base64.replace(/^data:[^;]+;base64,/, '');
-  const contratoSizeBytes = Buffer.byteLength(cleanContratoBase64, 'base64');
-  if (contratoSizeBytes > 10 * 1024 * 1024) {
-    return Response.json({ error: 'O arquivo de Contrato Social excede o limite máximo permitido de 10MB' }, { status: 400 });
-  }
-  const allowedContratoMimes = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp'];
-  const contratoMime = data.contrato_social_mime_type || (data.contrato_social_nome_arquivo.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'application/pdf');
-  if (!allowedContratoMimes.includes(contratoMime)) {
-    return Response.json({ error: 'Formato do Contrato Social inválido. Envie um arquivo PDF ou imagem (PNG/JPEG)' }, { status: 400 });
+  // Processamento dos Documentos da Corretora (obrigatórios, máximo 10MB cada)
+  let contratoDoc;
+  let cartaoCnpjDoc;
+  let socioDoc;
+  let comprovanteBancarioDoc;
+
+  try {
+    contratoDoc = processDocumentUpload(
+      data.contrato_social_base64,
+      data.contrato_social_nome_arquivo,
+      data.contrato_social_mime_type,
+      'Contrato Social',
+      'contrato-social.pdf'
+    );
+    cartaoCnpjDoc = processDocumentUpload(
+      data.cartao_cnpj_base64,
+      data.cartao_cnpj_nome_arquivo,
+      data.cartao_cnpj_mime_type,
+      'Cartão CNPJ',
+      'cartao-cnpj.pdf'
+    );
+    socioDoc = processDocumentUpload(
+      data.socio_documento_base64,
+      data.socio_documento_nome_arquivo,
+      data.socio_documento_mime_type,
+      'Documento do Sócio',
+      'documento-socio.pdf'
+    );
+    comprovanteBancarioDoc = processDocumentUpload(
+      data.comprovante_bancario_base64,
+      data.comprovante_bancario_nome_arquivo,
+      data.comprovante_bancario_mime_type,
+      'Comprovante Bancário',
+      'comprovante-bancario.pdf'
+    );
+  } catch (docErr: any) {
+    return Response.json({ error: docErr?.message || 'Erro ao processar documentos' }, { status: 400 });
   }
 
   // Dados do Administrador Master da Corretora
-  const adminName = (data.admin_name || data.nome_fantasia).trim();
-  const adminEmail = (data.admin_email || email).toLowerCase().trim();
+  const adminName = (data.admin_name || data.socio_nome || data.nome_fantasia).trim();
+  const adminEmail = (data.admin_email || data.socio_email || email).toLowerCase().trim();
 
   try {
     await ensureSchema();
@@ -260,6 +382,13 @@ export async function POST(req: NextRequest) {
         susep,
         email,
         phone,
+        telefone_cadastro,
+        socio_nome,
+        socio_cpf,
+        socio_rg,
+        socio_email,
+        socio_telefone,
+        socios_adicionais,
         address,
         status,
         metadata,
@@ -273,7 +402,19 @@ export async function POST(req: NextRequest) {
         contrato_social_base64,
         contrato_social_mime_type,
         contrato_social_nome_arquivo,
-        contrato_social_uploaded_at
+        contrato_social_uploaded_at,
+        cartao_cnpj_base64,
+        cartao_cnpj_mime_type,
+        cartao_cnpj_nome_arquivo,
+        cartao_cnpj_uploaded_at,
+        socio_documento_base64,
+        socio_documento_mime_type,
+        socio_documento_nome_arquivo,
+        socio_documento_uploaded_at,
+        comprovante_bancario_base64,
+        comprovante_bancario_mime_type,
+        comprovante_bancario_nome_arquivo,
+        comprovante_bancario_uploaded_at
       )
       VALUES (
         ${data.razao_social},
@@ -282,6 +423,13 @@ export async function POST(req: NextRequest) {
         ${data.susep || null},
         ${email},
         ${data.phone},
+        ${data.telefone_cadastro},
+        ${data.socio_nome},
+        ${somenteDigitos(data.socio_cpf)},
+        ${data.socio_rg},
+        ${data.socio_email.toLowerCase()},
+        ${data.socio_telefone || null},
+        ${JSON.stringify(data.socios_adicionais || [])}::jsonb,
         ${JSON.stringify(address)}::jsonb,
         'active',
         ${JSON.stringify({ whiteLabel, created_by: admin.userId })}::jsonb,
@@ -292,15 +440,36 @@ export async function POST(req: NextRequest) {
         ${data.conta},
         ${data.pix_tipo_chave},
         ${data.pix_chave},
-        ${cleanContratoBase64},
-        ${contratoMime},
-        ${data.contrato_social_nome_arquivo},
+        ${contratoDoc.cleanBase64},
+        ${contratoDoc.mime},
+        ${contratoDoc.fileName},
+        NOW(),
+        ${cartaoCnpjDoc.cleanBase64},
+        ${cartaoCnpjDoc.mime},
+        ${cartaoCnpjDoc.fileName},
+        NOW(),
+        ${socioDoc.cleanBase64},
+        ${socioDoc.mime},
+        ${socioDoc.fileName},
+        NOW(),
+        ${comprovanteBancarioDoc.cleanBase64},
+        ${comprovanteBancarioDoc.mime},
+        ${comprovanteBancarioDoc.fileName},
         NOW()
       )
       RETURNING
-        id, razao_social, nome_fantasia, cnpj, susep, email, phone, status,
-        logo_base64, logo_mime_type, banco, agencia, conta, pix_tipo_chave, pix_chave,
-        contrato_social_mime_type, contrato_social_nome_arquivo, contrato_social_uploaded_at, created_at
+        id, razao_social, nome_fantasia, cnpj, susep, email, phone,
+        telefone_cadastro, socio_nome, socio_cpf, socio_rg, socio_email, socio_telefone, socios_adicionais,
+        status, logo_base64, logo_mime_type, banco, agencia, conta, pix_tipo_chave, pix_chave,
+        contrato_social_mime_type, contrato_social_nome_arquivo, contrato_social_uploaded_at,
+        cartao_cnpj_mime_type, cartao_cnpj_nome_arquivo, cartao_cnpj_uploaded_at,
+        socio_documento_mime_type, socio_documento_nome_arquivo, socio_documento_uploaded_at,
+        comprovante_bancario_mime_type, comprovante_bancario_nome_arquivo, comprovante_bancario_uploaded_at,
+        (contrato_social_base64 IS NOT NULL) AS has_contrato_social,
+        (cartao_cnpj_base64 IS NOT NULL) AS has_cartao_cnpj,
+        (socio_documento_base64 IS NOT NULL) AS has_socio_documento,
+        (comprovante_bancario_base64 IS NOT NULL) AS has_comprovante_bancario,
+        created_at
     `;
 
     // Cria o usuário gestor master da corretora
