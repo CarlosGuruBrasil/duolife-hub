@@ -9,16 +9,50 @@ import { calcularPrecoServidor } from '@/lib/pricing';
 import { getRamoConfig, buildRamoZodSchema } from '@/lib/product-schemas';
 
 const cotacaoSchema = z.object({
-  id: z.string().trim().optional(),
-  cotacaoId: z.string().trim().optional(),
-  clientName: z.string().trim().min(2),
-  clientCpfCnpj: z.string().trim().min(11),
-  clientEmail: z.string().trim().email().optional().or(z.literal('')),
-  clientPhone: z.string().trim().optional(),
-  importanciaSegurada: z.coerce.number().positive().optional(),
-  notes: z.string().trim().optional(),
-  productId: z.string().trim().min(1).optional(),
-  clientData: z.record(z.string(), z.unknown()).optional(),
+  id: z.string().trim().optional().nullable(),
+  cotacaoId: z.string().trim().optional().nullable(),
+  clientName: z.string().trim().min(2, 'Nome do proponente deve ter ao menos 2 caracteres'),
+  clientCpfCnpj: z
+    .string()
+    .trim()
+    .transform((val) => val.replace(/\D/g, ''))
+    .refine((val) => val.length === 11 || val.length === 14, {
+      message: 'CPF deve conter 11 dígitos ou CNPJ deve conter 14 dígitos',
+    }),
+  clientEmail: z
+    .string()
+    .trim()
+    .optional()
+    .nullable()
+    .transform((val) => (val ? val.trim().toLowerCase() : null))
+    .refine(
+      (val) => {
+        if (!val || val === '') return true;
+        return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
+      },
+      { message: 'Endereço de e-mail informado é inválido' }
+    ),
+  clientPhone: z
+    .string()
+    .trim()
+    .optional()
+    .nullable()
+    .transform((val) => (val ? val.replace(/\D/g, '') : null)),
+  importanciaSegurada: z
+    .preprocess((val) => {
+      if (val === null || val === undefined || val === '' || val === 0 || val === '0') return null;
+      if (typeof val === 'string') {
+        const parsed = Number(val.replace(/[^\d.,]/g, '').replace(',', '.'));
+        return isNaN(parsed) || parsed <= 0 ? null : parsed;
+      }
+      if (typeof val === 'number') {
+        return val <= 0 || isNaN(val) ? null : val;
+      }
+      return null;
+    }, z.number().positive().optional().nullable()),
+  notes: z.string().trim().optional().nullable(),
+  productId: z.string().trim().min(1).optional().nullable(),
+  clientData: z.record(z.string(), z.unknown()).optional().nullable(),
   adminSelectedPartnerId: z.string().trim().optional().nullable(),
 });
 
@@ -178,7 +212,23 @@ export async function POST(req: NextRequest) {
     const payloadBody = await req.json();
     const parsed = cotacaoSchema.safeParse(payloadBody);
     if (!parsed.success) {
-      return Response.json({ error: 'Dados da cotação inválidos' }, { status: 400 });
+      const issuesSummary = parsed.error.issues
+        .map((issue) => {
+          const path = issue.path.join('.') || 'campo';
+          return `${path}: ${issue.message}`;
+        })
+        .join('; ');
+      logger.warn(
+        { issues: parsed.error.issues, payload: payloadBody },
+        'cotacoes.create.validation_failed'
+      );
+      return Response.json(
+        {
+          error: `Dados da cotação inválidos (${issuesSummary})`,
+          details: parsed.error.issues,
+        },
+        { status: 400 }
+      );
     }
     const data = parsed.data as any;
 
@@ -193,16 +243,40 @@ export async function POST(req: NextRequest) {
 
       if (isInternal) {
         if (!data.adminSelectedPartnerId) {
-          return Response.json({ error: 'Administradores precisam informar o Parceiro dono da cotação' }, { status: 400 });
+          // Fallback resiliente: busca parceiro DuoLife (Venda Direta) ou o primeiro ativo
+          const [duolifePartner] = await sql`
+            SELECT id FROM partners
+            WHERE status = 'active'
+              AND (nome_fantasia ILIKE '%duolife%' OR razao_social ILIKE '%duolife%')
+            ORDER BY created_at ASC
+            LIMIT 1
+          `;
+          if (duolifePartner?.id) {
+            targetPartnerId = duolifePartner.id;
+          } else {
+            const [firstActive] = await sql`
+              SELECT id FROM partners WHERE status = 'active' ORDER BY created_at ASC LIMIT 1
+            `;
+            targetPartnerId = firstActive?.id || null;
+          }
+
+          if (!targetPartnerId) {
+            return Response.json(
+              { error: 'Administradores precisam informar o Parceiro dono da cotação' },
+              { status: 400 }
+            );
+          }
+        } else {
+          targetPartnerId = data.adminSelectedPartnerId;
         }
-        targetPartnerId = data.adminSelectedPartnerId;
+
         const [pu] = await sql`
           SELECT id FROM partner_users
           WHERE partner_id = ${targetPartnerId}
           ORDER BY created_at ASC
           LIMIT 1
         `;
-        userId = pu?.id || null;
+        userId = pu?.id || user.userId;
       } else if (roleIsCorretora(user.role)) {
         canBypassProductAvailability = true;
         if (data.adminSelectedPartnerId) {

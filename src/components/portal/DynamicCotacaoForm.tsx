@@ -705,14 +705,21 @@ export default function DynamicCotacaoForm({
           }
 
           // Posicionamento inteligente de esteira
+          const hasValidBasicData = Boolean(
+            (c.client_name || cd.nome) &&
+            ((cd.cpf && cd.cpf.length >= 11) || (c.client_cpf_cnpj && String(c.client_cpf_cnpj).replace(/\D/g, '').length >= 11))
+          );
+
           if (c.status === 'contrato_gerado' && cd.signUrl) {
             setStep(6);
           } else if (c.status === 'pagamento_gerado' && cd.linkBoleto) {
             setStep(6);
-          } else if (cd.tipo) {
+          } else if (cd.tipo && hasValidBasicData) {
             setStep(5);
           } else if (cd.logradouro && (cd.cpf || c.client_cpf_cnpj)) {
             setStep(3);
+          } else {
+            setStep(2);
           }
         }
       } catch (err) {
@@ -1088,6 +1095,27 @@ export default function DynamicCotacaoForm({
       return;
     }
 
+    // Validação pré-flight dos dados fundamentais do proponente
+    const docDigits = (form.cpfCnpj || '').replace(/\D/g, '');
+    if (!form.nome || form.nome.trim().length < 2) {
+      setError('Preencha o nome completo do proponente na etapa de identificação antes de avançar.');
+      setStep(2);
+      return;
+    }
+
+    if (docDigits.length !== 11 && docDigits.length !== 14) {
+      setError('O CPF (11 dígitos) ou CNPJ (14 dígitos) do proponente é obrigatório e está incompleto.');
+      setStep(2);
+      return;
+    }
+
+    const cleanEmail = form.email ? form.email.trim().toLowerCase() : '';
+    if (cleanEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      setError('O endereço de e-mail informado na etapa de identificação é inválido.');
+      setStep(2);
+      return;
+    }
+
     setLoading(true);
     setError('');
     setSuccess('');
@@ -1117,7 +1145,7 @@ export default function DynamicCotacaoForm({
 
       const payloadClientData: Record<string, any> = {
         ...form,
-        cpf: form.cpfCnpj.replace(/\D/g, ''),
+        cpf: docDigits,
         dataNascto: formatDateForIso(form.dataNascto),
         dataAtividade: formatDateForIso(form.dataAtividade),
         dataInicioVigencia: formatDateForIso(form.dataInicioVigencia || getTodayIsoDate()),
@@ -1173,14 +1201,16 @@ export default function DynamicCotacaoForm({
         premio: valorTotal,
       });
 
+      const cleanCalculatedCob = cleanCob > 0 ? cleanCob : parseMoneyToFloat(planoSel.cobertura);
+
       const payload = {
         cotacaoId: cotacaoId || undefined,
-        clientName: form.nome,
-        clientCpfCnpj: form.cpfCnpj.replace(/\D/g, ''),
-        clientEmail: form.email,
-        clientPhone: form.celular,
+        clientName: form.nome.trim(),
+        clientCpfCnpj: docDigits,
+        clientEmail: cleanEmail || undefined,
+        clientPhone: (form.celular || '').replace(/\D/g, '') || undefined,
         productId: productId || resolvedRamoConfig.ramoId,
-        importanciaSegurada: cleanCob > 0 ? cleanCob : parseMoneyToFloat(planoSel.cobertura),
+        importanciaSegurada: cleanCalculatedCob > 0 ? cleanCalculatedCob : undefined,
         clientData: payloadClientData,
         adminSelectedPartnerId,
       };
