@@ -21,6 +21,14 @@ import {
   Layers,
   Sparkles,
   CreditCard,
+  Briefcase,
+  ClipboardCheck,
+  Building2,
+  Award,
+  AlertTriangle,
+  History,
+  FileSignature,
+  Check,
 } from 'lucide-react';
 import {
   BRAZILIAN_UFS,
@@ -33,7 +41,12 @@ import {
   parseCurrencyToNumber,
 } from './masks';
 import { formatAtuacao, parseAtuacaoList, sanitizePlanFinancials } from '@/lib/format';
-import { rcAdvogadosConfig } from '@/lib/product-schemas';
+import {
+  getRamoConfig,
+  rcAdvogadosConfig,
+  CARGOS_PPE_PADRAO,
+  type RamoConfig,
+} from '@/lib/product-schemas';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 
 export interface EditarPropostaModalProps {
@@ -56,6 +69,7 @@ export interface EditarPropostaModalProps {
     partner_id?: string | null;
   };
   readOnlyFinancials?: boolean; // Se true ou se status for assinado/pagamento_gerado/aprovada, bloqueia edição de prêmio/cobertura
+  initialTab?: 'cliente' | 'proposta' | 'escritorio' | 'risco';
 }
 
 export interface PlanoDisponivel {
@@ -118,7 +132,7 @@ export function findMatchingPlano(
   });
   if (bySubTipo) return bySubTipo;
 
-  // 4. Match por cobertura / importância segurada (regra de ouro de seguros)
+  // 4. Match por cobertura / importância segurada
   if (coberturaNum && coberturaNum > 0) {
     const byCob = planos.find((p) => {
       const cob = parseCurrencyToNumber(p.cobertura);
@@ -145,6 +159,15 @@ function parseRawClientData(data: unknown): Record<string, any> {
   return {};
 }
 
+function formatMoneyInput(value: string | number | null | undefined): string {
+  if (value === null || value === undefined || value === '') return '';
+  const str = String(value);
+  const digits = cleanDigits(str);
+  if (!digits) return '';
+  const num = parseInt(digits, 10) / 100;
+  return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
 const AREAS_ATUACAO_SUGESTOES = [
   'Civil',
   'Trabalhista',
@@ -159,29 +182,13 @@ const AREAS_ATUACAO_SUGESTOES = [
   'Geral / Múltiplas Áreas',
 ];
 
-const PLANOS_SUGESTOES = [
-  '100k',
-  '200k',
-  '300k',
-  '500k',
-  '1M',
-  '2M',
-  '3M',
-  'Plano 100 Mil',
-  'Plano 200 Mil',
-  'Plano 300 Mil',
-  'Plano 500 Mil',
-  'Plano 1 Milhão',
-  'Plano 2 Milhões',
-  'Plano 3 Milhões',
-];
-
 export default function EditarPropostaModal({
   isOpen,
   onClose,
   onSuccess,
   cotacao,
   readOnlyFinancials,
+  initialTab,
 }: EditarPropostaModalProps) {
   const router = useRouter();
   const numeroInputRef = useRef<HTMLInputElement>(null);
@@ -194,8 +201,14 @@ export default function EditarPropostaModal({
 
   useBodyScrollLock(isOpen);
 
-  // Aba ativa: 'cliente' | 'proposta'
-  const [activeTab, setActiveTab] = useState<'cliente' | 'proposta'>('cliente');
+  // Aba ativa: 'cliente' | 'proposta' | 'escritorio' | 'risco'
+  const [activeTab, setActiveTab] = useState<'cliente' | 'proposta' | 'escritorio' | 'risco'>(initialTab || 'cliente');
+
+  useEffect(() => {
+    if (isOpen && initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [isOpen, initialTab]);
 
   // Aba 1: Dados do Cliente & Endereço
   const [clientName, setClientName] = useState('');
@@ -212,9 +225,6 @@ export default function EditarPropostaModal({
   const [uf, setUf] = useState('');
 
   // Aba 2: Dados da Proposta & Seguro
-  const [oab, setOab] = useState('');
-  const [oabUf, setOabUf] = useState('');
-  const [atuacao, setAtuacao] = useState('');
   const [dataInicioVigencia, setDataInicioVigencia] = useState('');
   const [nomePlano, setNomePlano] = useState('');
   const [importanciaSegurada, setImportanciaSegurada] = useState<string>('');
@@ -235,10 +245,53 @@ export default function EditarPropostaModal({
   const [descontoPercent, setDescontoPercent] = useState<number>(0);
   const [maxParcelasPermitidas, setMaxParcelasPermitidas] = useState<number>(6);
 
+  // Aba 3: Escritório & Atuação
+  const [registroProfissionalNumero, setRegistroProfissionalNumero] = useState('');
+  const [registroProfissionalUf, setRegistroProfissionalUf] = useState('');
+  const [rqe, setRqe] = useState('');
+  const [associadoEscritorio, setAssociadoEscritorio] = useState<'Sim' | 'Não'>('Não');
+  const [nomeEscritorio, setNomeEscritorio] = useState('');
+  const [titularidadeTipo, setTitularidadeTipo] = useState('Graduação');
+  const [titularidadeOutro, setTitularidadeOutro] = useState('');
+  const [faturamentoAntes, setFaturamentoAntes] = useState('');
+  const [faturamentoDepois, setFaturamentoDepois] = useState('');
+  const [especialidades, setEspecialidades] = useState<string[]>([]);
+  const [atuacao, setAtuacao] = useState('');
+
+  // Aba 4: Histórico de Risco & Declarações
+  const [riskAnswers, setRiskAnswers] = useState<Record<string, 'Sim' | 'Não'>>({
+    propostaRecusada: 'Não',
+    reclamacaoProfissional: 'Não',
+    investigacaoAutoridade: 'Não',
+    fatoTerceiros: 'Não',
+    pagouReclamacao: 'Não',
+  });
+  const [riskDetails, setRiskDetails] = useState<Record<string, string>>({
+    propostaDetalhe: '',
+    reclamacaoDetalhe: '',
+    investigacaoDetalhe: '',
+    fatoDetalhe: '',
+    pagouDetalhe: '',
+  });
+
+  // Seguro Anterior / Renovação
+  const [isRenovacao, setIsRenovacao] = useState<'Sim' | 'Não'>('Não');
+  const [seguradoraAnterior, setSeguradoraAnterior] = useState('');
+  const [vigenciaAnterior, setVigenciaAnterior] = useState('');
+  const [limiteAnterior, setLimiteAnterior] = useState('');
+  const [franquiaAnterior, setFranquiaAnterior] = useState('');
+  const [dataRetroativa, setDataRetroativa] = useState('');
+
+  // Pessoa Politicamente Exposta (PPE)
+  const [ppeCargos, setPpeCargos] = useState<'Sim' | 'Não'>('Não');
+  const [ppeRepresenta, setPpeRepresenta] = useState<'Sim' | 'Não'>('Não');
+  const [ppeCargoSelect, setPpeCargoSelect] = useState<string[]>([]);
+
   // Controles de feedback e busca
   const [loadingCep, setLoadingCep] = useState(false);
   const [cepSuccess, setCepSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [regerandoMinuta, setRegerandoMinuta] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
@@ -246,9 +299,46 @@ export default function EditarPropostaModal({
   const isFinancialLocked = Boolean(
     readOnlyFinancials ||
       ['assinado', 'pagamento_gerado', 'aprovada', 'emitida'].includes(
-        String(cotacao.status).toLowerCase()
+        String(cotacao?.status || '').toLowerCase()
       )
   );
+
+  // Identificação do Ramo de Atuação
+  const rawClientData = useMemo(() => parseRawClientData(cotacao?.client_data), [cotacao?.client_data]);
+
+  const resolvedRamoConfig: RamoConfig = useMemo(() => {
+    const config = getRamoConfig(
+      cotacao?.product_flow_key ||
+      cotacao?.product_id ||
+      rawClientData?.ramoId ||
+      rawClientData?.flowKey ||
+      rawClientData?.flow_key
+    );
+    return config || rcAdvogadosConfig;
+  }, [cotacao?.product_flow_key, cotacao?.product_id, rawClientData]);
+
+  // Registro de classe configurado do ramo
+  const regConfig = useMemo(() => {
+    return (
+      resolvedRamoConfig.registroProfissional || {
+        key: 'oab',
+        label: 'Inscrição OAB',
+        placeholder: 'Número da OAB + UF (Ex: 123456/SP)',
+        ufKey: 'oabUf',
+        required: true,
+        hasRqe: false,
+      }
+    );
+  }, [resolvedRamoConfig]);
+
+  // Verifica se a proposta já possui minuta/contrato gerado no ZapSign
+  const hasContratoGerado = useMemo(() => {
+    return (
+      cotacao?.status === 'contrato_gerado' ||
+      Boolean(rawClientData?.contratoToken) ||
+      Boolean(rawClientData?.docToken)
+    );
+  }, [cotacao?.status, rawClientData]);
 
   // Carrega planos dinamicamente via API /api/portal/planos com base no produto/ramo
   useEffect(() => {
@@ -283,7 +373,7 @@ export default function EditarPropostaModal({
     };
   }, [isOpen, cotacao.product_id, cotacao.product_flow_key, cotacao.partner_id]);
 
-  // Carrega e preenche os estados a partir da cotação
+  // Carrega e preenche todos os estados a partir da cotação
   useEffect(() => {
     if (isOpen && cotacao) {
       const cd = parseRawClientData(cotacao.client_data);
@@ -304,9 +394,6 @@ export default function EditarPropostaModal({
       setUf(cd.uf ? cd.uf.toUpperCase() : '');
 
       // Aba 2: Proposta & Seguro
-      setOab(cd.oab || '');
-      setOabUf(cd.oabUf || cd.ufOab || (cd.uf ? cd.uf.toUpperCase() : ''));
-      setAtuacao(formatAtuacao(cd.atuacao));
       setDataInicioVigencia(
         formatDateToInput(cd.dataInicioVigencia || cd.vigencia || cd.dataVigencia || '')
       );
@@ -325,14 +412,20 @@ export default function EditarPropostaModal({
         premio: rawPrem,
       });
 
-      const parsedCobNum = sanitized.cobertura > 0
-        ? sanitized.cobertura
-        : (rawCob !== undefined && rawCob !== null ? parseCurrencyToNumber(rawCob) : 0);
+      const parsedCobNum =
+        sanitized.cobertura > 0
+          ? sanitized.cobertura
+          : rawCob !== undefined && rawCob !== null
+          ? parseCurrencyToNumber(rawCob)
+          : 0;
       setImportanciaSegurada(parsedCobNum > 0 ? String(parsedCobNum) : '');
 
-      const parsedPremNum = sanitized.premio > 0
-        ? sanitized.premio
-        : (rawPrem !== undefined && rawPrem !== null ? parseCurrencyToNumber(rawPrem) : 0);
+      const parsedPremNum =
+        sanitized.premio > 0
+          ? sanitized.premio
+          : rawPrem !== undefined && rawPrem !== null
+          ? parseCurrencyToNumber(rawPrem)
+          : 0;
       setPremioFinal(parsedPremNum > 0 ? String(parsedPremNum) : '');
 
       // Identifica o plano correspondente na lista (por tipo, nome ou cobertura oficial)
@@ -354,11 +447,9 @@ export default function EditarPropostaModal({
 
         const baseTabelaPlano = parseCurrencyToNumber(planoMatched.parcela);
 
-        // Se cd.valorOriginal já existia e era maior que 0 e maior que o prêmio com desconto, preserva
         if (baseCalculado > 0 && baseCalculado >= parsedPremNum) {
           // Mantém baseCalculado
         } else if (baseTabelaPlano > 0) {
-          // Se não havia valorOriginal ou era inválido, o valor oficial de tabela do plano é a base!
           baseCalculado = baseTabelaPlano;
         } else if (descInicial > 0 && descInicial < 100 && parsedPremNum > 0) {
           baseCalculado = Math.round((parsedPremNum / (1 - descInicial / 100)) * 100) / 100;
@@ -366,7 +457,6 @@ export default function EditarPropostaModal({
           baseCalculado = parsedPremNum;
         }
 
-        // Se não havia desconto explícito gravado, mas o prêmio da cotação é menor que o valor de tabela:
         let descFinal = descInicial;
         if (descFinal === 0 && baseCalculado > parsedPremNum && parsedPremNum > 0) {
           const descCalculado = Math.round(((baseCalculado - parsedPremNum) / baseCalculado) * 100);
@@ -397,24 +487,138 @@ export default function EditarPropostaModal({
       setParcelas(cd.parcela ? String(cd.parcela) : '1');
       setNotes(cotacao.notes || cd.observacoes || cd.notas || '');
 
+      // Aba 3: Escritório & Atuação
+      const regKey = regConfig.key;
+      const ufKey = regConfig.ufKey || `${regKey}Uf`;
+      const numRegCarregado = cd[regKey] || cd.registroProfissionalNumero || cd.oab || '';
+      const ufRegCarregado =
+        cd[ufKey] ||
+        cd.registroProfissionalUf ||
+        cd.ufOab ||
+        cd.oabUf ||
+        (cd.uf ? cd.uf.toUpperCase() : 'SP');
+      setRegistroProfissionalNumero(numRegCarregado);
+      setRegistroProfissionalUf(ufRegCarregado);
+      setRqe(cd.rqe || '');
+
+      const isAssoc =
+        cd.associadoEscritorio === 'Sim' ||
+        (Boolean(cd.escritorioAssociado) &&
+          cd.escritorioAssociado !== 'Não associado' &&
+          cd.escritorioAssociado !== 'Não')
+          ? 'Sim'
+          : 'Não';
+      setAssociadoEscritorio(isAssoc);
+      setNomeEscritorio(
+        cd.nomeEscritorio ||
+          (cd.escritorioAssociado && cd.escritorioAssociado !== 'Não associado'
+            ? cd.escritorioAssociado
+            : '') ||
+          cd.escritorio ||
+          ''
+      );
+
+      const titularidadeGravada = cd.titularidadeTipo || cd.titularidade || 'Graduação';
+      const titularidadesConhecidas = [
+        'Graduação',
+        'Especialização',
+        'Mestrado',
+        'Doutorado',
+        'Pós-Doutorado',
+      ];
+      if (titularidadesConhecidas.includes(titularidadeGravada)) {
+        setTitularidadeTipo(titularidadeGravada);
+        setTitularidadeOutro('');
+      } else {
+        setTitularidadeTipo('Outro');
+        setTitularidadeOutro(cd.titularidadeOutro || titularidadeGravada || '');
+      }
+
+      setFaturamentoAntes(cd.faturamentoAntes ? formatMoneyInput(cd.faturamentoAntes) : '');
+      setFaturamentoDepois(cd.faturamentoDepois ? formatMoneyInput(cd.faturamentoDepois) : '');
+
+      // Especialidades e Áreas de Atuação
+      let esps: string[] = [];
+      if (Array.isArray(cd.especialidades)) {
+        esps = cd.especialidades;
+      } else if (typeof cd.especialidades === 'string' && cd.especialidades.trim()) {
+        esps = cd.especialidades.split(',').map((s) => s.trim());
+      } else if (Array.isArray(cd.atuacao)) {
+        // Tenta mapear de volta a partir de rótulos conhecidos
+        const todasDoRamo = resolvedRamoConfig.especialidades || [];
+        esps = cd.atuacao
+          .map((label: string) => {
+            const found = todasDoRamo.find((e) => e.label.toLowerCase() === label.toLowerCase() || e.key.toLowerCase() === label.toLowerCase());
+            return found ? found.key : null;
+          })
+          .filter(Boolean) as string[];
+      }
+      setEspecialidades(esps);
+      setAtuacao(formatAtuacao(cd.atuacao || (esps.length > 0 ? esps.join(', ') : '')));
+
+      // Aba 4: Underwriting / Questionário de Risco
+      const riskQ = resolvedRamoConfig.questionarioRisco || [];
+      const newAnswers: Record<string, 'Sim' | 'Não'> = {
+        propostaRecusada: cd.propostaRecusada === 'Sim' ? 'Sim' : 'Não',
+        reclamacaoProfissional: cd.reclamacaoProfissional === 'Sim' ? 'Sim' : 'Não',
+        investigacaoAutoridade: cd.investigacaoAutoridade === 'Sim' ? 'Sim' : 'Não',
+        fatoTerceiros: cd.fatoTerceiros === 'Sim' ? 'Sim' : 'Não',
+        pagouReclamacao: cd.pagouReclamacao === 'Sim' ? 'Sim' : 'Não',
+      };
+      const newDetails: Record<string, string> = {
+        propostaDetalhe: cd.propostaDetalhe || '',
+        reclamacaoDetalhe: cd.reclamacaoDetalhe || '',
+        investigacaoDetalhe: cd.investigacaoDetalhe || '',
+        fatoDetalhe: cd.fatoDetalhe || '',
+        pagouDetalhe: cd.pagouDetalhe || '',
+      };
+
+      riskQ.forEach((q) => {
+        if (cd[q.id] !== undefined) {
+          newAnswers[q.id] = cd[q.id] === 'Sim' ? 'Sim' : 'Não';
+        }
+        if (cd[q.detailKey] !== undefined) {
+          newDetails[q.detailKey] = cd[q.detailKey] || '';
+        }
+      });
+      setRiskAnswers(newAnswers);
+      setRiskDetails(newDetails);
+
+      // Seguro Anterior (Renovação)
+      const isRenov =
+        cd.isRenovacao === 'Sim' || cd.renovacao === true || cd.renovacao === 'Sim'
+          ? 'Sim'
+          : 'Não';
+      setIsRenovacao(isRenov);
+      setSeguradoraAnterior(cd.seguradoraAnterior || cd.seguradora || '');
+      setVigenciaAnterior(formatDateToInput(cd.vigenciaAnterior || cd.vigencia || ''));
+      setLimiteAnterior(cd.limiteAnterior || cd.limite ? formatMoneyInput(cd.limiteAnterior || cd.limite) : '');
+      setFranquiaAnterior(cd.franquiaAnterior ? formatMoneyInput(cd.franquiaAnterior) : '');
+      setDataRetroativa(formatDateToInput(cd.dataRetroativa || ''));
+
+      // Pessoa Politicamente Exposta (PPE)
+      setPpeCargos(cd.ppeCargos === 'Sim' ? 'Sim' : 'Não');
+      setPpeRepresenta(cd.ppeRepresenta === 'Sim' ? 'Sim' : 'Não');
+      setPpeCargoSelect(Array.isArray(cd.ppeCargoSelect) ? cd.ppeCargoSelect : []);
+
       setErrorMessage(null);
       setSuccessMessage(null);
       setCepSuccess(false);
       setActiveTab('cliente');
     }
-  }, [isOpen, cotacao]);
+  }, [isOpen, cotacao, regConfig, resolvedRamoConfig]);
 
   // Tecla ESC para fechar
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && !saving && !regerandoMinuta) {
         onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, saving, regerandoMinuta]);
 
   // Busca ViaCEP
   const handleCepChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -466,24 +670,18 @@ export default function EditarPropostaModal({
 
     setNomePlano(plano.nomeExibido);
 
-    // Cobertura
     const numCob = parseCurrencyToNumber(plano.cobertura);
     setImportanciaSegurada(numCob > 0 ? String(numCob) : plano.cobertura);
-
-    // Franquia
     setPlanoFranquia(plano.franquia || 'R$ 1.000,00');
 
-    // Prêmio base DE TABELA do plano selecionado
     const base = parseCurrencyToNumber(plano.parcela);
     setPremioBase(base);
     setPremioBaseInput(base > 0 ? String(base) : '');
 
-    // Recalcula o prêmio final aplicando o desconto ativo sobre o valor base de tabela
-    const fator = 1 - (descontoPercent / 100);
+    const fator = 1 - descontoPercent / 100;
     const novoFinal = Math.round(base * fator * 100) / 100;
     setPremioFinal(String(novoFinal));
 
-    // Ajusta limites de parcelamento do plano
     const maxP = plano.maxParcelas || (plano.tipoDePlano.toLowerCase() === '100k' ? 1 : 6);
     setMaxParcelasPermitidas(maxP);
     if (Number(parcelas) > maxP) {
@@ -498,7 +696,7 @@ export default function EditarPropostaModal({
     if (isFinancialLocked) return;
 
     if (novoBase > 0) {
-      const fator = 1 - (descontoPercent / 100);
+      const fator = 1 - descontoPercent / 100;
       const novoFinal = Math.round(novoBase * fator * 100) / 100;
       setPremioFinal(String(novoFinal));
     }
@@ -511,7 +709,7 @@ export default function EditarPropostaModal({
     setDescontoPercent(descSeguro);
 
     if (premioBase > 0) {
-      const fator = 1 - (descSeguro / 100);
+      const fator = 1 - descSeguro / 100;
       const novoFinal = Math.round(premioBase * fator * 100) / 100;
       setPremioFinal(String(novoFinal));
     } else {
@@ -542,7 +740,7 @@ export default function EditarPropostaModal({
     }
   };
 
-  // Cálculo das opções de parcelamento em tempo real
+  // Opções de parcelamento em tempo real
   const opcoesParcelamento = useMemo(() => {
     const finalNum = parseCurrencyToNumber(premioFinal);
     const limit = Math.max(1, maxParcelasPermitidas || 6);
@@ -559,8 +757,42 @@ export default function EditarPropostaModal({
     return list;
   }, [premioFinal, maxParcelasPermitidas]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Manipulação de Especialidades da Aba 3
+  const handleToggleEspecialidade = (espKey: string) => {
+    setEspecialidades((prev) => {
+      const exists = prev.includes(espKey);
+      const updated = exists ? prev.filter((k) => k !== espKey) : [...prev, espKey];
+      // Mantém atuacao sincronizado com os labels
+      const todasEspecialidades = resolvedRamoConfig.especialidades || [];
+      const labels = updated.map((k) => {
+        const found = todasEspecialidades.find((e) => e.key === k);
+        return found ? found.label : k;
+      });
+      setAtuacao(labels.join(', '));
+      return updated;
+    });
+  };
+
+  // Manipulação de Respostas de Underwriting
+  const handleSetRiskAnswer = (questionId: string, answer: 'Sim' | 'Não') => {
+    setRiskAnswers((prev) => ({ ...prev, [questionId]: answer }));
+  };
+
+  const handleSetRiskDetail = (detailKey: string, detailText: string) => {
+    setRiskDetails((prev) => ({ ...prev, [detailKey]: detailText }));
+  };
+
+  // Manipulação de Cargos PPE
+  const handleTogglePpeCargo = (cargoId: string) => {
+    setPpeCargoSelect((prev) => {
+      return prev.includes(cargoId)
+        ? prev.filter((id) => id !== cargoId)
+        : [...prev, cargoId];
+    });
+  };
+
+  // Submissão unificada (Salvar ou Salvar & Regerar Minuta)
+  const salvarDados = async (forceRegerarMinuta: boolean) => {
     setErrorMessage(null);
     setSuccessMessage(null);
 
@@ -578,12 +810,54 @@ export default function EditarPropostaModal({
       return;
     }
 
-    setSaving(true);
+    if (associadoEscritorio === 'Sim' && !nomeEscritorio.trim()) {
+      setErrorMessage('Informe o nome do escritório ou selecione "Não" na associação a escritório.');
+      setActiveTab('escritorio');
+      return;
+    }
+
+    // Validação de underwriting: se alguma pergunta afirmativa exige justificativa
+    const perguntasRisco = resolvedRamoConfig.questionarioRisco || [];
+    for (const q of perguntasRisco) {
+      const ans = riskAnswers[q.id] || 'Não';
+      const det = riskDetails[q.detailKey] || '';
+      if (ans === 'Sim' && q.requiredOnAffirmative && !det.trim()) {
+        setErrorMessage(`Por favor, justifique a resposta afirmativa na declaração de risco.`);
+        setActiveTab('risco');
+        return;
+      }
+    }
+
+    if (forceRegerarMinuta) {
+      setRegerandoMinuta(true);
+    } else {
+      setSaving(true);
+    }
+
     try {
       const existingClientData = parseRawClientData(cotacao.client_data);
 
+      const titularidadeFinal =
+        titularidadeTipo === 'Outro' ? titularidadeOutro.trim() : titularidadeTipo;
+
+      const todasEspecialidades = resolvedRamoConfig.especialidades || [];
+      const labelsEspecialidades = especialidades.map((k) => {
+        const found = todasEspecialidades.find((e) => e.key === k);
+        return found ? found.label : k;
+      });
+      const parsedAtuacaoListFinal =
+        parseAtuacaoList(atuacao.trim()).length > 0
+          ? parseAtuacaoList(atuacao.trim())
+          : labelsEspecialidades.length > 0
+          ? labelsEspecialidades
+          : existingClientData.atuacao;
+
+      const regKey = regConfig.key;
+      const ufKey = regConfig.ufKey || `${regKey}Uf`;
+
       const updatedClientData: Record<string, any> = {
         ...existingClientData,
+        // Cliente & Endereço
         nome: cleanName,
         cpfCnpj: docDigits,
         email: clientEmail.trim() || existingClientData.email,
@@ -596,22 +870,112 @@ export default function EditarPropostaModal({
         bairro: bairro.trim() || existingClientData.bairro,
         cidade: cidade.trim() || existingClientData.cidade,
         uf: uf.trim() ? uf.trim().toUpperCase() : existingClientData.uf,
-        oab: oab.trim() || existingClientData.oab,
-        oabUf: oabUf.trim() ? oabUf.trim().toUpperCase() : existingClientData.oabUf,
-        ufOab: oabUf.trim() ? oabUf.trim().toUpperCase() : existingClientData.ufOab,
-        atuacao: parseAtuacaoList(atuacao.trim()).length > 0 ? parseAtuacaoList(atuacao.trim()) : existingClientData.atuacao,
+
+        // Proposta & Vigência
         dataInicioVigencia: dataInicioVigencia || existingClientData.dataInicioVigencia,
         vigencia: dataInicioVigencia || existingClientData.vigencia,
         nomePlano: nomePlano.trim() || existingClientData.nomePlano,
-        tipoDePlano: selectedPlanoTipo !== 'custom' ? selectedPlanoTipo : (existingClientData.tipoDePlano || nomePlano.trim()),
-        tipo: selectedPlanoTipo !== 'custom' ? selectedPlanoTipo : (existingClientData.tipo || nomePlano.trim()),
+        tipoDePlano:
+          selectedPlanoTipo !== 'custom'
+            ? selectedPlanoTipo
+            : existingClientData.tipoDePlano || nomePlano.trim(),
+        tipo:
+          selectedPlanoTipo !== 'custom'
+            ? selectedPlanoTipo
+            : existingClientData.tipo || nomePlano.trim(),
         planoFranquia: planoFranquia.trim() || existingClientData.planoFranquia,
         parcela: parcelas ? Number(parcelas) : existingClientData.parcela,
         observacoes: notes.trim() || existingClientData.observacoes,
         descontoManualPercent: descontoPercent,
         descontoPercentual: descontoPercent,
-        valorOriginal: premioBase > 0 ? premioBase : (existingClientData.valorOriginal || 0),
+        valorOriginal: premioBase > 0 ? premioBase : existingClientData.valorOriginal || 0,
+
+        // Registro de Classe (dinâmico e canônico)
+        registroProfissionalNumero: registroProfissionalNumero.trim(),
+        registroProfissionalUf: registroProfissionalUf.trim().toUpperCase(),
+        rqe: rqe.trim(),
+        [regKey]: registroProfissionalNumero.trim(),
+        [ufKey]: registroProfissionalUf.trim().toUpperCase(),
+        oab:
+          regKey === 'oab'
+            ? registroProfissionalNumero.trim()
+            : existingClientData.oab || registroProfissionalNumero.trim(),
+        oabUf:
+          regKey === 'oab'
+            ? registroProfissionalUf.trim().toUpperCase()
+            : existingClientData.oabUf || registroProfissionalUf.trim().toUpperCase(),
+        ufOab:
+          regKey === 'oab'
+            ? registroProfissionalUf.trim().toUpperCase()
+            : existingClientData.ufOab || registroProfissionalUf.trim().toUpperCase(),
+
+        // Escritório & Atuação
+        associadoEscritorio: associadoEscritorio,
+        nomeEscritorio: associadoEscritorio === 'Sim' ? nomeEscritorio.trim() : '',
+        escritorioAssociado:
+          associadoEscritorio === 'Sim'
+            ? nomeEscritorio.trim() || 'Sim'
+            : 'Não associado',
+        escritorio: associadoEscritorio === 'Sim' ? nomeEscritorio.trim() : '',
+        titularidade: titularidadeFinal,
+        titularidadeTipo: titularidadeTipo,
+        titularidadeOutro: titularidadeOutro.trim(),
+        faturamentoAntes: faturamentoAntes.trim(),
+        faturamentoDepois: faturamentoDepois.trim(),
+        especialidades: especialidades,
+        atuacao: parsedAtuacaoListFinal,
+
+        // Questionário de Underwriting
+        propostaRecusada: riskAnswers.propostaRecusada || 'Não',
+        propostaDetalhe:
+          riskAnswers.propostaRecusada === 'Sim'
+            ? (riskDetails.propostaDetalhe || '').trim()
+            : '',
+        reclamacaoProfissional: riskAnswers.reclamacaoProfissional || 'Não',
+        reclamacaoDetalhe:
+          riskAnswers.reclamacaoProfissional === 'Sim'
+            ? (riskDetails.reclamacaoDetalhe || '').trim()
+            : '',
+        investigacaoAutoridade: riskAnswers.investigacaoAutoridade || 'Não',
+        investigacaoDetalhe:
+          riskAnswers.investigacaoAutoridade === 'Sim'
+            ? (riskDetails.investigacaoDetalhe || '').trim()
+            : '',
+        fatoTerceiros: riskAnswers.fatoTerceiros || 'Não',
+        fatoDetalhe:
+          riskAnswers.fatoTerceiros === 'Sim'
+            ? (riskDetails.fatoDetalhe || '').trim()
+            : '',
+        pagouReclamacao: riskAnswers.pagouReclamacao || 'Não',
+        pagouDetalhe:
+          riskAnswers.pagouReclamacao === 'Sim'
+            ? (riskDetails.pagouDetalhe || '').trim()
+            : '',
+
+        // Seguro Anterior (Renovação)
+        isRenovacao: isRenovacao,
+        renovacao: isRenovacao === 'Sim',
+        seguradora: isRenovacao === 'Sim' ? seguradoraAnterior.trim() : '',
+        seguradoraAnterior: isRenovacao === 'Sim' ? seguradoraAnterior.trim() : '',
+        vigenciaAnterior: isRenovacao === 'Sim' ? vigenciaAnterior : '',
+        limite: isRenovacao === 'Sim' ? limiteAnterior.trim() : '',
+        limiteAnterior: isRenovacao === 'Sim' ? limiteAnterior.trim() : '',
+        franquiaAnterior: isRenovacao === 'Sim' ? franquiaAnterior.trim() : '',
+        dataRetroativa: isRenovacao === 'Sim' ? dataRetroativa : '',
+
+        // PPE
+        ppeCargos: ppeCargos,
+        ppeRepresenta: ppeRepresenta,
+        ppeCargoSelect:
+          ppeCargos === 'Sim' || ppeRepresenta === 'Sim' ? ppeCargoSelect : [],
       };
+
+      // Grava perguntas dinâmicas adicionais
+      perguntasRisco.forEach((q) => {
+        updatedClientData[q.id] = riskAnswers[q.id] || 'Não';
+        updatedClientData[q.detailKey] =
+          riskAnswers[q.id] === 'Sim' ? (riskDetails[q.detailKey] || '').trim() : '';
+      });
 
       const payload: Record<string, any> = {
         client_name: cleanName,
@@ -638,9 +1002,28 @@ export default function EditarPropostaModal({
           uf: uf.trim() ? uf.trim().toUpperCase() : null,
         },
         proposalData: {
-          oab: oab.trim() || null,
-          oabUf: oabUf.trim() ? oabUf.trim().toUpperCase() : null,
-          atuacao: parseAtuacaoList(atuacao.trim()),
+          oab:
+            regKey === 'oab'
+              ? registroProfissionalNumero.trim()
+              : existingClientData.oab || null,
+          oabUf:
+            regKey === 'oab'
+              ? registroProfissionalUf.trim().toUpperCase()
+              : existingClientData.oabUf || null,
+          registroProfissionalNumero: registroProfissionalNumero.trim() || null,
+          registroProfissionalUf: registroProfissionalUf.trim().toUpperCase() || null,
+          rqe: rqe.trim() || null,
+          [regKey]: registroProfissionalNumero.trim() || null,
+          [ufKey]: registroProfissionalUf.trim().toUpperCase() || null,
+          atuacao: parsedAtuacaoListFinal,
+          especialidades: especialidades,
+          associadoEscritorio: associadoEscritorio,
+          nomeEscritorio: associadoEscritorio === 'Sim' ? nomeEscritorio.trim() : null,
+          titularidade: titularidadeFinal,
+          faturamentoAntes: faturamentoAntes.trim() || null,
+          faturamentoDepois: faturamentoDepois.trim() || null,
+          isRenovacao: isRenovacao,
+          seguradora: isRenovacao === 'Sim' ? seguradoraAnterior.trim() : null,
           dataInicioVigencia: dataInicioVigencia || null,
           planoNome: nomePlano.trim() || null,
           tipoDePlano: selectedPlanoTipo !== 'custom' ? selectedPlanoTipo : null,
@@ -653,7 +1036,6 @@ export default function EditarPropostaModal({
         client_data: updatedClientData,
       };
 
-      // Só altera valores financeiros se liberado
       if (!isFinancialLocked) {
         const rawCobParsed = parseCurrencyToNumber(importanciaSegurada);
         const rawPremParsed = parseCurrencyToNumber(premioFinal);
@@ -662,6 +1044,7 @@ export default function EditarPropostaModal({
           setErrorMessage('O valor do prêmio deve ser um número válido maior que zero.');
           setActiveTab('proposta');
           setSaving(false);
+          setRegerandoMinuta(false);
           return;
         }
 
@@ -683,15 +1066,18 @@ export default function EditarPropostaModal({
           updatedClientData.valor = parsedPremio;
           updatedClientData.premioFinal = parsedPremio;
           const numParcelas = Number(parcelas) || 1;
-          const vParc = numParcelas > 0 ? Math.round((parsedPremio / numParcelas) * 100) / 100 : parsedPremio;
+          const vParc =
+            numParcelas > 0 ? Math.round((parsedPremio / numParcelas) * 100) / 100 : parsedPremio;
           updatedClientData.valorParcela = vParc;
         }
 
         updatedClientData.descontoManualPercent = descontoPercent;
         updatedClientData.descontoPercentual = descontoPercent;
-        updatedClientData.valorOriginal = premioBase > 0 ? premioBase : (parsedPremio > 0 ? parsedPremio : 0);
+        updatedClientData.valorOriginal =
+          premioBase > 0 ? premioBase : parsedPremio > 0 ? parsedPremio : 0;
       }
 
+      // 1. Atualiza proposta via PATCH
       const res = await fetch(`/api/cotacoes/${cotacao.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -700,21 +1086,54 @@ export default function EditarPropostaModal({
 
       const data = await res.json();
       if (!res.ok || !data.ok) {
-        throw new Error(data.details ? `${data.error} (${data.details})` : (data.error || 'Erro ao salvar os dados da proposta.'));
+        throw new Error(
+          data.details
+            ? `${data.error} (${data.details})`
+            : data.error || 'Erro ao salvar os dados da proposta.'
+        );
       }
 
-      setSuccessMessage('Proposta atualizada com sucesso!');
+      // 2. Se solicitado "Salvar & Regerar Minuta", dispara o endpoint de contrato
+      if (forceRegerarMinuta) {
+        const resContrato = await fetch(
+          `/api/portal/cotacoes/${cotacao.id}/gerar-contrato`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ forceRecreate: true }),
+          }
+        );
+
+        const dataContrato = await resContrato.json();
+        if (!resContrato.ok || !dataContrato.ok) {
+          throw new Error(
+            dataContrato.error ||
+              'Proposta salva, mas ocorreu uma falha ao regerar a minuta no ZapSign.'
+          );
+        }
+
+        setSuccessMessage('Proposta atualizada e nova Minuta gerada no ZapSign com sucesso!');
+      } else {
+        setSuccessMessage('Proposta atualizada com sucesso!');
+      }
+
       router.refresh();
       if (onSuccess) onSuccess();
 
       setTimeout(() => {
         onClose();
-      }, 500);
+      }, 1200);
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : 'Falha na comunicação com o servidor.');
     } finally {
       setSaving(false);
+      setRegerandoMinuta(false);
     }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    salvarDados(false);
   };
 
   if (!isOpen || !mounted || typeof document === 'undefined') {
@@ -731,13 +1150,15 @@ export default function EditarPropostaModal({
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
-        onClick={onClose}
+        onClick={() => {
+          if (!saving && !regerandoMinuta) onClose();
+        }}
         aria-hidden="true"
       />
 
       {/* Container Principal */}
       <div
-        className="relative w-full max-w-3xl bg-white rounded-2xl border border-gray-200 shadow-2xl flex flex-col max-h-[92vh] z-10 animate-in fade-in zoom-in-95 duration-200"
+        className="relative w-full max-w-4xl bg-white rounded-2xl border border-gray-200 shadow-2xl flex flex-col max-h-[92vh] z-10 animate-in fade-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header com Identificação */}
@@ -759,7 +1180,7 @@ export default function EditarPropostaModal({
                 </span>
               </div>
               <p className="text-xs text-gray-500 mt-0.5">
-                Proposta ID: <span className="font-mono text-gray-700">{cotacao.id.slice(0, 8)}</span> · {cotacao.client_name}
+                Proposta ID: <span className="font-mono text-gray-700">{cotacao.id.slice(0, 8)}</span> · {cotacao.client_name} · <span className="text-[#0e4a5a] font-semibold">{resolvedRamoConfig.name}</span>
               </p>
             </div>
           </div>
@@ -767,7 +1188,8 @@ export default function EditarPropostaModal({
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+            disabled={saving || regerandoMinuta}
+            className="p-2 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center cursor-pointer disabled:opacity-50"
             aria-label="Fechar modal"
           >
             <X className="w-5 h-5" />
@@ -783,43 +1205,77 @@ export default function EditarPropostaModal({
                 Valores Financeiros Preservados:
               </span>
               <p className="text-amber-800 leading-relaxed break-words whitespace-normal m-0">
-                Esta proposta possui contrato assinado ou cobrança gerada. Os dados cadastrais, vigência e notas podem ser alterados livremente. Os valores financeiros (cobertura e prêmio) estão preservados para manter a conformidade com o ZapSign e o Asaas.
+                Esta proposta possui contrato assinado ou cobrança gerada. Os dados cadastrais, escritório, declarações de risco e vigência podem ser alterados livremente. Os valores financeiros (cobertura e prêmio) estão preservados para manter a conformidade legal.
               </p>
             </div>
           </div>
         )}
 
-        {/* Navegação por Abas Estilizadas */}
-        <div className="px-6 pt-4 border-b border-gray-200 bg-white">
-          <div className="flex gap-2">
+        {/* Navegação por 4 Abas Estilizadas */}
+        <div className="px-6 pt-4 border-b border-gray-200 bg-white overflow-x-auto no-scrollbar">
+          <div className="flex gap-2 min-w-max pb-0.5">
             <button
               type="button"
               onClick={() => setActiveTab('cliente')}
-              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all border-b-2 -mb-[2px] ${
+              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold rounded-t-xl transition-all border-b-2 -mb-[2px] min-h-[44px] cursor-pointer ${
                 activeTab === 'cliente'
                   ? 'border-[#0e4a5a] text-[#0e4a5a] bg-teal-50/50'
                   : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-50'
               }`}
             >
               <User className="w-4 h-4" />
-              <span>Aba 1: Dados do Cliente & Endereço</span>
+              <span>1. Cliente & Endereço</span>
             </button>
 
             <button
               type="button"
               onClick={() => setActiveTab('proposta')}
-              className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-t-xl transition-all border-b-2 -mb-[2px] ${
+              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold rounded-t-xl transition-all border-b-2 -mb-[2px] min-h-[44px] cursor-pointer ${
                 activeTab === 'proposta'
                   ? 'border-[#0e4a5a] text-[#0e4a5a] bg-teal-50/50'
                   : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-50'
               }`}
             >
               <Shield className="w-4 h-4" />
-              <span>Aba 2: Dados da Proposta & Seguro</span>
+              <span>2. Proposta & Seguro</span>
               {isFinancialLocked && (
                 <span className="inline-flex" aria-label="Valores financeiros bloqueados">
                   <Lock className="w-3 h-3 text-amber-600" />
                 </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('escritorio')}
+              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold rounded-t-xl transition-all border-b-2 -mb-[2px] min-h-[44px] cursor-pointer ${
+                activeTab === 'escritorio'
+                  ? 'border-[#0e4a5a] text-[#0e4a5a] bg-teal-50/50'
+                  : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              <Briefcase className="w-4 h-4" />
+              <span>3. Escritório & Atuação</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('risco')}
+              className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-bold rounded-t-xl transition-all border-b-2 -mb-[2px] min-h-[44px] cursor-pointer ${
+                activeTab === 'risco'
+                  ? 'border-[#0e4a5a] text-[#0e4a5a] bg-teal-50/50'
+                  : 'border-transparent text-gray-500 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              <ClipboardCheck className="w-4 h-4" />
+              <span>4. Risco & Declarações</span>
+              {(riskAnswers.propostaRecusada === 'Sim' ||
+                riskAnswers.reclamacaoProfissional === 'Sim' ||
+                riskAnswers.investigacaoAutoridade === 'Sim' ||
+                riskAnswers.fatoTerceiros === 'Sim' ||
+                riskAnswers.pagouReclamacao === 'Sim' ||
+                isRenovacao === 'Sim') && (
+                <span className="w-2 h-2 rounded-full bg-amber-500 inline-block" />
               )}
             </button>
           </div>
@@ -844,10 +1300,11 @@ export default function EditarPropostaModal({
               </div>
             )}
 
-            {/* ABA 1: DADOS DO CLIENTE & ENDEREÇO */}
+            {/* ================================================================== */}
+            {/* ABA 1: DADOS DO CLIENTE & ENDEREÇO                                  */}
+            {/* ================================================================== */}
             {activeTab === 'cliente' && (
               <div className="space-y-6 animate-in fade-in duration-150">
-                {/* Dados de Contato / Cadastrais */}
                 <div className="space-y-4">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5 pb-1 border-b border-gray-100">
                     Identificação do Segurado
@@ -902,7 +1359,7 @@ export default function EditarPropostaModal({
                         type="email"
                         value={clientEmail}
                         onChange={(e) => setClientEmail(e.target.value)}
-                        placeholder="advogado@escritorio.com"
+                        placeholder="cliente@email.com"
                         className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all"
                       />
                     </div>
@@ -922,7 +1379,6 @@ export default function EditarPropostaModal({
                   </div>
                 </div>
 
-                {/* Endereço com Busca ViaCEP */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between pb-1 border-b border-gray-100">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5">
@@ -1027,7 +1483,7 @@ export default function EditarPropostaModal({
                       <select
                         value={uf}
                         onChange={(e) => setUf(e.target.value)}
-                        className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all"
+                        className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all cursor-pointer"
                       >
                         <option value="">Selecione</option>
                         {BRAZILIAN_UFS.map((sigla) => (
@@ -1042,69 +1498,12 @@ export default function EditarPropostaModal({
               </div>
             )}
 
-            {/* ABA 2: DADOS DA PROPOSTA & SEGURO */}
+            {/* ================================================================== */}
+            {/* ABA 2: DADOS DA PROPOSTA & SEGURO                                  */}
+            {/* ================================================================== */}
             {activeTab === 'proposta' && (
               <div className="space-y-6 animate-in fade-in duration-150">
-                {/* Seção Profissional */}
-                <div className="space-y-4">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5 pb-1 border-b border-gray-100">
-                    Registro Profissional & Atuação
-                  </h3>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                        Número OAB
-                      </label>
-                      <input
-                        type="text"
-                        value={oab}
-                        onChange={(e) => setOab(e.target.value)}
-                        placeholder="Ex: 123456"
-                        className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                        UF da OAB
-                      </label>
-                      <select
-                        value={oabUf}
-                        onChange={(e) => setOabUf(e.target.value)}
-                        className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all"
-                      >
-                        <option value="">Selecione UF da OAB</option>
-                        {BRAZILIAN_UFS.map((sigla) => (
-                          <option key={sigla} value={sigla}>
-                            {sigla}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-                        Área de Atuação
-                      </label>
-                      <input
-                        type="text"
-                        list="atuacao-options"
-                        value={atuacao}
-                        onChange={(e) => setAtuacao(e.target.value)}
-                        placeholder="Ex: Civil, Trabalhista..."
-                        className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all"
-                      />
-                      <datalist id="atuacao-options">
-                        {AREAS_ATUACAO_SUGESTOES.map((area) => (
-                          <option key={area} value={area} />
-                        ))}
-                      </datalist>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Seção 2: Serviço & Plano de Cobertura */}
+                {/* Seção 1: Serviço & Plano de Cobertura */}
                 <div className="space-y-4">
                   <div className="flex items-center justify-between pb-1 border-b border-gray-100">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5">
@@ -1132,7 +1531,7 @@ export default function EditarPropostaModal({
                         disabled={isFinancialLocked}
                         value={selectedPlanoTipo}
                         onChange={(e) => handleSelectPlano(e.target.value)}
-                        className={`w-full rounded-xl border px-3.5 py-2.5 text-sm font-semibold transition-all ${
+                        className={`w-full rounded-xl border px-3.5 py-2.5 text-sm font-semibold transition-all cursor-pointer ${
                           isFinancialLocked
                             ? 'bg-gray-100 border-gray-200 text-gray-500 cursor-not-allowed'
                             : 'bg-white border-gray-300 text-gray-900 focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20'
@@ -1164,7 +1563,7 @@ export default function EditarPropostaModal({
                   </div>
                 </div>
 
-                {/* Seção 3: Desconto Comercial da Proposta (0% a 40%) */}
+                {/* Seção 2: Desconto Comercial da Proposta (0% a 40%) */}
                 <div className="bg-emerald-50/50 border border-emerald-200/80 rounded-2xl p-4 sm:p-5 space-y-4 shadow-2xs">
                   <div className="flex flex-wrap items-center justify-between gap-2 border-b border-emerald-200/60 pb-3">
                     <div className="flex items-center gap-2">
@@ -1238,7 +1637,7 @@ export default function EditarPropostaModal({
                               isCurrent
                                 ? 'bg-[#0e4a5a] text-white shadow-xs scale-105'
                                 : 'bg-white border border-emerald-200 text-emerald-900 hover:bg-emerald-100 hover:border-emerald-300'
-                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                            } disabled:opacity-50 disabled:cursor-not-allowed min-h-[32px]`}
                           >
                             {pct}%
                           </button>
@@ -1265,7 +1664,9 @@ export default function EditarPropostaModal({
                           value={
                             isEditingPremioBase
                               ? premioBaseInput
-                              : (premioBase > 0 ? formatCurrencyBRL(premioBase) : '')
+                              : premioBase > 0
+                              ? formatCurrencyBRL(premioBase)
+                              : ''
                           }
                           onFocus={() => {
                             setIsEditingPremioBase(true);
@@ -1297,7 +1698,8 @@ export default function EditarPropostaModal({
                           Economia Aplicada ({descontoPercent}%)
                         </span>
                         <span className="font-bold text-emerald-700 text-sm py-1">
-                          - {formatCurrencyBRL(
+                          -{' '}
+                          {formatCurrencyBRL(
                             Math.round(
                               (premioBase > 0 ? premioBase : parseCurrencyToNumber(premioFinal)) *
                                 (descontoPercent / 100) *
@@ -1319,7 +1721,7 @@ export default function EditarPropostaModal({
                   </div>
                 </div>
 
-                {/* Seção 4: Condições do Seguro & Vigência */}
+                {/* Seção 3: Condições do Seguro & Vigência */}
                 <div className="space-y-4">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5 pb-1 border-b border-gray-100">
                     Condições do Seguro & Vigência
@@ -1387,7 +1789,7 @@ export default function EditarPropostaModal({
                   </div>
                 </div>
 
-                {/* Seção 5: Formas de Pagamento & Parcelamento */}
+                {/* Seção 4: Formas de Pagamento & Parcelamento */}
                 <div className="space-y-4">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5 pb-1 border-b border-gray-100">
                     <CreditCard className="w-4 h-4 text-[#00d4e0]" />
@@ -1436,7 +1838,7 @@ export default function EditarPropostaModal({
                       <select
                         value={parcelas}
                         onChange={(e) => setParcelas(e.target.value)}
-                        className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 font-semibold focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all"
+                        className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 font-semibold focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all cursor-pointer"
                       >
                         {opcoesParcelamento.map((op) => (
                           <option key={op.qtd} value={String(op.qtd)}>
@@ -1470,42 +1872,655 @@ export default function EditarPropostaModal({
                 </div>
               </div>
             )}
+
+            {/* ================================================================== */}
+            {/* ABA 3: ESCRITÓRIO & ATUAÇÃO                                        */}
+            {/* ================================================================== */}
+            {activeTab === 'escritorio' && (
+              <div className="space-y-6 animate-in fade-in duration-150">
+                {/* Ramo e Registro Profissional */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between pb-1 border-b border-gray-100">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5">
+                      <Briefcase className="w-4 h-4 text-[#00d4e0]" />
+                      Registro de Classe & Ramo Profissional
+                    </h3>
+                    <span className="text-[11px] font-semibold text-[#0e4a5a] bg-teal-50 border border-teal-200 px-2.5 py-0.5 rounded-full">
+                      {resolvedRamoConfig.name}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                        {regConfig.label} {regConfig.required && <span className="text-rose-500">*</span>}
+                      </label>
+                      <input
+                        type="text"
+                        value={registroProfissionalNumero}
+                        onChange={(e) => setRegistroProfissionalNumero(e.target.value)}
+                        placeholder={regConfig.placeholder}
+                        className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                        UF do Registro {regConfig.required && <span className="text-rose-500">*</span>}
+                      </label>
+                      <select
+                        value={registroProfissionalUf}
+                        onChange={(e) => setRegistroProfissionalUf(e.target.value)}
+                        className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all cursor-pointer font-semibold"
+                      >
+                        <option value="">Selecione UF</option>
+                        {BRAZILIAN_UFS.map((sigla) => (
+                          <option key={sigla} value={sigla}>
+                            {sigla}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {regConfig.hasRqe && (
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                          RQE (Qualificação de Especialista)
+                        </label>
+                        <input
+                          type="text"
+                          value={rqe}
+                          onChange={(e) => setRqe(e.target.value)}
+                          placeholder="Número RQE (opcional)"
+                          className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Associação a Escritório */}
+                <div className="bg-gray-50 border border-gray-200 p-5 rounded-2xl space-y-4 shadow-2xs">
+                  <div>
+                    <span className="block text-sm font-bold text-gray-900">
+                      O profissional é associado a algum escritório ou sociedade?
+                    </span>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Esta informação constará expressamente no contrato emitido e na apólice de seguro.
+                    </p>
+
+                    <div className="flex items-center gap-3 pt-3">
+                      <button
+                        type="button"
+                        onClick={() => setAssociadoEscritorio('Sim')}
+                        className={`min-h-[44px] min-w-[80px] px-4 py-2 rounded-xl text-xs sm:text-sm font-bold border transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                          associadoEscritorio === 'Sim'
+                            ? 'bg-[#0e4a5a] text-white border-[#0e4a5a] shadow-xs'
+                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
+                        }`}
+                      >
+                        {associadoEscritorio === 'Sim' && <Check className="w-4 h-4 text-[#00d4e0]" />}
+                        Sim
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAssociadoEscritorio('Não');
+                          setNomeEscritorio('');
+                        }}
+                        className={`min-h-[44px] min-w-[80px] px-4 py-2 rounded-xl text-xs sm:text-sm font-bold border transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                          associadoEscritorio === 'Não'
+                            ? 'bg-[#0e4a5a] text-white border-[#0e4a5a] shadow-xs'
+                            : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
+                        }`}
+                      >
+                        {associadoEscritorio === 'Não' && <Check className="w-4 h-4 text-[#00d4e0]" />}
+                        Não
+                      </button>
+                    </div>
+                  </div>
+
+                  {associadoEscritorio === 'Sim' && (
+                    <div className="pt-3 border-t border-gray-200/80 animate-in fade-in duration-150">
+                      <label className="block text-xs font-semibold text-gray-900 mb-1.5">
+                        Nome do Escritório / Razão Social da Sociedade <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={nomeEscritorio}
+                        onChange={(e) => setNomeEscritorio(e.target.value)}
+                        placeholder="Ex: Albuquerque & Silveira Sociedade de Advogados"
+                        className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all font-semibold"
+                      />
+                      <span className="text-[11px] text-gray-500 mt-1 block">
+                        Informe o nome completo da sociedade de advogados ou pessoa jurídica conveniada.
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Titularidade Profissional */}
+                <div className="bg-gray-50 border border-gray-200 p-5 rounded-2xl space-y-4 shadow-2xs">
+                  <div>
+                    <label className="block text-sm font-bold text-gray-900 mb-1">
+                      Titularidade do Profissional
+                    </label>
+                    <p className="text-xs text-gray-500 mb-2.5">
+                      Grau acadêmico, título ou especialização registrado na minuta.
+                    </p>
+                    <select
+                      value={titularidadeTipo}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setTitularidadeTipo(val);
+                        if (val !== 'Outro') {
+                          setTitularidadeOutro('');
+                        }
+                      }}
+                      className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 font-semibold focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all cursor-pointer"
+                    >
+                      <option value="Graduação">Graduação</option>
+                      <option value="Especialização">Especialização</option>
+                      <option value="Mestrado">Mestrado</option>
+                      <option value="Doutorado">Doutorado</option>
+                      <option value="Pós-Doutorado">Pós-Doutorado</option>
+                      <option value="Outro">Outro (especificar)</option>
+                    </select>
+                  </div>
+
+                  {titularidadeTipo === 'Outro' && (
+                    <div className="pt-3 border-t border-gray-200/80 animate-in fade-in duration-150">
+                      <label className="block text-xs font-semibold text-gray-900 mb-1.5">
+                        Especifique a Titularidade <span className="text-rose-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={titularidadeOutro}
+                        onChange={(e) => setTitularidadeOutro(e.target.value)}
+                        placeholder="Ex: Residência Médica, MBA Executivo, etc."
+                        className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all font-semibold"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Faturamento Anual (se aplicável ao ramo) */}
+                {resolvedRamoConfig.hasFaturamento !== false && (
+                  <div className="space-y-4">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5 pb-1 border-b border-gray-100">
+                      {resolvedRamoConfig.faturamentoLabel || 'Faturamento Bruto Anual'}
+                    </h3>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                          Faturamento Bruto (Últimos 12 meses)
+                        </label>
+                        <input
+                          type="text"
+                          value={faturamentoAntes}
+                          onChange={(e) => setFaturamentoAntes(formatMoneyInput(e.target.value))}
+                          placeholder="R$ 0,00"
+                          className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all font-semibold"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                          Faturamento Estimado (Próximos 12 meses)
+                        </label>
+                        <input
+                          type="text"
+                          value={faturamentoDepois}
+                          onChange={(e) => setFaturamentoDepois(formatMoneyInput(e.target.value))}
+                          placeholder="R$ 0,00"
+                          className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all font-semibold"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Áreas de Atuação e Especialidades Dinâmicas */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between pb-1 border-b border-gray-100">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5">
+                      <Award className="w-4 h-4 text-[#00d4e0]" />
+                      {resolvedRamoConfig.especialidadesLabel || 'Áreas de Atuação e Especialidades'}
+                    </h3>
+                    <span className="text-[11px] font-semibold text-gray-500">
+                      {especialidades.length} selecionada(s)
+                    </span>
+                  </div>
+
+                  {resolvedRamoConfig.especialidades && resolvedRamoConfig.especialidades.length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                      {resolvedRamoConfig.especialidades.map((esp) => {
+                        const isChecked = especialidades.includes(esp.key);
+                        return (
+                          <label
+                            key={esp.key}
+                            className={`flex flex-col justify-between p-3.5 rounded-xl border transition-all cursor-pointer min-h-[44px] ${
+                              isChecked
+                                ? 'border-[#0e4a5a] bg-teal-50/50 shadow-2xs ring-1 ring-[#0e4a5a]/20'
+                                : 'border-gray-200 bg-white hover:border-gray-300'
+                            }`}
+                          >
+                            <div className="flex items-start space-x-2.5">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => handleToggleEspecialidade(esp.key)}
+                                className="mt-0.5 rounded border-gray-300 text-[#0e4a5a] focus:ring-[#00d4e0] h-4 w-4 cursor-pointer"
+                              />
+                              <div className="flex-1 min-w-0">
+                                <span className="text-xs font-bold text-gray-900 block leading-snug">
+                                  {esp.label}
+                                </span>
+                                {esp.description && (
+                                  <span className="text-[11px] text-gray-500 block mt-0.5 leading-tight">
+                                    {esp.description}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-gray-500">
+                      Nenhuma especialidade pré-definida para este ramo.
+                    </p>
+                  )}
+
+                  {/* Campo de texto livre de atuação para ajuste fino */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                      Resumo Formatado da Atuação (Texto Livre)
+                    </label>
+                    <input
+                      type="text"
+                      list="atuacao-options"
+                      value={atuacao}
+                      onChange={(e) => setAtuacao(e.target.value)}
+                      placeholder="Ex: Civil, Trabalhista, Tributário..."
+                      className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all"
+                    />
+                    <datalist id="atuacao-options">
+                      {AREAS_ATUACAO_SUGESTOES.map((area) => (
+                        <option key={area} value={area} />
+                      ))}
+                    </datalist>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ================================================================== */}
+            {/* ABA 4: HISTÓRICO DE RISCO (UNDERWRITING) & DECLARAÇÕES            */}
+            {/* ================================================================== */}
+            {activeTab === 'risco' && (
+              <div className="space-y-6 animate-in fade-in duration-150">
+                {/* 1. Questionário de Underwriting Dinâmico */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between pb-1 border-b border-gray-100">
+                    <div>
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5">
+                        <ClipboardCheck className="w-4 h-4 text-[#00d4e0]" />
+                        Questionário de Risco & Underwriting
+                      </h3>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Respostas oficiais de underwriting do ramo. Em caso de resposta afirmativa (&quot;Sim&quot;), a justificativa circunstanciada é obrigatória.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 pt-1">
+                    {(resolvedRamoConfig.questionarioRisco || []).map((item) => {
+                      const respostaAtual = riskAnswers[item.id] || 'Não';
+                      const detalheAtual = riskDetails[item.detailKey] || '';
+                      const isSim = respostaAtual === 'Sim';
+
+                      return (
+                        <div
+                          key={item.id}
+                          className={`p-4 rounded-xl border transition-all ${
+                            isSim
+                              ? 'bg-rose-50/40 border-rose-200 shadow-2xs'
+                              : 'bg-gray-50 border-gray-200 hover:border-gray-300'
+                          } space-y-3`}
+                        >
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <p className="text-xs sm:text-sm text-gray-800 font-medium leading-relaxed flex-1 min-w-0 pr-0 sm:pr-4">
+                              {item.question}
+                            </p>
+
+                            <div
+                              role="radiogroup"
+                              aria-label={item.question}
+                              className="inline-flex items-center gap-1.5 shrink-0 self-start sm:self-center bg-gray-200/80 p-1 rounded-xl border border-gray-200"
+                            >
+                              <button
+                                type="button"
+                                role="radio"
+                                aria-checked={!isSim}
+                                onClick={() => handleSetRiskAnswer(item.id, 'Não')}
+                                className={`min-w-[64px] min-h-[44px] px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center ${
+                                  !isSim
+                                    ? 'bg-white text-gray-900 shadow-xs border border-gray-200/80 font-bold'
+                                    : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+                                }`}
+                              >
+                                Não
+                              </button>
+                              <button
+                                type="button"
+                                role="radio"
+                                aria-checked={isSim}
+                                onClick={() => handleSetRiskAnswer(item.id, 'Sim')}
+                                className={`min-w-[64px] min-h-[44px] px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center ${
+                                  isSim
+                                    ? 'bg-rose-600 text-white shadow-xs font-bold'
+                                    : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+                                }`}
+                              >
+                                Sim
+                              </button>
+                            </div>
+                          </div>
+
+                          {isSim && (
+                            <div className="pt-2 border-t border-rose-200/80 animate-in fade-in duration-150">
+                              <label className="block text-xs font-semibold text-rose-900 mb-1.5">
+                                {item.detailLabel || 'Justificativa circunstanciada'} <span className="text-rose-600">*</span>
+                              </label>
+                              <textarea
+                                required
+                                rows={2}
+                                value={detalheAtual}
+                                onChange={(e) => handleSetRiskDetail(item.detailKey, e.target.value)}
+                                placeholder="Informe os detalhes do ocorrido, datas, processos e valores..."
+                                className="w-full rounded-xl border border-rose-300 bg-white px-3.5 py-2 text-xs sm:text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-500/20 transition-all font-medium"
+                              />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 2. Bloco de Seguro Anterior (Renovação) */}
+                <div className="bg-gray-50 border border-gray-200 p-5 rounded-2xl space-y-4 shadow-2xs">
+                  <div className="flex items-center justify-between pb-1 border-b border-gray-200/60">
+                    <div>
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5">
+                        <History className="w-4 h-4 text-[#00d4e0]" />
+                        Seguro Anterior (Renovação)
+                      </h4>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Trata-se de renovação de apólice de seguro emitida por outra seguradora?
+                      </p>
+                    </div>
+
+                    <div className="inline-flex items-center gap-1.5 bg-gray-200/80 p-1 rounded-xl border border-gray-200 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setIsRenovacao('Não')}
+                        className={`min-w-[64px] min-h-[44px] px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center ${
+                          isRenovacao === 'Não'
+                            ? 'bg-white text-gray-900 shadow-xs border border-gray-200/80 font-bold'
+                            : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+                        }`}
+                      >
+                        Não
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsRenovacao('Sim')}
+                        className={`min-w-[64px] min-h-[44px] px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center ${
+                          isRenovacao === 'Sim'
+                            ? 'bg-[#0e4a5a] text-white shadow-xs font-bold'
+                            : 'text-gray-600 hover:text-gray-900 hover:bg-white/50'
+                        }`}
+                      >
+                        Sim
+                      </button>
+                    </div>
+                  </div>
+
+                  {isRenovacao === 'Sim' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-2 animate-in fade-in duration-150">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                          Seguradora Anterior <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={seguradoraAnterior}
+                          onChange={(e) => setSeguradoraAnterior(e.target.value)}
+                          placeholder="Ex: Porto Seguro, Kovr, Tokio Marine"
+                          className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all font-semibold"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                          Vigência Anterior
+                        </label>
+                        <input
+                          type="date"
+                          value={vigenciaAnterior}
+                          onChange={(e) => setVigenciaAnterior(e.target.value)}
+                          className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                          Limite Segurado Anterior (R$)
+                        </label>
+                        <input
+                          type="text"
+                          value={limiteAnterior}
+                          onChange={(e) => setLimiteAnterior(formatMoneyInput(e.target.value))}
+                          placeholder="R$ 0,00"
+                          className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all font-semibold"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                          Franquia Anterior (R$)
+                        </label>
+                        <input
+                          type="text"
+                          value={franquiaAnterior}
+                          onChange={(e) => setFranquiaAnterior(formatMoneyInput(e.target.value))}
+                          placeholder="R$ 0,00"
+                          className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all font-semibold"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                          Data de Retroatividade
+                        </label>
+                        <input
+                          type="date"
+                          value={dataRetroativa}
+                          onChange={(e) => setDataRetroativa(e.target.value)}
+                          className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 3. Bloco PPE (Pessoa Politicamente Exposta) */}
+                {resolvedRamoConfig.hasPpe !== false && (
+                  <div className="bg-gray-50 border border-gray-200 p-5 rounded-2xl space-y-4 shadow-2xs">
+                    <div className="border-b border-gray-200/60 pb-2">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-[#0e4a5a] flex items-center gap-1.5">
+                        <Building2 className="w-4 h-4 text-[#00d4e0]" />
+                        Pessoa Politicamente Exposta (PPE)
+                      </h4>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Declarações de conformidade regulatória e compliance.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="bg-white border border-gray-200 rounded-xl p-3.5 flex flex-col justify-between gap-3">
+                        <span className="text-xs font-semibold text-gray-800 leading-snug">
+                          Você ou sua empresa ocupou cargo público relevante nos últimos 5 anos?
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setPpeCargos('Não')}
+                            className={`min-h-[44px] px-4 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                              ppeCargos === 'Não'
+                                ? 'bg-gray-900 text-white border-gray-900'
+                                : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                            }`}
+                          >
+                            Não
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPpeCargos('Sim')}
+                            className={`min-h-[44px] px-4 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                              ppeCargos === 'Sim'
+                                ? 'bg-amber-600 text-white border-amber-600'
+                                : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                            }`}
+                          >
+                            Sim
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="bg-white border border-gray-200 rounded-xl p-3.5 flex flex-col justify-between gap-3">
+                        <span className="text-xs font-semibold text-gray-800 leading-snug">
+                          Seu sócio, cônjuge ou representante legal é PPE?
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setPpeRepresenta('Não')}
+                            className={`min-h-[44px] px-4 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                              ppeRepresenta === 'Não'
+                                ? 'bg-gray-900 text-white border-gray-900'
+                                : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                            }`}
+                          >
+                            Não
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPpeRepresenta('Sim')}
+                            className={`min-h-[44px] px-4 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
+                              ppeRepresenta === 'Sim'
+                                ? 'bg-amber-600 text-white border-amber-600'
+                                : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                            }`}
+                          >
+                            Sim
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {(ppeCargos === 'Sim' || ppeRepresenta === 'Sim') && (
+                      <div className="pt-3 border-t border-gray-200/80 space-y-2 animate-in fade-in duration-150">
+                        <span className="block text-xs font-bold text-gray-900 mb-1">
+                          Selecione as funções públicas ocupadas:
+                        </span>
+                        <div className="space-y-1.5 bg-white border border-gray-200 rounded-xl p-3">
+                          {CARGOS_PPE_PADRAO.map((cargo) => (
+                            <label
+                              key={cargo.id}
+                              className="flex items-start gap-2.5 p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer text-xs text-gray-700 select-none min-h-[36px]"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={ppeCargoSelect.includes(cargo.id)}
+                                onChange={() => handleTogglePpeCargo(cargo.id)}
+                                className="mt-0.5 rounded border-gray-300 text-[#0e4a5a] focus:ring-[#00d4e0] cursor-pointer"
+                              />
+                              <span className="leading-tight">{cargo.text}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Footer Fixo */}
           <div className="bg-gray-50 border-t border-gray-200 px-6 py-4 flex flex-col-reverse sm:flex-row items-center justify-between gap-3 rounded-b-2xl">
-            <div className="text-xs text-gray-500">
-              {activeTab === 'cliente' ? (
-                <span>Preencha os dados cadastrais antes de revisar a apólice.</span>
-              ) : (
-                <span>Revisão final dos parâmetros e vigência do seguro.</span>
-              )}
+            <div className="text-xs text-gray-500 text-center sm:text-left">
+              {activeTab === 'cliente' && <span>Dados cadastrais e endereço do proponente.</span>}
+              {activeTab === 'proposta' && <span>Plano, prêmio, descontos e vigência da apólice.</span>}
+              {activeTab === 'escritorio' && <span>Inscrição de classe, associação a escritório e especialidades.</span>}
+              {activeTab === 'risco' && <span>Questionário de underwriting, renovação e declarações PPE.</span>}
             </div>
 
-            <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="flex flex-wrap items-center justify-end gap-2.5 w-full sm:w-auto">
               <button
                 type="button"
                 onClick={onClose}
-                disabled={saving}
-                className="w-full sm:w-auto px-5 py-2.5 min-h-[44px] rounded-xl border border-gray-300 text-sm font-semibold text-gray-700 hover:bg-gray-100 transition-colors flex items-center justify-center disabled:opacity-50"
+                disabled={saving || regerandoMinuta}
+                className="w-full sm:w-auto px-4 py-2.5 min-h-[44px] rounded-xl border border-gray-300 bg-white text-sm font-semibold text-gray-700 hover:bg-gray-100 transition-colors flex items-center justify-center disabled:opacity-50 cursor-pointer"
               >
                 Cancelar
               </button>
 
+              {hasContratoGerado && (
+                <button
+                  type="button"
+                  onClick={() => salvarDados(true)}
+                  disabled={saving || regerandoMinuta}
+                  className="w-full sm:w-auto px-5 py-2.5 min-h-[44px] rounded-xl bg-gradient-to-r from-teal-600 to-[#0e4a5a] text-white hover:from-teal-700 hover:to-[#072a33] text-sm font-bold shadow-xs hover:shadow transition-all flex items-center justify-center gap-2 disabled:opacity-70 cursor-pointer"
+                  title="Salva as alterações e gera uma nova minuta ZapSign atualizada"
+                >
+                  {regerandoMinuta ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-[#00d4e0]" />
+                      <span>Regerando Minuta...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 text-[#00d4e0]" />
+                      <span>Salvar &amp; Regerar Minuta</span>
+                    </>
+                  )}
+                </button>
+              )}
+
               <button
                 type="submit"
-                disabled={saving}
-                className="w-full sm:w-auto px-6 py-2.5 min-h-[44px] rounded-xl bg-[#0e4a5a] text-white hover:bg-[#072a33] text-sm font-bold shadow-xs hover:shadow transition-all flex items-center justify-center gap-2 disabled:opacity-70"
+                disabled={saving || regerandoMinuta}
+                className="w-full sm:w-auto px-6 py-2.5 min-h-[44px] rounded-xl bg-[#0e4a5a] text-white hover:bg-[#072a33] text-sm font-bold shadow-xs hover:shadow transition-all flex items-center justify-center gap-2 disabled:opacity-70 cursor-pointer"
               >
                 {saving ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin text-[#00d4e0]" />
-                    <span>Salvando Dados...</span>
+                    <span>Salvando Alterações...</span>
                   </>
                 ) : (
                   <>
                     <Save className="w-4 h-4 text-[#00d4e0]" />
-                    <span>Salvar Dados</span>
+                    <span>Salvar Alterações</span>
                   </>
                 )}
               </button>

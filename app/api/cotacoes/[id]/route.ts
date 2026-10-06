@@ -5,6 +5,7 @@ import { upsertInsuranceClient } from '@/lib/insurance-ops';
 import { parseJsonbField } from '@/lib/json-safe';
 import { calcularPrecoServidor } from '@/lib/pricing';
 import { parseCurrencyToNumber, sanitizePlanFinancials } from '@/lib/format';
+import { parseAtuacaoList } from '@/lib/atuacao';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
 
@@ -84,6 +85,37 @@ function parseBirthDateInput(value: string | null | undefined): string | null {
   }
 
   return `${yearNum}-${String(monthNum).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
+}
+
+function pickField<T = unknown>(key: string, ...sources: (Record<string, unknown> | undefined | null)[]): T | undefined {
+  for (const src of sources) {
+    if (src && src[key] !== undefined && src[key] !== null) {
+      return src[key] as T;
+    }
+  }
+  return undefined;
+}
+
+function normalizeSimNao(val: unknown): 'Sim' | 'Não' | undefined {
+  if (val === undefined || val === null) return undefined;
+  if (typeof val === 'boolean') return val ? 'Sim' : 'Não';
+  if (typeof val === 'number') return val === 1 ? 'Sim' : 'Não';
+  const s = String(val).trim().toLowerCase();
+  if (['sim', 's', 'true', '1'].includes(s)) return 'Sim';
+  if (['nao', 'não', 'n', 'false', '0'].includes(s)) return 'Não';
+  return undefined;
+}
+
+function cleanString(val: unknown): string | undefined {
+  if (val === undefined || val === null) return undefined;
+  const s = String(val).trim();
+  return s.length > 0 ? s : undefined;
+}
+
+function cleanUf(val: unknown): string | undefined {
+  if (val === undefined || val === null) return undefined;
+  const s = String(val).trim().toUpperCase();
+  return s ? s.slice(0, 2) : undefined;
 }
 
 export async function PATCH(
@@ -293,6 +325,233 @@ export async function PATCH(
       }
     }
 
+    // Fontes para dados da proposta, escritório, underwriting e conselhos de classe
+    const rawProposalSources = [proposal, sanitizedInputClientData, payload as Record<string, unknown>];
+
+    // --- 1. ESCRITÓRIO ---
+    const rawAssociado = pickField('associadoEscritorio', ...rawProposalSources);
+    const rawNomeEscritorio = pickField('nomeEscritorio', ...rawProposalSources);
+    const rawEscritorioAssociado = pickField('escritorioAssociado', ...rawProposalSources);
+    const rawEscritorio = pickField('escritorio', ...rawProposalSources);
+
+    let associadoEscritorio: string | undefined;
+    if (rawAssociado !== undefined) {
+      associadoEscritorio = normalizeSimNao(rawAssociado);
+    } else if (rawEscritorioAssociado !== undefined) {
+      const s = String(rawEscritorioAssociado).trim().toLowerCase();
+      associadoEscritorio = (s === 'não associado' || s === 'nao associado' || s === 'não' || s === 'nao') ? 'Não' : 'Sim';
+    } else if (rawNomeEscritorio !== undefined && String(rawNomeEscritorio).trim().length > 0) {
+      associadoEscritorio = 'Sim';
+    } else if (currentClientData.associadoEscritorio !== undefined) {
+      associadoEscritorio = normalizeSimNao(currentClientData.associadoEscritorio) ?? String(currentClientData.associadoEscritorio);
+    }
+
+    const nomeEscritorio = cleanString(rawNomeEscritorio) ??
+      cleanString(rawEscritorio && rawEscritorio !== 'Não associado' ? rawEscritorio : undefined) ??
+      cleanString(currentClientData.nomeEscritorio);
+
+    let escritorioAssociado: string | undefined;
+    if (associadoEscritorio === 'Sim') {
+      escritorioAssociado = nomeEscritorio || cleanString(rawEscritorioAssociado) || cleanString(rawEscritorio) || 'Sim (Associado a escritório)';
+    } else if (associadoEscritorio === 'Não') {
+      escritorioAssociado = 'Não associado';
+    } else {
+      escritorioAssociado = cleanString(rawEscritorioAssociado) ?? cleanString(currentClientData.escritorioAssociado);
+    }
+
+    const escritorio = cleanString(rawEscritorio) ??
+      (associadoEscritorio === 'Não' ? 'Não associado' : (nomeEscritorio || escritorioAssociado || cleanString(currentClientData.escritorio)));
+
+    const titularidade = cleanString(pickField('titularidade', ...rawProposalSources)) ?? cleanString(currentClientData.titularidade);
+    const titularidadeTipo = cleanString(pickField('titularidadeTipo', ...rawProposalSources)) ?? cleanString(currentClientData.titularidadeTipo);
+    const titularidadeOutro = cleanString(pickField('titularidadeOutro', ...rawProposalSources)) ?? cleanString(currentClientData.titularidadeOutro);
+    const faturamentoAntes = cleanString(pickField('faturamentoAntes', ...rawProposalSources)) ?? cleanString(currentClientData.faturamentoAntes);
+    const faturamentoDepois = cleanString(pickField('faturamentoDepois', ...rawProposalSources)) ?? cleanString(currentClientData.faturamentoDepois);
+
+    // --- 2. ÁREAS DE ATUAÇÃO ---
+    const rawEspecialidades = pickField('especialidades', ...rawProposalSources);
+    const rawAtuacao = pickField('atuacao', ...rawProposalSources);
+
+    let especialidades: string[] | undefined;
+    let atuacao: string[] | string | undefined;
+
+    if (rawEspecialidades !== undefined || rawAtuacao !== undefined) {
+      const sourceForList = rawEspecialidades !== undefined ? rawEspecialidades : rawAtuacao;
+      const parsedList = parseAtuacaoList(sourceForList);
+      especialidades = parsedList;
+
+      if (rawAtuacao !== undefined) {
+        if (Array.isArray(rawAtuacao)) {
+          atuacao = parseAtuacaoList(rawAtuacao);
+        } else if (typeof rawAtuacao === 'string') {
+          atuacao = rawAtuacao.trim();
+        } else {
+          atuacao = parsedList;
+        }
+      } else {
+        atuacao = parsedList;
+      }
+    } else {
+      if (currentClientData.especialidades !== undefined) {
+        especialidades = parseAtuacaoList(currentClientData.especialidades);
+      } else if (currentClientData.atuacao !== undefined) {
+        especialidades = parseAtuacaoList(currentClientData.atuacao);
+      }
+      if (currentClientData.atuacao !== undefined) {
+        atuacao = currentClientData.atuacao as string[] | string;
+      }
+    }
+
+    // --- 3. QUESTIONÁRIO DE RISCO (UNDERWRITING) ---
+    const rawPropostaRecusada = pickField('propostaRecusada', ...rawProposalSources);
+    const propostaRecusada = rawPropostaRecusada !== undefined
+      ? (normalizeSimNao(rawPropostaRecusada) ?? String(rawPropostaRecusada))
+      : (normalizeSimNao(currentClientData.propostaRecusada) ?? cleanString(currentClientData.propostaRecusada));
+    const propostaDetalhe = cleanString(pickField('propostaDetalhe', ...rawProposalSources)) ??
+      cleanString(currentClientData.propostaDetalhe);
+
+    const rawReclamacao = pickField('reclamacaoProfissional', ...rawProposalSources);
+    const reclamacaoProfissional = rawReclamacao !== undefined
+      ? (normalizeSimNao(rawReclamacao) ?? String(rawReclamacao))
+      : (normalizeSimNao(currentClientData.reclamacaoProfissional) ?? cleanString(currentClientData.reclamacaoProfissional));
+    const reclamacaoDetalhe = cleanString(pickField('reclamacaoDetalhe', ...rawProposalSources)) ??
+      cleanString(currentClientData.reclamacaoDetalhe);
+
+    const rawInvestigacao = pickField('investigacaoAutoridade', ...rawProposalSources);
+    const investigacaoAutoridade = rawInvestigacao !== undefined
+      ? (normalizeSimNao(rawInvestigacao) ?? String(rawInvestigacao))
+      : (normalizeSimNao(currentClientData.investigacaoAutoridade) ?? cleanString(currentClientData.investigacaoAutoridade));
+    const investigacaoDetalhe = cleanString(pickField('investigacaoDetalhe', ...rawProposalSources)) ??
+      cleanString(currentClientData.investigacaoDetalhe);
+
+    const rawFatoTerceiros = pickField('fatoTerceiros', ...rawProposalSources);
+    const fatoTerceiros = rawFatoTerceiros !== undefined
+      ? (normalizeSimNao(rawFatoTerceiros) ?? String(rawFatoTerceiros))
+      : (normalizeSimNao(currentClientData.fatoTerceiros) ?? cleanString(currentClientData.fatoTerceiros));
+    const fatoDetalhe = cleanString(pickField('fatoDetalhe', ...rawProposalSources)) ??
+      cleanString(currentClientData.fatoDetalhe);
+
+    const rawPagouReclamacao = pickField('pagouReclamacao', ...rawProposalSources);
+    const pagouReclamacao = rawPagouReclamacao !== undefined
+      ? (normalizeSimNao(rawPagouReclamacao) ?? String(rawPagouReclamacao))
+      : (normalizeSimNao(currentClientData.pagouReclamacao) ?? cleanString(currentClientData.pagouReclamacao));
+    const pagouDetalhe = cleanString(pickField('pagouDetalhe', ...rawProposalSources)) ??
+      cleanString(currentClientData.pagouDetalhe);
+
+    // --- 4. SEGURO ANTERIOR (RENOVAÇÃO) ---
+    const rawRenovacao = pickField('isRenovacao', ...rawProposalSources) ??
+      pickField('renovacao', ...rawProposalSources);
+
+    let isRenovacao: string | undefined;
+    let renovacao: boolean | undefined;
+
+    if (rawRenovacao !== undefined) {
+      if (typeof rawRenovacao === 'boolean') {
+        renovacao = rawRenovacao;
+        isRenovacao = rawRenovacao ? 'Sim' : 'Não';
+      } else {
+        const norm = normalizeSimNao(rawRenovacao);
+        if (norm) {
+          isRenovacao = norm;
+          renovacao = norm === 'Sim';
+        } else {
+          isRenovacao = String(rawRenovacao);
+          renovacao = rawRenovacao === 'true' || rawRenovacao === 'Sim';
+        }
+      }
+    } else {
+      if (currentClientData.isRenovacao !== undefined) {
+        isRenovacao = String(currentClientData.isRenovacao);
+      }
+      if (currentClientData.renovacao !== undefined) {
+        renovacao = Boolean(currentClientData.renovacao);
+      } else if (isRenovacao !== undefined) {
+        renovacao = isRenovacao === 'Sim';
+      }
+    }
+
+    const seguradora = cleanString(pickField('seguradora', ...rawProposalSources)) ?? cleanString(currentClientData.seguradora);
+    const limite = cleanString(pickField('limite', ...rawProposalSources)) ??
+      cleanString(pickField('lmiAnterior', ...rawProposalSources)) ??
+      cleanString(currentClientData.limite) ??
+      cleanString(currentClientData.lmiAnterior);
+    const franquiaAnterior = cleanString(pickField('franquiaAnterior', ...rawProposalSources)) ?? cleanString(currentClientData.franquiaAnterior);
+    const dataRetroativa = cleanString(pickField('dataRetroativa', ...rawProposalSources)) ??
+      cleanString(pickField('retroatividade', ...rawProposalSources)) ??
+      cleanString(currentClientData.dataRetroativa) ??
+      cleanString(currentClientData.retroatividade);
+
+    // --- 5. PESSOAS POLITICAMENTE EXPOSTAS (PPE) ---
+    const rawPpeCargos = pickField('ppeCargos', ...rawProposalSources);
+    let ppeCargos: string | boolean | undefined;
+    if (rawPpeCargos !== undefined) {
+      if (typeof rawPpeCargos === 'boolean') {
+        ppeCargos = rawPpeCargos;
+      } else {
+        ppeCargos = normalizeSimNao(rawPpeCargos) ?? String(rawPpeCargos);
+      }
+    } else if (currentClientData.ppeCargos !== undefined) {
+      ppeCargos = currentClientData.ppeCargos as string | boolean;
+    }
+
+    const rawPpeRepresenta = pickField('ppeRepresenta', ...rawProposalSources);
+    let ppeRepresenta: string | boolean | undefined;
+    if (rawPpeRepresenta !== undefined) {
+      if (typeof rawPpeRepresenta === 'boolean') {
+        ppeRepresenta = rawPpeRepresenta;
+      } else {
+        ppeRepresenta = normalizeSimNao(rawPpeRepresenta) ?? String(rawPpeRepresenta);
+      }
+    } else if (currentClientData.ppeRepresenta !== undefined) {
+      ppeRepresenta = currentClientData.ppeRepresenta as string | boolean;
+    }
+
+    const rawPpeCargoSelect = pickField('ppeCargoSelect', ...rawProposalSources);
+    let ppeCargoSelect: string | undefined;
+    if (rawPpeCargoSelect !== undefined) {
+      if (Array.isArray(rawPpeCargoSelect)) {
+        ppeCargoSelect = rawPpeCargoSelect.map(String).join(', ');
+      } else {
+        ppeCargoSelect = cleanString(rawPpeCargoSelect);
+      }
+    } else if (currentClientData.ppeCargoSelect !== undefined) {
+      ppeCargoSelect = Array.isArray(currentClientData.ppeCargoSelect)
+        ? (currentClientData.ppeCargoSelect as unknown[]).map(String).join(', ')
+        : cleanString(currentClientData.ppeCargoSelect);
+    }
+
+    // --- 6. REGISTROS DE CLASSE ADICIONAIS ---
+    const oab = cleanString(pickField('oab', ...rawProposalSources)) ?? cleanString(currentClientData.oab);
+    const oabUf = cleanUf(pickField('oabUf', ...rawProposalSources) ?? pickField('ufOab', ...rawProposalSources)) ??
+      cleanUf(currentClientData.oabUf ?? currentClientData.ufOab);
+
+    const crm = cleanString(pickField('crm', ...rawProposalSources)) ?? cleanString(currentClientData.crm);
+    const crmUf = cleanUf(pickField('crmUf', ...rawProposalSources) ?? pickField('ufCrm', ...rawProposalSources)) ??
+      cleanUf(currentClientData.crmUf ?? currentClientData.ufCrm);
+
+    const rqe = cleanString(pickField('rqe', ...rawProposalSources)) ?? cleanString(currentClientData.rqe);
+
+    const cro = cleanString(pickField('cro', ...rawProposalSources)) ?? cleanString(currentClientData.cro);
+    const croUf = cleanUf(pickField('croUf', ...rawProposalSources) ?? pickField('ufCro', ...rawProposalSources)) ??
+      cleanUf(currentClientData.croUf ?? currentClientData.ufCro);
+
+    const creaCau = cleanString(pickField('creaCau', ...rawProposalSources)) ?? cleanString(currentClientData.creaCau);
+    const creaCauUf = cleanUf(pickField('creaCauUf', ...rawProposalSources) ?? pickField('ufCreaCau', ...rawProposalSources)) ??
+      cleanUf(currentClientData.creaCauUf ?? currentClientData.ufCreaCau);
+
+    const crc = cleanString(pickField('crc', ...rawProposalSources)) ?? cleanString(currentClientData.crc);
+    const crcUf = cleanUf(pickField('crcUf', ...rawProposalSources) ?? pickField('ufCrc', ...rawProposalSources)) ??
+      cleanUf(currentClientData.crcUf ?? currentClientData.ufCrc);
+
+    // --- 7. VIGÊNCIA DA PROPOSTA ---
+    const rawDataInicioVigencia = pickField('dataInicioVigencia', ...rawProposalSources) ??
+      pickField('vigencia', ...rawProposalSources) ??
+      pickField('dataVigencia', ...rawProposalSources);
+    const dataInicioVigencia = cleanString(rawDataInicioVigencia) ??
+      cleanString(currentClientData.dataInicioVigencia) ??
+      cleanString(currentClientData.vigencia) ??
+      cleanString(currentClientData.dataVigencia);
+
     // Mesclagem de client_data preservando dados protegidos anteriores (tokens ZapSign, checkoutId, etc.)
     const mergedClientData: Record<string, unknown> = {
       ...currentClientData,
@@ -334,22 +593,66 @@ export async function PATCH(
       ...(currentClientData.signUrl ? { signUrl: currentClientData.signUrl } : {}),
       ...(currentClientData.docToken ? { docToken: currentClientData.docToken } : {}),
       ...(currentClientData.checkoutId ? { checkoutId: currentClientData.checkoutId } : {}),
-      // Dados profissionais da proposta (sempre permitidos)
-      ...(proposal.oab !== undefined || sanitizedInputClientData.oab !== undefined ? { oab: proposal.oab ?? sanitizedInputClientData.oab } : {}),
-      ...(proposal.oabUf !== undefined || sanitizedInputClientData.oabUf !== undefined || sanitizedInputClientData.ufOab !== undefined ? {
-        oabUf: proposal.oabUf ?? sanitizedInputClientData.oabUf ?? sanitizedInputClientData.ufOab,
-        ufOab: proposal.oabUf ?? sanitizedInputClientData.oabUf ?? sanitizedInputClientData.ufOab,
+
+      // Vigência da Proposta
+      ...(dataInicioVigencia !== undefined ? {
+        dataInicioVigencia,
+        vigencia: dataInicioVigencia,
+        dataVigencia: dataInicioVigencia,
       } : {}),
-      ...(proposal.atuacao !== undefined || sanitizedInputClientData.atuacao !== undefined ? { atuacao: proposal.atuacao ?? sanitizedInputClientData.atuacao } : {}),
-      ...(proposal.titularidade !== undefined || sanitizedInputClientData.titularidade !== undefined ? { titularidade: proposal.titularidade ?? sanitizedInputClientData.titularidade } : {}),
-      ...(proposal.escritorioAssociado !== undefined || sanitizedInputClientData.escritorioAssociado !== undefined ? { escritorioAssociado: proposal.escritorioAssociado ?? sanitizedInputClientData.escritorioAssociado } : {}),
-      ...(proposal.faturamentoAntes !== undefined || sanitizedInputClientData.faturamentoAntes !== undefined ? { faturamentoAntes: proposal.faturamentoAntes ?? sanitizedInputClientData.faturamentoAntes } : {}),
-      ...(proposal.faturamentoDepois !== undefined || sanitizedInputClientData.faturamentoDepois !== undefined ? { faturamentoDepois: proposal.faturamentoDepois ?? sanitizedInputClientData.faturamentoDepois } : {}),
-      ...(proposal.dataInicioVigencia !== undefined || sanitizedInputClientData.dataInicioVigencia !== undefined || sanitizedInputClientData.vigencia !== undefined ? {
-        dataInicioVigencia: proposal.dataInicioVigencia ?? sanitizedInputClientData.dataInicioVigencia ?? sanitizedInputClientData.vigencia,
-        vigencia: proposal.dataInicioVigencia ?? sanitizedInputClientData.dataInicioVigencia ?? sanitizedInputClientData.vigencia,
-        dataVigencia: proposal.dataInicioVigencia ?? sanitizedInputClientData.dataInicioVigencia ?? sanitizedInputClientData.vigencia,
-      } : {}),
+
+      // 1. Escritório
+      ...(associadoEscritorio !== undefined ? { associadoEscritorio } : {}),
+      ...(nomeEscritorio !== undefined ? { nomeEscritorio } : {}),
+      ...(escritorioAssociado !== undefined ? { escritorioAssociado } : {}),
+      ...(escritorio !== undefined ? { escritorio } : {}),
+      ...(titularidade !== undefined ? { titularidade } : {}),
+      ...(titularidadeTipo !== undefined ? { titularidadeTipo } : {}),
+      ...(titularidadeOutro !== undefined ? { titularidadeOutro } : {}),
+      ...(faturamentoAntes !== undefined ? { faturamentoAntes } : {}),
+      ...(faturamentoDepois !== undefined ? { faturamentoDepois } : {}),
+
+      // 2. Áreas de Atuação
+      ...(especialidades !== undefined ? { especialidades } : {}),
+      ...(atuacao !== undefined ? { atuacao } : {}),
+
+      // 3. Questionário de Risco (Underwriting)
+      ...(propostaRecusada !== undefined ? { propostaRecusada } : {}),
+      ...(propostaDetalhe !== undefined ? { propostaDetalhe } : {}),
+      ...(reclamacaoProfissional !== undefined ? { reclamacaoProfissional } : {}),
+      ...(reclamacaoDetalhe !== undefined ? { reclamacaoDetalhe } : {}),
+      ...(investigacaoAutoridade !== undefined ? { investigacaoAutoridade } : {}),
+      ...(investigacaoDetalhe !== undefined ? { investigacaoDetalhe } : {}),
+      ...(fatoTerceiros !== undefined ? { fatoTerceiros } : {}),
+      ...(fatoDetalhe !== undefined ? { fatoDetalhe } : {}),
+      ...(pagouReclamacao !== undefined ? { pagouReclamacao } : {}),
+      ...(pagouDetalhe !== undefined ? { pagouDetalhe } : {}),
+
+      // 4. Seguro Anterior (Renovação)
+      ...(isRenovacao !== undefined ? { isRenovacao } : {}),
+      ...(renovacao !== undefined ? { renovacao } : {}),
+      ...(seguradora !== undefined ? { seguradora } : {}),
+      ...(limite !== undefined ? { limite } : {}),
+      ...(franquiaAnterior !== undefined ? { franquiaAnterior } : {}),
+      ...(dataRetroativa !== undefined ? { dataRetroativa } : {}),
+
+      // 5. Pessoas Politicamente Expostas (PPE)
+      ...(ppeCargos !== undefined ? { ppeCargos } : {}),
+      ...(ppeRepresenta !== undefined ? { ppeRepresenta } : {}),
+      ...(ppeCargoSelect !== undefined ? { ppeCargoSelect } : {}),
+
+      // 6. Registros de Classe Adicionais
+      ...(oab !== undefined ? { oab } : {}),
+      ...(oabUf !== undefined ? { oabUf, ufOab: oabUf } : {}),
+      ...(crm !== undefined ? { crm } : {}),
+      ...(crmUf !== undefined ? { crmUf, ufCrm: crmUf } : {}),
+      ...(rqe !== undefined ? { rqe } : {}),
+      ...(cro !== undefined ? { cro } : {}),
+      ...(croUf !== undefined ? { croUf, ufCro: croUf } : {}),
+      ...(creaCau !== undefined ? { creaCau } : {}),
+      ...(creaCauUf !== undefined ? { creaCauUf, ufCreaCau: creaCauUf } : {}),
+      ...(crc !== undefined ? { crc } : {}),
+      ...(crcUf !== undefined ? { crcUf, ufCrc: crcUf } : {}),
     };
 
     // Se a cotação já possuir contrato gerado na ZapSign (status contrato_gerado ou token ativo),
@@ -359,7 +662,7 @@ export async function PATCH(
     if (hasContractGenerated) {
       mergedClientData.minutaDesatualizada = true;
       mergedClientData.minutaAlteradaEm = new Date().toISOString();
-      mergedClientData.minutaDesatualizadaMotivo = 'Informações da proposta ou dados cadastrais foram alterados';
+      mergedClientData.minutaDesatualizadaMotivo = 'Informações da proposta, escritório ou declarações de risco foram alteradas';
     }
 
     // Sincroniza o cliente em insurance_clients
@@ -375,6 +678,10 @@ export async function PATCH(
       },
     });
 
+    const isRenewalDb = isRenovacao !== undefined
+      ? (isRenovacao === 'Sim' || renovacao === true)
+      : (Boolean(cotacao.is_renewal) || currentClientData.isRenovacao === 'Sim' || currentClientData.renovacao === true);
+
     // Atualiza a cotação
     await sql`
       UPDATE cotacoes
@@ -387,6 +694,7 @@ export async function PATCH(
         client_data = ${JSON.stringify(mergedClientData)}::jsonb,
         importancia_segurada = ${importanciaSegurada},
         premio_final = ${premioFinal},
+        is_renewal = ${isRenewalDb},
         notes = ${notes},
         updated_at = NOW()
       WHERE id = ${id}

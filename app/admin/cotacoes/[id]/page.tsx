@@ -16,6 +16,7 @@ import { VerificarZapSignButton } from '../_verificar-zapsign-button';
 import { CopiarLinkAssinaturaButton } from '@/components/cotacao/CopiarLinkAssinaturaButton';
 import { EnviarPropostaEmailButton } from '@/components/cotacao/EnviarPropostaEmailButton';
 import RegerarMinutaButton from '@/components/cotacao/RegerarMinutaButton';
+import CotacaoInformacoesProfissionaisCard from '@/components/cotacao/CotacaoInformacoesProfissionaisCard';
 import { GerenciarCobrancaButton } from '@/components/admin/GerenciarCobrancaButton';
 import { DesvincularCobrancaButton } from '@/components/admin/DesvincularCobrancaButton';
 import type { CobrancaAsaasInitialData } from '@/components/admin/GerenciarCobrancaAsaasModal';
@@ -584,8 +585,10 @@ export default async function AdminCotacaoDetailPage({
       {/* Grid com Detalhes da Proposta, ZapSign e Asaas */}
       <div className="grid md:grid-cols-2 gap-6">
         
-        {/* Card 1: Dados do Plano & Proposta RC Advogados */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4">
+        {/* Coluna 1: Dados do Plano & Informações Profissionais / Risco */}
+        <div className="space-y-6">
+          {/* Card 1: Dados do Plano & Proposta RC Advogados */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
               <FileText size={16} className="text-cyan-600" /> Detalhes do Plano Contratado
@@ -674,8 +677,31 @@ export default async function AdminCotacaoDetailPage({
           )}
         </div>
 
-        {/* Card 2: Status do Contrato & Assinatura (ZapSign) & Cobrança (Asaas) */}
-        <div className="space-y-6">
+        {/* Card 2: Informações de Escritório, Atuação & Histórico de Risco */}
+        <CotacaoInformacoesProfissionaisCard
+          cotacao={{
+            id: cotacao.id,
+            status: cotacao.status,
+            client_name: cotacao.client_name,
+            client_cpf_cnpj: cotacao.client_cpf_cnpj,
+            client_email: cotacao.client_email,
+            client_phone: cotacao.client_phone,
+            importancia_segurada: cotacao.importancia_segurada,
+            premio_final: cotacao.premio_final ?? cotacao.premio_calculado ?? (clientData.valor ? Number(clientData.valor) : null),
+            premio_calculado: cotacao.premio_calculado,
+            notes: cotacao.notes,
+            client_data: clientData,
+            product_id: cotacao.product_id,
+            product_flow_key: cotacao.product_flow_key,
+            partner_id: cotacao.partner_id,
+          }}
+          clientData={clientData}
+          readOnlyFinancials={['assinado', 'pagamento_gerado', 'aprovada', 'emitida'].includes(String(cotacao.status))}
+        />
+      </div>
+
+      {/* Card 3: Status do Contrato & Assinatura (ZapSign) & Cobrança (Asaas) */}
+      <div className="space-y-6">
           
           {/* Fatura & Pagamento Asaas */}
           <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4">

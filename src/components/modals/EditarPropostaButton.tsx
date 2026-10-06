@@ -7,6 +7,7 @@ import EditarPropostaModal, { type EditarPropostaModalProps } from './EditarProp
 export interface EditarPropostaButtonProps {
   cotacao: EditarPropostaModalProps['cotacao'];
   readOnlyFinancials?: boolean;
+  initialTab?: 'cliente' | 'proposta' | 'escritorio' | 'risco';
   onSuccess?: () => void;
   className?: string;
   variant?: 'primary' | 'outline' | 'ghost' | 'icon';
@@ -17,6 +18,7 @@ export interface EditarPropostaButtonProps {
 export default function EditarPropostaButton({
   cotacao,
   readOnlyFinancials,
+  initialTab,
   onSuccess,
   className = '',
   variant = 'outline',
@@ -71,6 +73,7 @@ export default function EditarPropostaButton({
           onSuccess={onSuccess}
           cotacao={cotacao}
           readOnlyFinancials={readOnlyFinancials}
+          initialTab={initialTab}
         />
       )}
     </>

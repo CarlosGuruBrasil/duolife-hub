@@ -15,6 +15,7 @@ import { EnviarPropostaEmailButton } from '@/components/cotacao/EnviarPropostaEm
 import { VerificarZapSignButton } from '@/components/cotacao/VerificarZapSignButton';
 import RegerarMinutaButton from '@/components/cotacao/RegerarMinutaButton';
 import { SincronizarAsaasButton } from '@/components/cotacao/SincronizarAsaasButton';
+import CotacaoInformacoesProfissionaisCard from '@/components/cotacao/CotacaoInformacoesProfissionaisCard';
 
 const statusLabel: Record<string, string> = {
   rascunho: 'Rascunho',
@@ -580,85 +581,110 @@ export default async function PortalCotacaoDetailPage({
       {/* Grid com Detalhes da Proposta, ZapSign e Asaas */}
       <div className="grid md:grid-cols-2 gap-6">
         
-        {/* Card 1: Dados do Plano & Proposta RC Advogados */}
-        <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-              <FileText size={16} className="text-cyan-600" /> Detalhes do Plano Contratado
-            </h2>
-            <EditarPropostaButton
-              cotacao={{
-                id: cotacao.id,
-                status: cotacao.status,
-                client_name: cotacao.client_name,
-                client_cpf_cnpj: cotacao.client_cpf_cnpj,
-                client_email: cotacao.client_email,
-                client_phone: cotacao.client_phone,
-                importancia_segurada: cotacao.importancia_segurada,
-                premio_final: cotacao.premio_final ?? cotacao.premio_calculado ?? (clientData.valor ? Number(clientData.valor) : null),
-                notes: cotacao.notes ? String(cotacao.notes) : null,
-                client_data: clientData,
-                product_id: cotacao.product_id,
-                product_flow_key: cotacao.product_flow_key,
-                partner_id: cotacao.partner_id,
-              }}
-              variant="ghost"
-              size="sm"
-            >
-              <span className="text-xs text-[#0e4a5a] font-semibold hover:underline">✏️ Editar</span>
-            </EditarPropostaButton>
-          </div>
-          
-          <div className="grid grid-cols-2 gap-4 text-xs">
-            <div>
-              <span className="text-slate-400 font-medium block">Plano</span>
-              <span className="font-bold text-slate-900 block">{planoNome}</span>
+        {/* Coluna 1: Dados do Plano & Informações Profissionais / Risco */}
+        <div className="space-y-6">
+          {/* Card 1: Dados do Plano & Proposta RC Advogados */}
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                <FileText size={16} className="text-cyan-600" /> Detalhes do Plano Contratado
+              </h2>
+              <EditarPropostaButton
+                cotacao={{
+                  id: cotacao.id,
+                  status: cotacao.status,
+                  client_name: cotacao.client_name,
+                  client_cpf_cnpj: cotacao.client_cpf_cnpj,
+                  client_email: cotacao.client_email,
+                  client_phone: cotacao.client_phone,
+                  importancia_segurada: cotacao.importancia_segurada,
+                  premio_final: cotacao.premio_final ?? cotacao.premio_calculado ?? (clientData.valor ? Number(clientData.valor) : null),
+                  notes: cotacao.notes ? String(cotacao.notes) : null,
+                  client_data: clientData,
+                  product_id: cotacao.product_id,
+                  product_flow_key: cotacao.product_flow_key,
+                  partner_id: cotacao.partner_id,
+                }}
+                variant="ghost"
+                size="sm"
+              >
+                <span className="text-xs text-[#0e4a5a] font-semibold hover:underline">✏️ Editar</span>
+              </EditarPropostaButton>
             </div>
-            <div>
-              <span className="text-slate-400 font-medium block">Cobertura</span>
-              <span className="font-bold text-slate-900 block">{cobertura}</span>
+            
+            <div className="grid grid-cols-2 gap-4 text-xs">
+              <div>
+                <span className="text-slate-400 font-medium block">Plano</span>
+                <span className="font-bold text-slate-900 block">{planoNome}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 font-medium block">Cobertura</span>
+                <span className="font-bold text-slate-900 block">{cobertura}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 font-medium block">Franquia</span>
+                <span className="font-semibold text-slate-700 block">{franquia}</span>
+              </div>
+              <div>
+                <span className="text-slate-400 font-medium block">Vendedor / Parceiro</span>
+                <span className="font-semibold text-slate-900 block">{cotacao.partner_name}</span>
+              </div>
             </div>
-            <div>
-              <span className="text-slate-400 font-medium block">Franquia</span>
-              <span className="font-semibold text-slate-700 block">{franquia}</span>
+
+            {/* Dados Profissionais do Advogado */}
+            <div className="pt-3 border-t border-slate-100 space-y-2 text-xs">
+              <span className="text-slate-400 font-semibold uppercase tracking-wider block text-[11px]">Dados do Proponente / Advogado</span>
+              <div className="grid grid-cols-2 gap-3">
+                <div><span className="text-slate-400">OAB / UF:</span> <strong className="text-slate-900">{clientData.oab ? `OAB ${clientData.oab}` : 'Não informada'}</strong></div>
+                <div><span className="text-slate-400">Atuação:</span> <strong className="text-slate-900">{formatAtuacao(clientData.atuacao)}</strong></div>
+                <div><span className="text-slate-400">Titularidade:</span> <strong className="text-slate-900">{String(clientData.titularidade || 'Individual')}</strong></div>
+                <div><span className="text-slate-400">Escritório:</span> <strong className="text-slate-900">{String(clientData.escritorioAssociado || 'N/A')}</strong></div>
+              </div>
             </div>
-            <div>
-              <span className="text-slate-400 font-medium block">Vendedor / Parceiro</span>
-              <span className="font-semibold text-slate-900 block">{cotacao.partner_name}</span>
-            </div>
+
+            {/* Endereço */}
+            {Boolean(clientData.logradouro) && (
+              <div className="pt-3 border-t border-slate-100 text-xs">
+                <span className="text-slate-400 font-semibold uppercase tracking-wider block text-[11px]">Endereço Cadastrado</span>
+                <p className="text-slate-700 mt-1 font-medium">
+                  {String(clientData.logradouro)}, {String(clientData.numero || 'S/N')} · {String(clientData.bairro || '')} · {String(clientData.cidade || '')}/{String(clientData.uf || '')} (CEP: {String(clientData.cep || '')})
+                </p>
+              </div>
+            )}
+
+            {/* Observações */}
+            {Boolean(cotacao.notes) && (
+              <div className="pt-3 border-t border-slate-100 text-xs">
+                <span className="text-slate-400 font-semibold uppercase tracking-wider block text-[11px]">Observações</span>
+                <p className="text-slate-700 mt-1">{String(cotacao.notes)}</p>
+              </div>
+            )}
           </div>
 
-          {/* Dados Profissionais do Advogado */}
-          <div className="pt-3 border-t border-slate-100 space-y-2 text-xs">
-            <span className="text-slate-400 font-semibold uppercase tracking-wider block text-[11px]">Dados do Proponente / Advogado</span>
-            <div className="grid grid-cols-2 gap-3">
-              <div><span className="text-slate-400">OAB / UF:</span> <strong className="text-slate-900">{clientData.oab ? `OAB ${clientData.oab}` : 'Não informada'}</strong></div>
-              <div><span className="text-slate-400">Atuação:</span> <strong className="text-slate-900">{formatAtuacao(clientData.atuacao)}</strong></div>
-              <div><span className="text-slate-400">Titularidade:</span> <strong className="text-slate-900">{String(clientData.titularidade || 'Individual')}</strong></div>
-              <div><span className="text-slate-400">Escritório:</span> <strong className="text-slate-900">{String(clientData.escritorioAssociado || 'N/A')}</strong></div>
-            </div>
-          </div>
-
-          {/* Endereço */}
-          {Boolean(clientData.logradouro) && (
-            <div className="pt-3 border-t border-slate-100 text-xs">
-              <span className="text-slate-400 font-semibold uppercase tracking-wider block text-[11px]">Endereço Cadastrado</span>
-              <p className="text-slate-700 mt-1 font-medium">
-                {String(clientData.logradouro)}, {String(clientData.numero || 'S/N')} · {String(clientData.bairro || '')} · {String(clientData.cidade || '')}/{String(clientData.uf || '')} (CEP: {String(clientData.cep || '')})
-              </p>
-            </div>
-          )}
-
-          {/* Observações */}
-          {Boolean(cotacao.notes) && (
-            <div className="pt-3 border-t border-slate-100 text-xs">
-              <span className="text-slate-400 font-semibold uppercase tracking-wider block text-[11px]">Observações</span>
-              <p className="text-slate-700 mt-1">{String(cotacao.notes)}</p>
-            </div>
-          )}
+          {/* Card 2: Informações de Escritório, Atuação & Histórico de Risco */}
+          <CotacaoInformacoesProfissionaisCard
+            cotacao={{
+              id: cotacao.id,
+              status: cotacao.status,
+              client_name: cotacao.client_name,
+              client_cpf_cnpj: cotacao.client_cpf_cnpj,
+              client_email: cotacao.client_email,
+              client_phone: cotacao.client_phone,
+              importancia_segurada: cotacao.importancia_segurada,
+              premio_final: cotacao.premio_final ?? cotacao.premio_calculado ?? (clientData.valor ? Number(clientData.valor) : null),
+              premio_calculado: cotacao.premio_calculado,
+              notes: cotacao.notes ? String(cotacao.notes) : null,
+              client_data: clientData,
+              product_id: cotacao.product_id,
+              product_flow_key: cotacao.product_flow_key,
+              partner_id: cotacao.partner_id,
+            }}
+            clientData={clientData}
+            readOnlyFinancials={['assinado', 'pagamento_gerado', 'aprovada', 'emitida'].includes(String(cotacao.status))}
+          />
         </div>
 
-        {/* Card 2: Status do Contrato & Assinatura (ZapSign) & Cobrança (Asaas) */}
+        {/* Card 3: Status do Contrato & Assinatura (ZapSign) & Cobrança (Asaas) */}
         <div className="space-y-6">
           
           {/* Fatura & Pagamento Asaas */}
