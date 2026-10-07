@@ -4,6 +4,7 @@ import { Plus, RefreshCw, FileText, Search, ExternalLink } from 'lucide-react';
 import { getPartnerAccessContext, verifyPartnerAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
+import ExportarVendasCsvButton from '@/components/vendas/ExportarVendasCsvButton';
 import { PortalVendasFilterSection } from './_components/PortalVendasFilterSection';
 import { PortalVendasPagination } from './_components/PortalVendasPagination';
 import { PeriodPreset, resolveDateRange, getPeriodLabel } from '@/lib/date-filters';
@@ -202,6 +203,7 @@ export default async function PortalVendasPage({
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <ExportarVendasCsvButton endpoint="/api/portal/vendas/exportar" />
           {isCorretora && (
             <Link href="/portal/equipe" className="btn-outline text-xs py-2">
               Ver Vendedores

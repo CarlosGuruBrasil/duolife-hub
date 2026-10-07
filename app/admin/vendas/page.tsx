@@ -5,6 +5,7 @@ import { verifyAdminAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import WixSalesSyncButton from './_sync-button';
+import ExportarVendasCsvButton from '@/components/vendas/ExportarVendasCsvButton';
 import { VendasFilterSection } from './_components/VendasFilterSection';
 import { VendasPagination } from './_components/VendasPagination';
 import { PeriodPreset, resolveDateRange, getPeriodLabel } from '@/lib/date-filters';
@@ -214,7 +215,10 @@ export default async function AdminVendasPage({
           <h1 className="admin-page-title">Vendas</h1>
           <p className="admin-page-copy">Todas as apólices emitidas na plataforma DuoLife.</p>
         </div>
-        <WixSalesSyncButton />
+        <div className="flex items-center gap-3">
+          <ExportarVendasCsvButton />
+          <WixSalesSyncButton />
+        </div>
       </section>
 
       {/* Cards de Métricas Grid Padronizado (Baseado nos filtros aplicados) */}
