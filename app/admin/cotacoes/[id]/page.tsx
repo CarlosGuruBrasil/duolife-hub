@@ -6,7 +6,7 @@ import { sql } from '@/lib/pg';
 import { PagamentosPanel } from './_pagamentos-client';
 import { EnviarFaturaEmailButton } from '@/components/cotacao/EnviarFaturaEmailButton';
 import { SincronizarAsaasButton } from '@/components/cotacao/SincronizarAsaasButton';
-import { formatCurrency, formatDate, formatDateTime, formatAtuacao, sanitizePlanFinancials } from '@/lib/format';
+import { formatCurrency, formatDate, formatDateTime, formatAtuacao, sanitizePlanFinancials, resolvePolicyExpiryDate } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
 import { isDateBeforeToday, calculateBillingDueDate } from '@/lib/business-days';
 import EditarPropostaButton from '@/components/modals/EditarPropostaButton';
@@ -565,7 +565,7 @@ export default async function AdminCotacaoDetailPage({
             </div>
             <div>
               <span className="text-emerald-800 text-[11px] block">Fim da Vigência</span>
-              <strong className="block text-sm font-bold">{formatDate(sale.expiry_date)}</strong>
+              <strong className="block text-sm font-bold">{formatDate(resolvePolicyExpiryDate(sale.issue_date, sale.expiry_date))}</strong>
             </div>
             <div>
               <span className="text-emerald-800 text-[11px] block">Prêmio Emitido</span>

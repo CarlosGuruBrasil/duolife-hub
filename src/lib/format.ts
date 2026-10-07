@@ -301,3 +301,95 @@ export function formatPlanLabel(
   return '-';
 }
 
+/**
+ * Calcula a data final de vigência de uma apólice anual no padrão securitário brasileiro (SUSEP):
+ * A vigência de 1 ano vai da data de início até o dia imediatamente anterior do próximo ano.
+ * Exemplo: de 07/10/2026 até 06/10/2027; de 06/10/2026 até 05/10/2027.
+ * Retorna no formato ISO 'YYYY-MM-DD'.
+ */
+export function calculatePolicyExpiryDate(startDate: string | Date | null | undefined): string | null {
+  if (!startDate) return null;
+  const isoStr =
+    startDate instanceof Date
+      ? startDate.toISOString().slice(0, 10)
+      : typeof startDate === 'string'
+      ? startDate.slice(0, 10)
+      : null;
+  if (!isoStr || !/^\d{4}-\d{2}-\d{2}$/.test(isoStr)) return null;
+
+  const [y, m, d] = isoStr.split('-').map(Number);
+  if (!y || !m || !d) return null;
+
+  // Próximo ano, mesmo mês, dia anterior (Date.UTC lida com viradas de mês/ano e anos bissextos)
+  const expiryDate = new Date(Date.UTC(y + 1, m - 1, d - 1));
+  if (isNaN(expiryDate.getTime())) return null;
+
+  return expiryDate.toISOString().slice(0, 10);
+}
+
+/**
+ * Normaliza e resolve a data de término de vigência de uma apólice.
+ * Se o expiryDate gravado for exatamente o mesmo dia do próximo ano (ex.: 06/10/2026 a 06/10/2027),
+ * auto-corrige para o dia anterior (05/10/2027), cumprindo a regra regulatória de 1 ano.
+ */
+export function resolvePolicyExpiryDate(
+  issueDate: string | Date | null | undefined,
+  expiryDate: string | Date | null | undefined
+): string | null {
+  const issueIso =
+    issueDate instanceof Date
+      ? issueDate.toISOString().slice(0, 10)
+      : typeof issueDate === 'string'
+      ? issueDate.slice(0, 10)
+      : null;
+
+  const expiryIso =
+    expiryDate instanceof Date
+      ? expiryDate.toISOString().slice(0, 10)
+      : typeof expiryDate === 'string'
+      ? expiryDate.slice(0, 10)
+      : null;
+
+  // Se não temos data de expiração, calculamos a partir da data de emissão/início
+  if (!expiryIso) {
+    return issueIso ? calculatePolicyExpiryDate(issueIso) : null;
+  }
+
+  // Se temos ambas, verifica se expiryDate foi gravado com o erro clássico de "+ 1 ano exato" (ex.: 06/10/2026 -> 06/10/2027)
+  if (issueIso && /^\d{4}-\d{2}-\d{2}$/.test(issueIso) && /^\d{4}-\d{2}-\d{2}$/.test(expiryIso)) {
+    const [yI, mI, dI] = issueIso.split('-').map(Number);
+    const [yE, mE, dE] = expiryIso.split('-').map(Number);
+
+    // Caso 1: Exatamente mesmo dia e mês no ano seguinte (ex.: 06/10/2026 e 06/10/2027)
+    if (yE === yI + 1 && mE === mI && dE === dI) {
+      return calculatePolicyExpiryDate(issueIso);
+    }
+
+    // Caso 2: + 365 dias resultando na mesma data ou desalinhamento de 1 ano
+    const exactOneYearDate = new Date(Date.UTC(yI + 1, mI - 1, dI));
+    if (exactOneYearDate.toISOString().slice(0, 10) === expiryIso) {
+      return calculatePolicyExpiryDate(issueIso);
+    }
+  }
+
+  return expiryIso;
+}
+
+/**
+ * Formata o período de vigência de uma apólice para exibição (ex.: "07/10/2026 — 06/10/2027").
+ */
+export function formatPolicyValidity(
+  issueDate: string | Date | null | undefined,
+  expiryDate?: string | Date | null | undefined
+): string {
+  if (!issueDate && !expiryDate) return '-';
+  const startStr = formatDate(issueDate);
+  const resolvedExpiry = resolvePolicyExpiryDate(issueDate, expiryDate);
+  const endStr = formatDate(resolvedExpiry);
+
+  if (startStr === '-' && endStr === '-') return '-';
+  if (startStr !== '-' && endStr !== '-') return `${startStr} — ${endStr}`;
+  return startStr !== '-' ? startStr : endStr;
+}
+
+

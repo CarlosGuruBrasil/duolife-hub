@@ -4,7 +4,7 @@ import { getAccessibleQuoteById } from '@/lib/access';
 import { upsertInsuranceClient } from '@/lib/insurance-ops';
 import { parseJsonbField } from '@/lib/json-safe';
 import { calcularPrecoServidor } from '@/lib/pricing';
-import { parseCurrencyToNumber, sanitizePlanFinancials } from '@/lib/format';
+import { parseCurrencyToNumber, sanitizePlanFinancials, calculatePolicyExpiryDate } from '@/lib/format';
 import { parseAtuacaoList } from '@/lib/atuacao';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
@@ -597,6 +597,7 @@ export async function PATCH(
       // Vigência da Proposta
       ...(dataInicioVigencia !== undefined ? {
         dataInicioVigencia,
+        fimVigencia: calculatePolicyExpiryDate(dataInicioVigencia),
         vigencia: dataInicioVigencia,
         dataVigencia: dataInicioVigencia,
       } : {}),

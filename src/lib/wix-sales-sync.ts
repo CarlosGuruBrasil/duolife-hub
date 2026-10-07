@@ -13,7 +13,7 @@ import {
   resolvePartnerFromCode,
 } from './wix-partners-catalog';
 import { mapSeguradoFromWixRaw } from './csv-row-mapper';
-import { parseCurrencyToNumber } from './format';
+import { parseCurrencyToNumber, calculatePolicyExpiryDate, resolvePolicyExpiryDate } from './format';
 
 export interface WixSalesSyncOptions {
   onlyForDocuments?: string[];
@@ -525,20 +525,14 @@ export async function syncWixSalesToLocalDb(options?: WixSalesSyncOptions): Prom
         extractWixCreationDate(raw, { createdDate: wix.createdDate, id: wix.id });
       const wixDate = rawDateStr ? new Date(rawDateStr) : new Date();
       const issueDate = wixDate.toISOString().slice(0, 10);
-      const expiryDate = new Date(wixDate.getTime() + 365 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       // Vigência real declarada no item do Wix tem prioridade sobre a data de
       // criação — mesma regra do importador CSV.
       const vigenciaInicioIso = segurado.dataInicioVigencia || issueDate;
+      const defaultExpiry =
+        calculatePolicyExpiryDate(vigenciaInicioIso) ||
+        new Date(wixDate.getTime() + 364 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
       const vigenciaFimIso =
-        segurado.fimVigencia ||
-        (segurado.dataInicioVigencia
-          ? new Date(
-              new Date(`${segurado.dataInicioVigencia}T12:00:00Z`).getTime() +
-                365 * 24 * 60 * 60 * 1000
-            )
-              .toISOString()
-              .slice(0, 10)
-          : expiryDate);
+        resolvePolicyExpiryDate(vigenciaInicioIso, segurado.fimVigencia) || defaultExpiry;
 
       // 3. Localiza ou cria o cliente segurado em insurance_clients
       let clientId: string | null = null;

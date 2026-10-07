@@ -26,7 +26,7 @@ import {
   UserCheck
 } from 'lucide-react';
 import { parseAtuacaoList } from '@/lib/atuacao';
-import { sanitizePlanFinancials } from '@/lib/format';
+import { sanitizePlanFinancials, calculatePolicyExpiryDate, formatDate } from '@/lib/format';
 import ClienteSearchSelector, { type ClienteBuscaResult, type RenewalData } from '@/components/portal/ClienteSearchSelector';
 import DescontoDrawer from '@/components/portal/DescontoDrawer';
 import { EnviarPropostaEmailButton } from '@/components/cotacao/EnviarPropostaEmailButton';
@@ -1149,6 +1149,7 @@ export default function DynamicCotacaoForm({
         dataNascto: formatDateForIso(form.dataNascto),
         dataAtividade: formatDateForIso(form.dataAtividade),
         dataInicioVigencia: formatDateForIso(form.dataInicioVigencia || getTodayIsoDate()),
+        fimVigencia: calculatePolicyExpiryDate(form.dataInicioVigencia || getTodayIsoDate()),
         vigencia: form.vigencia ? formatDateForIso(form.vigencia) : formatDateForIso(form.dataInicioVigencia || getTodayIsoDate()),
         dataRetroativa: form.dataRetroativa ? formatDateForIso(form.dataRetroativa) : null,
         renovacao: form.isRenovacao === 'Sim',
@@ -2040,7 +2041,11 @@ export default function DynamicCotacaoForm({
                 className="form-input mt-2"
               />
               <span className="text-[11px] text-gray-500 mt-1 block font-normal">
-                Data a partir da qual o contrato e coberturas passarão a vigorar.
+                Vigência anual: a partir de {formatDate(form.dataInicioVigencia || getTodayIsoDate())} até{' '}
+                <strong className="text-gray-700 font-semibold">
+                  {formatDate(calculatePolicyExpiryDate(form.dataInicioVigencia || getTodayIsoDate()))}
+                </strong>{' '}
+                (dia anterior do próximo ano).
               </span>
             </label>
           </div>

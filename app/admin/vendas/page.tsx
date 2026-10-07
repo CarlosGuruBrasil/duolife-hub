@@ -7,7 +7,7 @@ import { ensureSchema } from '@/lib/schema';
 import { VendasFilterSection } from './_components/VendasFilterSection';
 import { VendasPagination } from './_components/VendasPagination';
 import { PeriodPreset, resolveDateRange, getPeriodLabel } from '@/lib/date-filters';
-import { formatCurrency, formatDate, formatStatusLabel, formatPlanLabel } from '@/lib/format';
+import { formatCurrency, formatDate, formatStatusLabel, formatPlanLabel, formatPolicyValidity } from '@/lib/format';
 import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
 
 export const dynamic = 'force-dynamic';
@@ -320,7 +320,7 @@ export default async function AdminVendasPage({
                         )}
                       </td>
                       <td className="px-5 py-4 text-xs text-gray-500 border-b border-gray-100">
-                        {formatDate(venda.issue_date)} — {formatDate(venda.expiry_date)}
+                        {formatPolicyValidity(venda.issue_date, venda.expiry_date)}
                       </td>
                       <td className="px-5 py-4 border-b border-gray-100">
                         <span

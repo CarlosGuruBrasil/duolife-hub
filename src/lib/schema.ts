@@ -591,6 +591,11 @@ async function runRuntimeSchemaSetup(): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS sales_client_id ON sales (client_id)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_sales_corretora_id ON sales (corretora_id)`;
   await sql`UPDATE sales SET corretora_id = 'corretora_net4life_001' WHERE corretora_id IS NULL`;
+  await sql`
+    UPDATE sales
+    SET expiry_date = (issue_date + interval '1 year' - interval '1 day')::date
+    WHERE expiry_date = (issue_date + interval '1 year')::date
+  `;
 
   // Comissões a pagar
   await sql`
@@ -1023,28 +1028,184 @@ async function runRuntimeSchemaSetup(): Promise<void> {
           OR client_data->>'nomePlano' ILIKE ANY (ARRAY['%100k%', '%200k%', '%300k%', '%500k%', '%100 mil%', '%200 mil%', '%300 mil%', '%500 mil%'])
         )
     `;
+
+    // -------------------------------------------------------------
+    // Infraestrutura de Tabelas da Camada MCP (Model Context Protocol)
+    // -------------------------------------------------------------
+    // 1. Chaves de API MCP
+    await sql`
+      CREATE TABLE IF NOT EXISTS mcp_api_keys (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        name TEXT NOT NULL,
+        key_prefix TEXT NOT NULL,
+        key_hash TEXT UNIQUE NOT NULL,
+        scopes TEXT[] NOT NULL DEFAULT '{}',
+        rate_limit_per_minute INT NOT NULL DEFAULT 120,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        expires_at TIMESTAMPTZ,
+        last_used_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS idx_mcp_api_keys_hash ON mcp_api_keys (key_hash) WHERE is_active = true`;
+
+    // 2. Sessões Comerciais Assistidas por IA (AI Sales Sessions)
+    await sql`
+      CREATE TABLE IF NOT EXISTS ai_sales_sessions (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        channel TEXT NOT NULL DEFAULT 'whatsapp',
+        external_conversation_id TEXT NOT NULL,
+        external_customer_id TEXT,
+        phone TEXT NOT NULL,
+        product_id TEXT REFERENCES products(id),
+        flow_key TEXT NOT NULL DEFAULT 'rc_professional_v1',
+        status TEXT NOT NULL DEFAULT 'started',
+        collected_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+        cotacao_id TEXT REFERENCES cotacoes(id),
+        signature_document_id TEXT REFERENCES signature_documents(id),
+        payment_order_id TEXT REFERENCES payment_orders(id),
+        sale_id TEXT REFERENCES sales(id),
+        human_handoff_required BOOLEAN NOT NULL DEFAULT false,
+        human_handoff_reason TEXT,
+        human_handoff_notes TEXT,
+        last_interaction_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `;
+    await sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_sales_sessions_active_convo
+        ON ai_sales_sessions (channel, external_conversation_id)
+        WHERE status NOT IN ('cancelled', 'expired', 'policy_issued')
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS idx_ai_sales_sessions_phone ON ai_sales_sessions (phone)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_ai_sales_sessions_status ON ai_sales_sessions (status)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_ai_sales_sessions_cotacao_id ON ai_sales_sessions (cotacao_id)`;
+
+    // 3. Auditoria MCP (mcp_audit_logs)
+    await sql`
+      CREATE TABLE IF NOT EXISTS mcp_audit_logs (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        request_id TEXT NOT NULL,
+        client_id TEXT REFERENCES mcp_api_keys(id),
+        tool TEXT NOT NULL,
+        sale_session_id TEXT REFERENCES ai_sales_sessions(id) ON DELETE SET NULL,
+        result_status TEXT NOT NULL,
+        error_code TEXT,
+        duration_ms INT NOT NULL DEFAULT 0,
+        input_redacted JSONB NOT NULL DEFAULT '{}'::jsonb,
+        output_redacted JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS idx_mcp_audit_logs_session ON mcp_audit_logs (sale_session_id)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_mcp_audit_logs_tool ON mcp_audit_logs (tool)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_mcp_audit_logs_created_at ON mcp_audit_logs (created_at DESC)`;
   } catch {
     // Silencia se tabelas estiverem em criação
   }
 }
 
 export async function seedInitialData(): Promise<void> {
-  // Produto: Seguro Responsabilidade Civil
+  // Produto: Seguro Responsabilidade Civil Advogados (legado e principal)
   await sql`
     INSERT INTO products (id, name, code, category, insurer_name, description, base_commission_rate, is_active, product_type, flow_key, pricing_strategy, policy_prefix)
     VALUES (
       'prod-rc-001',
-      'Seguro Responsabilidade Civil Profissional',
+      'Seguro Responsabilidade Civil Profissional — Advogados',
       'RC-001',
       'responsabilidade_civil',
-      'A definir',
-      'Proteção profissional contra reclamações de terceiros por erros, omissões ou negligências no exercício da profissão.',
+      'Akad Seguros',
+      'Proteção profissional contra reclamações de terceiros por erros, omissões ou negligências no exercício da advocacia.',
       15.00,
       true,
       'insurance',
-      'rc_professional_v1',
+      'rc-advogados',
       'rc_wix_planos_v1',
-      'DL-RC'
+      'DL-RC-ADV'
+    )
+    ON CONFLICT (code) DO UPDATE SET
+      flow_key = 'rc-advogados',
+      name = 'Seguro Responsabilidade Civil Profissional — Advogados',
+      policy_prefix = 'DL-RC-ADV'
+  `;
+
+  // RC Médicos
+  await sql`
+    INSERT INTO products (id, name, code, category, insurer_name, description, base_commission_rate, is_active, product_type, flow_key, pricing_strategy, policy_prefix)
+    VALUES (
+      'prod-rc-med-001',
+      'RC Profissional — Médicos & Profissionais da Saúde',
+      'RC-MED-001',
+      'responsabilidade_civil',
+      'Akad Seguros',
+      'Proteção contra processos de erro médico, procedimentos e custos de defesa perante conselhos de classe.',
+      15.00,
+      true,
+      'insurance',
+      'rc-medicos',
+      'rc_medicos_v1',
+      'DL-RC-MED'
+    )
+    ON CONFLICT (code) DO NOTHING
+  `;
+
+  // RC Odonto
+  await sql`
+    INSERT INTO products (id, name, code, category, insurer_name, description, base_commission_rate, is_active, product_type, flow_key, pricing_strategy, policy_prefix)
+    VALUES (
+      'prod-rc-odonto-001',
+      'RC Profissional — Cirurgiões Dentistas',
+      'RC-ODONTO-001',
+      'responsabilidade_civil',
+      'Akad Seguros',
+      'Cobertura contra reclamações por procedimentos odontológicos, ortodontia e harmonização.',
+      15.00,
+      true,
+      'insurance',
+      'rc-odonto',
+      'rc_odonto_v1',
+      'DL-RC-ODO'
+    )
+    ON CONFLICT (code) DO NOTHING
+  `;
+
+  // RC Engenharia
+  await sql`
+    INSERT INTO products (id, name, code, category, insurer_name, description, base_commission_rate, is_active, product_type, flow_key, pricing_strategy, policy_prefix)
+    VALUES (
+      'prod-rc-eng-001',
+      'RC Profissional — Engenheiros & Arquitetos',
+      'RC-ENG-001',
+      'responsabilidade_civil',
+      'Akad Seguros',
+      'Garantia para falhas em elaboração de projetos, cálculos estruturais, laudos e obras com ART/RRT.',
+      12.50,
+      true,
+      'insurance',
+      'rc-engenheiros',
+      'rc_engenharia_v1',
+      'DL-RC-ENG'
+    )
+    ON CONFLICT (code) DO NOTHING
+  `;
+
+  // RC Contadores
+  await sql`
+    INSERT INTO products (id, name, code, category, insurer_name, description, base_commission_rate, is_active, product_type, flow_key, pricing_strategy, policy_prefix)
+    VALUES (
+      'prod-rc-cont-001',
+      'RC Profissional — Contadores & Auditores',
+      'RC-CONT-001',
+      'responsabilidade_civil',
+      'Akad Seguros',
+      'Proteção para escritórios de contabilidade contra autuações fiscais, erros em obrigações acessórias e cálculos.',
+      12.50,
+      true,
+      'insurance',
+      'rc-contadores',
+      'rc_contabilidade_v1',
+      'DL-RC-CON'
     )
     ON CONFLICT (code) DO NOTHING
   `;

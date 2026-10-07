@@ -121,11 +121,11 @@ As regras de negócio do DuoLife Hub governam a precificação atuarial, travas 
 ---
 
 ### BR-011 — Vigência Anual Padrão de Apólices
-- **Descrição:** Determina o período de cobertura da apólice contratada.
-- **Condição:** Emissão formal da venda em `ensureSaleForPaidQuote`.
-- **Comportamento:** Define `issue_date = CURRENT_DATE` e `expiry_date = CURRENT_DATE + interval '1 year'`.
-- **Exceções:** Importações de dados legados preservam as datas originais do contrato histórico.
-- **Origem no Código:** `src/lib/insurance-ops.ts` (linhas 153-154).
+- **Descrição:** Determina o período de cobertura da apólice contratada no padrão securitário brasileiro (SUSEP). A vigência de 1 ano inicia na data de início e vigora até o dia imediatamente anterior do próximo ano (exemplo: de 07/10/2026 até 06/10/2027; de 06/10/2026 até 05/10/2027).
+- **Condição:** Emissão formal da venda em `ensureSaleForPaidQuote`, importações CSV, sincronizações Wix e cotações.
+- **Comportamento:** Define `issue_date = COALESCE(dataInicioVigencia::date, CURRENT_DATE)` e `expiry_date = (issue_date + interval '1 year' - interval '1 day')::date`.
+- **Exceções:** Importações de dados legados com datas contratuais específicas comprovadas.
+- **Origem no Código:** `src/lib/insurance-ops.ts`, `src/lib/format.ts` (`calculatePolicyExpiryDate`, `resolvePolicyExpiryDate`, `formatPolicyValidity`).
 - **Status:** `CONFIRMADO`
 
 ---

@@ -40,7 +40,7 @@ import {
   formatCurrencyBRL,
   parseCurrencyToNumber,
 } from './masks';
-import { formatAtuacao, parseAtuacaoList, sanitizePlanFinancials } from '@/lib/format';
+import { formatAtuacao, parseAtuacaoList, sanitizePlanFinancials, calculatePolicyExpiryDate, formatDate } from '@/lib/format';
 import {
   getRamoConfig,
   rcAdvogadosConfig,
@@ -873,6 +873,7 @@ export default function EditarPropostaModal({
 
         // Proposta & Vigência
         dataInicioVigencia: dataInicioVigencia || existingClientData.dataInicioVigencia,
+        fimVigencia: calculatePolicyExpiryDate(dataInicioVigencia || existingClientData.dataInicioVigencia),
         vigencia: dataInicioVigencia || existingClientData.vigencia,
         nomePlano: nomePlano.trim() || existingClientData.nomePlano,
         tipoDePlano:
@@ -1738,6 +1739,11 @@ export default function EditarPropostaModal({
                         onChange={(e) => setDataInicioVigencia(e.target.value)}
                         className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all"
                       />
+                      {dataInicioVigencia && (
+                        <span className="text-[11px] text-gray-500 mt-1 block">
+                          Vigência anual até <strong className="text-gray-700 font-semibold">{formatDate(calculatePolicyExpiryDate(dataInicioVigencia))}</strong>
+                        </span>
+                      )}
                     </div>
 
                     <div>

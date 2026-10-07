@@ -3,7 +3,7 @@ import { verifyAuth, isInternalUser, unauthorized, getPartnerAccessContext } fro
 import { sql } from '@/lib/pg';
 import { parseJsonbField } from '@/lib/json-safe';
 import { parseAtuacaoList } from '@/lib/atuacao';
-import { parseCurrencyToNumber } from '@/lib/format';
+import { parseCurrencyToNumber, resolvePolicyExpiryDate } from '@/lib/format';
 
 function escapeLike(value: string): string {
   return value.replace(/([\\%_])/g, '\\$1');
@@ -282,8 +282,9 @@ export async function GET(req: NextRequest) {
         const policyNumber = latestSale?.policy_number || (latestQuote ? `DL-RC-${latestQuote.id.slice(0, 8).toUpperCase()}` : '');
 
         // Determina vigência anterior e sugestão da nova
-        const expiryDate = latestSale?.expiry_date ? formatDateToIso(latestSale.expiry_date) : formatDateToIso(latestClientData.vigencia || latestQuote?.valid_until);
+        const rawExpiryDate = latestSale?.expiry_date ? formatDateToIso(latestSale.expiry_date) : formatDateToIso(latestClientData.fimVigencia || latestClientData.vigencia || latestQuote?.valid_until);
         const issueDate = latestSale?.issue_date ? formatDateToIso(latestSale.issue_date) : formatDateToIso(latestClientData.dataInicioVigencia || latestQuote?.created_at);
+        const expiryDate = resolvePolicyExpiryDate(issueDate, rawExpiryDate) || rawExpiryDate;
 
         // Se tiver expiryDate, nova vigência inicia no dia seguinte
         let suggestedNewVigencia = '';

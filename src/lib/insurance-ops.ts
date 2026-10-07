@@ -68,8 +68,8 @@ export async function ensureSaleForPaidQuote(input: {
 }) {
   return await sql.begin(async (tx) => {
     // 1. Lock de linha na cotação para garantir que concorrência não processe duas vezes
-    await tx`
-      SELECT id
+    const [quote] = await tx<{ id: string; client_data: Record<string, any> | null }[]>`
+      SELECT id, client_data
       FROM cotacoes
       WHERE id = ${input.cotacaoId}
       FOR UPDATE
@@ -86,6 +86,14 @@ export async function ensureSaleForPaidQuote(input: {
     if (existing[0]) {
       return { saleId: existing[0].id, created: false };
     }
+
+    // Extrai data de início da vigência indicada na proposta, com fallback para data atual
+    const clientData = (quote?.client_data || {}) as Record<string, any>;
+    const rawInicioVigencia = clientData.dataInicioVigencia || clientData.vigencia || clientData.dataVigencia;
+    const inicioVigenciaIso =
+      typeof rawInicioVigencia === 'string' && /^\d{4}-\d{2}-\d{2}/.test(rawInicioVigencia)
+        ? rawInicioVigencia.slice(0, 10)
+        : null;
 
     // 3. Taxa de comissão
     const [rateRow] = await tx<{ rate: number; policy_prefix: string | null }[]>`
@@ -121,7 +129,7 @@ export async function ensureSaleForPaidQuote(input: {
     `;
     const corretoraId = partnerCorretora?.corretora_id || null;
 
-    // 4. Insere venda
+    // 4. Insere venda — Vigência de 1 ano securitária: até o dia anterior do próximo ano
     const [sale] = await tx<{ id: string }[]>`
       INSERT INTO sales (
         cotacao_id,
@@ -150,8 +158,8 @@ export async function ensureSaleForPaidQuote(input: {
         ${commissionRate},
         ${commissionAmount},
         'ativa',
-        CURRENT_DATE,
-        CURRENT_DATE + interval '1 year'
+        COALESCE(${inicioVigenciaIso}::date, CURRENT_DATE),
+        (COALESCE(${inicioVigenciaIso}::date, CURRENT_DATE) + interval '1 year' - interval '1 day')::date
       )
       RETURNING id
     `;

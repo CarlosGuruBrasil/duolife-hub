@@ -1,4 +1,4 @@
-import { formatCurrency, parseCurrencyToNumber, formatStatusLabel, formatPlanLabel } from './format';
+import { formatCurrency, parseCurrencyToNumber, formatStatusLabel, formatPlanLabel, resolvePolicyExpiryDate } from './format';
 import { sql } from './pg';
 import { logger } from './logger';
 
@@ -337,9 +337,10 @@ export function gerarVendasCSV(
     const cpfFormatado = formatCpfCnpjCsv(rawCpf);
 
     // 6. Vigência: prioridade expiry_date, fimVigencia, vigencia, issue_date
+    const rawExpiry = venda.expiry_date ?? clientData.fimVigencia;
     const rawVigencia =
-      venda.expiry_date ??
-      clientData.fimVigencia ??
+      resolvePolicyExpiryDate(venda.issue_date, rawExpiry) ??
+      rawExpiry ??
       clientData.vigencia ??
       venda.issue_date ??
       clientData.inicioVigencia;

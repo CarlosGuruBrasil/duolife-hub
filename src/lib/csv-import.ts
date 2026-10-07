@@ -2,6 +2,7 @@ import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { normalizeDigits, normalizeMaybeString } from '@/lib/wix-sync';
 import { logger } from '@/lib/logger';
+import { calculatePolicyExpiryDate, resolvePolicyExpiryDate } from '@/lib/format';
 import { parseCsvContent, type RawCsvRow } from './csv-parser';
 import {
   loadPartnerResolutionContext,
@@ -168,11 +169,11 @@ export async function processCsvRowsBatch(
       const dataCompraDate = parseDateFlexible(row['DataCompra']);
       const vigenciaInicio =
         parseDateFlexible(segurado.dataInicioVigencia) || dataCompraDate || createdAtDate;
-      const vigenciaFim =
-        parseDateFlexible(segurado.fimVigencia) ||
-        new Date(vigenciaInicio.getTime() + 365 * 24 * 60 * 60 * 1000);
       const vigenciaInicioIso = segurado.dataInicioVigencia || vigenciaInicio.toISOString().slice(0, 10);
-      const vigenciaFimIso = segurado.fimVigencia || vigenciaFim.toISOString().slice(0, 10);
+      const vigenciaFimIso =
+        resolvePolicyExpiryDate(vigenciaInicioIso, segurado.fimVigencia) ||
+        calculatePolicyExpiryDate(vigenciaInicioIso) ||
+        new Date(vigenciaInicio.getTime() + 364 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
       // Valores
       const valorTotal = parseCurrencyNumber(row['Valor'], 0);
