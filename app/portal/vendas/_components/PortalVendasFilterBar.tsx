@@ -4,6 +4,7 @@ import React, { useState, useEffect, useTransition, useRef } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { Search, X, SlidersHorizontal, Loader2, Calendar, ChevronDown } from 'lucide-react';
 import { DATE_PRESET_OPTIONS, PeriodPreset } from '@/lib/date-filters';
+import ExportarVendasCsvButton from '@/components/vendas/ExportarVendasCsvButton';
 
 interface PortalVendasFilterBarProps {
   activeFiltersCount: number;
@@ -209,6 +210,9 @@ export function PortalVendasFilterBar({
             </span>
           )}
         </button>
+
+        {/* Gerar Relatório Baseado nos Filtros */}
+        <ExportarVendasCsvButton endpoint="/api/portal/vendas/exportar" label="Gerar Relatório" />
 
         {/* Botão de Limpar Filtros */}
         {hasAnyFilter && (

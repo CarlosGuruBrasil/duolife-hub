@@ -2,12 +2,13 @@
 
 import React, { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Download, Loader2 } from 'lucide-react';
+import { Download, FileSpreadsheet, Loader2 } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 
 interface ExportarVendasCsvButtonProps {
   endpoint?: string;
   className?: string;
+  label?: string;
 }
 
 function parseContentDispositionFilename(header: string | null): string | null {
@@ -35,6 +36,7 @@ function parseContentDispositionFilename(header: string | null): string | null {
 export default function ExportarVendasCsvButton({
   endpoint = '/api/admin/vendas/exportar',
   className = '',
+  label = 'Gerar Relatório',
 }: ExportarVendasCsvButtonProps) {
   const searchParams = useSearchParams();
   const [isDownloading, setIsDownloading] = useState(false);
@@ -55,7 +57,7 @@ export default function ExportarVendasCsvButton({
       });
 
       if (!response.ok) {
-        let errorMessage = 'Não foi possível exportar os dados no momento.';
+        let errorMessage = 'Não foi possível gerar o relatório no momento.';
         try {
           const errorJson = await response.json();
           if (errorJson?.error && typeof errorJson.error === 'string') {
@@ -65,7 +67,7 @@ export default function ExportarVendasCsvButton({
           if (response.status === 401 || response.status === 403) {
             errorMessage = 'Acesso não autorizado para exportar este relatório.';
           } else if (response.status === 404) {
-            errorMessage = 'Nenhum dado encontrado para exportação.';
+            errorMessage = 'Nenhum dado encontrado para o relatório.';
           }
         }
         throw new Error(errorMessage);
@@ -87,9 +89,9 @@ export default function ExportarVendasCsvButton({
       document.body.removeChild(link);
       window.URL.revokeObjectURL(objectUrl);
 
-      toast.success('Relatório CSV exportado com sucesso!');
+      toast.success('Relatório gerado com sucesso!');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Falha ao exportar relatório CSV.';
+      const msg = err instanceof Error ? err.message : 'Falha ao gerar relatório.';
       toast.error(msg);
     } finally {
       setIsDownloading(false);
@@ -101,18 +103,19 @@ export default function ExportarVendasCsvButton({
       type="button"
       onClick={handleExport}
       disabled={isDownloading}
-      aria-label="Exportar relatório de vendas em formato CSV"
-      className={`inline-flex items-center justify-center gap-2 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-semibold text-gray-700 shadow-2xs hover:bg-gray-50 hover:text-gray-900 transition-all cursor-pointer min-h-[44px] disabled:opacity-60 disabled:cursor-not-allowed ${className}`}
+      title="Gerar e baixar relatório das vendas filtradas em CSV"
+      aria-label="Gerar relatório de vendas em formato CSV"
+      className={`inline-flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white h-[38px] px-3.5 text-xs font-semibold text-gray-700 shadow-2xs hover:bg-gray-50 hover:text-gray-900 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed ${className}`}
     >
       {isDownloading ? (
         <>
-          <Loader2 size={16} className="animate-spin text-gray-500" />
-          <span>Exportando...</span>
+          <Loader2 size={14} className="animate-spin text-gray-500" />
+          <span>Gerando...</span>
         </>
       ) : (
         <>
-          <Download size={16} className="text-gray-500" />
-          <span>Exportar CSV</span>
+          <FileSpreadsheet size={14} className="text-[#0e4a5a]" />
+          <span>{label}</span>
         </>
       )}
     </button>
