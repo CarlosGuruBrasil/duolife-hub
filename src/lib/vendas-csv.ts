@@ -1,4 +1,6 @@
 import { formatCurrency, parseCurrencyToNumber, formatStatusLabel, formatPlanLabel } from './format';
+import { sql } from './pg';
+import { logger } from './logger';
 
 export interface VendaExportRow {
   id: string;
@@ -125,11 +127,82 @@ function formatarMoedaCsv(value: unknown): string {
   return formatCurrency(num).replace(/[\u00A0\u202F]/g, ' ');
 }
 
+function parsePayloadData(raw: unknown): Record<string, unknown> {
+  if (!raw) return {};
+  let obj = raw;
+  if (typeof raw === 'string') {
+    try {
+      obj = JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  }
+  if (typeof obj === 'object' && obj !== null) {
+    const itemObj = (obj as Record<string, unknown>).item || obj;
+    const dataObj = (itemObj as Record<string, unknown>).data || itemObj;
+    return dataObj as Record<string, unknown>;
+  }
+  return {};
+}
+
+/**
+ * Consulta a coleção 'Planos' no banco de dados e retorna um mapa de PremioNet
+ * mesclando a tabela canônica 'PREMIO_NET_POR_TIPO' com as customizações ativas do banco.
+ */
+export async function obterMapaPremioNetConfigurado(): Promise<Record<string, string>> {
+  const mapa: Record<string, string> = { ...PREMIO_NET_POR_TIPO };
+  try {
+    const rows = await sql`
+      SELECT wi.payload
+      FROM wix_items wi
+      JOIN wix_collections wc ON wi.wix_collection_id = wc.id
+      WHERE wc.collection_id = 'Planos' OR wc.collection_name = 'Planos'
+      ORDER BY wi.created_at ASC
+    `;
+
+    for (const row of rows) {
+      const data = parsePayloadData(row.payload);
+      const tipo = String(data.tipoDePlano || '').toLowerCase().trim();
+      const premioNet =
+        data.premioNet !== undefined && data.premioNet !== null ? String(data.premioNet).trim() : '';
+      if (tipo && premioNet) {
+        mapa[tipo] = premioNet;
+      }
+    }
+  } catch (error) {
+    logger.error({ error }, 'vendas-csv.obterMapaPremioNetConfigurado.failed');
+  }
+  return mapa;
+}
+
+const LMI_TO_TIPO: Record<number, string> = {
+  100000: '100k',
+  200000: '200k',
+  300000: '300k',
+  500000: '500k',
+  1000000: '1mi',
+  1500000: '1.5mi',
+  2000000: '2mi',
+  3000000: '3mi',
+};
+
 function resolverPremioNet(
   importanciaSegurada: unknown,
   clientData: Record<string, any>,
-  productName?: string | null
+  productName?: string | null,
+  customNetMap?: Record<string, string>
 ): string {
+  const getNetFromKey = (key: string): string | undefined => {
+    const k = key.toLowerCase().trim();
+    if (customNetMap && customNetMap[k]) {
+      return customNetMap[k];
+    }
+    if (PREMIO_NET_POR_TIPO[k]) {
+      return PREMIO_NET_POR_TIPO[k];
+    }
+    return undefined;
+  };
+
   // 1. Verificar chaves explícitas de tipo de plano em client_data
   const tipoCandidates = [
     clientData.tipo,
@@ -142,8 +215,9 @@ function resolverPremioNet(
     .map((v) => String(v).trim().toLowerCase());
 
   for (const t of tipoCandidates) {
-    if (PREMIO_NET_POR_TIPO[t]) {
-      return PREMIO_NET_POR_TIPO[t];
+    const val = getNetFromKey(t);
+    if (val) {
+      return val;
     }
   }
 
@@ -160,19 +234,29 @@ function resolverPremioNet(
   // Trata possível multiplicação histórica por 100 (ex: 30.000.000 em vez de 300.000)
   if (numLmi >= 10000000 && numLmi <= 300000000 && numLmi % 100 === 0) {
     const divided = numLmi / 100;
-    if (PREMIO_NET_POR_LMI[divided]) {
+    if (PREMIO_NET_POR_LMI[divided] || LMI_TO_TIPO[divided]) {
       numLmi = divided;
     }
   }
 
-  if (numLmi > 0 && PREMIO_NET_POR_LMI[numLmi]) {
-    return PREMIO_NET_POR_LMI[numLmi];
+  if (numLmi > 0) {
+    const tipo = LMI_TO_TIPO[numLmi];
+    if (tipo) {
+      const val = getNetFromKey(tipo);
+      if (val) {
+        return val;
+      }
+    }
+    if (PREMIO_NET_POR_LMI[numLmi]) {
+      return PREMIO_NET_POR_LMI[numLmi];
+    }
   }
 
   // 3. Resolução via formatPlanLabel (que converte títulos como 'Plano 300 Mil' -> '300k')
   const planLabel = formatPlanLabel(rawLmi, clientData, productName).toLowerCase().trim();
-  if (PREMIO_NET_POR_TIPO[planLabel]) {
-    return PREMIO_NET_POR_TIPO[planLabel];
+  const valFromLabel = getNetFromKey(planLabel);
+  if (valFromLabel) {
+    return valFromLabel;
   }
 
   // 4. Fallback para client_data.premioNet ou client_data.premio_net
@@ -196,7 +280,10 @@ function resolverPremioNet(
  * Gera o arquivo CSV completo de exportação de vendas no padrão do DuoLife Hub.
  * Inclui BOM UTF-8 (\uFEFF) e separador ponto e vírgula (;).
  */
-export function gerarVendasCSV(vendas: VendaExportRow[]): string {
+export function gerarVendasCSV(
+  vendas: VendaExportRow[],
+  customNetMap?: Record<string, string>
+): string {
   const header = [
     'Nº',
     'Nome Segurado',
@@ -263,7 +350,12 @@ export function gerarVendasCSV(vendas: VendaExportRow[]): string {
     const retroFormatada = formatarDataCsv(rawRetro);
 
     // 8. PremioNet
-    const premioNet = resolverPremioNet(venda.importancia_segurada, clientData, venda.product_name);
+    const premioNet = resolverPremioNet(
+      venda.importancia_segurada,
+      clientData,
+      venda.product_name,
+      customNetMap
+    );
 
     // 9. Renovação
     const isRenewalBool =

@@ -78,6 +78,7 @@ type PlanData = {
   parcela6X: string;
   quantidadeDeParcelas: string;
   valorPagoKovr: number | null;
+  premioNet?: string | null;
   ordem: number;
 };
 
@@ -480,6 +481,7 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
                 <th className="px-5 py-3.5">Limite de Cobertura</th>
                 <th className="px-5 py-3.5">Franquia</th>
                 <th className="px-5 py-3.5">Valor À Vista (1x)</th>
+                <th className="px-5 py-3.5">Prêmio Net (Seguradora)</th>
                 <th className="px-5 py-3.5">Parcelamento (2x a 6x)</th>
                 <th className="px-5 py-3.5 text-right">Ação</th>
               </tr>
@@ -491,7 +493,7 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
                 if (isEditing && editForm) {
                   return (
                     <tr key={plan.id} className="bg-cyan-50/50 border-2 border-[#00d4e0]">
-                      <td className="px-5 py-5" colSpan={6}>
+                      <td className="px-5 py-5" colSpan={7}>
                         <form onSubmit={handleSavePlan} className="space-y-4">
                           <div className="flex items-center justify-between border-b border-cyan-200/60 pb-2">
                             <span className="text-xs font-black uppercase text-[#0e4a5a]">
@@ -516,7 +518,7 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
                             <div>
                               <label className="block font-extrabold text-gray-700 uppercase mb-1">Nome</label>
                               <input
@@ -554,6 +556,16 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
                                 className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 font-bold text-gray-900 focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none"
                                 value={editForm.parcela}
                                 onChange={(e) => setEditForm({ ...editForm, parcela: e.target.value })}
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block font-extrabold text-gray-700 uppercase mb-1">Prêmio Net</label>
+                              <input
+                                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 font-bold text-gray-900 focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none"
+                                value={editForm.premioNet || ''}
+                                placeholder="Ex: 495,02"
+                                onChange={(e) => setEditForm({ ...editForm, premioNet: e.target.value })}
                               />
                             </div>
 
@@ -617,6 +629,10 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
                     <td className="px-5 py-4 font-semibold text-gray-700">{plan.franquia}</td>
 
                     <td className="px-5 py-4 font-extrabold text-gray-900">{plan.parcela}</td>
+
+                    <td className="px-5 py-4 font-extrabold text-emerald-800">
+                      {plan.premioNet ? (plan.premioNet.includes('R$') ? plan.premioNet : `R$ ${plan.premioNet}`) : '-'}
+                    </td>
 
                     <td className="px-5 py-4 text-gray-600 font-medium space-y-0.5">
                       {plan.parcela2X && <div>2x de {plan.parcela2X}</div>}

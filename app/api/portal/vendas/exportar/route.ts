@@ -3,7 +3,7 @@ import { getPartnerAccessContext, verifyPartnerAuth, unauthorized } from '@/lib/
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { PeriodPreset, resolveDateRange } from '@/lib/date-filters';
-import { gerarVendasCSV, VendaExportRow } from '@/lib/vendas-csv';
+import { gerarVendasCSV, obterMapaPremioNetConfigurado, VendaExportRow } from '@/lib/vendas-csv';
 
 export const dynamic = 'force-dynamic';
 
@@ -124,7 +124,8 @@ export async function GET(request: NextRequest) {
     ORDER BY s.issue_date DESC, s.created_at DESC
   `;
 
-  const csv = gerarVendasCSV(vendas);
+  const netMap = await obterMapaPremioNetConfigurado();
+  const csv = gerarVendasCSV(vendas, netMap);
   const dataHoje = new Date().toISOString().slice(0, 10);
   const filename = `relatorio-vendas-${dataHoje}.csv`;
 

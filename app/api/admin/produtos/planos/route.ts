@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { isPlatformAdmin, verifyAdminAuth, unauthorized } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
+import { PREMIO_NET_POR_TIPO } from '@/lib/vendas-csv';
 
 export interface PlanData {
   id: string;
@@ -18,6 +19,7 @@ export interface PlanData {
   parcela6X: string;
   quantidadeDeParcelas: string;
   valorPagoKovr: number | null;
+  premioNet: string | null;
   ordem: number;
 }
 
@@ -53,11 +55,20 @@ export async function GET() {
 
     const plans: PlanData[] = rows.map((r) => {
       const data = parsePayloadData(r.payload);
+      const tipoDePlano = String(data.tipoDePlano || '');
+      const tipoKey = tipoDePlano.toLowerCase().trim();
+      const fallbackPremioNet = PREMIO_NET_POR_TIPO[tipoKey] ?? null;
+      const configuredNet =
+        data.premioNet !== undefined && data.premioNet !== null && String(data.premioNet).trim() !== ''
+          ? String(data.premioNet).trim()
+          : null;
+      const premioNet = configuredNet ?? fallbackPremioNet;
+
       return {
         id: r.id,
         wix_item_id: r.wix_item_id,
         nomeExibido: String(data.nomeExibido || data.tipoDePlano || 'Plano'),
-        tipoDePlano: String(data.tipoDePlano || ''),
+        tipoDePlano,
         cobertura: String(data.cobertura || 'R$ 0,00'),
         franquia: String(data.franquia || 'R$ 3.000,00'),
         parcela: String(data.parcela || 'R$ 0,00'),
@@ -67,6 +78,7 @@ export async function GET() {
         parcela6X: String(data.parcela6X || ''),
         quantidadeDeParcelas: String(data.quantidadeDeParcelas || 'em até 6 parcelas'),
         valorPagoKovr: typeof data.valorPagoKovr === 'number' ? data.valorPagoKovr : parseFloat(String(data.valorPagoKovr || 0)) || null,
+        premioNet,
         ordem: Number(data.ordem) || 0,
       };
     });
@@ -92,6 +104,7 @@ const updatePlanSchema = z.object({
   parcela6X: z.string().trim().optional(),
   quantidadeDeParcelas: z.string().trim().optional(),
   valorPagoKovr: z.number().nullable().optional(),
+  premioNet: z.string().trim().optional().nullable(),
 });
 
 export async function PUT(req: NextRequest) {
@@ -133,6 +146,7 @@ export async function PUT(req: NextRequest) {
     if (input.parcela6X !== undefined) data.parcela6X = input.parcela6X;
     if (input.quantidadeDeParcelas !== undefined) data.quantidadeDeParcelas = input.quantidadeDeParcelas;
     if (input.valorPagoKovr !== undefined) data.valorPagoKovr = input.valorPagoKovr;
+    if (input.premioNet !== undefined) data.premioNet = input.premioNet;
 
     const newPayload = {
       collectionId: 'Planos',
