@@ -1049,6 +1049,31 @@ async function runRuntimeSchemaSetup(): Promise<void> {
     `;
     await sql`CREATE INDEX IF NOT EXISTS idx_mcp_api_keys_hash ON mcp_api_keys (key_hash) WHERE is_active = true`;
 
+    // Seed da Chave Oficial para Agente WhatsApp
+    await sql`
+      INSERT INTO mcp_api_keys (
+        id,
+        name,
+        key_prefix,
+        key_hash,
+        scopes,
+        rate_limit_per_minute,
+        is_active,
+        created_at
+      )
+      VALUES (
+        'mcp_key_whatsapp_live_001',
+        'Agente WhatsApp DuoLife Oficial',
+        'dlmcp_live_8af4e',
+        'a3da0bb8e9861c62bf82ece638c77169d8729f0347b5a7514d1c3a5ac5a09b51',
+        ARRAY['insurance:catalog:read', 'insurance:quote', 'insurance:sale:create', 'insurance:sale:read', 'insurance:contract:create', 'insurance:payment:read'],
+        300,
+        true,
+        NOW()
+      )
+      ON CONFLICT (key_hash) DO NOTHING
+    `;
+
     // 2. Sessões Comerciais Assistidas por IA (AI Sales Sessions)
     await sql`
       CREATE TABLE IF NOT EXISTS ai_sales_sessions (
