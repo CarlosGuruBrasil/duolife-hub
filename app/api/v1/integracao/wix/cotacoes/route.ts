@@ -254,8 +254,12 @@ export async function POST(req: NextRequest) {
       valorDesconto: preco.valorDesconto,
       formaPagamento: data.formaPagamento,
       partnerWixCode: data.partnerCode,
+      partnerId: partner.id,
       partnerName: partner.name,
+      corretoraId: partner.corretoraId,
+      corretoraNome: partner.corretoraNome,
       origem: 'wix_s2s',
+      polo: 'net4life_wix',
     };
 
     const sourceToken = `wix_${crypto.randomUUID().slice(0, 10)}`;
@@ -265,6 +269,7 @@ export async function POST(req: NextRequest) {
       INSERT INTO cotacoes (
         client_id,
         partner_id,
+        corretora_id,
         product_id,
         client_name,
         client_cpf_cnpj,
@@ -284,6 +289,7 @@ export async function POST(req: NextRequest) {
       VALUES (
         ${client.id},
         ${partner.id},
+        ${partner.corretoraId},
         ${productId},
         ${data.nome},
         ${data.cpfCnpj},
@@ -308,6 +314,8 @@ export async function POST(req: NextRequest) {
         cotacaoId: cotacao.id,
         clientId: client.id,
         partnerId: partner.id,
+        partnerName: partner.name,
+        corretoraId: partner.corretoraId,
         plano: data.plano,
         valorTotal: preco.valorTotal,
         qtdParcelas: preco.qtdParcelas,
@@ -323,6 +331,8 @@ export async function POST(req: NextRequest) {
       parcelas: preco.qtdParcelas,
       partnerId: partner.id,
       partnerName: partner.name,
+      corretoraId: partner.corretoraId,
+      corretoraNome: partner.corretoraNome,
       status: 'rascunho',
     });
   } catch (err) {

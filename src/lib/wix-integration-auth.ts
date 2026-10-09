@@ -11,9 +11,15 @@ export interface WixAuthContext {
   source: 'env_wix' | 'env_integration' | 'mcp_key' | 'dev_fallback';
 }
 
+export const NET4LIFE_CORRETORA_ID = 'corretora_net4life_001';
+export const NET4LIFE_CORRETORA_NOME = 'NET4Life Corretora de Seguros';
+export const NET4LIFE_MASTER_PARTNER_ID = 'partner_net4life_master';
+
 export interface ResolvedPartner {
   id: string;
   name: string;
+  corretoraId: string;
+  corretoraNome: string;
 }
 
 /**
@@ -133,30 +139,133 @@ export async function authenticateWixRequest(
 }
 
 /**
- * Resolução resiliente do parceiro responsável pela cotação do Wix.
- * Procura por:
- * 1. findPartnerByWixCode(partnerCode)
- * 2. slug do WhiteLabel ou id direto do parceiro
- * 3. Fallback: Matriz DuoLife (Venda Direta) onde status = 'active' e nome ILIKE '%duolife%'
- * 4. Fallback: Primeiro parceiro ativo no banco
+ * Garante deterministicamente a existência da entidade parceiro NET4Life
+ * vinculada à corretora NET4Life Corretora de Seguros (corretora_net4life_001).
+ */
+export async function ensureNet4LifeMasterPartner(): Promise<ResolvedPartner> {
+  try {
+    // 1. Tenta localizar por id canônico ou por metadados de parceiro NET4Life vinculado à corretora
+    const [existing] = await sql<any[]>`
+      SELECT id, razao_social, nome_fantasia, corretora_id
+      FROM partners
+      WHERE (
+        id = ${NET4LIFE_MASTER_PARTNER_ID}
+        OR (corretora_id = ${NET4LIFE_CORRETORA_ID} AND (
+          metadata->>'slug' = 'net4life'
+          OR metadata->'whiteLabel'->>'slug' = 'net4life'
+          OR metadata->'wix'->>'partnerCode' = 'net4life'
+          OR LOWER(COALESCE(nome_fantasia, '')) = 'net4life'
+          OR LOWER(COALESCE(razao_social, '')) = 'net4life'
+          OR LOWER(COALESCE(razao_social, '')) = 'net4life corretora de seguros'
+        ))
+      )
+      AND status = 'active'
+      ORDER BY CASE WHEN id = ${NET4LIFE_MASTER_PARTNER_ID} THEN 0 ELSE 1 END, created_at ASC
+      LIMIT 1
+    `;
+
+    if (existing) {
+      return {
+        id: existing.id,
+        name: existing.nome_fantasia || existing.razao_social || 'NET4Life',
+        corretoraId: existing.corretora_id || NET4LIFE_CORRETORA_ID,
+        corretoraNome: NET4LIFE_CORRETORA_NOME,
+      };
+    }
+
+    // 2. Se não existir, insere/garante o parceiro master NET4Life
+    const [inserted] = await sql<any[]>`
+      INSERT INTO partners (
+        id,
+        razao_social,
+        nome_fantasia,
+        email,
+        phone,
+        status,
+        corretora_id,
+        metadata
+      )
+      VALUES (
+        ${NET4LIFE_MASTER_PARTNER_ID},
+        'NET4Life Corretora de Seguros',
+        'NET4Life',
+        'vendas@net4life.com.br',
+        '+55 11 91177-1319',
+        'active',
+        ${NET4LIFE_CORRETORA_ID},
+        ${JSON.stringify({
+          slug: 'net4life',
+          isMasterPartner: true,
+          polo: 'net4life_wix',
+          whiteLabel: {
+            slug: 'net4life',
+            companyName: 'NET4Life Corretora de Seguros',
+          },
+          wix: {
+            partnerCode: 'net4life',
+            cargo: 'Polo NET4Life',
+          },
+        })}::jsonb
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        corretora_id = EXCLUDED.corretora_id,
+        status = 'active',
+        updated_at = NOW()
+      RETURNING id, razao_social, nome_fantasia, corretora_id
+    `;
+
+    if (inserted) {
+      return {
+        id: inserted.id,
+        name: inserted.nome_fantasia || inserted.razao_social || 'NET4Life',
+        corretoraId: inserted.corretora_id || NET4LIFE_CORRETORA_ID,
+        corretoraNome: NET4LIFE_CORRETORA_NOME,
+      };
+    }
+  } catch (err) {
+    logger.error({ err }, 'wix.partner.ensure_net4life_master_failed');
+  }
+
+  return {
+    id: NET4LIFE_MASTER_PARTNER_ID,
+    name: 'NET4Life',
+    corretoraId: NET4LIFE_CORRETORA_ID,
+    corretoraNome: NET4LIFE_CORRETORA_NOME,
+  };
+}
+
+/**
+ * Resolução resiliente do parceiro responsável pela cotação/venda no Polo Wix.
+ * Todas as vendas do Polo Wix são atribuídas à corretora NET4Life Corretora de Seguros.
+ * Se o código de afiliado for fornecido e pertencer a um parceiro válido, vincula-o
+ * à corretora NET4Life. Caso contrário (venda direta do polo ou afiliado padrão),
+ * atribui diretamente ao parceiro master NET4Life.
  */
 export async function resolvePartnerForWix(
   partnerCode: string | null | undefined
 ): Promise<ResolvedPartner> {
   const cleanCode = partnerCode ? String(partnerCode).trim() : '';
 
-  if (cleanCode) {
+  const isGenericOrPoloNet4Life =
+    !cleanCode ||
+    ['net4life', 'polo', 'net4life-wix', 'matriz', 'direta', 'site'].includes(
+      cleanCode.toLowerCase()
+    );
+
+  if (cleanCode && !isGenericOrPoloNet4Life) {
     // 1. Busca por código Wix mapeado no metadata
     try {
       const matchWix = await findPartnerByWixCode(cleanCode);
       if (matchWix?.id) {
         const [partner] = await sql<any[]>`
-          SELECT id, razao_social, nome_fantasia FROM partners WHERE id = ${matchWix.id} LIMIT 1
+          SELECT id, razao_social, nome_fantasia, corretora_id FROM partners WHERE id = ${matchWix.id} LIMIT 1
         `;
         if (partner) {
           return {
             id: partner.id,
-            name: partner.nome_fantasia || partner.razao_social || 'Parceiro DuoLife',
+            name: partner.nome_fantasia || partner.razao_social || 'NET4Life',
+            corretoraId: partner.corretora_id || NET4LIFE_CORRETORA_ID,
+            corretoraNome: NET4LIFE_CORRETORA_NOME,
           };
         }
       }
@@ -167,7 +276,7 @@ export async function resolvePartnerForWix(
     // 2. Busca parceiro ativo por slug ou id direto
     try {
       const [partner] = await sql<any[]>`
-        SELECT id, razao_social, nome_fantasia
+        SELECT id, razao_social, nome_fantasia, corretora_id
         FROM partners
         WHERE (
           metadata->'whiteLabel'->>'slug' = ${cleanCode}
@@ -182,7 +291,9 @@ export async function resolvePartnerForWix(
       if (partner) {
         return {
           id: partner.id,
-          name: partner.nome_fantasia || partner.razao_social || 'Parceiro DuoLife',
+          name: partner.nome_fantasia || partner.razao_social || 'NET4Life',
+          corretoraId: partner.corretora_id || NET4LIFE_CORRETORA_ID,
+          corretoraNome: NET4LIFE_CORRETORA_NOME,
         };
       }
     } catch (err) {
@@ -190,43 +301,6 @@ export async function resolvePartnerForWix(
     }
   }
 
-  // 3. Fallback resiliente: parceiro matriz DuoLife (Venda Direta)
-  try {
-    const [matriz] = await sql<any[]>`
-      SELECT id, razao_social, nome_fantasia
-      FROM partners
-      WHERE status = 'active'
-        AND (razao_social ILIKE '%duolife%' OR nome_fantasia ILIKE '%duolife%')
-      ORDER BY created_at ASC
-      LIMIT 1
-    `;
-    if (matriz) {
-      return {
-        id: matriz.id,
-        name: matriz.nome_fantasia || matriz.razao_social || 'DuoLife Venda Direta',
-      };
-    }
-
-    // Primeiro parceiro ativo
-    const [primeiroAtivo] = await sql<any[]>`
-      SELECT id, razao_social, nome_fantasia
-      FROM partners
-      WHERE status = 'active'
-      ORDER BY created_at ASC
-      LIMIT 1
-    `;
-    if (primeiroAtivo) {
-      return {
-        id: primeiroAtivo.id,
-        name: primeiroAtivo.nome_fantasia || primeiroAtivo.razao_social || 'Parceiro DuoLife',
-      };
-    }
-  } catch (err) {
-    logger.error({ err }, 'wix.partner_resolution.fallback_query_failed');
-  }
-
-  return {
-    id: 'partner_duolife_default',
-    name: 'DuoLife Venda Direta',
-  };
+  // 3. Padrão do Polo NET4Life Wix: Parceiro NET4Life da corretora NET4Life Corretora de Seguros
+  return await ensureNet4LifeMasterPartner();
 }

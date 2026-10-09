@@ -256,7 +256,45 @@ async function runRuntimeSchemaSetup(): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS idx_partners_corretora_id ON partners(corretora_id)`;
   await sql`UPDATE partners SET corretora_id = 'corretora_net4life_001' WHERE corretora_id IS NULL`;
 
-  // Usuários dos parceiros
+  // Seed do Parceiro Master NET4Life vinculado à Corretora NET4Life (#1)
+  await sql`
+    INSERT INTO partners (
+      id,
+      razao_social,
+      nome_fantasia,
+      email,
+      phone,
+      status,
+      corretora_id,
+      metadata
+    )
+    VALUES (
+      'partner_net4life_master',
+      'NET4Life Corretora de Seguros',
+      'NET4Life',
+      'vendas@net4life.com.br',
+      '+55 11 91177-1319',
+      'active',
+      'corretora_net4life_001',
+      '{
+        "slug": "net4life",
+        "isMasterPartner": true,
+        "polo": "net4life_wix",
+        "whiteLabel": {
+          "slug": "net4life",
+          "companyName": "NET4Life Corretora de Seguros"
+        },
+        "wix": {
+          "partnerCode": "net4life",
+          "cargo": "Polo NET4Life"
+        }
+      }'::jsonb
+    )
+    ON CONFLICT (id) DO UPDATE SET
+      corretora_id = EXCLUDED.corretora_id,
+      status = 'active',
+      updated_at = NOW()
+  `;
   await sql`
     CREATE TABLE IF NOT EXISTS partner_users (
       id            TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,

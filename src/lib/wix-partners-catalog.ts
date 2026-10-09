@@ -176,6 +176,7 @@ export async function loadPartnerResolutionContext(): Promise<PartnerResolutionC
     }
 
     if (
+      p.id === 'partner_net4life_master' ||
       normRazao.includes('net4life') ||
       razao.includes('net4life') ||
       p.id === 'corretora_net4life_001'
@@ -187,6 +188,12 @@ export async function loadPartnerResolutionContext(): Promise<PartnerResolutionC
   // Fallback padrão se não houver corretora Net4life explícita
   if (!fallbackPartnerId && partnerRows.length > 0) {
     fallbackPartnerId = partnerRows[0].id;
+  }
+
+  if (fallbackPartnerId) {
+    partnerByCodeMap.set('net4life', fallbackPartnerId);
+    partnerByCodeMap.set('polo', fallbackPartnerId);
+    partnerByCodeMap.set('net4life-wix', fallbackPartnerId);
   }
 
   // Indexa os 25 parceiros do catálogo mapeando suas variações diretamente para os IDs encontrados

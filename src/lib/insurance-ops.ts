@@ -68,8 +68,8 @@ export async function ensureSaleForPaidQuote(input: {
 }) {
   return await sql.begin(async (tx) => {
     // 1. Lock de linha na cotação para garantir que concorrência não processe duas vezes
-    const [quote] = await tx<{ id: string; client_data: Record<string, any> | null }[]>`
-      SELECT id, client_data
+    const [quote] = await tx<{ id: string; client_data: Record<string, any> | null; corretora_id: string | null }[]>`
+      SELECT id, client_data, corretora_id
       FROM cotacoes
       WHERE id = ${input.cotacaoId}
       FOR UPDATE
@@ -123,11 +123,11 @@ export async function ensureSaleForPaidQuote(input: {
     const commissionAmount = Number((premioLiquido * (commissionRate / 100)).toFixed(2));
     const policyNumber = `${rateRow?.policy_prefix || 'DL'}-${input.cotacaoId.slice(0, 8).toUpperCase()}`;
 
-    // Obtém corretora vinculada ao parceiro da cotação
+    // Obtém corretora vinculada ao parceiro da cotação (com fallback para a corretora da cotação ou NET4Life)
     const [partnerCorretora] = await tx<{ corretora_id: string | null }[]>`
       SELECT corretora_id FROM partners WHERE id = ${input.partnerId} LIMIT 1
     `;
-    const corretoraId = partnerCorretora?.corretora_id || null;
+    const corretoraId = partnerCorretora?.corretora_id || quote?.corretora_id || 'corretora_net4life_001';
 
     // 4. Insere venda — Vigência de 1 ano securitária: até o dia anterior do próximo ano
     const [sale] = await tx<{ id: string }[]>`
