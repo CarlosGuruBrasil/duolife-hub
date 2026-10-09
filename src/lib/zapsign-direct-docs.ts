@@ -80,7 +80,7 @@ export async function criarDocumentoZapSignDireto(
       signature_pattern: s.signaturePattern || (idx === 0 ? '{{assinatura_corretora}}' : '{{assinatura_proponente}}'),
       send_automatic_email: s.sendAutomaticEmail ?? true,
       send_automatic_whatsapp: false,
-      order: s.order ?? (idx + 1),
+      ...(s.order !== undefined && s.order !== null ? { order: s.order } : {}),
     };
   });
 
@@ -140,8 +140,14 @@ export async function criarDocumentoZapSignDireto(
     status: s.status || 'pending',
   }));
 
-  // O signUrl do proponente (cliente final) é o segundo signatário se houver 2, ou o primeiro se for único
-  const signUrl = signersList[1]?.signUrl || signersList[0]?.signUrl || '';
+  // Resolve o signUrl prioritariamente para o proponente (cliente final)
+  const proponenteEmail = params.signatarios?.find(s => s.signaturePattern === '{{assinatura_proponente}}')?.email || params.signatario?.email;
+  const proponenteSigner =
+    (proponenteEmail ? signersList.find((s: any) => s.email?.toLowerCase() === proponenteEmail.toLowerCase()) : null) ||
+    signersList.find((s: any) => s.signUrl && !s.email?.toLowerCase().includes('net4life') && !s.email?.toLowerCase().includes('duolife.com.br')) ||
+    signersList[0];
+
+  const signUrl = proponenteSigner?.signUrl || signersList[0]?.signUrl || '';
 
   return {
     docToken,

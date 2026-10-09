@@ -78,22 +78,22 @@ export async function POST(
     logger.info({ cotacaoId: cotacao.id }, 'wix.contrato.gerando_pdf');
     const pdfData = await gerarContratoPdfBuffer(cotacao.id);
 
-    // 4. Configura signatários: Dupla assinatura (Corretora + Proponente)
-    const signatarioCorretora = {
-      nome: pdfData.signatarioCorretora?.nome || 'Corretora',
-      email: pdfData.signatarioCorretora?.email || 'contato@net4life.com.br',
-      phone: pdfData.signatarioCorretora?.phone || null,
-      order: 1,
-      signaturePattern: '{{assinatura_corretora}}',
-      sendAutomaticEmail: true,
-    };
-
+    // 4. Configura signatários: Proponente assina imediatamente no checkout web
     const signatarioProponente = {
       nome: pdfData.signatarioProponente?.nome || cotacao.client_name,
       email: pdfData.signatarioProponente?.email || cotacao.client_email || 'suporte@duolife.net.br',
       phone: pdfData.signatarioProponente?.phone || cotacao.client_phone || null,
-      order: 2,
+      order: undefined, // Sem restrição sequencial: proponente assina imediatamente no checkout
       signaturePattern: '{{assinatura_proponente}}',
+      sendAutomaticEmail: false, // Cliente já está na tela assinando
+    };
+
+    const signatarioCorretora = {
+      nome: pdfData.signatarioCorretora?.nome || 'Corretora Net4Life',
+      email: pdfData.signatarioCorretora?.email || 'contato@net4life.com.br',
+      phone: pdfData.signatarioCorretora?.phone || null,
+      order: undefined, // Sem restrição sequencial: ambos assinam de forma independente
+      signaturePattern: '{{assinatura_corretora}}',
       sendAutomaticEmail: true,
     };
 
@@ -101,21 +101,25 @@ export async function POST(
       .toISOString()
       .slice(0, 10);
 
-    // 5. Registra o documento na API oficial da ZapSign
+    // 5. Registra o documento na API oficial da ZapSign (Proponente em primeiro lugar)
     logger.info({ cotacaoId: cotacao.id, docName: pdfData.docName }, 'wix.contrato.enviando_zapsign');
     const directDoc = await criarDocumentoZapSignDireto({
       base64Pdf: pdfData.base64,
       docName: pdfData.docName,
       externalId: cotacao.id,
       deadlineAt: deadlineZapSign,
-      signatarios: [signatarioCorretora, signatarioProponente],
+      signatarios: [signatarioProponente, signatarioCorretora],
     });
 
     const docToken = directDoc.docToken;
-    const signUrl =
-      directDoc.signers?.[1]?.signUrl ||
-      directDoc.signUrl ||
-      `https://app.zapsign.com.br/verificar/${docToken}`;
+    const proponenteSigner =
+      directDoc.signers?.find(
+        (s) => s.email?.toLowerCase() === signatarioProponente.email.toLowerCase()
+      ) ||
+      directDoc.signers?.find((s) => s.name === signatarioProponente.nome) ||
+      directDoc.signers?.[0];
+
+    const signUrl = proponenteSigner?.signUrl || directDoc.signUrl || '';
 
     // 6. Registra em signature_documents
     await sql`
