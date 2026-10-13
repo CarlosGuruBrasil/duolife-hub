@@ -3,6 +3,7 @@ import { verifyAuth, unauthorized } from '@/lib/auth';
 import { roleIsDev } from '@/lib/roles';
 import { getAllSystemSettings, updateSystemSettings, sanitizeApiToken } from '@/lib/system-settings';
 import { logger } from '@/lib/logger';
+import { recordActionAudit } from '@/lib/action-audit';
 
 const SECRET_KEYS = new Set([
   'ASAAS_API_KEY',
@@ -133,6 +134,23 @@ export async function POST(req: NextRequest) {
     const updatedBy = user.email || user.name || 'duolife_dev';
     if (Object.keys(sanitizedSettings).length > 0) {
       await updateSystemSettings(sanitizedSettings, updatedBy);
+
+      // Auditoria de Ações: registra a alteração das chaves de API com mascaramento seguro
+      await recordActionAudit({
+        userId: user.userId,
+        userName: user.name || user.email,
+        userEmail: user.email,
+        userRole: user.role,
+        action: 'chaves_api.atualizar',
+        module: 'chaves_api',
+        targetType: 'system_settings',
+        targetId: 'global',
+        targetName: 'Configurações de Integração e Chaves de API',
+        description: `Atualizou ${Object.keys(sanitizedSettings).length} chave(s) de integração: ${Object.keys(sanitizedSettings).join(', ')}`,
+        newState: sanitizedSettings,
+        status: 'success',
+        req,
+      });
     }
 
     logger.info({ user: user.email, keysUpdated: Object.keys(sanitizedSettings) }, 'api.admin.chaves-api.update.success');

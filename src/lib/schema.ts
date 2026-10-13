@@ -1164,6 +1164,38 @@ async function runRuntimeSchemaSetup(): Promise<void> {
     await sql`CREATE INDEX IF NOT EXISTS idx_mcp_audit_logs_session ON mcp_audit_logs (sale_session_id)`;
     await sql`CREATE INDEX IF NOT EXISTS idx_mcp_audit_logs_tool ON mcp_audit_logs (tool)`;
     await sql`CREATE INDEX IF NOT EXISTS idx_mcp_audit_logs_created_at ON mcp_audit_logs (created_at DESC)`;
+
+    // 4. Auditoria de Ações Administrativas e de Negócio (action_audit_logs)
+    await sql`
+      CREATE TABLE IF NOT EXISTS action_audit_logs (
+        id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        user_id TEXT,
+        user_name TEXT NOT NULL,
+        user_email TEXT NOT NULL,
+        user_role TEXT NOT NULL,
+        ip_address TEXT,
+        user_agent TEXT,
+        action TEXT NOT NULL,
+        module TEXT NOT NULL,
+        target_type TEXT,
+        target_id TEXT,
+        target_name TEXT,
+        description TEXT NOT NULL,
+        old_state JSONB DEFAULT NULL,
+        new_state JSONB DEFAULT NULL,
+        diff JSONB DEFAULT NULL,
+        status TEXT NOT NULL DEFAULT 'success',
+        error_message TEXT DEFAULT NULL,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `;
+    await sql`CREATE INDEX IF NOT EXISTS idx_action_audit_logs_created_at ON action_audit_logs (created_at DESC)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_action_audit_logs_module ON action_audit_logs (module)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_action_audit_logs_action ON action_audit_logs (action)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_action_audit_logs_user_id ON action_audit_logs (user_id)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_action_audit_logs_target ON action_audit_logs (target_type, target_id)`;
+    await sql`CREATE INDEX IF NOT EXISTS idx_action_audit_logs_status ON action_audit_logs (status)`;
   } catch {
     // Silencia se tabelas estiverem em criação
   }

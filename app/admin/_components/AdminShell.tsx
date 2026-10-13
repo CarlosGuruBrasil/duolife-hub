@@ -30,6 +30,7 @@ import {
   FileSpreadsheet,
   MailCheck,
   Webhook,
+  Activity,
 } from 'lucide-react';
 import type { AuthUser } from '@/lib/auth';
 import { roleIsDev } from '@/lib/roles';
@@ -139,6 +140,12 @@ export default function AdminShell({ children, user }: AdminShellProps) {
                 icon: Webhook,
                 description: 'Rastreamento, logs de payload e reprocessamento.',
               },
+              {
+                href: '/admin/auditoria-acoes',
+                label: 'Auditoria de Ações',
+                icon: Activity,
+                description: 'Rastreabilidade de operações, mutações e diff de alterações.',
+              },
             ],
           },
         ]
@@ -179,6 +186,8 @@ export default function AdminShell({ children, user }: AdminShellProps) {
     currentPathLabel = 'Auditoria de E-mails (Logs & Diagnóstico)';
   } else if (pathname === '/admin/auditoria-webhooks') {
     currentPathLabel = 'Auditoria de Webhooks';
+  } else if (pathname === '/admin/auditoria-acoes') {
+    currentPathLabel = 'Auditoria de Ações (Mutações & Diff)';
   } else if (pathname.startsWith('/admin/produtos/novo')) {
     currentPathLabel = 'Produtos / Novo Produto';
   } else if (pathname.startsWith('/admin/produtos/')) {

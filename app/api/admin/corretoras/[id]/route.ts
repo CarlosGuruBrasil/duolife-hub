@@ -6,6 +6,7 @@ import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { logger } from '@/lib/logger';
 import { getWhiteLabelConfig, mergeWhiteLabelConfig } from '@/lib/white-label';
+import { recordActionAudit, calculateObjectDiff } from '@/lib/action-audit';
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const admin = await verifyAdminAuth();
@@ -337,6 +338,47 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         (comprovante_bancario_base64 IS NOT NULL) AS has_comprovante_bancario,
         metadata, updated_at
     `;
+
+    const oldSanitized = {
+      razao_social: current.razao_social,
+      nome_fantasia: current.nome_fantasia,
+      email: current.email,
+      phone: current.phone,
+      status: current.status,
+      banco: current.banco,
+      agencia: current.agencia,
+      conta: current.conta,
+      pix_chave: current.pix_chave,
+    };
+    const newSanitized = {
+      razao_social: updated.razao_social,
+      nome_fantasia: updated.nome_fantasia,
+      email: updated.email,
+      phone: updated.phone,
+      status: updated.status,
+      banco: updated.banco,
+      agencia: updated.agencia,
+      conta: updated.conta,
+      pix_chave: updated.pix_chave,
+    };
+
+    await recordActionAudit({
+      userId: admin.userId,
+      userName: admin.name || admin.email,
+      userEmail: admin.email,
+      userRole: admin.role,
+      action: 'corretora.editar',
+      module: 'corretoras',
+      targetType: 'corretora',
+      targetId: id,
+      targetName: updated.razao_social || updated.nome_fantasia || id,
+      description: `Atualizou dados da corretora ${updated.nome_fantasia || updated.razao_social}`,
+      oldState: oldSanitized,
+      newState: newSanitized,
+      diff: calculateObjectDiff(oldSanitized, newSanitized),
+      status: 'success',
+      req,
+    });
 
     logger.info({ adminId: admin.userId, corretoraId: id, updatedLogo: updateLogo }, 'admin.corretora.updated');
     return Response.json({
