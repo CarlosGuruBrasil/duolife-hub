@@ -76,13 +76,29 @@ export async function GET(req: NextRequest) {
       getActionAuditStats(),
     ]);
 
+    const total24h = Number(stats?.total24h || 0);
+    const totalErrors24h = Number(stats?.totalErrors24h || 0);
+    const totalWarnings24h = Number(stats?.totalWarnings24h || 0);
+    const activeUsers24h = Number(stats?.activeUsers24h || 0);
+    const successRate24h =
+      total24h > 0
+        ? Math.max(0, Math.min(100, Math.round(((total24h - totalErrors24h) / total24h) * 100)))
+        : 100;
+
     const totalPages = Math.max(1, Math.ceil(total / limit));
 
     return Response.json({
       ok: true,
       logs,
       total,
-      stats,
+      stats: {
+        totalRegistered: total,
+        total24h,
+        totalErrors24h,
+        totalWarnings24h,
+        activeUsers24h,
+        successRate24h,
+      },
       page,
       limit,
       totalPages,

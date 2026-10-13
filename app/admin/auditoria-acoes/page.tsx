@@ -469,7 +469,9 @@ export default function AuditoriaAcoesPage() {
           </div>
           <div className="mt-3">
             <div className="text-2xl font-black text-gray-900">
-              {stats ? stats.totalRegistered.toLocaleString('pt-BR') : '—'}
+              {stats?.totalRegistered !== undefined
+                ? Number(stats.totalRegistered).toLocaleString('pt-BR')
+                : totalCount.toLocaleString('pt-BR')}
             </div>
             <p className="mt-1 text-xs text-gray-500">
               Operações de negócio e mutações
@@ -489,7 +491,9 @@ export default function AuditoriaAcoesPage() {
           </div>
           <div className="mt-3">
             <div className="text-2xl font-black text-gray-900">
-              {stats ? stats.total24h.toLocaleString('pt-BR') : '—'}
+              {stats?.total24h !== undefined
+                ? Number(stats.total24h).toLocaleString('pt-BR')
+                : '—'}
             </div>
             <p className="mt-1 text-xs text-gray-500">
               Eventos nas últimas 24 horas
@@ -509,7 +513,7 @@ export default function AuditoriaAcoesPage() {
           </div>
           <div className="mt-3">
             <div className="text-2xl font-black text-gray-900">
-              {stats ? `${stats.successRate24h}%` : '—'}
+              {stats?.successRate24h !== undefined ? `${stats.successRate24h}%` : '100%'}
             </div>
             <p className="mt-1 text-xs text-gray-500">
               {stats?.totalErrors24h ? `${stats.totalErrors24h} falha(s) em 24h` : '100% de estabilidade'}
@@ -529,7 +533,9 @@ export default function AuditoriaAcoesPage() {
           </div>
           <div className="mt-3">
             <div className="text-2xl font-black text-gray-900">
-              {stats ? stats.activeUsers24h.toLocaleString('pt-BR') : '—'}
+              {stats?.activeUsers24h !== undefined
+                ? Number(stats.activeUsers24h).toLocaleString('pt-BR')
+                : '—'}
             </div>
             <p className="mt-1 text-xs text-gray-500">
               {stats?.totalWarnings24h ? `${stats.totalWarnings24h} alertas gerados` : 'Autores distintos ativos'}
@@ -688,15 +694,17 @@ export default function AuditoriaAcoesPage() {
                   const roleInfo = getRoleLabel(log.user_role);
                   const moduleInfo = getModuleBadge(log.module);
                   const diffCount = Array.isArray(log.diff) ? log.diff.length : 0;
-                  const initials = log.user_name
-                    ? log.user_name
-                        .split(' ')
-                        .filter(Boolean)
-                        .map((p) => p[0])
-                        .join('')
-                        .slice(0, 2)
-                        .toUpperCase()
-                    : 'US';
+                  const initials =
+                    typeof log.user_name === 'string' && log.user_name.trim()
+                      ? log.user_name
+                          .trim()
+                          .split(' ')
+                          .filter(Boolean)
+                          .map((p) => p[0])
+                          .join('')
+                          .slice(0, 2)
+                          .toUpperCase()
+                      : 'US';
 
                   return (
                     <tr
@@ -794,7 +802,7 @@ export default function AuditoriaAcoesPage() {
                               setSelectedLog(log);
                               setActiveTab('diff');
                             }}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-bold text-[#0e4a5a] shadow-2xs transition-all hover:bg-teal-50 hover:border-teal-300"
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-bold text-[#0e4a5a] shadow-xs transition-all hover:bg-teal-50 hover:border-teal-300"
                             title="Ver detalhes da mutação e diff comparativo"
                           >
                             <Eye className="h-3.5 w-3.5 text-[#00d4e0]" />
@@ -1004,7 +1012,7 @@ export default function AuditoriaAcoesPage() {
                 <Layers className="h-3.5 w-3.5" />
                 <span>Comparativo (Diff)</span>
                 {Array.isArray(selectedLog.diff) && selectedLog.diff.length > 0 && (
-                  <span className="rounded-full bg-emerald-100 text-emerald-800 px-1.5 py-0.2 text-[10px]">
+                  <span className="rounded-full bg-emerald-100 text-emerald-800 px-1.5 py-0.5 text-[10px]">
                     {selectedLog.diff.length}
                   </span>
                 )}
@@ -1280,7 +1288,7 @@ export default function AuditoriaAcoesPage() {
                 onClick={() =>
                   copyToClipboard(JSON.stringify(selectedLog, null, 2), 'all')
                 }
-                className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-bold text-gray-700 shadow-2xs hover:bg-gray-50"
+                className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-bold text-gray-700 shadow-xs hover:bg-gray-50"
               >
                 {copiedFullJson ? (
                   <>
