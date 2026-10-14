@@ -73,16 +73,24 @@ export function CotacoesAdvancedFilters({
     return partners.filter((p) => p.corretoraId === corretoraId);
   }, [partners, corretoraId]);
 
-  const uniqueStatusOptions = React.useMemo(() => {
+  const groupedStatusOptions = React.useMemo(() => {
+    const clientStatusKeys = ['vigente', 'negociacao', 'cadastrado', 'expirado', 'cancelado'];
     const seen = new Set<string>();
-    const options: { value: string; label: string }[] = [];
+    const clientOptions: { value: string; label: string }[] = [];
+    const processOptions: { value: string; label: string }[] = [];
+
     for (const [key, label] of Object.entries(statusLabels || {})) {
       if (!seen.has(label)) {
         seen.add(label);
-        options.push({ value: key, label });
+        const lowerKey = key.toLowerCase();
+        if (clientStatusKeys.includes(lowerKey)) {
+          clientOptions.push({ value: lowerKey, label });
+        } else {
+          processOptions.push({ value: lowerKey, label });
+        }
       }
     }
-    return options;
+    return { clientOptions, processOptions };
   }, [statusLabels]);
 
   if (!isOpen) return null;
@@ -192,10 +200,10 @@ export function CotacoesAdvancedFilters({
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-        {/* 1. Status da Cotação */}
+        {/* 1. Status do Cliente / Cotação */}
         <div>
           <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
-            Status da Cotação
+            Status do Cliente / Cotação
           </label>
           <select
             value={status}
@@ -206,11 +214,24 @@ export function CotacoesAdvancedFilters({
             className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none cursor-pointer"
           >
             <option value="">Todas as situações</option>
-            {uniqueStatusOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
+            {groupedStatusOptions.clientOptions.length > 0 && (
+              <optgroup label="Status do Cliente (Principal)">
+                {groupedStatusOptions.clientOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {groupedStatusOptions.processOptions.length > 0 && (
+              <optgroup label="Etapas do Processo">
+                {groupedStatusOptions.processOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </div>
 

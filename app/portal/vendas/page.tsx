@@ -9,6 +9,8 @@ import { PortalVendasPagination } from './_components/PortalVendasPagination';
 import { PeriodPreset, resolveDateRange, getPeriodLabel } from '@/lib/date-filters';
 import { formatCurrency, formatDate, formatStatusLabel, formatPlanLabel, formatPolicyValidity } from '@/lib/format';
 import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
+import { MatrixStatusBadge } from '@/components/common/MatrixStatusBadge';
+import { calculateMatrixStatus } from '@/lib/status-matrix';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,9 +32,16 @@ interface VendaRow {
   partner_name: string;
   client_cpf_cnpj: string | null;
   client_data?: any;
+  days_overdue?: number | null;
 }
 
 const statusLabel: Record<string, string> = {
+  // Status do Cliente (Matriz Principal)
+  vigente: 'Vigente / Renovado',
+  'vigente / renovado': 'Vigente / Renovado',
+  cancelado: 'Cancelado',
+  expirado: 'Expirado',
+  // Status da Venda (Legado)
   ativa: 'Ativa',
   cancelada: 'Cancelada',
   expirada: 'Expirada',
@@ -104,7 +113,13 @@ export default async function PortalVendasPage({
   }
 
   // Filtros dinâmicos
-  if (statusVariants && statusVariants.length > 0) {
+  if (['vigente', 'vigente / renovado'].includes(rawStatus)) {
+    conditions.push(sql`s.status = 'ativa' AND s.expiry_date >= CURRENT_DATE`);
+  } else if (rawStatus === 'cancelado') {
+    conditions.push(sql`s.status = 'cancelada'`);
+  } else if (rawStatus === 'expirado') {
+    conditions.push(sql`(s.status = 'expirada' OR s.expiry_date < CURRENT_DATE)`);
+  } else if (statusVariants && statusVariants.length > 0) {
     conditions.push(sql`s.status = ANY(${statusVariants})`);
   }
   if (productId) {
@@ -185,11 +200,27 @@ export default async function PortalVendasPage({
       c.client_name,
       c.client_cpf_cnpj,
       c.client_data,
-      pt.razao_social AS partner_name
+      pt.razao_social AS partner_name,
+      COALESCE(
+        (
+          SELECT MAX(GREATEST(0, (CURRENT_DATE - pi.due_date)::int))
+          FROM payment_installments pi
+          WHERE (pi.cotacao_id = s.cotacao_id OR (s.client_id IS NOT NULL AND pi.client_id = s.client_id))
+            AND pi.status IN ('pending', 'overdue')
+            AND pi.due_date < CURRENT_DATE
+        ),
+        CASE
+          WHEN po.status = 'overdue' AND po.due_date < CURRENT_DATE
+          THEN GREATEST(0, (CURRENT_DATE - po.due_date)::int)
+          ELSE 0
+        END,
+        0
+      )::int AS days_overdue
     FROM sales s
     JOIN products p ON p.id = s.product_id
     JOIN cotacoes c ON c.id = s.cotacao_id
     LEFT JOIN partners pt ON pt.id = s.partner_id
+    LEFT JOIN payment_orders po ON po.cotacao_id = s.cotacao_id
     WHERE ${where}
     ORDER BY s.issue_date DESC, s.created_at DESC
     LIMIT ${pageSize}
@@ -289,7 +320,7 @@ export default async function PortalVendasPage({
                     <th className="px-5 py-3.5 border-b border-gray-200">Prêmio</th>
                     <th className="px-5 py-3.5 border-b border-gray-200">Comissão</th>
                     <th className="px-5 py-3.5 border-b border-gray-200">Vigência</th>
-                    <th className="px-5 py-3.5 border-b border-gray-200">Status</th>
+                    <th className="px-5 py-3.5 border-b border-gray-200 text-center">Situação / Status</th>
                     <th className="px-5 py-3.5 border-b border-gray-200 text-right rounded-tr-2xl">Ação</th>
                   </tr>
                 </thead>
@@ -300,6 +331,15 @@ export default async function PortalVendasPage({
                         (1000 * 60 * 60 * 24)
                     );
                     const isExpiringSoon = venda.status === 'ativa' && expiryDays <= 60;
+
+                    const matrixStatus = calculateMatrixStatus({
+                      hasSale: true,
+                      saleStatus: venda.status,
+                      expiryDate: venda.expiry_date,
+                      daysOverdue: venda.days_overdue,
+                      hasCotacao: Boolean(venda.cotacao_id),
+                      cotacaoStatus: 'emitida',
+                    });
 
                     return (
                       <tr key={venda.id} className="group hover:bg-gray-50/75 transition-colors">
@@ -338,14 +378,8 @@ export default async function PortalVendasPage({
                         <td className="px-5 py-4 text-xs text-gray-500 border-b border-gray-100">
                           {formatPolicyValidity(venda.issue_date, venda.expiry_date)}
                         </td>
-                        <td className="px-5 py-4 border-b border-gray-100">
-                          <span
-                            className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold border ${
-                              statusColor[venda.status?.toLowerCase()] || statusColor[venda.status] || 'bg-gray-100 text-gray-700 border-gray-200'
-                            }`}
-                          >
-                            {formatStatusLabel(venda.status)}
-                          </span>
+                        <td className="px-5 py-4 border-b border-gray-100 text-center">
+                          <MatrixStatusBadge result={matrixStatus} variant="table-cell" />
                         </td>
                         <td className="px-5 py-4 text-right border-b border-gray-100">
                           {isExpiringSoon ? (

@@ -15,6 +15,9 @@ import { PeriodPreset, resolveDateRange } from '@/lib/date-filters';
 import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
 import TransferirParceiroCotacaoButton from '@/components/modals/TransferirParceiroCotacaoButton';
 
+import { MatrixStatusBadge } from '@/components/common/MatrixStatusBadge';
+import { calculateMatrixStatus } from '@/lib/status-matrix';
+
 export const dynamic = 'force-dynamic';
 
 interface AdminCotacaoRow {
@@ -35,9 +38,23 @@ interface AdminCotacaoRow {
   partner_name: string;
   partner_status?: string | null;
   partner_user_name?: string | null;
+  sale_id?: string | null;
+  sale_status?: string | null;
+  sale_expiry_date?: string | null;
+  days_overdue?: number | null;
 }
 
 const statusLabel: Record<string, string> = {
+  // Status do Cliente (Matriz Principal)
+  vigente: 'Vigente / Renovado',
+  'vigente / renovado': 'Vigente / Renovado',
+  negociacao: 'Em negociação',
+  'em negociacao': 'Em negociação',
+  'em negociação': 'Em negociação',
+  cancelado: 'Cancelado',
+  expirado: 'Expirado',
+  cadastrado: 'Cadastrado',
+  // Etapas de Cotação
   rascunho: 'Rascunho',
   enviada: 'Enviada',
   contrato_gerado: 'Aguardando Assinatura',
@@ -127,7 +144,38 @@ export default async function AdminCotacoesPage({
   const page = Math.max(1, Number(typeof params.page === 'string' ? params.page : '1') || 1);
 
   const conditions = [];
-  if (statusVariants && statusVariants.length > 0) conditions.push(sql`c.status = ANY(${statusVariants})`);
+  if (['vigente', 'vigente / renovado'].includes(rawStatus)) {
+    conditions.push(sql`(
+      EXISTS (
+        SELECT 1 FROM sales s_f
+        WHERE s_f.cotacao_id = c.id
+          AND s_f.status = 'ativa'
+          AND s_f.expiry_date >= CURRENT_DATE
+      )
+      OR c.status IN ('aprovada', 'emitida')
+    )`);
+  } else if (['negociacao', 'em negociacao', 'em negociação'].includes(rawStatus)) {
+    conditions.push(sql`(
+      NOT EXISTS (SELECT 1 FROM sales s_f WHERE s_f.cotacao_id = c.id)
+      AND c.status IN ('rascunho', 'enviada', 'contrato_gerado', 'assinado', 'pagamento_gerado')
+    )`);
+  } else if (rawStatus === 'cancelado') {
+    conditions.push(sql`(
+      c.status IN ('recusada', 'cancelada')
+      OR EXISTS (SELECT 1 FROM sales s_f WHERE s_f.cotacao_id = c.id AND s_f.status = 'cancelada')
+    )`);
+  } else if (rawStatus === 'expirado') {
+    conditions.push(sql`(
+      c.status = 'expirada'
+      OR EXISTS (
+        SELECT 1 FROM sales s_f
+        WHERE s_f.cotacao_id = c.id
+          AND (s_f.status = 'expirada' OR s_f.expiry_date < CURRENT_DATE)
+      )
+    )`);
+  } else if (statusVariants && statusVariants.length > 0) {
+    conditions.push(sql`c.status = ANY(${statusVariants})`);
+  }
   if (productId) conditions.push(sql`c.product_id = ${productId}`);
   if (corretoraId) {
     conditions.push(sql`(c.corretora_id = ${corretoraId} OR part.corretora_id = ${corretoraId})`);
@@ -210,11 +258,31 @@ export default async function AdminCotacoesPage({
       p.name AS product_name,
       COALESCE(part.nome_fantasia, part.razao_social) AS partner_name,
       part.status AS partner_status,
-      pu.name AS partner_user_name
+      pu.name AS partner_user_name,
+      s.id AS sale_id,
+      s.status AS sale_status,
+      s.expiry_date::text AS sale_expiry_date,
+      COALESCE(
+        (
+          SELECT MAX(GREATEST(0, (CURRENT_DATE - pi.due_date)::int))
+          FROM payment_installments pi
+          WHERE pi.cotacao_id = c.id
+            AND pi.status IN ('pending', 'overdue')
+            AND pi.due_date < CURRENT_DATE
+        ),
+        CASE
+          WHEN po.status = 'overdue' AND po.due_date < CURRENT_DATE
+          THEN GREATEST(0, (CURRENT_DATE - po.due_date)::int)
+          ELSE 0
+        END,
+        0
+      )::int AS days_overdue
     FROM cotacoes c
     JOIN products p ON p.id = c.product_id
     JOIN partners part ON part.id = c.partner_id
     LEFT JOIN partner_users pu ON pu.id = c.partner_user_id
+    LEFT JOIN sales s ON s.cotacao_id = c.id
+    LEFT JOIN payment_orders po ON po.cotacao_id = c.id
     WHERE ${where}
     ORDER BY c.created_at DESC
     LIMIT ${pageSize} OFFSET ${(currentPage - 1) * pageSize}
@@ -322,6 +390,16 @@ export default async function AdminCotacoesPage({
                   ].includes(String(cotacao.status || '').toLowerCase()) || Boolean(clientData.contratoPdf || clientData.signedFileUrl || clientData.assinadoEm);
                   const oab = String(clientData.oab || '');
 
+                  const matrixStatus = calculateMatrixStatus({
+                    hasCotacao: true,
+                    cotacaoStatus: cotacao.status,
+                    hasSale: Boolean(cotacao.sale_id),
+                    saleStatus: cotacao.sale_status,
+                    expiryDate: cotacao.sale_expiry_date,
+                    daysOverdue: cotacao.days_overdue,
+                    isContractSigned: isContratoAssinado,
+                  });
+
                   return (
                     <tr key={cotacao.id} className="hover:bg-slate-50/60 transition-colors duration-150 group">
                       <td className="px-6 py-4 table-sticky-col-cell">
@@ -374,9 +452,7 @@ export default async function AdminCotacoesPage({
                       </td>
 
                       <td className="px-6 py-4 text-center border-b border-slate-100">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${statusColor[cotacao.status?.toLowerCase()] || statusColor[cotacao.status] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
-                          {statusLabel[cotacao.status?.toLowerCase()] || formatStatusLabel(cotacao.status)}
-                        </span>
+                        <MatrixStatusBadge result={matrixStatus} variant="table-cell" />
                       </td>
 
                       <td className="px-6 py-4 text-center border-b border-slate-100">

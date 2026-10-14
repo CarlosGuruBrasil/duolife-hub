@@ -44,16 +44,24 @@ export function PortalVendasAdvancedFilters({
   const currentStart = searchParams.get('startDate') || '';
   const currentEnd = searchParams.get('endDate') || '';
 
-  const uniqueStatusOptions = React.useMemo(() => {
+  const groupedStatusOptions = React.useMemo(() => {
+    const clientStatusKeys = ['vigente', 'cancelado', 'expirado'];
     const seen = new Set<string>();
-    const options: { value: string; label: string }[] = [];
+    const clientOptions: { value: string; label: string }[] = [];
+    const policyOptions: { value: string; label: string }[] = [];
+
     for (const [key, label] of Object.entries(statusLabels || {})) {
       if (!seen.has(label)) {
         seen.add(label);
-        options.push({ value: key, label });
+        const lowerKey = key.toLowerCase();
+        if (clientStatusKeys.includes(lowerKey)) {
+          clientOptions.push({ value: lowerKey, label });
+        } else {
+          policyOptions.push({ value: lowerKey, label });
+        }
       }
     }
-    return options;
+    return { clientOptions, policyOptions };
   }, [statusLabels]);
 
   if (!isOpen) return null;
@@ -135,10 +143,10 @@ export function PortalVendasAdvancedFilters({
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {/* Status da Venda */}
+        {/* Status do Cliente / Venda */}
         <div>
           <label className="block text-xs font-semibold text-gray-700 mb-1.5">
-            Status da Venda
+            Status do Cliente / Apólice
           </label>
           <select
             value={currentStatus}
@@ -146,11 +154,24 @@ export function PortalVendasAdvancedFilters({
             className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-800 font-medium focus:border-[#0e4a5a] focus:outline-hidden focus:ring-2 focus:ring-[#0e4a5a]/10 cursor-pointer"
           >
             <option value="">Todos os status</option>
-            {uniqueStatusOptions.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
+            {groupedStatusOptions.clientOptions.length > 0 && (
+              <optgroup label="Status do Cliente (Principal)">
+                {groupedStatusOptions.clientOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {groupedStatusOptions.policyOptions.length > 0 && (
+              <optgroup label="Status da Apólice">
+                {groupedStatusOptions.policyOptions.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
         </div>
 

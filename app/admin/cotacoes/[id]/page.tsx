@@ -20,6 +20,8 @@ import CotacaoInformacoesProfissionaisCard from '@/components/cotacao/CotacaoInf
 import { GerenciarCobrancaButton } from '@/components/admin/GerenciarCobrancaButton';
 import { DesvincularCobrancaButton } from '@/components/admin/DesvincularCobrancaButton';
 import type { CobrancaAsaasInitialData } from '@/components/admin/GerenciarCobrancaAsaasModal';
+import { MatrixStatusBadge } from '@/components/common/MatrixStatusBadge';
+import { calculateMatrixStatus } from '@/lib/status-matrix';
 
 const statusLabel: Record<string, string> = {
   rascunho: 'Rascunho',
@@ -419,6 +421,25 @@ export default async function AdminCotacaoDetailPage({
       ? 'Cartão de Crédito'
       : 'Fatura (Cliente escolhe)';
 
+  const maxOverdueDays = overdueInstallments.reduce((max, inst) => {
+    if (!inst.due_date) return max;
+    const diff = Math.max(0, Math.round((Date.now() - new Date(inst.due_date + 'T12:00:00Z').getTime()) / (1000 * 60 * 60 * 24)));
+    return Math.max(max, diff);
+  }, 0);
+
+  const matrixStatus = calculateMatrixStatus({
+    hasCotacao: true,
+    cotacaoStatus: cotacao.status,
+    hasSale: Boolean(sale),
+    saleStatus: sale?.status,
+    expiryDate: sale?.expiry_date,
+    daysOverdue: maxOverdueDays,
+    isContractSigned: isAssinado,
+    isFullyPaid: isPaid,
+    paidInstallments: paidInstallmentsCount,
+    totalInstallments: totalInstallmentsCount,
+  });
+
   return (
     <div className="space-y-6 max-w-[1100px] mx-auto">
       {/* Voltar */}
@@ -433,9 +454,7 @@ export default async function AdminCotacaoDetailPage({
       <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
-            <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold border ${statusColor[cotacao.status] || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
-              {statusLabel[cotacao.status] || cotacao.status}
-            </span>
+            <MatrixStatusBadge result={matrixStatus} variant="inline" />
             {sale?.policy_number && (
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-300">
                 <ShieldCheck size={13} className="text-emerald-700" /> Apólice: {sale.policy_number}

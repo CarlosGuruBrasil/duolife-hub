@@ -19,6 +19,8 @@ import { ClientesPagination } from './_components/ClientesPagination';
 import { ClientesCardMobile } from './_components/ClientesCardMobile';
 import { ClientesFilterSection } from './_components/ClientesFilterSection';
 import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
+import { MatrixStatusBadge } from '@/components/common/MatrixStatusBadge';
+import { calculateMatrixStatus } from '@/lib/status-matrix';
 
 export const dynamic = 'force-dynamic';
 
@@ -240,25 +242,20 @@ export default async function AdminClientesPage({
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {clients.map((client) => {
-                      const sigStatus = (() => {
-                        const quoteSt = String(client.last_quote_status || '').toLowerCase();
-                        const sigSt = String(client.last_signature_status || '').toLowerCase();
-                        const paySt = String(client.last_payment_status || '').toLowerCase();
+                      const isSigned = ['assinado', 'signed', 'pagamento_gerado', 'aprovada', 'emitida'].includes(String(client.last_quote_status || '').toLowerCase()) || String(client.last_signature_status || '').toLowerCase() === 'signed';
+                      const isApproved = ['emitida', 'aprovada', 'ativa'].includes(String(client.last_quote_status || '').toLowerCase());
 
-                        if (['emitida', 'ativa'].includes(quoteSt)) return 'emitida';
-                        if (['aprovada', 'approved'].includes(quoteSt)) return 'aprovada';
-                        if (['paid', 'confirmed', 'received'].includes(paySt) && (client.paid_installments ?? 0) >= (client.total_installments || 1)) {
-                          return 'aprovada';
-                        }
-                        if (['assinado', 'signed'].includes(sigSt) || ['assinado', 'signed'].includes(quoteSt)) {
-                          return 'assinado';
-                        }
-                        if (quoteSt === 'pagamento_gerado') return 'pagamento_gerado';
-                        if (['contrato_gerado', 'pending'].includes(sigSt) || quoteSt === 'contrato_gerado') {
-                          return 'contrato_gerado';
-                        }
-                        return client.last_quote_status || client.last_signature_status || null;
-                      })();
+                      const matrixStatus = calculateMatrixStatus({
+                        hasCotacao: (client.cotacoes_count ?? 0) > 0,
+                        cotacaoStatus: client.last_quote_status,
+                        signatureStatus: client.last_signature_status,
+                        isContractSigned: isSigned,
+                        hasSale: isApproved,
+                        paymentStatus: client.last_payment_status,
+                        paidInstallments: client.paid_installments,
+                        totalInstallments: client.total_installments,
+                        isFullyPaid: (client.paid_installments ?? 0) >= (client.total_installments || 1) && (client.total_installments ?? 0) > 0,
+                      });
                       const payStatus = client.last_payment_status;
 
                       return (
@@ -295,18 +292,8 @@ export default async function AdminClientesPage({
                           </td>
 
                           {/* Status */}
-                          <td className="px-6 py-4 text-gray-600 border-b border-gray-100">
-                            {sigStatus ? (
-                              <span
-                                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${
-                                  statusBadgeColor[sigStatus.toLowerCase()] || statusBadgeColor[sigStatus] || 'bg-gray-100 text-gray-700 border-gray-200'
-                                }`}
-                              >
-                                {formatStatusLabel(sigStatus)}
-                              </span>
-                            ) : (
-                              <span className="text-gray-400 text-xs">—</span>
-                            )}
+                          <td className="px-6 py-4 text-center border-b border-gray-100">
+                            <MatrixStatusBadge result={matrixStatus} variant="table-cell" />
                           </td>
 
                           {/* Parcelas e Pagamento */}

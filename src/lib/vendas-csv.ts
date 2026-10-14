@@ -1,6 +1,7 @@
 import { formatCurrency, parseCurrencyToNumber, formatStatusLabel, formatPlanLabel, resolvePolicyExpiryDate } from './format';
 import { sql } from './pg';
 import { logger } from './logger';
+import { calculateMatrixStatus } from './status-matrix';
 
 export interface VendaExportRow {
   id: string;
@@ -304,17 +305,19 @@ export function gerarVendasCSV(
     // 1. Nome Segurado
     const nome = venda.client_name ?? clientData.nome ?? clientData.nomeCliente ?? '';
 
-    // 2. Status: status original do client_data ou formatStatusLabel da venda
-    const rawStatusOriginal =
-      clientData.statusCliente ??
-      clientData.status_cliente ??
-      clientData.statusGeral ??
-      clientData.statusOriginal;
+    // 2. Status: Status do Cliente (Matriz Canônica)
+    const matrix = calculateMatrixStatus({
+      hasSale: true,
+      saleStatus: venda.status,
+      expiryDate: venda.expiry_date,
+      hasCotacao: Boolean(venda.cotacao_id),
+      cotacaoStatus: 'emitida',
+      rawStatusCliente: clientData.statusCliente ?? clientData.status_cliente,
+      rawStatusGeral: clientData.statusGeral,
+      rawStatusPagamento: clientData.statusPagamento,
+    });
 
-    const statusFinal =
-      rawStatusOriginal && String(rawStatusOriginal).trim() !== ''
-        ? String(rawStatusOriginal).trim()
-        : formatStatusLabel(venda.status);
+    const statusFinal = matrix.statusCliente;
 
     // 3. IS (Importância Segurada)
     const rawIs =

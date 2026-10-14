@@ -9,6 +9,8 @@ import { VendasPagination } from './_components/VendasPagination';
 import { PeriodPreset, resolveDateRange, getPeriodLabel } from '@/lib/date-filters';
 import { formatCurrency, formatDate, formatStatusLabel, formatPlanLabel, formatPolicyValidity } from '@/lib/format';
 import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
+import { MatrixStatusBadge } from '@/components/common/MatrixStatusBadge';
+import { calculateMatrixStatus } from '@/lib/status-matrix';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,9 +32,16 @@ interface VendaRow {
   client_cpf_cnpj: string | null;
   client_data?: any;
   source?: string | null;
+  days_overdue?: number | null;
 }
 
 const statusLabel: Record<string, string> = {
+  // Status do Cliente (Matriz Principal)
+  vigente: 'Vigente / Renovado',
+  'vigente / renovado': 'Vigente / Renovado',
+  cancelado: 'Cancelado',
+  expirado: 'Expirado',
+  // Status da Venda (Legado)
   ativa: 'Ativa',
   cancelada: 'Cancelada',
   expirada: 'Expirada',
@@ -94,7 +103,13 @@ export default async function AdminVendasPage({
 
   const conditions = [];
 
-  if (statusVariants && statusVariants.length > 0) {
+  if (['vigente', 'vigente / renovado'].includes(rawStatus)) {
+    conditions.push(sql`s.status = 'ativa' AND s.expiry_date >= CURRENT_DATE`);
+  } else if (rawStatus === 'cancelado') {
+    conditions.push(sql`s.status = 'cancelada'`);
+  } else if (rawStatus === 'expirado') {
+    conditions.push(sql`(s.status = 'expirada' OR s.expiry_date < CURRENT_DATE)`);
+  } else if (statusVariants && statusVariants.length > 0) {
     conditions.push(sql`s.status = ANY(${statusVariants})`);
   }
   if (productId) {
@@ -200,11 +215,27 @@ export default async function AdminVendasPage({
       pr.name AS product_name,
       c.client_name,
       c.client_cpf_cnpj,
-      c.client_data
+      c.client_data,
+      COALESCE(
+        (
+          SELECT MAX(GREATEST(0, (CURRENT_DATE - pi.due_date)::int))
+          FROM payment_installments pi
+          WHERE (pi.cotacao_id = s.cotacao_id OR (s.client_id IS NOT NULL AND pi.client_id = s.client_id))
+            AND pi.status IN ('pending', 'overdue')
+            AND pi.due_date < CURRENT_DATE
+        ),
+        CASE
+          WHEN po.status = 'overdue' AND po.due_date < CURRENT_DATE
+          THEN GREATEST(0, (CURRENT_DATE - po.due_date)::int)
+          ELSE 0
+        END,
+        0
+      )::int AS days_overdue
     FROM sales s
     JOIN products pr ON pr.id = s.product_id
     JOIN cotacoes c ON c.id = s.cotacao_id
     LEFT JOIN partners p ON p.id = s.partner_id
+    LEFT JOIN payment_orders po ON po.cotacao_id = s.cotacao_id
     WHERE ${where}
     ORDER BY s.created_at DESC
     LIMIT ${pageSize}
@@ -296,52 +327,57 @@ export default async function AdminVendasPage({
                     <th className="px-5 py-3.5 border-b border-gray-200">Prêmio</th>
                     <th className="px-5 py-3.5 border-b border-gray-200">Comissão</th>
                     <th className="px-5 py-3.5 border-b border-gray-200">Vigência</th>
-                    <th className="px-5 py-3.5 border-b border-gray-200 rounded-tr-2xl">Status</th>
+                    <th className="px-5 py-3.5 border-b border-gray-200 text-center rounded-tr-2xl">Situação / Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 bg-white">
-                  {vendas.map((venda) => (
-                    <tr key={venda.id} className="group hover:bg-gray-50/75 transition-colors">
-                      <td className="px-5 py-4 table-sticky-col-cell">
-                        <Link
-                          href={venda.cotacao_id ? `/admin/cotacoes/${venda.cotacao_id}?from=vendas` : `/admin/vendas/${venda.id}`}
-                          className="font-semibold text-gray-900 hover:text-[#0e4a5a] hover:underline transition-colors inline-flex items-center gap-1.5 group/name"
-                          title="Ver detalhes completos da venda, contrato e cobrança"
-                        >
-                          <span>{venda.client_name}</span>
-                          <ExternalLink size={12} className="text-gray-400 opacity-0 group-hover/name:opacity-100 transition-opacity shrink-0" />
-                        </Link>
-                        {venda.client_cpf_cnpj && (
-                          <div className="text-xs text-gray-500">{venda.client_cpf_cnpj}</div>
-                        )}
-                      </td>
-                      <td className="px-5 py-4 text-xs font-semibold text-gray-700 border-b border-gray-100">{venda.partner_name}</td>
-                      <td className="px-5 py-4 border-b border-gray-100">
-                        <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-gray-100 text-gray-800 border border-gray-200">
-                          {formatPlanLabel(venda.importancia_segurada, venda.client_data, venda.product_name)}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 font-semibold text-gray-900 border-b border-gray-100">{formatCurrency(venda.premio_total)}</td>
-                      <td className="px-5 py-4 text-gray-600 border-b border-gray-100">
-                        <div className="font-semibold text-gray-900">{formatCurrency(venda.commission_amount)}</div>
-                        {venda.commission_rate && (
-                          <span className="text-xs text-gray-400">{Number(venda.commission_rate)}%</span>
-                        )}
-                      </td>
-                      <td className="px-5 py-4 text-xs text-gray-500 border-b border-gray-100">
-                        {formatPolicyValidity(venda.issue_date, venda.expiry_date)}
-                      </td>
-                      <td className="px-5 py-4 border-b border-gray-100">
-                        <span
-                          className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold border ${
-                            statusColor[venda.status?.toLowerCase()] || statusColor[venda.status] || 'bg-gray-100 text-gray-700 border-gray-200'
-                          }`}
-                        >
-                          {formatStatusLabel(venda.status)}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                  {vendas.map((venda) => {
+                    const matrixStatus = calculateMatrixStatus({
+                      hasSale: true,
+                      saleStatus: venda.status,
+                      expiryDate: venda.expiry_date,
+                      daysOverdue: venda.days_overdue,
+                      hasCotacao: Boolean(venda.cotacao_id),
+                      cotacaoStatus: 'emitida',
+                    });
+
+                    return (
+                      <tr key={venda.id} className="group hover:bg-gray-50/75 transition-colors">
+                        <td className="px-5 py-4 table-sticky-col-cell">
+                          <Link
+                            href={venda.cotacao_id ? `/admin/cotacoes/${venda.cotacao_id}?from=vendas` : `/admin/vendas/${venda.id}`}
+                            className="font-semibold text-gray-900 hover:text-[#0e4a5a] hover:underline transition-colors inline-flex items-center gap-1.5 group/name"
+                            title="Ver detalhes completos da venda, contrato e cobrança"
+                          >
+                            <span>{venda.client_name}</span>
+                            <ExternalLink size={12} className="text-gray-400 opacity-0 group-hover/name:opacity-100 transition-opacity shrink-0" />
+                          </Link>
+                          {venda.client_cpf_cnpj && (
+                            <div className="text-xs text-gray-500">{venda.client_cpf_cnpj}</div>
+                          )}
+                        </td>
+                        <td className="px-5 py-4 text-xs font-semibold text-gray-700 border-b border-gray-100">{venda.partner_name}</td>
+                        <td className="px-5 py-4 border-b border-gray-100">
+                          <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-gray-100 text-gray-800 border border-gray-200">
+                            {formatPlanLabel(venda.importancia_segurada, venda.client_data, venda.product_name)}
+                          </span>
+                        </td>
+                        <td className="px-5 py-4 font-semibold text-gray-900 border-b border-gray-100">{formatCurrency(venda.premio_total)}</td>
+                        <td className="px-5 py-4 text-gray-600 border-b border-gray-100">
+                          <div className="font-semibold text-gray-900">{formatCurrency(venda.commission_amount)}</div>
+                          {venda.commission_rate && (
+                            <span className="text-xs text-gray-400">{Number(venda.commission_rate)}%</span>
+                          )}
+                        </td>
+                        <td className="px-5 py-4 text-xs text-gray-500 border-b border-gray-100">
+                          {formatPolicyValidity(venda.issue_date, venda.expiry_date)}
+                        </td>
+                        <td className="px-5 py-4 border-b border-gray-100 text-center">
+                          <MatrixStatusBadge result={matrixStatus} variant="table-cell" />
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </TableScrollContainer>

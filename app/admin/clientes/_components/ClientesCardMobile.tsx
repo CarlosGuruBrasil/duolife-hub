@@ -7,6 +7,8 @@ import { AdminClientRow } from '@/types/admin-clients';
 import { ExcluirClienteButton } from '@/components/dev';
 import TransferirParceiroClienteButton from '@/components/modals/TransferirParceiroClienteButton';
 import { formatStatusLabel } from '@/lib/format';
+import { MatrixStatusBadge } from '@/components/common/MatrixStatusBadge';
+import { calculateMatrixStatus } from '@/lib/status-matrix';
 
 const statusLabel: Record<string, string> = {
   rascunho: 'Rascunho',
@@ -67,26 +69,20 @@ export function ClientesCardMobile({
     .map((n) => n[0].toUpperCase())
     .join('');
 
-  const sigStatus = (() => {
-    const quoteSt = String(client.last_quote_status || '').toLowerCase();
-    const sigSt = String(client.last_signature_status || '').toLowerCase();
-    const paySt = String(client.last_payment_status || '').toLowerCase();
+  const isSigned = ['assinado', 'signed', 'pagamento_gerado', 'aprovada', 'emitida'].includes(String(client.last_quote_status || '').toLowerCase()) || String(client.last_signature_status || '').toLowerCase() === 'signed';
+  const isApproved = ['emitida', 'aprovada', 'ativa'].includes(String(client.last_quote_status || '').toLowerCase());
 
-    if (['emitida', 'ativa'].includes(quoteSt)) return 'emitida';
-    if (['aprovada', 'approved'].includes(quoteSt)) return 'aprovada';
-    if (['paid', 'confirmed', 'received'].includes(paySt) && (client.paid_installments ?? 0) >= (client.total_installments || 1)) {
-      return 'aprovada';
-    }
-    if (['assinado', 'signed'].includes(sigSt) || ['assinado', 'signed'].includes(quoteSt)) {
-      return 'assinado';
-    }
-    if (quoteSt === 'pagamento_gerado') return 'pagamento_gerado';
-    if (['contrato_gerado', 'pending'].includes(sigSt) || quoteSt === 'contrato_gerado') {
-      return 'contrato_gerado';
-    }
-    return client.last_quote_status || client.last_signature_status || null;
-  })();
-  const payStatus = client.last_payment_status;
+  const matrixStatus = calculateMatrixStatus({
+    hasCotacao: (client.cotacoes_count ?? 0) > 0,
+    cotacaoStatus: client.last_quote_status,
+    signatureStatus: client.last_signature_status,
+    isContractSigned: isSigned,
+    hasSale: isApproved,
+    paymentStatus: client.last_payment_status,
+    paidInstallments: client.paid_installments,
+    totalInstallments: client.total_installments,
+    isFullyPaid: (client.paid_installments ?? 0) >= (client.total_installments || 1) && (client.total_installments ?? 0) > 0,
+  });
 
   return (
     <div className="bg-white rounded-2xl border border-gray-200/80 p-4 shadow-xs space-y-3">
@@ -102,16 +98,10 @@ export function ClientesCardMobile({
           </div>
         </div>
 
-        {/* Badge de Status */}
-        {sigStatus && (
-          <span
-            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${
-              statusBadgeColor[sigStatus.toLowerCase()] || statusBadgeColor[sigStatus] || 'bg-gray-50 text-gray-700 border-gray-200'
-            }`}
-          >
-            {formatStatusLabel(sigStatus)}
-          </span>
-        )}
+        {/* Badge de Status da Matriz (Status do Cliente) */}
+        <div className="shrink-0">
+          <MatrixStatusBadge result={matrixStatus} variant="pill-only" />
+        </div>
       </div>
 
       {/* Contato & Parceiro */}

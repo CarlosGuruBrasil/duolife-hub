@@ -10,6 +10,8 @@ import { PortalCotacoesPagination } from './_components/PortalCotacoesPagination
 import { PeriodPreset, resolveDateRange } from '@/lib/date-filters';
 import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
 import GerarLinkClienteButton from '@/components/portal/GerarLinkClienteButton';
+import { MatrixStatusBadge } from '@/components/common/MatrixStatusBadge';
+import { calculateMatrixStatus } from '@/lib/status-matrix';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,9 +26,24 @@ interface CotacaoRow {
   product_id: string;
   product_name: string;
   partner_name?: string | null;
+  client_data?: any;
+  sale_id?: string | null;
+  sale_status?: string | null;
+  sale_expiry_date?: string | null;
+  days_overdue?: number | null;
 }
 
 const statusLabel: Record<string, string> = {
+  // Status do Cliente (Matriz Principal)
+  vigente: 'Vigente / Renovado',
+  'vigente / renovado': 'Vigente / Renovado',
+  negociacao: 'Em negociação',
+  'em negociacao': 'Em negociação',
+  'em negociação': 'Em negociação',
+  cancelado: 'Cancelado',
+  expirado: 'Expirado',
+  cadastrado: 'Cadastrado',
+  // Etapas de Cotação
   rascunho: 'Rascunho',
   enviada: 'Enviada',
   aprovada: 'Aprovada',
@@ -105,7 +122,36 @@ export default async function CotacoesPage({
   }
 
   // Filtros dinâmicos
-  if (statusVariants && statusVariants.length > 0) {
+  if (['vigente', 'vigente / renovado'].includes(rawStatus)) {
+    conditions.push(sql`(
+      EXISTS (
+        SELECT 1 FROM sales s_f
+        WHERE s_f.cotacao_id = c.id
+          AND s_f.status = 'ativa'
+          AND s_f.expiry_date >= CURRENT_DATE
+      )
+      OR c.status IN ('aprovada', 'emitida')
+    )`);
+  } else if (['negociacao', 'em negociacao', 'em negociação'].includes(rawStatus)) {
+    conditions.push(sql`(
+      NOT EXISTS (SELECT 1 FROM sales s_f WHERE s_f.cotacao_id = c.id)
+      AND c.status IN ('rascunho', 'enviada', 'contrato_gerado', 'assinado', 'pagamento_gerado')
+    )`);
+  } else if (rawStatus === 'cancelado') {
+    conditions.push(sql`(
+      c.status IN ('recusada', 'cancelada')
+      OR EXISTS (SELECT 1 FROM sales s_f WHERE s_f.cotacao_id = c.id AND s_f.status = 'cancelada')
+    )`);
+  } else if (rawStatus === 'expirado') {
+    conditions.push(sql`(
+      c.status = 'expirada'
+      OR EXISTS (
+        SELECT 1 FROM sales s_f
+        WHERE s_f.cotacao_id = c.id
+          AND (s_f.status = 'expirada' OR s_f.expiry_date < CURRENT_DATE)
+      )
+    )`);
+  } else if (statusVariants && statusVariants.length > 0) {
     conditions.push(sql`c.status = ANY(${statusVariants})`);
   }
   if (productId) {
@@ -172,11 +218,32 @@ export default async function CotacoesPage({
       c.status,
       c.created_at,
       c.product_id,
+      c.client_data,
       p.name AS product_name,
-      pt.razao_social AS partner_name
+      pt.razao_social AS partner_name,
+      s.id AS sale_id,
+      s.status AS sale_status,
+      s.expiry_date::text AS sale_expiry_date,
+      COALESCE(
+        (
+          SELECT MAX(GREATEST(0, (CURRENT_DATE - pi.due_date)::int))
+          FROM payment_installments pi
+          WHERE pi.cotacao_id = c.id
+            AND pi.status IN ('pending', 'overdue')
+            AND pi.due_date < CURRENT_DATE
+        ),
+        CASE
+          WHEN po.status = 'overdue' AND po.due_date < CURRENT_DATE
+          THEN GREATEST(0, (CURRENT_DATE - po.due_date)::int)
+          ELSE 0
+        END,
+        0
+      )::int AS days_overdue
     FROM cotacoes c
     JOIN products p ON p.id = c.product_id
     LEFT JOIN partners pt ON pt.id = c.partner_id
+    LEFT JOIN sales s ON s.cotacao_id = c.id
+    LEFT JOIN payment_orders po ON po.cotacao_id = c.id
     WHERE ${where}
     ORDER BY c.created_at DESC
     LIMIT ${pageSize}
@@ -258,40 +325,56 @@ export default async function CotacoesPage({
                     <th className="px-5 py-3.5 border-b border-gray-200">Produto</th>
                     <th className="px-5 py-3.5 border-b border-gray-200">Importância</th>
                     <th className="px-5 py-3.5 border-b border-gray-200">Prêmio</th>
-                    <th className="px-5 py-3.5 border-b border-gray-200">Status</th>
+                    <th className="px-5 py-3.5 border-b border-gray-200 text-center">Situação / Status</th>
                     <th className="px-5 py-3.5 border-b border-gray-200">Criada em</th>
                     <th className="px-5 py-3.5 border-b border-gray-200 text-center rounded-tr-2xl">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 bg-white">
-                  {cotacoes.map((cotacao) => (
-                    <tr key={cotacao.id} className="group hover:bg-gray-50/75 transition-colors">
-                      <td className="px-5 py-4 table-sticky-col-cell">
-                        <Link
-                          href={`/portal/cotacoes/${cotacao.id}`}
-                          className="font-semibold text-gray-900 hover:text-[#0e4a5a] hover:underline block"
-                        >
-                          {cotacao.client_name}
-                        </Link>
-                        <div className="text-xs text-gray-500">{cotacao.client_cpf_cnpj}</div>
-                      </td>
-                      {isCorretora && (
-                        <td className="px-5 py-4 text-xs font-semibold text-gray-700 border-b border-gray-100">
-                          {cotacao.partner_name || 'Corretora'}
+                  {cotacoes.map((cotacao) => {
+                    const clientData = cotacao.client_data || {};
+                    const isContratoAssinado = [
+                      'assinado',
+                      'signed',
+                      'pagamento_gerado',
+                      'aprovada',
+                      'emitida',
+                      'ativa',
+                      'active',
+                    ].includes(String(cotacao.status || '').toLowerCase()) || Boolean(clientData.contratoPdf || clientData.signedFileUrl || clientData.assinadoEm);
+
+                    const matrixStatus = calculateMatrixStatus({
+                      hasCotacao: true,
+                      cotacaoStatus: cotacao.status,
+                      hasSale: Boolean(cotacao.sale_id),
+                      saleStatus: cotacao.sale_status,
+                      expiryDate: cotacao.sale_expiry_date,
+                      daysOverdue: cotacao.days_overdue,
+                      isContractSigned: isContratoAssinado,
+                    });
+
+                    return (
+                      <tr key={cotacao.id} className="group hover:bg-gray-50/75 transition-colors">
+                        <td className="px-5 py-4 table-sticky-col-cell">
+                          <Link
+                            href={`/portal/cotacoes/${cotacao.id}`}
+                            className="font-semibold text-gray-900 hover:text-[#0e4a5a] hover:underline block"
+                          >
+                            {cotacao.client_name}
+                          </Link>
+                          <div className="text-xs text-gray-500">{cotacao.client_cpf_cnpj}</div>
                         </td>
-                      )}
-                      <td className="px-5 py-4 text-gray-600 font-medium border-b border-gray-100">{cotacao.product_name}</td>
-                      <td className="px-5 py-4 text-gray-600 border-b border-gray-100">{formatCurrency(cotacao.importancia_segurada)}</td>
-                      <td className="px-5 py-4 text-gray-900 font-semibold border-b border-gray-100">{formatCurrency(cotacao.premio_final)}</td>
-                      <td className="px-5 py-4 border-b border-gray-100">
-                        <span
-                          className={`inline-flex items-center rounded-md px-2.5 py-1 text-xs font-semibold border ${
-                            statusColor[cotacao.status?.toLowerCase()] || statusColor[cotacao.status] || 'bg-gray-100 text-gray-700 border-gray-200'
-                          }`}
-                        >
-                          {statusLabel[cotacao.status?.toLowerCase()] || formatStatusLabel(cotacao.status)}
-                        </span>
-                      </td>
+                        {isCorretora && (
+                          <td className="px-5 py-4 text-xs font-semibold text-gray-700 border-b border-gray-100">
+                            {cotacao.partner_name || 'Corretora'}
+                          </td>
+                        )}
+                        <td className="px-5 py-4 text-gray-600 font-medium border-b border-gray-100">{cotacao.product_name}</td>
+                        <td className="px-5 py-4 text-gray-600 border-b border-gray-100">{formatCurrency(cotacao.importancia_segurada)}</td>
+                        <td className="px-5 py-4 text-gray-900 font-semibold border-b border-gray-100">{formatCurrency(cotacao.premio_final)}</td>
+                        <td className="px-5 py-4 border-b border-gray-100 text-center">
+                          <MatrixStatusBadge result={matrixStatus} variant="table-cell" />
+                        </td>
                       <td className="px-5 py-4 text-gray-500 text-xs border-b border-gray-100">{formatDate(cotacao.created_at)}</td>
                       <td className="px-5 py-4 text-center border-b border-gray-100">
                         <div className="flex items-center justify-center gap-2">
@@ -314,7 +397,8 @@ export default async function CotacoesPage({
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </TableScrollContainer>
