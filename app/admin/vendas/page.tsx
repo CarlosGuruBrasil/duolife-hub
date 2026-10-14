@@ -153,12 +153,12 @@ export default async function AdminVendasPage({
       ORDER BY name ASC
     `,
     sql<{ id: string; name: string; cnpj: string | null }[]>`
-      SELECT id, COALESCE(nome_fantasia, razao_social) AS name, cnpj
+      SELECT id, COALESCE(NULLIF(TRIM(nome_fantasia), ''), NULLIF(TRIM(razao_social), ''), 'Corretora sem nome') AS name, cnpj
       FROM corretoras
       ORDER BY name ASC
     `,
     sql<{ id: string; name: string; corretoraId: string | null }[]>`
-      SELECT id, COALESCE(nome_fantasia, razao_social) AS name, corretora_id AS "corretoraId"
+      SELECT id, COALESCE(NULLIF(TRIM(nome_fantasia), ''), NULLIF(TRIM(razao_social), ''), 'Vendedor sem nome') AS name, corretora_id AS "corretoraId"
       FROM partners
       WHERE status = 'active'
       ORDER BY name ASC
@@ -244,9 +244,9 @@ export default async function AdminVendasPage({
 
       {/* Barra de Filtros Reativa e Inteligente */}
       <VendasFilterSection
-        products={productsList.map((p) => ({ id: p.id, name: p.name }))}
-        corretoras={corretorasList}
-        partners={partnersList}
+        products={(productsList || []).map((p) => ({ id: p.id, name: p.name || 'Sem nome' }))}
+        corretoras={corretorasList || []}
+        partners={partnersList || []}
         statusLabels={statusLabel}
         pageSize={pageSize}
       />

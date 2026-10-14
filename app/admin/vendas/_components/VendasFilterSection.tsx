@@ -20,10 +20,10 @@ interface VendasFilterSectionProps {
 }
 
 export function VendasFilterSection({
-  products,
-  corretoras,
-  partners,
-  statusLabels,
+  products = [],
+  corretoras = [],
+  partners = [],
+  statusLabels = {},
   pageSize,
 }: VendasFilterSectionProps) {
   const searchParams = useSearchParams();

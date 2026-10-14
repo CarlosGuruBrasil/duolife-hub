@@ -33,18 +33,16 @@ interface VendasAdvancedFiltersProps {
 }
 
 export function VendasAdvancedFilters({
-  products,
-  corretoras,
-  partners,
-  statusLabels,
+  products = [],
+  corretoras = [],
+  partners = [],
+  statusLabels = {},
   isOpen,
 }: VendasAdvancedFiltersProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
-
-  if (!isOpen) return null;
 
   const currentStatus = searchParams.get('status') || '';
   const currentProduct = searchParams.get('productId') || '';
@@ -57,12 +55,19 @@ export function VendasAdvancedFilters({
   const currentStart = searchParams.get('startDate') || '';
   const currentEnd = searchParams.get('endDate') || '';
 
+  const safePartners = partners || [];
+  const safeProducts = products || [];
+  const safeCorretoras = corretoras || [];
+  const safeStatusLabels = statusLabels || {};
+
   const filteredPartners = React.useMemo(() => {
     if (!currentCorretora || currentCorretora === 'all') {
-      return partners;
+      return safePartners;
     }
-    return partners.filter((p) => p.corretoraId === currentCorretora);
-  }, [partners, currentCorretora]);
+    return safePartners.filter((p) => p.corretoraId === currentCorretora);
+  }, [safePartners, currentCorretora]);
+
+  if (!isOpen) return null;
 
   const updateParam = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -179,7 +184,7 @@ export function VendasAdvancedFilters({
             className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-800 font-medium focus:border-[#0e4a5a] focus:outline-hidden focus:ring-2 focus:ring-[#0e4a5a]/10 cursor-pointer"
           >
             <option value="">Todos os status</option>
-            {Object.entries(statusLabels).map(([key, label]) => (
+            {Object.entries(safeStatusLabels).map(([key, label]) => (
               <option key={key} value={key}>
                 {label}
               </option>
@@ -198,9 +203,9 @@ export function VendasAdvancedFilters({
             className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-800 font-medium focus:border-[#0e4a5a] focus:outline-hidden focus:ring-2 focus:ring-[#0e4a5a]/10 cursor-pointer"
           >
             <option value="">Todos os produtos</option>
-            {products.map((p) => (
+            {safeProducts.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name}
+                {p.name || 'Produto sem nome'}
               </option>
             ))}
           </select>
@@ -217,11 +222,11 @@ export function VendasAdvancedFilters({
             className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-800 font-medium focus:border-[#0e4a5a] focus:outline-hidden focus:ring-2 focus:ring-[#0e4a5a]/10 cursor-pointer truncate"
           >
             <option value="">Todas as corretoras</option>
-            {corretoras.map((c) => {
+            {safeCorretoras.map((c) => {
               const cnpjMasked = c.cnpj ? maskCnpj(c.cnpj) : null;
               return (
                 <option key={c.id} value={c.id}>
-                  {c.name} {cnpjMasked ? `(${cnpjMasked})` : ''}
+                  {c.name || 'Corretora sem nome'} {cnpjMasked ? `(${cnpjMasked})` : ''}
                 </option>
               );
             })}
@@ -241,7 +246,7 @@ export function VendasAdvancedFilters({
             <option value="">Todos os vendedores</option>
             {filteredPartners.map((p) => (
               <option key={p.id} value={p.id}>
-                {p.name}
+                {p.name || 'Vendedor sem nome'}
               </option>
             ))}
           </select>

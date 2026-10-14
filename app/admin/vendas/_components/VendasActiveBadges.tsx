@@ -18,10 +18,10 @@ interface VendasActiveBadgesProps {
 }
 
 export function VendasActiveBadges({
-  products,
-  corretoras,
-  partners,
-  statusLabels,
+  products = [],
+  corretoras = [],
+  partners = [],
+  statusLabels = {},
 }: VendasActiveBadgesProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -69,25 +69,25 @@ export function VendasActiveBadges({
   }
 
   if (productId) {
-    const prod = products.find((p) => p.id === productId);
+    const prod = (products || []).find((p) => p.id === productId);
     badges.push({
-      label: `Produto: ${prod ? prod.name : 'Selecionado'}`,
+      label: `Produto: ${prod?.name || 'Selecionado'}`,
       onRemove: () => removeParam(['productId']),
     });
   }
 
   if (corretoraId) {
-    const corr = corretoras.find((c) => c.id === corretoraId);
+    const corr = (corretoras || []).find((c) => c.id === corretoraId);
     badges.push({
-      label: `Corretora: ${corr ? corr.name : 'Selecionada'}`,
+      label: `Corretora: ${corr?.name || 'Selecionada'}`,
       onRemove: () => removeParam(['corretoraId']),
     });
   }
 
   if (partnerId) {
-    const part = partners.find((p) => p.id === partnerId);
+    const part = (partners || []).find((p) => p.id === partnerId);
     badges.push({
-      label: `Vendedor: ${part ? part.name : 'Selecionado'}`,
+      label: `Vendedor: ${part?.name || 'Selecionado'}`,
       onRemove: () => removeParam(['partnerId']),
     });
   }
