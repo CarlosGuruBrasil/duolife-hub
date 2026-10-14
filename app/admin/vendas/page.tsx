@@ -34,13 +34,21 @@ interface VendaRow {
 
 const statusLabel: Record<string, string> = {
   ativa: 'Ativa',
-  active: 'Ativa',
   cancelada: 'Cancelada',
-  cancelled: 'Cancelada',
   expirada: 'Expirada',
-  expired: 'Expirada',
   suspensa: 'Suspensa',
-  suspended: 'Suspensa',
+};
+
+// Aliases para cobrir variações históricas (português/inglês) sem duplicar as opções na interface
+const statusAliases: Record<string, string[]> = {
+  ativa: ['ativa', 'active'],
+  active: ['ativa', 'active'],
+  cancelada: ['cancelada', 'cancelled'],
+  cancelled: ['cancelada', 'cancelled'],
+  expirada: ['expirada', 'expired'],
+  expired: ['expirada', 'expired'],
+  suspensa: ['suspensa', 'suspended'],
+  suspended: ['suspensa', 'suspended'],
 };
 
 const statusColor: Record<string, string> = {
@@ -65,8 +73,9 @@ export default async function AdminVendasPage({
   await ensureSchema();
 
   const params = searchParams ? await searchParams : {};
-  const rawStatus = typeof params.status === 'string' ? params.status : '';
-  const status = statusLabel[rawStatus] ? rawStatus : '';
+  const rawStatus = typeof params.status === 'string' ? params.status.toLowerCase().trim() : '';
+  const statusVariants = statusAliases[rawStatus] || (statusLabel[rawStatus] ? [rawStatus] : null);
+  const status = statusLabel[rawStatus] ? rawStatus : (statusVariants ? statusVariants[0] : '');
   const q = (typeof params.q === 'string' ? params.q : '').trim().slice(0, 120);
   const productId = typeof params.productId === 'string' ? params.productId : '';
   const corretoraId = typeof params.corretoraId === 'string' ? params.corretoraId : '';
@@ -85,8 +94,8 @@ export default async function AdminVendasPage({
 
   const conditions = [];
 
-  if (status) {
-    conditions.push(sql`s.status = ${status}`);
+  if (statusVariants && statusVariants.length > 0) {
+    conditions.push(sql`s.status = ANY(${statusVariants})`);
   }
   if (productId) {
     conditions.push(sql`s.product_id = ${productId}`);

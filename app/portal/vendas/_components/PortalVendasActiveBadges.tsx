@@ -4,6 +4,7 @@ import React, { useTransition } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { X } from 'lucide-react';
 import { DATE_PRESET_OPTIONS, formatDateBR, PeriodPreset } from '@/lib/date-filters';
+import { formatStatusLabel } from '@/lib/format';
 
 interface Option {
   id: string;
@@ -54,11 +55,14 @@ export function PortalVendasActiveBadges({
     });
   }
 
-  if (status && statusLabels[status]) {
-    badges.push({
-      label: `Status: ${statusLabels[status]}`,
-      onRemove: () => removeParam(['status']),
-    });
+  if (status) {
+    const rawLabel = statusLabels[status] || formatStatusLabel(status);
+    if (rawLabel && rawLabel !== '-') {
+      badges.push({
+        label: `Status: ${rawLabel}`,
+        onRemove: () => removeParam(['status']),
+      });
+    }
   }
 
   if (productId) {

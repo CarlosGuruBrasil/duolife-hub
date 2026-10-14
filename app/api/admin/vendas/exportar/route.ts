@@ -9,13 +9,20 @@ export const dynamic = 'force-dynamic';
 
 const statusLabel: Record<string, string> = {
   ativa: 'Ativa',
-  active: 'Ativa',
   cancelada: 'Cancelada',
-  cancelled: 'Cancelada',
   expirada: 'Expirada',
-  expired: 'Expirada',
   suspensa: 'Suspensa',
-  suspended: 'Suspensa',
+};
+
+const statusAliases: Record<string, string[]> = {
+  ativa: ['ativa', 'active'],
+  active: ['ativa', 'active'],
+  cancelada: ['cancelada', 'cancelled'],
+  cancelled: ['cancelada', 'cancelled'],
+  expirada: ['expirada', 'expired'],
+  expired: ['expirada', 'expired'],
+  suspensa: ['suspensa', 'suspended'],
+  suspended: ['suspensa', 'suspended'],
 };
 
 export async function GET(request: NextRequest) {
@@ -25,8 +32,8 @@ export async function GET(request: NextRequest) {
   await ensureSchema();
 
   const searchParams = request.nextUrl.searchParams;
-  const rawStatus = searchParams.get('status') || '';
-  const status = statusLabel[rawStatus] ? rawStatus : '';
+  const rawStatus = (searchParams.get('status') || '').toLowerCase().trim();
+  const statusVariants = statusAliases[rawStatus] || (statusLabel[rawStatus] ? [rawStatus] : null);
   const q = (searchParams.get('q') || '').trim().slice(0, 120);
   const productId = searchParams.get('productId') || '';
   const corretoraId = searchParams.get('corretoraId') || '';
@@ -41,8 +48,8 @@ export async function GET(request: NextRequest) {
 
   const conditions = [];
 
-  if (status) {
-    conditions.push(sql`s.status = ${status}`);
+  if (statusVariants && statusVariants.length > 0) {
+    conditions.push(sql`s.status = ANY(${statusVariants})`);
   }
   if (productId) {
     conditions.push(sql`s.product_id = ${productId}`);

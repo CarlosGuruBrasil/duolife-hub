@@ -42,12 +42,24 @@ const statusLabel: Record<string, string> = {
   enviada: 'Enviada',
   contrato_gerado: 'Aguardando Assinatura',
   assinado: 'Contrato Assinado',
-  signed: 'Contrato Assinado',
   pagamento_gerado: 'Fatura Gerada (Asaas)',
   aprovada: 'Aprovada (Venda)',
   emitida: 'Apólice Emitida',
   recusada: 'Recusada',
   expirada: 'Expirada'
+};
+
+const statusAliases: Record<string, string[]> = {
+  assinado: ['assinado', 'signed'],
+  signed: ['assinado', 'signed'],
+  rascunho: ['rascunho', 'draft'],
+  draft: ['rascunho', 'draft'],
+  aprovada: ['aprovada', 'approved'],
+  approved: ['aprovada', 'approved'],
+  recusada: ['recusada', 'rejected', 'refused'],
+  rejected: ['recusada', 'rejected', 'refused'],
+  expirada: ['expirada', 'expired'],
+  expired: ['expirada', 'expired'],
 };
 
 const statusColor: Record<string, string> = {
@@ -100,8 +112,9 @@ export default async function AdminCotacoesPage({
   const isDev = isDevUser(user);
 
   const params = searchParams ? await searchParams : {};
-  const rawStatus = typeof params.status === 'string' ? params.status : '';
-  const status = statusLabel[rawStatus] ? rawStatus : '';
+  const rawStatus = typeof params.status === 'string' ? params.status.toLowerCase().trim() : '';
+  const statusVariants = statusAliases[rawStatus] || (statusLabel[rawStatus] ? [rawStatus] : null);
+  const status = statusLabel[rawStatus] ? rawStatus : (statusVariants ? statusVariants[0] : '');
   const q = (typeof params.q === 'string' ? params.q : '').trim().slice(0, 120);
   const productId = typeof params.productId === 'string' ? params.productId : '';
   const corretoraId = typeof params.corretoraId === 'string' ? params.corretoraId : '';
@@ -114,7 +127,7 @@ export default async function AdminCotacoesPage({
   const page = Math.max(1, Number(typeof params.page === 'string' ? params.page : '1') || 1);
 
   const conditions = [];
-  if (status) conditions.push(sql`c.status = ${status}`);
+  if (statusVariants && statusVariants.length > 0) conditions.push(sql`c.status = ANY(${statusVariants})`);
   if (productId) conditions.push(sql`c.product_id = ${productId}`);
   if (corretoraId) {
     conditions.push(sql`(c.corretora_id = ${corretoraId} OR part.corretora_id = ${corretoraId})`);

@@ -26,15 +26,37 @@ export function PortalVendasAdvancedFilters({
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
 
-  if (!isOpen) return null;
-
-  const currentStatus = searchParams.get('status') || '';
+  const currentStatusRaw = (searchParams.get('status') || '').toLowerCase().trim();
+  const currentStatus =
+    currentStatusRaw === 'active'
+      ? 'ativa'
+      : currentStatusRaw === 'cancelled'
+        ? 'cancelada'
+        : currentStatusRaw === 'expired'
+          ? 'expirada'
+          : currentStatusRaw === 'suspended'
+            ? 'suspensa'
+            : currentStatusRaw;
   const currentProduct = searchParams.get('productId') || '';
   const currentPreset: PeriodPreset =
     (searchParams.get('periodPreset') as PeriodPreset) ||
     (searchParams.get('startDate') || searchParams.get('endDate') ? 'custom' : '30d');
   const currentStart = searchParams.get('startDate') || '';
   const currentEnd = searchParams.get('endDate') || '';
+
+  const uniqueStatusOptions = React.useMemo(() => {
+    const seen = new Set<string>();
+    const options: { value: string; label: string }[] = [];
+    for (const [key, label] of Object.entries(statusLabels || {})) {
+      if (!seen.has(label)) {
+        seen.add(label);
+        options.push({ value: key, label });
+      }
+    }
+    return options;
+  }, [statusLabels]);
+
+  if (!isOpen) return null;
 
   const updateParam = (key: string, value: string) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -124,9 +146,9 @@ export function PortalVendasAdvancedFilters({
             className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-800 font-medium focus:border-[#0e4a5a] focus:outline-hidden focus:ring-2 focus:ring-[#0e4a5a]/10 cursor-pointer"
           >
             <option value="">Todos os status</option>
-            {Object.entries(statusLabels).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
+            {uniqueStatusOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
               </option>
             ))}
           </select>

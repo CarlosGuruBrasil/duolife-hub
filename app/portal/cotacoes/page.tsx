@@ -35,8 +35,20 @@ const statusLabel: Record<string, string> = {
   emitida: 'Emitida',
   contrato_gerado: 'Aguardando Assinatura',
   assinado: 'Contrato Assinado',
-  signed: 'Contrato Assinado',
   pagamento_gerado: 'Fatura Gerada',
+};
+
+const statusAliases: Record<string, string[]> = {
+  assinado: ['assinado', 'signed'],
+  signed: ['assinado', 'signed'],
+  rascunho: ['rascunho', 'draft'],
+  draft: ['rascunho', 'draft'],
+  aprovada: ['aprovada', 'approved'],
+  approved: ['aprovada', 'approved'],
+  recusada: ['recusada', 'rejected', 'refused'],
+  rejected: ['recusada', 'rejected', 'refused'],
+  expirada: ['expirada', 'expired'],
+  expired: ['expirada', 'expired'],
 };
 
 const statusColor: Record<string, string> = {
@@ -68,8 +80,9 @@ export default async function CotacoesPage({
   const isCorretora = Boolean(access.isCorretoraUser && access.corretoraId);
 
   const params = searchParams ? await searchParams : {};
-  const rawStatus = typeof params.status === 'string' ? params.status : '';
-  const status = statusLabel[rawStatus] ? rawStatus : '';
+  const rawStatus = typeof params.status === 'string' ? params.status.toLowerCase().trim() : '';
+  const statusVariants = statusAliases[rawStatus] || (statusLabel[rawStatus] ? [rawStatus] : null);
+  const status = statusLabel[rawStatus] ? rawStatus : (statusVariants ? statusVariants[0] : '');
   const q = (typeof params.q === 'string' ? params.q : '').trim().slice(0, 120);
   const productId = typeof params.productId === 'string' ? params.productId : '';
   const periodPreset = typeof params.periodPreset === 'string' ? (params.periodPreset as PeriodPreset) : undefined;
@@ -92,8 +105,8 @@ export default async function CotacoesPage({
   }
 
   // Filtros dinâmicos
-  if (status) {
-    conditions.push(sql`c.status = ${status}`);
+  if (statusVariants && statusVariants.length > 0) {
+    conditions.push(sql`c.status = ANY(${statusVariants})`);
   }
   if (productId) {
     conditions.push(sql`c.product_id = ${productId}`);

@@ -44,7 +44,17 @@ export function VendasAdvancedFilters({
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
 
-  const currentStatus = searchParams.get('status') || '';
+  const currentStatusRaw = (searchParams.get('status') || '').toLowerCase().trim();
+  const currentStatus =
+    currentStatusRaw === 'active'
+      ? 'ativa'
+      : currentStatusRaw === 'cancelled'
+        ? 'cancelada'
+        : currentStatusRaw === 'expired'
+          ? 'expirada'
+          : currentStatusRaw === 'suspended'
+            ? 'suspensa'
+            : currentStatusRaw;
   const currentProduct = searchParams.get('productId') || '';
   const currentCorretora = searchParams.get('corretoraId') || '';
   const currentPartner = searchParams.get('partnerId') || '';
@@ -59,6 +69,18 @@ export function VendasAdvancedFilters({
   const safeProducts = products || [];
   const safeCorretoras = corretoras || [];
   const safeStatusLabels = statusLabels || {};
+
+  const uniqueStatusOptions = React.useMemo(() => {
+    const seen = new Set<string>();
+    const options: { value: string; label: string }[] = [];
+    for (const [key, label] of Object.entries(safeStatusLabels)) {
+      if (!seen.has(label)) {
+        seen.add(label);
+        options.push({ value: key, label });
+      }
+    }
+    return options;
+  }, [safeStatusLabels]);
 
   const filteredPartners = React.useMemo(() => {
     if (!currentCorretora || currentCorretora === 'all') {
@@ -184,9 +206,9 @@ export function VendasAdvancedFilters({
             className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-800 font-medium focus:border-[#0e4a5a] focus:outline-hidden focus:ring-2 focus:ring-[#0e4a5a]/10 cursor-pointer"
           >
             <option value="">Todos os status</option>
-            {Object.entries(safeStatusLabels).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
+            {uniqueStatusOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
               </option>
             ))}
           </select>

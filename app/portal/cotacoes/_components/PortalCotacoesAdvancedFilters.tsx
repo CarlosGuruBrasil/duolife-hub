@@ -42,6 +42,18 @@ export function PortalCotacoesAdvancedFilters({
     setEndDate(searchParams.get('endDate') || '');
   }, [searchParams]);
 
+  const uniqueStatusOptions = React.useMemo(() => {
+    const seen = new Set<string>();
+    const options: { value: string; label: string }[] = [];
+    for (const [key, label] of Object.entries(statusLabels || {})) {
+      if (!seen.has(label)) {
+        seen.add(label);
+        options.push({ value: key, label });
+      }
+    }
+    return options;
+  }, [statusLabels]);
+
   if (!isOpen) return null;
 
   const updateSingleFilter = (key: string, value: string) => {
@@ -131,9 +143,9 @@ export function PortalCotacoesAdvancedFilters({
             className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none cursor-pointer"
           >
             <option value="">Todas as situações</option>
-            {Object.entries(statusLabels).map(([val, lbl]) => (
-              <option key={val} value={val}>
-                {lbl}
+            {uniqueStatusOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
               </option>
             ))}
           </select>
