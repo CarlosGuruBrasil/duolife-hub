@@ -138,6 +138,20 @@ assert(r9.statusCliente === 'Cancelado', 'R9 statusCliente');
 assert(r9.statusGeral === 'Negócio Fechado', 'R9 statusGeral');
 assert(r9.statusPagamento === 'Falta Pagamento > 50 dias', 'R9 statusPagamento');
 
+// Blindagem: Cliente com venda ativa, pago (isFullyPaid: true) NUNCA pode ser classificado como inadimplente > 50 dias
+const rPaidSafe = calculateMatrixStatus({
+  hasSale: true,
+  saleStatus: 'ativa',
+  daysOverdue: 60, // resíduo de cotação antiga
+  isFullyPaid: true,
+  paymentStatus: 'paid',
+});
+console.log(`[Blindagem Pagamento Quitado] ${rPaidSafe.statusCliente} + ${rPaidSafe.statusGeral} + ${rPaidSafe.statusPagamento}`);
+assert(rPaidSafe.ruleId === 'VIGENTE_EM_DIA', 'Cliente quitado com resíduo de atraso deve ser VIGENTE_EM_DIA');
+assert(rPaidSafe.statusCliente === 'Vigente / Renovado', 'Blindagem statusCliente');
+assert(rPaidSafe.statusGeral === 'Negócio Fechado', 'Blindagem statusGeral');
+assert(rPaidSafe.statusPagamento === 'Em dia', 'Blindagem statusPagamento');
+
 // 3. Testar Design System de Badges (bg-[cor]-50 border-[cor]-200 text-[cor]-800)
 console.log('[3] Validando classes Tailwind do Design System...');
 const allBadges = [

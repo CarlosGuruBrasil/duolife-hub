@@ -33,6 +33,8 @@ interface VendaRow {
   client_data?: any;
   source?: string | null;
   days_overdue?: number | null;
+  is_fully_paid?: boolean | null;
+  payment_order_status?: string | null;
 }
 
 const statusLabel: Record<string, string> = {
@@ -218,24 +220,61 @@ export default async function AdminVendasPage({
       c.client_data,
       COALESCE(
         (
-          SELECT MAX(GREATEST(0, (CURRENT_DATE - pi.due_date)::int))
+          SELECT CASE
+            WHEN COUNT(*) > 0 AND COUNT(*) = COUNT(*) FILTER (WHERE pi.status IN ('paid', 'received', 'confirmed')) THEN 0
+            ELSE MAX(CASE WHEN pi.status IN ('pending', 'overdue') AND pi.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - pi.due_date)::int) ELSE 0 END)
+          END
           FROM payment_installments pi
-          WHERE (pi.cotacao_id = s.cotacao_id OR (s.client_id IS NOT NULL AND pi.client_id = s.client_id))
-            AND pi.status IN ('pending', 'overdue')
-            AND pi.due_date < CURRENT_DATE
+          WHERE pi.cotacao_id = s.cotacao_id
+        ),
+        (
+          SELECT CASE
+            WHEN po.status IN ('paid', 'received', 'confirmed') THEN 0
+            WHEN po.status IN ('pending', 'overdue') AND po.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - po.due_date)::int)
+            ELSE 0
+          END
+          FROM payment_orders po
+          WHERE po.cotacao_id = s.cotacao_id
+          ORDER BY po.created_at DESC
+          LIMIT 1
+        ),
+        0
+      )::int AS days_overdue,
+      COALESCE(
+        (
+          SELECT CASE
+            WHEN COUNT(*) > 0 AND COUNT(*) = COUNT(*) FILTER (WHERE pi.status IN ('paid', 'received', 'confirmed')) THEN true
+            ELSE false
+          END
+          FROM payment_installments pi
+          WHERE pi.cotacao_id = s.cotacao_id
+        ),
+        (
+          SELECT CASE
+            WHEN po.status IN ('paid', 'received', 'confirmed') THEN true
+            ELSE false
+          END
+          FROM payment_orders po
+          WHERE po.cotacao_id = s.cotacao_id
+          ORDER BY po.created_at DESC
+          LIMIT 1
         ),
         CASE
-          WHEN po.status = 'overdue' AND po.due_date < CURRENT_DATE
-          THEN GREATEST(0, (CURRENT_DATE - po.due_date)::int)
-          ELSE 0
-        END,
-        0
-      )::int AS days_overdue
+          WHEN c.status IN ('aprovada', 'emitida') THEN true
+          ELSE false
+        END
+      )::boolean AS is_fully_paid,
+      (
+        SELECT po.status
+        FROM payment_orders po
+        WHERE po.cotacao_id = s.cotacao_id
+        ORDER BY po.created_at DESC
+        LIMIT 1
+      ) AS payment_order_status
     FROM sales s
     JOIN products pr ON pr.id = s.product_id
     JOIN cotacoes c ON c.id = s.cotacao_id
     LEFT JOIN partners p ON p.id = s.partner_id
-    LEFT JOIN payment_orders po ON po.cotacao_id = s.cotacao_id
     WHERE ${where}
     ORDER BY s.created_at DESC
     LIMIT ${pageSize}
@@ -322,12 +361,12 @@ export default async function AdminVendasPage({
                 <thead className="table-sticky-head bg-gray-50/95 text-xs font-semibold uppercase tracking-wider text-gray-600">
                   <tr>
                     <th className="px-5 py-3.5 table-sticky-col-head rounded-tl-2xl">Cliente</th>
-                    <th className="px-5 py-3.5 border-b border-gray-200">Vendedor</th>
+                    <th className="px-5 py-3.5 border-b border-gray-200 text-center">Situação / Status</th>
                     <th className="px-5 py-3.5 border-b border-gray-200">Plano</th>
                     <th className="px-5 py-3.5 border-b border-gray-200">Prêmio</th>
                     <th className="px-5 py-3.5 border-b border-gray-200">Comissão</th>
                     <th className="px-5 py-3.5 border-b border-gray-200">Vigência</th>
-                    <th className="px-5 py-3.5 border-b border-gray-200 text-center rounded-tr-2xl">Situação / Status</th>
+                    <th className="px-5 py-3.5 border-b border-gray-200 rounded-tr-2xl">Vendedor</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 bg-white">
@@ -337,6 +376,8 @@ export default async function AdminVendasPage({
                       saleStatus: venda.status,
                       expiryDate: venda.expiry_date,
                       daysOverdue: venda.days_overdue,
+                      isFullyPaid: venda.is_fully_paid,
+                      paymentStatus: venda.payment_order_status || (venda.is_fully_paid ? 'paid' : undefined),
                       hasCotacao: Boolean(venda.cotacao_id),
                       cotacaoStatus: 'emitida',
                     });
@@ -356,7 +397,9 @@ export default async function AdminVendasPage({
                             <div className="text-xs text-gray-500">{venda.client_cpf_cnpj}</div>
                           )}
                         </td>
-                        <td className="px-5 py-4 text-xs font-semibold text-gray-700 border-b border-gray-100">{venda.partner_name}</td>
+                        <td className="px-5 py-4 border-b border-gray-100 text-center">
+                          <MatrixStatusBadge result={matrixStatus} variant="table-cell" />
+                        </td>
                         <td className="px-5 py-4 border-b border-gray-100">
                           <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold bg-gray-100 text-gray-800 border border-gray-200">
                             {formatPlanLabel(venda.importancia_segurada, venda.client_data, venda.product_name)}
@@ -372,9 +415,7 @@ export default async function AdminVendasPage({
                         <td className="px-5 py-4 text-xs text-gray-500 border-b border-gray-100">
                           {formatPolicyValidity(venda.issue_date, venda.expiry_date)}
                         </td>
-                        <td className="px-5 py-4 border-b border-gray-100 text-center">
-                          <MatrixStatusBadge result={matrixStatus} variant="table-cell" />
-                        </td>
+                        <td className="px-5 py-4 text-xs font-semibold text-gray-700 border-b border-gray-100">{venda.partner_name}</td>
                       </tr>
                     );
                   })}

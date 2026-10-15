@@ -31,6 +31,8 @@ interface CotacaoRow {
   sale_status?: string | null;
   sale_expiry_date?: string | null;
   days_overdue?: number | null;
+  is_fully_paid?: boolean | null;
+  payment_order_status?: string | null;
 }
 
 const statusLabel: Record<string, string> = {
@@ -226,24 +228,61 @@ export default async function CotacoesPage({
       s.expiry_date::text AS sale_expiry_date,
       COALESCE(
         (
-          SELECT MAX(GREATEST(0, (CURRENT_DATE - pi.due_date)::int))
+          SELECT CASE
+            WHEN COUNT(*) > 0 AND COUNT(*) = COUNT(*) FILTER (WHERE pi.status IN ('paid', 'received', 'confirmed')) THEN 0
+            ELSE MAX(CASE WHEN pi.status IN ('pending', 'overdue') AND pi.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - pi.due_date)::int) ELSE 0 END)
+          END
           FROM payment_installments pi
           WHERE pi.cotacao_id = c.id
-            AND pi.status IN ('pending', 'overdue')
-            AND pi.due_date < CURRENT_DATE
+        ),
+        (
+          SELECT CASE
+            WHEN po.status IN ('paid', 'received', 'confirmed') THEN 0
+            WHEN po.status IN ('pending', 'overdue') AND po.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - po.due_date)::int)
+            ELSE 0
+          END
+          FROM payment_orders po
+          WHERE po.cotacao_id = c.id
+          ORDER BY po.created_at DESC
+          LIMIT 1
+        ),
+        0
+      )::int AS days_overdue,
+      COALESCE(
+        (
+          SELECT CASE
+            WHEN COUNT(*) > 0 AND COUNT(*) = COUNT(*) FILTER (WHERE pi.status IN ('paid', 'received', 'confirmed')) THEN true
+            ELSE false
+          END
+          FROM payment_installments pi
+          WHERE pi.cotacao_id = c.id
+        ),
+        (
+          SELECT CASE
+            WHEN po.status IN ('paid', 'received', 'confirmed') THEN true
+            ELSE false
+          END
+          FROM payment_orders po
+          WHERE po.cotacao_id = c.id
+          ORDER BY po.created_at DESC
+          LIMIT 1
         ),
         CASE
-          WHEN po.status = 'overdue' AND po.due_date < CURRENT_DATE
-          THEN GREATEST(0, (CURRENT_DATE - po.due_date)::int)
-          ELSE 0
-        END,
-        0
-      )::int AS days_overdue
+          WHEN c.status IN ('aprovada', 'emitida') THEN true
+          ELSE false
+        END
+      )::boolean AS is_fully_paid,
+      (
+        SELECT po.status
+        FROM payment_orders po
+        WHERE po.cotacao_id = c.id
+        ORDER BY po.created_at DESC
+        LIMIT 1
+      ) AS payment_order_status
     FROM cotacoes c
     JOIN products p ON p.id = c.product_id
     LEFT JOIN partners pt ON pt.id = c.partner_id
     LEFT JOIN sales s ON s.cotacao_id = c.id
-    LEFT JOIN payment_orders po ON po.cotacao_id = c.id
     WHERE ${where}
     ORDER BY c.created_at DESC
     LIMIT ${pageSize}
@@ -321,11 +360,11 @@ export default async function CotacoesPage({
                 <thead className="table-sticky-head bg-gray-50/95 text-xs font-semibold uppercase tracking-wider text-gray-600">
                   <tr>
                     <th className="px-5 py-3.5 table-sticky-col-head rounded-tl-2xl">Cliente</th>
-                    {isCorretora && <th className="px-5 py-3.5 border-b border-gray-200">Corretor</th>}
+                    <th className="px-5 py-3.5 border-b border-gray-200 text-center">Situação / Status</th>
                     <th className="px-5 py-3.5 border-b border-gray-200">Produto</th>
                     <th className="px-5 py-3.5 border-b border-gray-200">Importância</th>
                     <th className="px-5 py-3.5 border-b border-gray-200">Prêmio</th>
-                    <th className="px-5 py-3.5 border-b border-gray-200 text-center">Situação / Status</th>
+                    {isCorretora && <th className="px-5 py-3.5 border-b border-gray-200">Corretor</th>}
                     <th className="px-5 py-3.5 border-b border-gray-200">Criada em</th>
                     <th className="px-5 py-3.5 border-b border-gray-200 text-center rounded-tr-2xl">Ações</th>
                   </tr>
@@ -351,6 +390,8 @@ export default async function CotacoesPage({
                       expiryDate: cotacao.sale_expiry_date,
                       daysOverdue: cotacao.days_overdue,
                       isContractSigned: isContratoAssinado,
+                      isFullyPaid: cotacao.is_fully_paid,
+                      paymentStatus: cotacao.payment_order_status || (cotacao.is_fully_paid ? 'paid' : undefined),
                     });
 
                     return (
@@ -364,18 +405,18 @@ export default async function CotacoesPage({
                           </Link>
                           <div className="text-xs text-gray-500">{cotacao.client_cpf_cnpj}</div>
                         </td>
+                        <td className="px-5 py-4 border-b border-gray-100 text-center">
+                          <MatrixStatusBadge result={matrixStatus} variant="table-cell" />
+                        </td>
+                        <td className="px-5 py-4 text-gray-600 font-medium border-b border-gray-100">{cotacao.product_name}</td>
+                        <td className="px-5 py-4 text-gray-600 border-b border-gray-100">{formatCurrency(cotacao.importancia_segurada)}</td>
+                        <td className="px-5 py-4 text-gray-900 font-semibold border-b border-gray-100">{formatCurrency(cotacao.premio_final)}</td>
                         {isCorretora && (
                           <td className="px-5 py-4 text-xs font-semibold text-gray-700 border-b border-gray-100">
                             {cotacao.partner_name || 'Corretora'}
                           </td>
                         )}
-                        <td className="px-5 py-4 text-gray-600 font-medium border-b border-gray-100">{cotacao.product_name}</td>
-                        <td className="px-5 py-4 text-gray-600 border-b border-gray-100">{formatCurrency(cotacao.importancia_segurada)}</td>
-                        <td className="px-5 py-4 text-gray-900 font-semibold border-b border-gray-100">{formatCurrency(cotacao.premio_final)}</td>
-                        <td className="px-5 py-4 border-b border-gray-100 text-center">
-                          <MatrixStatusBadge result={matrixStatus} variant="table-cell" />
-                        </td>
-                      <td className="px-5 py-4 text-gray-500 text-xs border-b border-gray-100">{formatDate(cotacao.created_at)}</td>
+                        <td className="px-5 py-4 text-gray-500 text-xs border-b border-gray-100">{formatDate(cotacao.created_at)}</td>
                       <td className="px-5 py-4 text-center border-b border-gray-100">
                         <div className="flex items-center justify-center gap-2">
                           {cotacao.status === 'rascunho' && (

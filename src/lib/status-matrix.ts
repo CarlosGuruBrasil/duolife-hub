@@ -423,15 +423,10 @@ export function calculateMatrixStatus(input: MatrixStatusInput): MatrixStatusRes
   }
 
   // 2. Extração e sanitização dos parâmetros operacionais
-  const maxOverdue = Math.max(
-    0,
-    typeof input.daysOverdue === 'number' ? input.daysOverdue : 0,
-    typeof input.maxDaysOverdue === 'number' ? input.maxDaysOverdue : 0
-  );
-
   const cotacaoStatusClean = cleanString(input.cotacaoStatus);
   const saleStatusClean = cleanString(input.saleStatus);
   const signatureStatusClean = cleanString(input.signatureStatus);
+  const paymentStatusClean = cleanString(input.paymentStatus);
 
   const isContractSigned = Boolean(
     input.isContractSigned === true ||
@@ -457,6 +452,24 @@ export function calculateMatrixStatus(input: MatrixStatusInput): MatrixStatusRes
     signatureStatusClean === 'canceled'
   );
 
+  // Cliente está efetivamente pago / quitado se:
+  // - Flag isFullyPaid for verdadeira; ou
+  // - Status do pagamento for paid / pago / received / confirmed / quitado; ou
+  // - Total de parcelas pagas for maior ou igual ao total contratado.
+  const isPaidOrQuitado = Boolean(
+    input.isFullyPaid === true ||
+    ['paid', 'pago', 'paga', 'received', 'recebido', 'confirmed', 'confirmado', 'quitado', 'quitada'].includes(paymentStatusClean) ||
+    ((input.paidInstallments ?? 0) >= (input.totalInstallments || 1) && (input.totalInstallments ?? 0) > 0)
+  );
+
+  // Se a apólice/cobrança está paga ou quitada, o atraso efetivo é ESTRITAMENTE 0 dias.
+  const rawMaxOverdue = Math.max(
+    0,
+    typeof input.daysOverdue === 'number' ? input.daysOverdue : 0,
+    typeof input.maxDaysOverdue === 'number' ? input.maxDaysOverdue : 0
+  );
+  const maxOverdue = isPaidOrQuitado ? 0 : rawMaxOverdue;
+
   const expiryDate = parseDateSafely(input.expiryDate);
   const isExpired = Boolean(
     input.isExpired === true ||
@@ -464,7 +477,8 @@ export function calculateMatrixStatus(input: MatrixStatusInput): MatrixStatusRes
   );
 
   // 3. Regra de Inadimplência Crítica: Atraso > 50 dias cancela a apólice
-  if (maxOverdue > 50 || input.cancelReason === 'delinquency' || input.cancelReason === 'overdue_gt_50') {
+  // CRÍTICO: SOMENTE pode ser acionado se NÃO estiver pago/quitado!
+  if (!isPaidOrQuitado && (maxOverdue > 50 || input.cancelReason === 'delinquency' || input.cancelReason === 'overdue_gt_50')) {
     if (hasSale || cotacaoStatusClean === 'emitida' || cotacaoStatusClean === 'aprovada' || normRawGeral === 'Negócio Fechado') {
       return buildResult(getRule('CANCELADO_INADIMPLENCIA_GT_50'));
     }
@@ -472,8 +486,8 @@ export function calculateMatrixStatus(input: MatrixStatusInput): MatrixStatusRes
 
   // 4. Regra de Cancelamentos
   if (isExplicitlyCanceled) {
-    // Se era uma apólice fechada com inadimplência > 50 dias
-    if (hasSale && maxOverdue > 50) {
+    // Se era uma apólice fechada com inadimplência real > 50 dias e não foi quitada
+    if (hasSale && !isPaidOrQuitado && maxOverdue > 50) {
       return buildResult(getRule('CANCELADO_INADIMPLENCIA_GT_50'));
     }
     // Se o contrato já havia sido assinado (estava na etapa de pagamento)
@@ -491,7 +505,7 @@ export function calculateMatrixStatus(input: MatrixStatusInput): MatrixStatusRes
 
   // 6. Regra de Negócio Fechado / Vigente (Apólice emitida em vigor)
   if (hasSale && saleStatusClean !== 'cancelada') {
-    if (maxOverdue > 0 && maxOverdue <= 50) {
+    if (!isPaidOrQuitado && maxOverdue > 0 && maxOverdue <= 50) {
       return buildResult(getRule('VIGENTE_ATRASO_LE_50'));
     }
     return buildResult(getRule('VIGENTE_EM_DIA'));

@@ -42,6 +42,8 @@ interface AdminCotacaoRow {
   sale_status?: string | null;
   sale_expiry_date?: string | null;
   days_overdue?: number | null;
+  is_fully_paid?: boolean | null;
+  payment_order_status?: string | null;
 }
 
 const statusLabel: Record<string, string> = {
@@ -264,25 +266,62 @@ export default async function AdminCotacoesPage({
       s.expiry_date::text AS sale_expiry_date,
       COALESCE(
         (
-          SELECT MAX(GREATEST(0, (CURRENT_DATE - pi.due_date)::int))
+          SELECT CASE
+            WHEN COUNT(*) > 0 AND COUNT(*) = COUNT(*) FILTER (WHERE pi.status IN ('paid', 'received', 'confirmed')) THEN 0
+            ELSE MAX(CASE WHEN pi.status IN ('pending', 'overdue') AND pi.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - pi.due_date)::int) ELSE 0 END)
+          END
           FROM payment_installments pi
           WHERE pi.cotacao_id = c.id
-            AND pi.status IN ('pending', 'overdue')
-            AND pi.due_date < CURRENT_DATE
+        ),
+        (
+          SELECT CASE
+            WHEN po.status IN ('paid', 'received', 'confirmed') THEN 0
+            WHEN po.status IN ('pending', 'overdue') AND po.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - po.due_date)::int)
+            ELSE 0
+          END
+          FROM payment_orders po
+          WHERE po.cotacao_id = c.id
+          ORDER BY po.created_at DESC
+          LIMIT 1
+        ),
+        0
+      )::int AS days_overdue,
+      COALESCE(
+        (
+          SELECT CASE
+            WHEN COUNT(*) > 0 AND COUNT(*) = COUNT(*) FILTER (WHERE pi.status IN ('paid', 'received', 'confirmed')) THEN true
+            ELSE false
+          END
+          FROM payment_installments pi
+          WHERE pi.cotacao_id = c.id
+        ),
+        (
+          SELECT CASE
+            WHEN po.status IN ('paid', 'received', 'confirmed') THEN true
+            ELSE false
+          END
+          FROM payment_orders po
+          WHERE po.cotacao_id = c.id
+          ORDER BY po.created_at DESC
+          LIMIT 1
         ),
         CASE
-          WHEN po.status = 'overdue' AND po.due_date < CURRENT_DATE
-          THEN GREATEST(0, (CURRENT_DATE - po.due_date)::int)
-          ELSE 0
-        END,
-        0
-      )::int AS days_overdue
+          WHEN c.status IN ('aprovada', 'emitida') THEN true
+          ELSE false
+        END
+      )::boolean AS is_fully_paid,
+      (
+        SELECT po.status
+        FROM payment_orders po
+        WHERE po.cotacao_id = c.id
+        ORDER BY po.created_at DESC
+        LIMIT 1
+      ) AS payment_order_status
     FROM cotacoes c
     JOIN products p ON p.id = c.product_id
     JOIN partners part ON part.id = c.partner_id
     LEFT JOIN partner_users pu ON pu.id = c.partner_user_id
     LEFT JOIN sales s ON s.cotacao_id = c.id
-    LEFT JOIN payment_orders po ON po.cotacao_id = c.id
     WHERE ${where}
     ORDER BY c.created_at DESC
     LIMIT ${pageSize} OFFSET ${(currentPage - 1) * pageSize}
@@ -355,9 +394,9 @@ export default async function AdminCotacoesPage({
                 <tr>
                   <th className="px-6 py-4 table-sticky-col-head rounded-tl-2xl">Cliente / CPF</th>
                   <th className="px-6 py-4 border-b border-slate-200">Plano / Cobertura</th>
-                  <th className="px-6 py-4 border-b border-slate-200">Parceiro / Vendedor</th>
-                  <th className="px-6 py-4 border-b border-slate-200 text-right">Valor Total</th>
                   <th className="px-6 py-4 border-b border-slate-200 text-center">Situação / Status</th>
+                  <th className="px-6 py-4 border-b border-slate-200 text-right">Valor Total</th>
+                  <th className="px-6 py-4 border-b border-slate-200">Parceiro / Vendedor</th>
                   <th className="px-6 py-4 border-b border-slate-200 text-center">Fatura & Contrato</th>
                   <th className="px-6 py-4 border-b border-slate-200 text-right">Data</th>
                   <th className="px-6 py-4 border-b border-slate-200 text-center rounded-tr-2xl">Ações</th>
@@ -398,6 +437,8 @@ export default async function AdminCotacoesPage({
                     expiryDate: cotacao.sale_expiry_date,
                     daysOverdue: cotacao.days_overdue,
                     isContractSigned: isContratoAssinado,
+                    isFullyPaid: cotacao.is_fully_paid,
+                    paymentStatus: cotacao.payment_order_status || (cotacao.is_fully_paid ? 'paid' : undefined),
                   });
 
                   return (
@@ -414,6 +455,17 @@ export default async function AdminCotacoesPage({
                       <td className="px-6 py-4 border-b border-slate-100">
                         <span className="text-sm font-semibold text-slate-900 block">{planoNome}</span>
                         {cobertura && <span className="text-xs text-slate-500 font-normal block">{cobertura}</span>}
+                      </td>
+
+                      <td className="px-6 py-4 text-center border-b border-slate-100">
+                        <MatrixStatusBadge result={matrixStatus} variant="table-cell" />
+                      </td>
+
+                      <td className="px-6 py-4 text-right border-b border-slate-100">
+                        <span className="text-sm font-bold text-slate-900 block">{getDisplayPrice(cotacao)}</span>
+                        {clientData.parcela && Number(clientData.parcela) > 1 && (
+                          <span className="text-[11px] text-slate-500 font-normal block">{clientData.parcela}x parcelado</span>
+                        )}
                       </td>
 
                       <td className="px-6 py-4 border-b border-slate-100">
@@ -442,17 +494,6 @@ export default async function AdminCotacoesPage({
                             size="sm"
                           />
                         </div>
-                      </td>
-
-                      <td className="px-6 py-4 text-right border-b border-slate-100">
-                        <span className="text-sm font-bold text-slate-900 block">{getDisplayPrice(cotacao)}</span>
-                        {clientData.parcela && Number(clientData.parcela) > 1 && (
-                          <span className="text-[11px] text-slate-500 font-normal block">{clientData.parcela}x parcelado</span>
-                        )}
-                      </td>
-
-                      <td className="px-6 py-4 text-center border-b border-slate-100">
-                        <MatrixStatusBadge result={matrixStatus} variant="table-cell" />
                       </td>
 
                       <td className="px-6 py-4 text-center border-b border-slate-100">
