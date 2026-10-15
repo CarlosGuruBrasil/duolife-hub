@@ -10,7 +10,7 @@ import { PeriodPreset, resolveDateRange, getPeriodLabel } from '@/lib/date-filte
 import { formatCurrency, formatDate, formatStatusLabel, formatPlanLabel, formatPolicyValidity } from '@/lib/format';
 import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
 import { MatrixStatusBadge } from '@/components/common/MatrixStatusBadge';
-import { calculateMatrixStatus } from '@/lib/status-matrix';
+import { calculateMatrixStatus, getSaleMatrixFilterSql } from '@/lib/status-matrix';
 
 export const dynamic = 'force-dynamic';
 
@@ -88,6 +88,8 @@ export default async function PortalVendasPage({
 
   const params = searchParams ? await searchParams : {};
   const rawStatus = typeof params.status === 'string' ? params.status.toLowerCase().trim() : '';
+  const statusGeral = typeof params.statusGeral === 'string' ? params.statusGeral.trim() : '';
+  const statusPagamento = typeof params.statusPagamento === 'string' ? params.statusPagamento.trim() : '';
   const statusVariants = statusAliases[rawStatus] || (statusLabel[rawStatus] ? [rawStatus] : null);
   const status = statusLabel[rawStatus] ? rawStatus : (statusVariants ? statusVariants[0] : '');
   const q = (typeof params.q === 'string' ? params.q : '').trim().slice(0, 120);
@@ -124,6 +126,15 @@ export default async function PortalVendasPage({
   } else if (statusVariants && statusVariants.length > 0) {
     conditions.push(sql`s.status = ANY(${statusVariants})`);
   }
+
+  // Filtros da Matriz de Status (Status Geral e Status de Pagamento)
+  if (statusGeral || statusPagamento) {
+    const matrixClauses = getSaleMatrixFilterSql(statusGeral, statusPagamento, 's', 'c');
+    for (const clause of matrixClauses) {
+      conditions.push(sql.unsafe(clause));
+    }
+  }
+
   if (productId) {
     conditions.push(sql`s.product_id = ${productId}`);
   }

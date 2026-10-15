@@ -10,6 +10,13 @@ import {
   StatusCliente,
   StatusGeral,
   StatusPagamento,
+  STATUS_CLIENTE_OPTIONS,
+  STATUS_GERAL_OPTIONS,
+  STATUS_PAGAMENTO_OPTIONS,
+  formatStatusGeralLabel,
+  formatStatusPagamentoLabel,
+  getSaleMatrixFilterSql,
+  getCotacaoMatrixFilterSql,
 } from '../src/lib/status-matrix';
 
 function assert(condition: boolean, msg: string) {
@@ -177,4 +184,23 @@ assert(sqlResult.statusGeralSql.includes('CASE'), 'statusGeralSql deve conter CA
 assert(sqlResult.statusPagamentoSql.includes('CASE'), 'statusPagamentoSql deve conter CASE');
 assert(SQL_FULL_STATUS_MATRIX_QUERY_EXAMPLE.includes('insurance_clients'), 'Exemplo de query');
 
-console.log('✅ TODOS OS 4 BLOCOS DE TESTES PASSARAM COM SUCESSO!');
+// 5. Testar Opções de Filtro e Predicados SQL de Vendas e Cotações
+console.log('[5] Validando opções de filtros e predicados SQL...');
+assert(STATUS_CLIENTE_OPTIONS.length === 5, '5 opções de status do cliente');
+assert(STATUS_GERAL_OPTIONS.length === 4, '4 opções de status geral');
+assert(STATUS_PAGAMENTO_OPTIONS.length === 8, '8 opções de status de pagamento');
+
+assert(formatStatusGeralLabel('negocio_fechado') === 'Negócio Fechado', 'Label Negócio Fechado');
+assert(formatStatusPagamentoLabel('falta_pagamento_gt_50') === 'Falta Pagamento > 50 dias', 'Label Falta Pagamento > 50 dias');
+
+const saleFilters = getSaleMatrixFilterSql('negocio_fechado', 'em_dia', 's', 'c');
+assert(saleFilters.length === 2, '2 cláusulas para venda em dia');
+assert(saleFilters[0].includes('s.id IS NOT NULL'), 'Venda negócio fechado');
+assert(saleFilters[1].includes("s.status = 'ativa'"), 'Venda ativa');
+
+const cotacaoFilters = getCotacaoMatrixFilterSql('pendente_assinatura', 'falta_assinatura', 'c', 's');
+assert(cotacaoFilters.length === 2, '2 cláusulas para cotação pendente assinatura');
+assert(cotacaoFilters[0].includes('s.id IS NULL'), 'Cotação sem venda');
+
+console.log('✅ TODOS OS 5 BLOCOS DE TESTES PASSARAM COM SUCESSO!');
+

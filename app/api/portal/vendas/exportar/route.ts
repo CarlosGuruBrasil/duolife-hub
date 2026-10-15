@@ -4,6 +4,7 @@ import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { PeriodPreset, resolveDateRange } from '@/lib/date-filters';
 import { gerarVendasCSV, obterMapaPremioNetConfigurado, VendaExportRow } from '@/lib/vendas-csv';
+import { getSaleMatrixFilterSql } from '@/lib/status-matrix';
 
 export const dynamic = 'force-dynamic';
 
@@ -40,6 +41,8 @@ export async function GET(request: NextRequest) {
 
   const searchParams = request.nextUrl.searchParams;
   const rawStatus = (searchParams.get('status') || '').toLowerCase().trim();
+  const statusGeral = searchParams.get('statusGeral') || '';
+  const statusPagamento = searchParams.get('statusPagamento') || '';
   const statusVariants = statusAliases[rawStatus] || (statusLabel[rawStatus] ? [rawStatus] : null);
   const q = (searchParams.get('q') || '').trim().slice(0, 120);
   const productId = searchParams.get('productId') || '';
@@ -66,8 +69,21 @@ export async function GET(request: NextRequest) {
   }
 
   // Filtros dinâmicos
-  if (statusVariants && statusVariants.length > 0) {
+  if (['vigente', 'vigente / renovado'].includes(rawStatus)) {
+    conditions.push(sql`s.status = 'ativa' AND s.expiry_date >= CURRENT_DATE`);
+  } else if (rawStatus === 'cancelado') {
+    conditions.push(sql`s.status = 'cancelada'`);
+  } else if (rawStatus === 'expirado') {
+    conditions.push(sql`(s.status = 'expirada' OR s.expiry_date < CURRENT_DATE)`);
+  } else if (statusVariants && statusVariants.length > 0) {
     conditions.push(sql`s.status = ANY(${statusVariants})`);
+  }
+
+  if (statusGeral || statusPagamento) {
+    const matrixClauses = getSaleMatrixFilterSql(statusGeral, statusPagamento, 's', 'c');
+    for (const clause of matrixClauses) {
+      conditions.push(sql.unsafe(clause));
+    }
   }
   if (productId) {
     conditions.push(sql`s.product_id = ${productId}`);

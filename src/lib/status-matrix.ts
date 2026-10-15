@@ -277,6 +277,75 @@ export function getStatusPagamentoBadge(status: StatusPagamento): StatusBadgeCon
 }
 
 // ============================================================================
+// 3.1 OPÇÕES E DICIONÁRIOS PARA FILTROS (ADMIN E PORTAL)
+// ============================================================================
+
+export const STATUS_CLIENTE_OPTIONS: readonly { value: string; label: StatusCliente }[] = [
+  { value: 'vigente', label: 'Vigente / Renovado' },
+  { value: 'negociacao', label: 'Em negociação' },
+  { value: 'cadastrado', label: 'Cadastrado' },
+  { value: 'expirado', label: 'Expirado' },
+  { value: 'cancelado', label: 'Cancelado' },
+] as const;
+
+export const STATUS_GERAL_OPTIONS: readonly { value: string; label: StatusGeral }[] = [
+  { value: 'negocio_fechado', label: 'Negócio Fechado' },
+  { value: 'pendente_assinatura', label: 'Pendente de Assinatura' },
+  { value: 'pendente_pagamento', label: 'Pendente de Pagamento' },
+  { value: 'inativo', label: 'Inativo' },
+] as const;
+
+export const STATUS_PAGAMENTO_OPTIONS: readonly { value: string; label: StatusPagamento }[] = [
+  { value: 'em_dia', label: 'Em dia' },
+  { value: 'atraso_le_50', label: 'Em atraso <= 50 dias' },
+  { value: 'falta_pagamento_gt_50', label: 'Falta Pagamento > 50 dias' },
+  { value: 'quitado', label: 'Quitado' },
+  { value: 'falta_assinatura', label: 'Falta Assinatura' },
+  { value: 'falta_pagamento', label: 'Falta Pagamento' },
+  { value: 'cancelado', label: 'Cancelado' },
+  { value: 'inativo', label: 'Inativo' },
+] as const;
+
+export const STATUS_GERAL_LABEL_MAP: Record<string, StatusGeral> = {
+  negocio_fechado: 'Negócio Fechado',
+  'negócio fechado': 'Negócio Fechado',
+  pendente_assinatura: 'Pendente de Assinatura',
+  'pendente de assinatura': 'Pendente de Assinatura',
+  pendente_pagamento: 'Pendente de Pagamento',
+  'pendente de pagamento': 'Pendente de Pagamento',
+  inativo: 'Inativo',
+};
+
+export const STATUS_PAGAMENTO_LABEL_MAP: Record<string, StatusPagamento> = {
+  em_dia: 'Em dia',
+  'em dia': 'Em dia',
+  atraso_le_50: 'Em atraso <= 50 dias',
+  'em atraso <= 50 dias': 'Em atraso <= 50 dias',
+  falta_pagamento_gt_50: 'Falta Pagamento > 50 dias',
+  'falta pagamento > 50 dias': 'Falta Pagamento > 50 dias',
+  quitado: 'Quitado',
+  falta_assinatura: 'Falta Assinatura',
+  'falta assinatura': 'Falta Assinatura',
+  falta_pagamento: 'Falta Pagamento',
+  'falta pagamento': 'Falta Pagamento',
+  cancelado: 'Cancelado',
+  inativo: 'Inativo',
+};
+
+export function formatStatusGeralLabel(value?: string | null): string {
+  if (!value) return '';
+  const key = String(value).trim().toLowerCase();
+  return STATUS_GERAL_LABEL_MAP[key] || value;
+}
+
+export function formatStatusPagamentoLabel(value?: string | null): string {
+  if (!value) return '';
+  const key = String(value).trim().toLowerCase();
+  return STATUS_PAGAMENTO_LABEL_MAP[key] || value;
+}
+
+
+// ============================================================================
 // 4. FUNÇÕES DE NORMALIZAÇÃO E VALIDAÇÃO
 // ============================================================================
 
@@ -687,3 +756,160 @@ LEFT JOIN LATERAL (
 ) sub_p ON TRUE
 ORDER BY ic.created_at DESC;
 `.trim();
+
+/**
+ * Retorna as condições SQL WHERE para filtrar Vendas (tabela `sales s`)
+ * com base em `statusGeral` e `statusPagamento`.
+ */
+export function getSaleMatrixFilterSql(
+  statusGeral?: string | null,
+  statusPagamento?: string | null,
+  saleAlias: string = 's',
+  cotacaoAlias: string = 'c'
+): string[] {
+  const clauses: string[] = [];
+  const s = saleAlias;
+
+  // Subexpressão determinística de quitação em vendas
+  const isPaidSql = `(
+    (SELECT COUNT(*) > 0 AND COUNT(*) = COUNT(*) FILTER (WHERE pi_f.status IN ('paid', 'received', 'confirmed')) FROM payment_installments pi_f WHERE pi_f.cotacao_id = ${s}.cotacao_id)
+    OR
+    (SELECT po_f.status IN ('paid', 'received', 'confirmed') FROM payment_orders po_f WHERE po_f.cotacao_id = ${s}.cotacao_id ORDER BY po_f.created_at DESC LIMIT 1)
+  )`;
+
+  // Subexpressão de atraso máximo em vendas
+  const maxOverdueSql = `COALESCE(
+    (
+      SELECT CASE
+        WHEN COUNT(*) > 0 AND COUNT(*) = COUNT(*) FILTER (WHERE pi_o.status IN ('paid', 'received', 'confirmed')) THEN 0
+        ELSE MAX(CASE WHEN pi_o.status IN ('pending', 'overdue') AND pi_o.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - pi_o.due_date)::int) ELSE 0 END)
+      END
+      FROM payment_installments pi_o
+      WHERE pi_o.cotacao_id = ${s}.cotacao_id
+    ),
+    (
+      SELECT CASE
+        WHEN po_o.status IN ('paid', 'received', 'confirmed') THEN 0
+        WHEN po_o.status IN ('pending', 'overdue') AND po_o.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - po_o.due_date)::int)
+        ELSE 0
+      END
+      FROM payment_orders po_o
+      WHERE po_o.cotacao_id = ${s}.cotacao_id
+      ORDER BY po_o.created_at DESC
+      LIMIT 1
+    ),
+    0
+  )`;
+
+  if (statusGeral) {
+    const sg = statusGeral.toLowerCase().trim();
+    if (['negocio_fechado', 'negócio fechado'].includes(sg)) {
+      clauses.push(`${s}.id IS NOT NULL`);
+    } else {
+      // Pendente de Assinatura, Pendente de Pagamento ou Inativo não existem em vendas ativas/emitidas
+      clauses.push(`1 = 0`);
+    }
+  }
+
+  if (statusPagamento) {
+    const sp = statusPagamento.toLowerCase().trim();
+    if (['em_dia', 'em dia'].includes(sp)) {
+      clauses.push(`(${s}.status = 'ativa' AND ${s}.expiry_date >= CURRENT_DATE AND (${isPaidSql} = true OR ${maxOverdueSql} = 0))`);
+    } else if (['atraso_le_50', 'em atraso <= 50 dias'].includes(sp)) {
+      clauses.push(`(${s}.status = 'ativa' AND ${s}.expiry_date >= CURRENT_DATE AND ${isPaidSql} = false AND ${maxOverdueSql} > 0 AND ${maxOverdueSql} <= 50)`);
+    } else if (['falta_pagamento_gt_50', 'falta pagamento > 50 dias'].includes(sp)) {
+      clauses.push(`(${isPaidSql} = false AND ${maxOverdueSql} > 50)`);
+    } else if (['quitado'].includes(sp)) {
+      clauses.push(`(${s}.expiry_date < CURRENT_DATE OR ${s}.status = 'expirada' OR ${isPaidSql} = true)`);
+    } else if (['cancelado'].includes(sp)) {
+      clauses.push(`(${s}.status = 'cancelada')`);
+    } else {
+      clauses.push(`1 = 0`);
+    }
+  }
+
+  return clauses;
+}
+
+/**
+ * Retorna as condições SQL WHERE para filtrar Cotações (tabela `cotacoes c` e `sales s`)
+ * com base em `statusGeral` e `statusPagamento`.
+ */
+export function getCotacaoMatrixFilterSql(
+  statusGeral?: string | null,
+  statusPagamento?: string | null,
+  cotacaoAlias: string = 'c',
+  saleAlias: string = 's'
+): string[] {
+  const clauses: string[] = [];
+  const c = cotacaoAlias;
+  const s = saleAlias;
+
+  const isPaidSql = `(
+    (SELECT COUNT(*) > 0 AND COUNT(*) = COUNT(*) FILTER (WHERE pi_f.status IN ('paid', 'received', 'confirmed')) FROM payment_installments pi_f WHERE pi_f.cotacao_id = ${c}.id)
+    OR
+    (SELECT po_f.status IN ('paid', 'received', 'confirmed') FROM payment_orders po_f WHERE po_f.cotacao_id = ${c}.id ORDER BY po_f.created_at DESC LIMIT 1)
+    OR
+    (${c}.status IN ('aprovada', 'emitida'))
+  )`;
+
+  const maxOverdueSql = `COALESCE(
+    (
+      SELECT CASE
+        WHEN COUNT(*) > 0 AND COUNT(*) = COUNT(*) FILTER (WHERE pi_o.status IN ('paid', 'received', 'confirmed')) THEN 0
+        ELSE MAX(CASE WHEN pi_o.status IN ('pending', 'overdue') AND pi_o.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - pi_o.due_date)::int) ELSE 0 END)
+      END
+      FROM payment_installments pi_o
+      WHERE pi_o.cotacao_id = ${c}.id
+    ),
+    (
+      SELECT CASE
+        WHEN po_o.status IN ('paid', 'received', 'confirmed') THEN 0
+        WHEN po_o.status IN ('pending', 'overdue') AND po_o.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - po_o.due_date)::int)
+        ELSE 0
+      END
+      FROM payment_orders po_o
+      WHERE po_o.cotacao_id = ${c}.id
+      ORDER BY po_o.created_at DESC
+      LIMIT 1
+    ),
+    0
+  )`;
+
+  if (statusGeral) {
+    const sg = statusGeral.toLowerCase().trim();
+    if (['negocio_fechado', 'negócio fechado'].includes(sg)) {
+      clauses.push(`(${s}.id IS NOT NULL OR ${c}.status IN ('emitida', 'aprovada'))`);
+    } else if (['pendente_assinatura', 'pendente de assinatura'].includes(sg)) {
+      clauses.push(`(${s}.id IS NULL AND ${c}.status IN ('rascunho', 'enviada', 'contrato_gerado'))`);
+    } else if (['pendente_pagamento', 'pendente de pagamento'].includes(sg)) {
+      clauses.push(`(${s}.id IS NULL AND ${c}.status IN ('assinado', 'pagamento_gerado'))`);
+    } else if (['inativo'].includes(sg)) {
+      clauses.push(`(${c}.status IN ('recusada', 'cancelada'))`);
+    }
+  }
+
+  if (statusPagamento) {
+    const sp = statusPagamento.toLowerCase().trim();
+    if (['em_dia', 'em dia'].includes(sp)) {
+      clauses.push(`(${s}.id IS NOT NULL AND ${s}.status = 'ativa' AND ${s}.expiry_date >= CURRENT_DATE AND (${isPaidSql} = true OR ${maxOverdueSql} = 0))`);
+    } else if (['atraso_le_50', 'em atraso <= 50 dias'].includes(sp)) {
+      clauses.push(`(${s}.id IS NOT NULL AND ${s}.status = 'ativa' AND ${s}.expiry_date >= CURRENT_DATE AND ${isPaidSql} = false AND ${maxOverdueSql} > 0 AND ${maxOverdueSql} <= 50)`);
+    } else if (['falta_pagamento_gt_50', 'falta pagamento > 50 dias'].includes(sp)) {
+      clauses.push(`(${isPaidSql} = false AND ${maxOverdueSql} > 50)`);
+    } else if (['quitado'].includes(sp)) {
+      clauses.push(`(${s}.id IS NOT NULL AND (${s}.expiry_date < CURRENT_DATE OR ${s}.status = 'expirada'))`);
+    } else if (['falta_assinatura', 'falta assinatura'].includes(sp)) {
+      clauses.push(`(${s}.id IS NULL AND ${c}.status IN ('rascunho', 'enviada', 'contrato_gerado'))`);
+    } else if (['falta_pagamento', 'falta pagamento'].includes(sp)) {
+      clauses.push(`(${s}.id IS NULL AND ${c}.status IN ('assinado', 'pagamento_gerado'))`);
+    } else if (['cancelado'].includes(sp)) {
+      clauses.push(`(${c}.status IN ('recusada', 'cancelada') OR ${s}.status = 'cancelada')`);
+    } else if (['inativo'].includes(sp)) {
+      clauses.push(`(${c}.status = 'rascunho' AND ${s}.id IS NULL)`);
+    }
+  }
+
+  return clauses;
+}
+

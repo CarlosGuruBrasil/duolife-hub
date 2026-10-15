@@ -3,6 +3,10 @@
 import React, { useTransition } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { X } from 'lucide-react';
+import {
+  formatStatusGeralLabel,
+  formatStatusPagamentoLabel,
+} from '@/lib/status-matrix';
 
 interface Option {
   id: string;
@@ -39,6 +43,8 @@ export function CotacoesActiveBadges({
 
   const q = searchParams.get('q');
   const status = searchParams.get('status');
+  const statusGeral = searchParams.get('statusGeral');
+  const statusPagamento = searchParams.get('statusPagamento');
   const productId = searchParams.get('productId');
   const corretoraId = searchParams.get('corretoraId');
   const partnerId = searchParams.get('partnerId');
@@ -87,9 +93,31 @@ export function CotacoesActiveBadges({
   if (status) {
     badges.push({
       id: 'status',
-      label: `Status: ${statusLabels[status] || status}`,
+      label: `Status Cliente: ${statusLabels[status] || status}`,
       onRemove: () => removeFilter('status'),
     });
+  }
+
+  if (statusGeral) {
+    const rawLabel = formatStatusGeralLabel(statusGeral);
+    if (rawLabel) {
+      badges.push({
+        id: 'statusGeral',
+        label: `Status Geral: ${rawLabel}`,
+        onRemove: () => removeFilter('statusGeral'),
+      });
+    }
+  }
+
+  if (statusPagamento) {
+    const rawLabel = formatStatusPagamentoLabel(statusPagamento);
+    if (rawLabel) {
+      badges.push({
+        id: 'statusPagamento',
+        label: `Status Pagamento: ${rawLabel}`,
+        onRemove: () => removeFilter('statusPagamento'),
+      });
+    }
   }
 
   if (productId) {

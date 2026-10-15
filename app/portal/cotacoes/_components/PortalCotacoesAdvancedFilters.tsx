@@ -4,6 +4,10 @@ import React, { useState, useEffect, useTransition } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { Filter, RotateCcw, Loader2 } from 'lucide-react';
 import { PeriodPreset } from '@/lib/date-filters';
+import {
+  STATUS_GERAL_OPTIONS,
+  STATUS_PAGAMENTO_OPTIONS,
+} from '@/lib/status-matrix';
 
 interface Option {
   id: string;
@@ -27,6 +31,8 @@ export function PortalCotacoesAdvancedFilters({
   const [isPending, startTransition] = useTransition();
 
   const [status, setStatus] = useState(searchParams.get('status') || '');
+  const [statusGeral, setStatusGeral] = useState(searchParams.get('statusGeral') || '');
+  const [statusPagamento, setStatusPagamento] = useState(searchParams.get('statusPagamento') || '');
   const [productId, setProductId] = useState(searchParams.get('productId') || '');
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>(
     (searchParams.get('periodPreset') as PeriodPreset) || 'all'
@@ -36,6 +42,8 @@ export function PortalCotacoesAdvancedFilters({
 
   useEffect(() => {
     setStatus(searchParams.get('status') || '');
+    setStatusGeral(searchParams.get('statusGeral') || '');
+    setStatusPagamento(searchParams.get('statusPagamento') || '');
     setProductId(searchParams.get('productId') || '');
     setPeriodPreset((searchParams.get('periodPreset') as PeriodPreset) || 'all');
     setStartDate(searchParams.get('startDate') || '');
@@ -100,6 +108,8 @@ export function PortalCotacoesAdvancedFilters({
 
   const handleClear = () => {
     setStatus('');
+    setStatusGeral('');
+    setStatusPagamento('');
     setProductId('');
     setPeriodPreset('all');
     setStartDate('');
@@ -107,6 +117,8 @@ export function PortalCotacoesAdvancedFilters({
 
     const params = new URLSearchParams(searchParams.toString());
     params.delete('status');
+    params.delete('statusGeral');
+    params.delete('statusPagamento');
     params.delete('productId');
     params.delete('periodPreset');
     params.delete('startDate');
@@ -136,7 +148,7 @@ export function PortalCotacoesAdvancedFilters({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
         {/* 1. Status do Cliente / Cotação */}
         <div>
           <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
@@ -172,7 +184,51 @@ export function PortalCotacoesAdvancedFilters({
           </select>
         </div>
 
-        {/* 2. Produto */}
+        {/* 2. Status Geral */}
+        <div>
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
+            Status Geral
+          </label>
+          <select
+            value={statusGeral}
+            onChange={(e) => {
+              setStatusGeral(e.target.value);
+              updateSingleFilter('statusGeral', e.target.value);
+            }}
+            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none cursor-pointer"
+          >
+            <option value="">Todos os status gerais</option>
+            {STATUS_GERAL_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* 3. Status de Pagamento */}
+        <div>
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
+            Status de Pagamento
+          </label>
+          <select
+            value={statusPagamento}
+            onChange={(e) => {
+              setStatusPagamento(e.target.value);
+              updateSingleFilter('statusPagamento', e.target.value);
+            }}
+            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none cursor-pointer"
+          >
+            <option value="">Todos os status de pagamento</option>
+            {STATUS_PAGAMENTO_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* 4. Produto */}
         <div>
           <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
             Produto

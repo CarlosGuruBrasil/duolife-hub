@@ -4,6 +4,10 @@ import React, { useTransition } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { Calendar, Filter, RotateCcw } from 'lucide-react';
 import { DATE_PRESET_OPTIONS, PeriodPreset } from '@/lib/date-filters';
+import {
+  STATUS_GERAL_OPTIONS,
+  STATUS_PAGAMENTO_OPTIONS,
+} from '@/lib/status-matrix';
 
 interface Option {
   id: string;
@@ -37,6 +41,8 @@ export function PortalVendasAdvancedFilters({
           : currentStatusRaw === 'suspended'
             ? 'suspensa'
             : currentStatusRaw;
+  const currentStatusGeral = (searchParams.get('statusGeral') || '').toLowerCase().trim();
+  const currentStatusPagamento = (searchParams.get('statusPagamento') || '').toLowerCase().trim();
   const currentProduct = searchParams.get('productId') || '';
   const currentPreset: PeriodPreset =
     (searchParams.get('periodPreset') as PeriodPreset) ||
@@ -113,6 +119,8 @@ export function PortalVendasAdvancedFilters({
   const handleResetAdvanced = () => {
     const params = new URLSearchParams(searchParams.toString());
     params.delete('status');
+    params.delete('statusGeral');
+    params.delete('statusPagamento');
     params.delete('productId');
     params.delete('startDate');
     params.delete('endDate');
@@ -142,8 +150,8 @@ export function PortalVendasAdvancedFilters({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {/* Status do Cliente / Venda */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        {/* 1. Status do Cliente / Venda */}
         <div>
           <label className="block text-xs font-semibold text-gray-700 mb-1.5">
             Status do Cliente / Apólice
@@ -175,7 +183,45 @@ export function PortalVendasAdvancedFilters({
           </select>
         </div>
 
-        {/* Produto Contratado */}
+        {/* 2. Status Geral */}
+        <div>
+          <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+            Status Geral
+          </label>
+          <select
+            value={currentStatusGeral}
+            onChange={(e) => updateParam('statusGeral', e.target.value)}
+            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-800 font-medium focus:border-[#0e4a5a] focus:outline-hidden focus:ring-2 focus:ring-[#0e4a5a]/10 cursor-pointer"
+          >
+            <option value="">Todos os status gerais</option>
+            {STATUS_GERAL_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* 3. Status de Pagamento */}
+        <div>
+          <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+            Status de Pagamento
+          </label>
+          <select
+            value={currentStatusPagamento}
+            onChange={(e) => updateParam('statusPagamento', e.target.value)}
+            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-800 font-medium focus:border-[#0e4a5a] focus:outline-hidden focus:ring-2 focus:ring-[#0e4a5a]/10 cursor-pointer"
+          >
+            <option value="">Todos os status de pagamento</option>
+            {STATUS_PAGAMENTO_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* 4. Produto Contratado */}
         <div>
           <label className="block text-xs font-semibold text-gray-700 mb-1.5">
             Produto Contratado

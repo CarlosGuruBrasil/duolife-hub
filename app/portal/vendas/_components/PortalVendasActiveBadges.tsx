@@ -5,6 +5,10 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { X } from 'lucide-react';
 import { DATE_PRESET_OPTIONS, formatDateBR, PeriodPreset } from '@/lib/date-filters';
 import { formatStatusLabel } from '@/lib/format';
+import {
+  formatStatusGeralLabel,
+  formatStatusPagamentoLabel,
+} from '@/lib/status-matrix';
 
 interface Option {
   id: string;
@@ -27,6 +31,8 @@ export function PortalVendasActiveBadges({
 
   const q = searchParams.get('q');
   const status = searchParams.get('status');
+  const statusGeral = searchParams.get('statusGeral');
+  const statusPagamento = searchParams.get('statusPagamento');
   const productId = searchParams.get('productId');
   const periodPreset = searchParams.get('periodPreset');
   const startDate = searchParams.get('startDate');
@@ -59,8 +65,28 @@ export function PortalVendasActiveBadges({
     const rawLabel = statusLabels[status] || formatStatusLabel(status);
     if (rawLabel && rawLabel !== '-') {
       badges.push({
-        label: `Status: ${rawLabel}`,
+        label: `Status Cliente: ${rawLabel}`,
         onRemove: () => removeParam(['status']),
+      });
+    }
+  }
+
+  if (statusGeral) {
+    const rawLabel = formatStatusGeralLabel(statusGeral);
+    if (rawLabel) {
+      badges.push({
+        label: `Status Geral: ${rawLabel}`,
+        onRemove: () => removeParam(['statusGeral']),
+      });
+    }
+  }
+
+  if (statusPagamento) {
+    const rawLabel = formatStatusPagamentoLabel(statusPagamento);
+    if (rawLabel) {
+      badges.push({
+        label: `Status Pagamento: ${rawLabel}`,
+        onRemove: () => removeParam(['statusPagamento']),
       });
     }
   }
