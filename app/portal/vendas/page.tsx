@@ -235,6 +235,24 @@ export default async function PortalVendasPage({
           END
           FROM payment_installments pi
           WHERE pi.cotacao_id = s.cotacao_id
+            -- Ignora cobrança avulsa inicial substituída por carnê (quando já existe parcela 1 paga e parcelas subsequentes)
+            AND NOT (
+              pi.installment_number = 1
+              AND pi.paid_at IS NULL
+              AND LOWER(COALESCE(pi.status, '')) NOT IN ('paid', 'received', 'confirmed', 'received_in_cash')
+              AND EXISTS (
+                SELECT 1 FROM payment_installments pi_sub
+                WHERE pi_sub.cotacao_id = pi.cotacao_id
+                  AND pi_sub.installment_number > 1
+              )
+              AND EXISTS (
+                SELECT 1 FROM payment_installments pi_paid
+                WHERE pi_paid.cotacao_id = pi.cotacao_id
+                  AND pi_paid.installment_number = 1
+                  AND (pi_paid.paid_at IS NOT NULL OR LOWER(COALESCE(pi_paid.status, '')) IN ('paid', 'received', 'confirmed', 'received_in_cash'))
+                  AND pi_paid.id != pi.id
+              )
+            )
         ),
         (
           SELECT CASE
@@ -263,6 +281,24 @@ export default async function PortalVendasPage({
           END
           FROM payment_installments pi
           WHERE pi.cotacao_id = s.cotacao_id
+            -- Ignora cobrança avulsa inicial substituída por carnê (quando já existe parcela 1 paga e parcelas subsequentes)
+            AND NOT (
+              pi.installment_number = 1
+              AND pi.paid_at IS NULL
+              AND LOWER(COALESCE(pi.status, '')) NOT IN ('paid', 'received', 'confirmed', 'received_in_cash')
+              AND EXISTS (
+                SELECT 1 FROM payment_installments pi_sub
+                WHERE pi_sub.cotacao_id = pi.cotacao_id
+                  AND pi_sub.installment_number > 1
+              )
+              AND EXISTS (
+                SELECT 1 FROM payment_installments pi_paid
+                WHERE pi_paid.cotacao_id = pi.cotacao_id
+                  AND pi_paid.installment_number = 1
+                  AND (pi_paid.paid_at IS NOT NULL OR LOWER(COALESCE(pi_paid.status, '')) IN ('paid', 'received', 'confirmed', 'received_in_cash'))
+                  AND pi_paid.id != pi.id
+              )
+            )
         ),
         (
           SELECT CASE

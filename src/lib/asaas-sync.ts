@@ -441,8 +441,17 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
       await sql`
         DELETE FROM payment_installments
         WHERE cotacao_id = ${cotacao.id}
-          AND provider = 'asaas'
-          AND external_payment_id NOT IN ${sql(validExternalPaymentIds)}
+          AND external_payment_id != ALL(${validExternalPaymentIds})
+      `;
+    }
+
+    const carnetCharge = resolvedCharges.find((c) => Boolean(c.installment));
+    if (carnetCharge?.installment) {
+      directInstallmentId = carnetCharge.installment;
+      await sql`
+        DELETE FROM payment_installments
+        WHERE cotacao_id = ${cotacao.id}
+          AND (external_installment_id IS NULL OR external_installment_id != ${directInstallmentId})
       `;
     }
 

@@ -666,6 +666,31 @@ function buildResult(rule: MatrixRule): MatrixStatusResult {
 // ============================================================================
 
 /**
+ * Retorna a cláusula SQL que ignora cobrança avulsa inicial substituída por carnê
+ * (quando já existe parcela 1 paga e parcelas subsequentes).
+ */
+export function buildExcludeOrphanInstallmentSql(installmentAlias: string = 'pi'): string {
+  const a = installmentAlias;
+  return `NOT (
+    ${a}.installment_number = 1
+    AND ${a}.paid_at IS NULL
+    AND LOWER(COALESCE(${a}.status, '')) NOT IN ('paid', 'received', 'confirmed', 'received_in_cash')
+    AND EXISTS (
+      SELECT 1 FROM payment_installments pi_sub
+      WHERE pi_sub.cotacao_id = ${a}.cotacao_id
+        AND pi_sub.installment_number > 1
+    )
+    AND EXISTS (
+      SELECT 1 FROM payment_installments pi_paid
+      WHERE pi_paid.cotacao_id = ${a}.cotacao_id
+        AND pi_paid.installment_number = 1
+        AND (pi_paid.paid_at IS NOT NULL OR LOWER(COALESCE(pi_paid.status, '')) IN ('paid', 'received', 'confirmed', 'received_in_cash'))
+        AND pi_paid.id != ${a}.id
+    )
+  )`.trim();
+}
+
+/**
  * Gera a subexpressão SQL determinística e infalível de cálculo de dias de atraso (maxOverdueSql).
  * - Se COUNT(*) > 0 em payment_installments:
  *   COALESCE(MAX(CASE WHEN (pi_o.paid_at IS NULL AND LOWER(COALESCE(pi_o.status, '')) NOT IN ('paid', 'received', 'confirmed', 'received_in_cash')) AND pi_o.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - pi_o.due_date)::int) ELSE 0 END), 0)
@@ -696,6 +721,24 @@ export function buildMaxOverdueSql(cotacaoIdExpr: string, saleAlias: string = 's
       END
       FROM payment_installments pi_o
       WHERE pi_o.cotacao_id = ${cotacaoIdExpr}
+        -- Ignora cobrança avulsa inicial substituída por carnê (quando já existe parcela 1 paga e parcelas subsequentes)
+        AND NOT (
+          pi_o.installment_number = 1
+          AND pi_o.paid_at IS NULL
+          AND LOWER(COALESCE(pi_o.status, '')) NOT IN ('paid', 'received', 'confirmed', 'received_in_cash')
+          AND EXISTS (
+            SELECT 1 FROM payment_installments pi_sub
+            WHERE pi_sub.cotacao_id = pi_o.cotacao_id
+              AND pi_sub.installment_number > 1
+          )
+          AND EXISTS (
+            SELECT 1 FROM payment_installments pi_paid
+            WHERE pi_paid.cotacao_id = pi_o.cotacao_id
+              AND pi_paid.installment_number = 1
+              AND (pi_paid.paid_at IS NOT NULL OR LOWER(COALESCE(pi_paid.status, '')) IN ('paid', 'received', 'confirmed', 'received_in_cash'))
+              AND pi_paid.id != pi_o.id
+          )
+        )
     ),
     (
       SELECT CASE
@@ -845,6 +888,24 @@ LEFT JOIN LATERAL (
     ) AS max_overdue_days
   FROM payment_installments pi
   WHERE pi.cotacao_id = c.id
+    -- Ignora cobrança avulsa inicial substituída por carnê (quando já existe parcela 1 paga e parcelas subsequentes)
+    AND NOT (
+      pi.installment_number = 1
+      AND pi.paid_at IS NULL
+      AND LOWER(COALESCE(pi.status, '')) NOT IN ('paid', 'received', 'confirmed', 'received_in_cash')
+      AND EXISTS (
+        SELECT 1 FROM payment_installments pi_sub
+        WHERE pi_sub.cotacao_id = pi.cotacao_id
+          AND pi_sub.installment_number > 1
+      )
+      AND EXISTS (
+        SELECT 1 FROM payment_installments pi_paid
+        WHERE pi_paid.cotacao_id = pi.cotacao_id
+          AND pi_paid.installment_number = 1
+          AND (pi_paid.paid_at IS NOT NULL OR LOWER(COALESCE(pi_paid.status, '')) IN ('paid', 'received', 'confirmed', 'received_in_cash'))
+          AND pi_paid.id != pi.id
+      )
+    )
 ) sub_p ON TRUE
 ORDER BY ic.created_at DESC;
 `.trim();
@@ -861,10 +922,11 @@ export function getSaleMatrixFilterSql(
 ): string[] {
   const clauses: string[] = [];
   const s = saleAlias;
+  const excludeOrphanSql = buildExcludeOrphanInstallmentSql('pi_f');
 
   // Subexpressão determinística de quitação em vendas
   const isPaidSql = `(
-    (SELECT COUNT(*) > 0 AND COUNT(*) = COUNT(*) FILTER (WHERE LOWER(COALESCE(pi_f.status, '')) IN ('paid', 'received', 'confirmed', 'received_in_cash') OR pi_f.paid_at IS NOT NULL) FROM payment_installments pi_f WHERE pi_f.cotacao_id = ${s}.cotacao_id)
+    (SELECT COUNT(*) > 0 AND COUNT(*) = COUNT(*) FILTER (WHERE LOWER(COALESCE(pi_f.status, '')) IN ('paid', 'received', 'confirmed', 'received_in_cash') OR pi_f.paid_at IS NOT NULL) FROM payment_installments pi_f WHERE pi_f.cotacao_id = ${s}.cotacao_id AND ${excludeOrphanSql})
     OR
     (SELECT LOWER(COALESCE(po_f.status, '')) IN ('paid', 'received', 'confirmed', 'received_in_cash') FROM payment_orders po_f WHERE po_f.cotacao_id = ${s}.cotacao_id ORDER BY po_f.created_at DESC LIMIT 1)
   )`;
@@ -915,9 +977,10 @@ export function getCotacaoMatrixFilterSql(
   const clauses: string[] = [];
   const c = cotacaoAlias;
   const s = saleAlias;
+  const excludeOrphanSql = buildExcludeOrphanInstallmentSql('pi_f');
 
   const isPaidSql = `(
-    (SELECT COUNT(*) > 0 AND COUNT(*) = COUNT(*) FILTER (WHERE LOWER(COALESCE(pi_f.status, '')) IN ('paid', 'received', 'confirmed', 'received_in_cash') OR pi_f.paid_at IS NOT NULL) FROM payment_installments pi_f WHERE pi_f.cotacao_id = ${c}.id)
+    (SELECT COUNT(*) > 0 AND COUNT(*) = COUNT(*) FILTER (WHERE LOWER(COALESCE(pi_f.status, '')) IN ('paid', 'received', 'confirmed', 'received_in_cash') OR pi_f.paid_at IS NOT NULL) FROM payment_installments pi_f WHERE pi_f.cotacao_id = ${c}.id AND ${excludeOrphanSql})
     OR
     (SELECT LOWER(COALESCE(po_f.status, '')) IN ('paid', 'received', 'confirmed', 'received_in_cash') FROM payment_orders po_f WHERE po_f.cotacao_id = ${c}.id ORDER BY po_f.created_at DESC LIMIT 1)
     OR

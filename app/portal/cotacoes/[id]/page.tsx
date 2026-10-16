@@ -181,8 +181,7 @@ export default async function PortalCotacaoDetailPage({
     LIMIT 1
   `;
 
-  // Busca Parcelas em payment_installments
-  const installments = await sql<Array<{
+  type InstallmentItem = {
     id: string;
     installment_number: number;
     status: string;
@@ -195,13 +194,67 @@ export default async function PortalCotacaoDetailPage({
     pix_qr_code_url: string | null;
     paid_at: string | null;
     raw_payload: any;
-  }>>`
+  };
+
+  // Busca Parcelas em payment_installments
+  const rawInstallments = await sql<InstallmentItem[]>`
     SELECT id, installment_number, status, amount, net_amount, due_date::text AS due_date,
            billing_type, invoice_url, bank_slip_url, pix_qr_code_url, paid_at::text AS paid_at, raw_payload
     FROM payment_installments
     WHERE cotacao_id = ${id}
     ORDER BY installment_number ASC
   `;
+
+  // Saneamento e filtragem de parcelas ativas legítimas (expurgo de cobranças fantasmas/substituídas)
+  const paidStatuses = ['paid', 'confirmed', 'received', 'received_in_cash'];
+  let installments: InstallmentItem[] = Array.from(rawInstallments);
+
+  if (rawInstallments.some((i) => i.installment_number > 1)) {
+    const hasPaidInst1 = rawInstallments.some(
+      (i) => i.installment_number === 1 && paidStatuses.includes(String(i.status || '').toLowerCase())
+    );
+
+    const carnetInstallments = rawInstallments.filter((i) => i.installment_number > 1);
+    const avgCarnetAmount = carnetInstallments.length > 0
+      ? carnetInstallments.reduce((sum, i) => sum + Number(i.amount || 0), 0) / carnetInstallments.length
+      : 0;
+
+    const totalExpectedAmount = Number(
+      paymentOrder?.amount_total || cotacao.premio_final || cotacao.premio_calculado || 0
+    );
+
+    const orphanIds: string[] = [];
+
+    installments = rawInstallments.filter((inst) => {
+      const statusLower = String(inst.status || '').toLowerCase();
+      const isPaid = paidStatuses.includes(statusLower);
+      const instAmount = Number(inst.amount || 0);
+
+      // Identifica parcelas fantasmas/substituídas: qualquer registro com installment_number === 1 que NÃO esteja pago,
+      // quando já existir outro registro com installment_number === 1 que ESTEJA pago,
+      // ou cujo valor seja igual ao total da apólice enquanto as outras parcelas são fracionadas.
+      if (inst.installment_number === 1 && !isPaid) {
+        if (hasPaidInst1) {
+          orphanIds.push(inst.id);
+          return false;
+        }
+        if (
+          avgCarnetAmount > 0 &&
+          (instAmount > avgCarnetAmount * 1.5 ||
+            (totalExpectedAmount > 0 && Math.abs(instAmount - totalExpectedAmount) < 1.0))
+        ) {
+          orphanIds.push(inst.id);
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    if (orphanIds.length > 0) {
+      sql`DELETE FROM payment_installments WHERE id = ANY(${orphanIds})`.catch(() => {});
+    }
+  }
 
   // Busca Contrato / Documento de Assinatura ZapSign se houver
   const [signatureDoc] = await sql<Array<{
@@ -338,7 +391,6 @@ export default async function PortalCotacaoDetailPage({
     (cotacao.status === 'contrato_gerado' && dataCriacaoMs > 0 && cotacaoUpdatedAtMs - dataCriacaoMs > 5000);
 
   // Determinação dos estados reais de pagamento
-  const paidStatuses = ['paid', 'confirmed', 'received', 'received_in_cash'];
   const quoteStatusLower = String(cotacao.status || '').toLowerCase();
   const orderStatusLower = String(paymentOrder?.status || '').toLowerCase();
 

@@ -18,6 +18,7 @@ import {
   getSaleMatrixFilterSql,
   getCotacaoMatrixFilterSql,
   buildMaxOverdueSql,
+  buildExcludeOrphanInstallmentSql,
 } from '../src/lib/status-matrix';
 
 function assert(condition: boolean, msg: string) {
@@ -239,6 +240,13 @@ assert(overdueSqlSample.includes('payment_orders'), 'maxOverdueSql deve ter fall
 assert(overdueSqlSample.includes("received_in_cash"), 'maxOverdueSql deve incluir received_in_cash');
 assert(overdueSqlSample.includes("partially_paid"), 'maxOverdueSql deve tratar partially_paid com 0 atraso');
 assert(overdueSqlSample.includes("s.status = 'ativa'"), 'maxOverdueSql deve tratar apólice ativa com 0 atraso');
+
+// Validar blindagem contra cobranças avulsas substituídas por carnê
+const orphanSql = buildExcludeOrphanInstallmentSql('pi_o');
+assert(orphanSql.includes('pi_o.installment_number = 1'), 'buildExcludeOrphanInstallmentSql deve verificar installment_number = 1');
+assert(orphanSql.includes('pi_sub.installment_number > 1'), 'buildExcludeOrphanInstallmentSql deve verificar se existem parcelas subsequentes');
+assert(orphanSql.includes('pi_paid.paid_at IS NOT NULL'), 'buildExcludeOrphanInstallmentSql deve verificar parcela 1 paga');
+assert(overdueSqlSample.includes('pi_sub.installment_number > 1'), 'buildMaxOverdueSql deve incluir a proteção contra cobrança órfã');
 
 // 5. Testar Opções de Filtro e Predicados SQL de Vendas e Cotações
 console.log('[5] Validando opções de filtros e predicados SQL...');
