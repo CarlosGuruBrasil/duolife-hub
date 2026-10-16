@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation';
 import { ClipboardList, ShieldCheck } from 'lucide-react';
 import CotacaoFormRC from '@/components/portal/CotacaoFormRC';
 import GerarLinkClienteButton from '@/components/portal/GerarLinkClienteButton';
-import { verifyPartnerAuth } from '@/lib/auth';
+import { verifyPartnerAuth, isDevUser, isPlatformAdmin } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { getRamoConfig } from '@/lib/product-schemas';
 
@@ -32,11 +32,24 @@ export default async function NovaCotacaoPage({
   const user = await verifyPartnerAuth();
   if (!user) redirect('/login');
 
+  const isDev = isDevUser(user) || isPlatformAdmin(user);
+
   let effectivePartnerId = user.partnerId;
   if (!effectivePartnerId && user.corretoraId) {
     const [p] = await sql`
       SELECT id FROM partners
       WHERE corretora_id = ${user.corretoraId} AND status = 'active'
+      ORDER BY created_at ASC
+      LIMIT 1
+    `;
+    effectivePartnerId = p?.id || null;
+  }
+
+  // Fallback de desenvolvedor/administrador para testes no portal
+  if (!effectivePartnerId && isDev) {
+    const [p] = await sql`
+      SELECT id FROM partners
+      WHERE status = 'active'
       ORDER BY created_at ASC
       LIMIT 1
     `;
@@ -85,13 +98,40 @@ export default async function NovaCotacaoPage({
     productId = 'prod-rc-001';
   }
 
+  // Bloqueio de acesso direto por parceiros a produtos em desenvolvimento
+  const isMedParam = productId === 'prod-rc-med-001' || productId === 'RC-MED-001';
+  if (isMedParam && !isDev) {
+    redirect('/portal/cotacoes/nova');
+  }
+
   // Apenas produtos ativos para o parceiro aparecem para contratação
-  const products = await sql<Product[]>`
+  let products: Product[] = Array.from(await sql<Product[]>`
     SELECT p.id, p.name, p.description, p.product_type, p.flow_key, p.code, p.is_quoteable
     FROM products p JOIN partner_product_availability ppa ON ppa.product_id = p.id
     WHERE ppa.partner_id = ${effectivePartnerId} AND ppa.is_active = true AND p.is_active = true
     ORDER BY p.name
-  `;
+  `);
+
+  // Se o usuário for desenvolvedor, inclui o RC Médico para testes
+  if (isDev) {
+    const hasMed = products.some((p) => p.id === 'prod-rc-med-001' || p.code === 'RC-MED-001');
+    if (!hasMed) {
+      const [medProd] = await sql<Product[]>`
+        SELECT id, name, description, product_type, flow_key, code, is_quoteable
+        FROM products
+        WHERE (id = 'prod-rc-med-001' OR code = 'RC-MED-001') AND is_active = true
+        LIMIT 1
+      `;
+      if (medProd) {
+        products = [...products, medProd];
+      }
+    }
+  } else {
+    // Parceiros comuns NÃO visualizam produtos em desenvolvimento
+    products = products.filter(
+      (p) => p.id !== 'prod-rc-med-001' && p.code !== 'RC-MED-001' && p.flow_key !== 'rc-medicos' && p.flow_key !== 'rc_medicos_v1'
+    );
+  }
 
   if (!productId) {
     return (
@@ -113,13 +153,26 @@ export default async function NovaCotacaoPage({
           <div className="grid gap-4 md:grid-cols-2">
             {products.map((product) => {
               const ready = product.is_quoteable && Boolean(getRamoConfig({ flowKey: product.flow_key, code: product.code }));
+              const isEmDev =
+                product.id === 'prod-rc-med-001' ||
+                product.code === 'RC-MED-001' ||
+                product.flow_key === 'rc-medicos' ||
+                product.flow_key === 'rc_medicos_v1';
+
               return (
                 <div key={product.id} className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
                   <div className="mb-4 flex items-start justify-between gap-3">
                     <ShieldCheck size={22} style={{ color: 'var(--primary)' }} />
-                    <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600">
-                      {product.product_type === 'insurance' ? 'Seguro' : 'Serviço'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {isEmDev && (
+                        <span className="rounded-full bg-amber-50 border border-amber-300 text-amber-800 font-bold px-2.5 py-0.5 text-xs">
+                          Em Desenvolvimento
+                        </span>
+                      )}
+                      <span className="rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600">
+                        {product.product_type === 'insurance' ? 'Seguro' : 'Serviço'}
+                      </span>
+                    </div>
                   </div>
                   <h2 className="font-semibold text-gray-900">{product.name}</h2>
                   <p className="mt-2 min-h-10 text-sm text-gray-500">
@@ -150,6 +203,12 @@ export default async function NovaCotacaoPage({
   const product = products.find((item) => item.id === productId);
   if (!product) redirect('/portal/cotacoes/nova');
 
+  const isEmDev =
+    product.id === 'prod-rc-med-001' ||
+    product.code === 'RC-MED-001' ||
+    product.flow_key === 'rc-medicos' ||
+    product.flow_key === 'rc_medicos_v1';
+
   const ramoConfig = getRamoConfig({ flowKey: product.flow_key, code: product.code });
   if (!product.is_quoteable || !ramoConfig) {
     return (
@@ -169,9 +228,16 @@ export default async function NovaCotacaoPage({
         <Link href="/portal/cotacoes/nova" className="text-sm font-medium" style={{ color: 'var(--primary)' }}>
           ← Trocar produto
         </Link>
-        <h1 className="page-title mt-3">
-          {cotacaoId ? `Continuar Cotação — ${product.name}` : product.name}
-        </h1>
+        <div className="flex items-center gap-3 mt-3">
+          <h1 className="page-title">
+            {cotacaoId ? `Continuar Cotação — ${product.name}` : product.name}
+          </h1>
+          {isEmDev && (
+            <span className="rounded-full bg-amber-50 border border-amber-300 text-amber-800 font-bold px-2.5 py-0.5 text-xs">
+              Em Desenvolvimento
+            </span>
+          )}
+        </div>
         <p className="muted mt-1 text-sm">
           {cotacaoId ? 'Revise os dados e avance para finalizar sua proposta.' : 'Preencha as etapas para iniciar sua proposta.'}
         </p>

@@ -17,6 +17,7 @@ import {
   formatStatusPagamentoLabel,
   getSaleMatrixFilterSql,
   getCotacaoMatrixFilterSql,
+  buildMaxOverdueSql,
 } from '../src/lib/status-matrix';
 
 function assert(condition: boolean, msg: string) {
@@ -159,6 +160,52 @@ assert(rPaidSafe.statusCliente === 'Vigente / Renovado', 'Blindagem statusClient
 assert(rPaidSafe.statusGeral === 'Negócio Fechado', 'Blindagem statusGeral');
 assert(rPaidSafe.statusPagamento === 'Em dia', 'Blindagem statusPagamento');
 
+// Tratamento explícito de partially_paid e parcelas pagas com parcelas a vencer:
+// Quando daysOverdue === 0 e hasSale === true: DEVE retornar VIGENTE_EM_DIA
+const rPartiallyPaid = calculateMatrixStatus({
+  hasSale: true,
+  saleStatus: 'ativa',
+  paymentStatus: 'partially_paid',
+  paidInstallments: 1,
+  totalInstallments: 12,
+  daysOverdue: 0,
+});
+console.log(`[Partially Paid Em Dia] ${rPartiallyPaid.statusCliente} + ${rPartiallyPaid.statusGeral} + ${rPartiallyPaid.statusPagamento}`);
+assert(rPartiallyPaid.ruleId === 'VIGENTE_EM_DIA', 'partially_paid com daysOverdue: 0 deve ser VIGENTE_EM_DIA');
+assert(rPartiallyPaid.statusCliente === 'Vigente / Renovado', 'partially_paid statusCliente');
+assert(rPartiallyPaid.statusGeral === 'Negócio Fechado', 'partially_paid statusGeral');
+assert(rPartiallyPaid.statusPagamento === 'Em dia', 'partially_paid statusPagamento');
+
+// Blindagem: resíduo de maxDaysOverdue positivo quando daysOverdue === 0 NUNCA deve marcar atraso
+const rResidueSafe = calculateMatrixStatus({
+  hasSale: true,
+  saleStatus: 'ativa',
+  paymentStatus: 'partially_paid',
+  daysOverdue: 0,
+  maxDaysOverdue: 35,
+});
+console.log(`[Blindagem daysOverdue 0] ${rResidueSafe.statusCliente} + ${rResidueSafe.statusGeral} + ${rResidueSafe.statusPagamento}`);
+assert(rResidueSafe.ruleId === 'VIGENTE_EM_DIA', 'daysOverdue: 0 com maxDaysOverdue residual NUNCA pode marcar atraso');
+assert(rResidueSafe.statusPagamento === 'Em dia', 'Resíduo statusPagamento deve ser Em dia');
+
+// Cliente partially_paid com atraso real de 20 dias (<= 50) deve ser VIGENTE_ATRASO_LE_50
+const rPartiallyPaidOverdue = calculateMatrixStatus({
+  hasSale: true,
+  saleStatus: 'ativa',
+  paymentStatus: 'partially_paid',
+  daysOverdue: 20,
+});
+assert(rPartiallyPaidOverdue.ruleId === 'VIGENTE_ATRASO_LE_50', 'partially_paid com atraso real deve ser VIGENTE_ATRASO_LE_50');
+
+// Cliente partially_paid com atraso real de 60 dias (> 50) deve ser CANCELADO_INADIMPLENCIA_GT_50
+const rPartiallyPaidCritOverdue = calculateMatrixStatus({
+  hasSale: true,
+  saleStatus: 'ativa',
+  paymentStatus: 'partially_paid',
+  daysOverdue: 60,
+});
+assert(rPartiallyPaidCritOverdue.ruleId === 'CANCELADO_INADIMPLENCIA_GT_50', 'partially_paid com atraso > 50 deve ser cancelado');
+
 // 3. Testar Design System de Badges (bg-[cor]-50 border-[cor]-200 text-[cor]-800)
 console.log('[3] Validando classes Tailwind do Design System...');
 const allBadges = [
@@ -176,13 +223,22 @@ for (const badge of allBadges) {
   assert(badge.badgeClass.includes(badge.textClass), `Badge contém texto: ${badge.badgeClass}`);
 }
 
-// 4. Testar Expressões SQL
-console.log('[4] Validando gerador de SQL...');
+// 4. Testar Expressões SQL e buildMaxOverdueSql
+console.log('[4] Validando gerador de SQL e buildMaxOverdueSql...');
 const sqlResult = buildStatusMatrixSqlExpressions();
 assert(sqlResult.statusClienteSql.includes('CASE'), 'statusClienteSql deve conter CASE');
 assert(sqlResult.statusGeralSql.includes('CASE'), 'statusGeralSql deve conter CASE');
 assert(sqlResult.statusPagamentoSql.includes('CASE'), 'statusPagamentoSql deve conter CASE');
+assert(typeof sqlResult.maxOverdueSql === 'string' && sqlResult.maxOverdueSql.length > 0, 'sqlResult deve conter maxOverdueSql');
 assert(SQL_FULL_STATUS_MATRIX_QUERY_EXAMPLE.includes('insurance_clients'), 'Exemplo de query');
+
+// Validar fórmula exata de maxOverdueSql
+const overdueSqlSample = buildMaxOverdueSql('s.cotacao_id', 's');
+assert(overdueSqlSample.includes('payment_installments'), 'maxOverdueSql deve consultar payment_installments');
+assert(overdueSqlSample.includes('payment_orders'), 'maxOverdueSql deve ter fallback em payment_orders');
+assert(overdueSqlSample.includes("received_in_cash"), 'maxOverdueSql deve incluir received_in_cash');
+assert(overdueSqlSample.includes("partially_paid"), 'maxOverdueSql deve tratar partially_paid com 0 atraso');
+assert(overdueSqlSample.includes("s.status = 'ativa'"), 'maxOverdueSql deve tratar apólice ativa com 0 atraso');
 
 // 5. Testar Opções de Filtro e Predicados SQL de Vendas e Cotações
 console.log('[5] Validando opções de filtros e predicados SQL...');
@@ -192,15 +248,20 @@ assert(STATUS_PAGAMENTO_OPTIONS.length === 8, '8 opções de status de pagamento
 
 assert(formatStatusGeralLabel('negocio_fechado') === 'Negócio Fechado', 'Label Negócio Fechado');
 assert(formatStatusPagamentoLabel('falta_pagamento_gt_50') === 'Falta Pagamento > 50 dias', 'Label Falta Pagamento > 50 dias');
+assert(formatStatusPagamentoLabel('partially_paid') === 'Em dia', 'Label partially_paid');
 
 const saleFilters = getSaleMatrixFilterSql('negocio_fechado', 'em_dia', 's', 'c');
 assert(saleFilters.length === 2, '2 cláusulas para venda em dia');
 assert(saleFilters[0].includes('s.id IS NOT NULL'), 'Venda negócio fechado');
 assert(saleFilters[1].includes("s.status = 'ativa'"), 'Venda ativa');
+assert(saleFilters[1].includes("partially_paid"), 'Filtro de vendas usa a fórmula maxOverdueSql com partially_paid');
 
 const cotacaoFilters = getCotacaoMatrixFilterSql('pendente_assinatura', 'falta_assinatura', 'c', 's');
 assert(cotacaoFilters.length === 2, '2 cláusulas para cotação pendente assinatura');
 assert(cotacaoFilters[0].includes('s.id IS NULL'), 'Cotação sem venda');
+
+const cotacaoEmDiaFilters = getCotacaoMatrixFilterSql('negocio_fechado', 'em_dia', 'c', 's');
+assert(cotacaoEmDiaFilters[1].includes("partially_paid"), 'Filtro de cotações usa a fórmula maxOverdueSql com partially_paid');
 
 console.log('✅ TODOS OS 5 BLOCOS DE TESTES PASSARAM COM SUCESSO!');
 

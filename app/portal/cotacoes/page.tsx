@@ -240,16 +240,29 @@ export default async function CotacoesPage({
       COALESCE(
         (
           SELECT CASE
-            WHEN COUNT(*) > 0 AND COUNT(*) = COUNT(*) FILTER (WHERE pi.status IN ('paid', 'received', 'confirmed')) THEN 0
-            ELSE MAX(CASE WHEN pi.status IN ('pending', 'overdue') AND pi.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - pi.due_date)::int) ELSE 0 END)
+            WHEN COUNT(*) > 0 THEN
+              COALESCE(
+                MAX(
+                  CASE
+                    WHEN (pi.paid_at IS NULL AND LOWER(COALESCE(pi.status, '')) NOT IN ('paid', 'received', 'confirmed', 'received_in_cash'))
+                         AND pi.due_date < CURRENT_DATE
+                    THEN GREATEST(0, (CURRENT_DATE - pi.due_date)::int)
+                    ELSE 0
+                  END
+                ),
+                0
+              )
+            ELSE NULL
           END
           FROM payment_installments pi
           WHERE pi.cotacao_id = c.id
         ),
         (
           SELECT CASE
-            WHEN po.status IN ('paid', 'received', 'confirmed') THEN 0
-            WHEN po.status IN ('pending', 'overdue') AND po.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - po.due_date)::int)
+            WHEN LOWER(COALESCE(po.status, '')) IN ('paid', 'received', 'confirmed', 'received_in_cash') THEN 0
+            WHEN LOWER(COALESCE(po.status, '')) = 'partially_paid' THEN 0
+            WHEN s.status = 'ativa' THEN 0
+            WHEN LOWER(COALESCE(po.status, '')) IN ('pending', 'overdue') AND po.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - po.due_date)::int)
             ELSE 0
           END
           FROM payment_orders po
@@ -262,7 +275,7 @@ export default async function CotacoesPage({
       COALESCE(
         (
           SELECT CASE
-            WHEN COUNT(*) > 0 AND COUNT(*) = COUNT(*) FILTER (WHERE pi.status IN ('paid', 'received', 'confirmed')) THEN true
+            WHEN COUNT(*) > 0 AND COUNT(*) = COUNT(*) FILTER (WHERE LOWER(COALESCE(pi.status, '')) IN ('paid', 'received', 'confirmed', 'received_in_cash')) THEN true
             ELSE false
           END
           FROM payment_installments pi
@@ -270,7 +283,7 @@ export default async function CotacoesPage({
         ),
         (
           SELECT CASE
-            WHEN po.status IN ('paid', 'received', 'confirmed') THEN true
+            WHEN LOWER(COALESCE(po.status, '')) IN ('paid', 'received', 'confirmed', 'received_in_cash') THEN true
             ELSE false
           END
           FROM payment_orders po

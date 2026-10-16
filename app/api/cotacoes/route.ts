@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { getPartnerAccessContext, isPlatformAdmin, isInternalUser, roleIsCorretora, verifyAuth, unauthorized } from '@/lib/auth';
+import { getPartnerAccessContext, isPlatformAdmin, isInternalUser, isDevUser, roleIsCorretora, verifyAuth, unauthorized } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { ensureSchema, seedInitialData } from '@/lib/schema';
@@ -239,7 +239,7 @@ export async function POST(req: NextRequest) {
       userId = user.userId;
       targetPartnerId = user.partnerId;
       isInternal = isInternalUser(user);
-      canBypassProductAvailability = isPlatformAdmin(user);
+      canBypassProductAvailability = isPlatformAdmin(user) || isDevUser(user);
 
       if (isInternal) {
         if (!data.adminSelectedPartnerId) {
@@ -336,6 +336,22 @@ export async function POST(req: NextRequest) {
 
     if (!product) {
       return Response.json({ error: 'Produto indisponível para esta operação' }, { status: 403 });
+    }
+
+    const isMedProduct =
+      product.id === 'prod-rc-med-001' ||
+      product.code === 'RC-MED-001' ||
+      product.flow_key === 'rc_medicos_v1' ||
+      product.flow_key === 'rc-medicos';
+
+    if (isMedProduct) {
+      const allowed = user && (isDevUser(user) || isPlatformAdmin(user));
+      if (!allowed) {
+        return Response.json(
+          { error: 'O seguro RC Médico encontra-se em desenvolvimento e ainda não está liberado para venda por parceiros.' },
+          { status: 403 }
+        );
+      }
     }
 
     const ramoConfig = getRamoConfig({

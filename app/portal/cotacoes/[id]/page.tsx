@@ -394,17 +394,18 @@ export default async function PortalCotacaoDetailPage({
     chargeDateMs < minValidTimestampMs
   );
 
-  // Estados de pagamento
+  // Estados de pagamento reais
   const isPaid =
     !isAnachronicCharge &&
-    (paidStatuses.includes(orderStatusLower) ||
-      ['aprovada', 'emitida', 'ativa', 'active'].includes(quoteStatusLower) ||
-      allInstallmentsPaid);
+    (allInstallmentsPaid ||
+      (totalInstallmentsCount <= 1 && (paidStatuses.includes(orderStatusLower) || paidInstallmentsCount >= 1)));
 
   const isPartiallyPaid =
     !isAnachronicCharge &&
     !isPaid &&
-    (orderStatusLower === 'partially_paid' || (paidInstallmentsCount > 0 && paidInstallmentsCount < totalInstallmentsCount));
+    (orderStatusLower === 'partially_paid' ||
+      (paidInstallmentsCount > 0 && paidInstallmentsCount < totalInstallmentsCount) ||
+      (totalInstallmentsCount > 1 && ['aprovada', 'emitida', 'ativa', 'active'].includes(quoteStatusLower) && !allInstallmentsPaid));
 
   const isOverdue =
     !isAnachronicCharge &&
@@ -789,40 +790,56 @@ export default async function PortalCotacaoDetailPage({
                   {installments.length > 0 && (
                     <div className="pt-2 border-t border-emerald-200/80 space-y-1.5">
                       <span className="text-emerald-900 font-semibold block text-[11px] uppercase tracking-wider">
-                        Parcelas Quitadas ({installments.length})
+                        {allInstallmentsPaid ? `Parcelas Quitadas (${installments.length})` : `Parcelas da Cobrança (${installments.length})`}
                       </span>
                       <div className="grid gap-1.5 sm:grid-cols-2">
-                        {installments.map((inst) => (
-                          <div
-                            key={inst.id}
-                            className="bg-white/95 border border-emerald-200 rounded-lg p-2.5 flex items-center justify-between text-xs"
-                          >
-                            <div>
-                              <span className="font-semibold text-slate-800 block">
-                                Parcela {inst.installment_number}/{installments.length} &bull; {formatCurrency(Number(inst.amount))}
-                              </span>
-                              <span className="text-slate-500 block text-[11px]">
-                                Vencimento: {formatDate(inst.due_date)} {inst.paid_at ? `· Pago em ${formatDate(inst.paid_at)}` : ''}
-                              </span>
+                        {installments.map((inst) => {
+                          const isInstPaid = paidStatuses.includes(String(inst.status || '').toLowerCase());
+                          const isInstOverdue = !isInstPaid && (inst.status === 'overdue' || (inst.due_date ? isDateBeforeToday(inst.due_date) : false));
+                          const instUrl = inst.invoice_url || inst.bank_slip_url;
+
+                          return (
+                            <div
+                              key={inst.id}
+                              className="bg-white/95 border border-emerald-200 rounded-lg p-2.5 flex items-center justify-between text-xs gap-2"
+                            >
+                              <div>
+                                <span className="font-semibold text-slate-800 block">
+                                  Parcela {inst.installment_number}/{installments.length} &bull; {formatCurrency(Number(inst.amount))}
+                                </span>
+                                <span className="text-slate-500 block text-[11px]">
+                                  Vencimento: {formatDate(inst.due_date)} {isInstPaid && inst.paid_at ? `· Pago em ${formatDate(inst.paid_at)}` : ''}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {isInstPaid ? (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-md">
+                                    <CheckCircle2 size={11} className="text-emerald-700" /> Quitada
+                                  </span>
+                                ) : isInstOverdue ? (
+                                  <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-rose-100 text-rose-800 border border-rose-300 px-2 py-0.5 rounded-md">
+                                    <AlertCircle size={11} className="text-rose-700" /> Vencida
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300 px-2 py-0.5 rounded-md">
+                                    Aguardando
+                                  </span>
+                                )}
+                                {instUrl && (
+                                  <a
+                                    href={instUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-1 rounded-md bg-slate-100 hover:bg-emerald-100 text-slate-600 hover:text-emerald-800 transition-colors"
+                                    title="Abrir recibo desta parcela"
+                                  >
+                                    <ExternalLink size={12} />
+                                  </a>
+                                )}
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-md">
-                                <CheckCircle2 size={11} className="text-emerald-700" /> Quitada
-                              </span>
-                              {(inst.invoice_url || inst.bank_slip_url) && (
-                                <a
-                                  href={(inst.invoice_url || inst.bank_slip_url)!}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="p-1 rounded-md bg-slate-100 hover:bg-emerald-100 text-slate-600 hover:text-emerald-800 transition-colors"
-                                  title="Abrir recibo desta parcela"
-                                >
-                                  <ExternalLink size={12} />
-                                </a>
-                              )}
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}

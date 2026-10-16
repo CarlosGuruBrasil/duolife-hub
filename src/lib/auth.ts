@@ -179,6 +179,7 @@ export async function verifyPartnerAuth(): Promise<AuthUser | null> {
   const user = await verifyAuth();
   if (!user) return null;
   if ((user.partnerId && user.role.startsWith('partner_')) || roleIsCorretora(user.role)) return user;
+  if (roleIsDev(user.role) || roleIsPlatformAdmin(user.role)) return user;
   return null;
 }
 

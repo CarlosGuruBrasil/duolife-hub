@@ -434,6 +434,18 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
       };
     }
 
+    // Expurgar cobranças antigas/órfãs do Asaas que não pertencem ao conjunto resolvido atual
+    // (ex: cobrança à vista gerada inicialmente substituída por novo carnê parcelado)
+    const validExternalPaymentIds = resolvedCharges.map((c) => c.id).filter(Boolean);
+    if (validExternalPaymentIds.length > 0) {
+      await sql`
+        DELETE FROM payment_installments
+        WHERE cotacao_id = ${cotacao.id}
+          AND provider = 'asaas'
+          AND external_payment_id NOT IN ${sql(validExternalPaymentIds)}
+      `;
+    }
+
     const totalApolice = Number(
       order?.amount_total || cotacao.premio_final || cotacao.premio_calculado ||
       resolvedCharges.reduce((acc, c) => acc + (c.value || 0), 0)
@@ -580,6 +592,13 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
 
     const activeCharge = firstPaidCharge || primaryCharge;
 
+    // Data da próxima parcela pendente a vencer ou da cobrança ativa/principal
+    const nextPendingCharge = resolvedCharges.find(
+      (c) => !PAID_ASAAS_STATUSES.includes(c.status) && !c.deleted
+    );
+    const targetDueDate =
+      nextPendingCharge?.dueDate || primaryCharge.dueDate || activeCharge.dueDate;
+
     // Atualiza a ordem de pagamento
     await sql`
       UPDATE payment_orders
@@ -592,6 +611,7 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
         external_payment_id = COALESCE(external_payment_id, ${activeCharge.id}),
         external_installment_id = COALESCE(external_installment_id, ${activeCharge.installment || null}),
         billing_type = COALESCE(${activeCharge.billingType || null}, billing_type),
+        due_date = ${targetDueDate ? targetDueDate : null}::date,
         invoice_url = COALESCE(${activeCharge.invoiceUrl || null}, invoice_url),
         bank_slip_url = COALESCE(${activeCharge.bankSlipUrl || null}, bank_slip_url),
         raw_payload = ${JSON.stringify(activeCharge)}::jsonb,
@@ -603,7 +623,7 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
     clientData.checkoutId = activeCharge.id;
     if (activeCharge.installment) clientData.externalInstallmentId = activeCharge.installment;
     if (activeCharge.invoiceUrl) clientData.linkBoleto = activeCharge.invoiceUrl;
-    if (activeCharge.dueDate) clientData.dataVencimento = activeCharge.dueDate;
+    if (targetDueDate || activeCharge.dueDate) clientData.dataVencimento = targetDueDate || activeCharge.dueDate;
 
     if (!hasAtLeastOnePaid) {
       await sql`
@@ -626,11 +646,12 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
       };
     }
 
-    // Se está paga, atualiza cotação para 'aprovada' e premio_final
+    // Se está paga, atualiza cotação para 'aprovada' (mantendo 'emitida' se já possuir apólice emitida) e premio_final
+    const nextQuoteStatus = cotacao.status === 'emitida' ? 'emitida' : 'aprovada';
     await sql`
       UPDATE cotacoes
       SET
-        status = 'aprovada',
+        status = ${nextQuoteStatus},
         premio_final = ${totalApolice},
         client_data = ${JSON.stringify(clientData)}::jsonb,
         updated_at = NOW()
@@ -708,7 +729,7 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
       cotacaoId,
       clientName: cotacao.client_name || undefined,
       statusBefore: cotacao.status,
-      statusAfter: 'aprovada',
+      statusAfter: nextQuoteStatus,
       updated: true,
       paid: true,
       chargesFound: resolvedCharges.length,
@@ -746,7 +767,15 @@ export async function reconcileAsaasBatch(
     FROM cotacoes c
     WHERE (
       c.status IN ('enviada', 'rascunho', 'pagamento_gerado', 'contrato_gerado', 'assinado')
-      OR (c.client_data->>'checkoutId' IS NOT NULL AND c.status != 'aprovada')
+      OR (c.client_data->>'checkoutId' IS NOT NULL AND c.status NOT IN ('aprovada', 'emitida'))
+      OR (
+        c.status IN ('aprovada', 'emitida')
+        AND EXISTS (
+          SELECT 1 FROM payment_installments pi
+          WHERE pi.cotacao_id = c.id
+            AND LOWER(COALESCE(pi.status, '')) NOT IN ('paid', 'received', 'confirmed', 'received_in_cash')
+        )
+      )
     )
       ${options.partnerId ? sql`AND c.partner_id = ${options.partnerId}` : sql``}
       ${options.onlyPending !== false ? sql`
@@ -761,6 +790,11 @@ export async function reconcileAsaasBatch(
             WHERE po.cotacao_id = c.id
           )
           OR (c.client_data->>'checkoutId' IS NOT NULL)
+          OR EXISTS (
+            SELECT 1 FROM payment_installments pi
+            WHERE pi.cotacao_id = c.id
+              AND LOWER(COALESCE(pi.status, '')) NOT IN ('paid', 'received', 'confirmed', 'received_in_cash')
+          )
         )
       ` : sql``}
     ORDER BY c.updated_at DESC
@@ -1319,6 +1353,195 @@ export async function generateInvoicesForSignedQuotesBatch(options: {
     totalProcessed: targetItems.length,
     generatedCount,
     errorsCount,
+    details,
+  };
+}
+
+export interface SanitizeOrphanInstallmentsOptions {
+  cotacaoId?: string;
+  limit?: number;
+}
+
+export interface SanitizeOrphanInstallmentsDetail {
+  cotacaoId: string;
+  clientName?: string;
+  motivo: string;
+  installmentsBefore: number;
+  installmentsAfter: number;
+  purgedInstallmentsCount: number;
+  reconcileResult: AsaasReconcileQuoteResult;
+  ok: boolean;
+  error?: string;
+}
+
+export interface SanitizeOrphanInstallmentsResult {
+  totalProcessed: number;
+  totalPurged: number;
+  errorsCount: number;
+  durationMs: number;
+  details: SanitizeOrphanInstallmentsDetail[];
+}
+
+/**
+ * Saneia parcelas órfãs ou duplicadas no banco de dados.
+ * Varre cotações que possuem mais de uma parcela com installment_number = 1,
+ * soma de parcelas divergente do valor total esperado ou parcelas adicionais espúrias,
+ * invocando `reconcileAsaasForQuote` para reconciliar com o Asaas e expurgar as parcelas fantasmas.
+ */
+export async function sanitizeAllOrphanInstallments(
+  options: SanitizeOrphanInstallmentsOptions = {}
+): Promise<SanitizeOrphanInstallmentsResult> {
+  const startTime = Date.now();
+  const limit = Math.max(1, Math.min(options.limit || 100, 200));
+
+  const targetQuotes = await sql<Array<{
+    cotacao_id: string;
+    client_name: string | null;
+    total_installments: number;
+    count_inst_1: number;
+    expected_total: number;
+    sum_installments: number;
+    installment_count: number | null;
+    distinct_carnets: number;
+    has_null_carnet: boolean;
+  }>>`
+    SELECT
+      c.id AS cotacao_id,
+      c.client_name,
+      COUNT(pi.id)::int AS total_installments,
+      COUNT(*) FILTER (WHERE pi.installment_number = 1)::int AS count_inst_1,
+      COALESCE(po.amount_total, c.premio_final, c.premio_calculado, 0)::float AS expected_total,
+      COALESCE(SUM(pi.amount), 0)::float AS sum_installments,
+      po.installment_count,
+      COUNT(DISTINCT pi.external_installment_id)::int AS distinct_carnets,
+      EXISTS(SELECT 1 FROM payment_installments pi2 WHERE pi2.cotacao_id = c.id AND pi2.external_installment_id IS NULL) AS has_null_carnet
+    FROM cotacoes c
+    JOIN payment_installments pi ON pi.cotacao_id = c.id AND pi.provider = 'asaas'
+    LEFT JOIN payment_orders po ON po.cotacao_id = c.id
+    WHERE 1=1
+      ${options.cotacaoId ? sql`AND c.id = ${options.cotacaoId}` : sql``}
+    GROUP BY c.id, c.client_name, po.amount_total, c.premio_final, c.premio_calculado, po.installment_count
+    HAVING
+      -- Mais de uma parcela com installment_number = 1
+      COUNT(*) FILTER (WHERE pi.installment_number = 1) > 1
+      -- Ou quantidade de parcelas maior que a contagem configurada na ordem
+      OR (po.installment_count IS NOT NULL AND po.installment_count > 0 AND COUNT(pi.id) > po.installment_count)
+      -- Ou soma de valores das parcelas divergente do valor total esperado da apólice
+      OR (
+        COUNT(pi.id) > 1
+        AND COALESCE(po.amount_total, c.premio_final, c.premio_calculado, 0) > 0
+        AND ABS(SUM(pi.amount) - COALESCE(po.amount_total, c.premio_final, c.premio_calculado, 0)) > 1.00
+      )
+      -- Ou múltiplos carnês distintos vinculados à mesma cotação
+      OR (COUNT(DISTINCT pi.external_installment_id) > 1)
+      -- Ou coexistência de carnê parcelado com cobrança avulsa (external_installment_id IS NULL)
+      OR (
+        COUNT(DISTINCT pi.external_installment_id) >= 1
+        AND COUNT(*) FILTER (WHERE pi.external_installment_id IS NULL) > 0
+        AND COUNT(pi.id) > 1
+      )
+    ORDER BY c.created_at DESC
+    LIMIT ${limit}
+  `;
+
+  let totalPurged = 0;
+  let errorsCount = 0;
+  const details: SanitizeOrphanInstallmentsDetail[] = [];
+
+  for (const row of targetQuotes) {
+    const motivos: string[] = [];
+    if (row.count_inst_1 > 1) {
+      motivos.push(`Mais de uma parcela com número 1 (${row.count_inst_1} parcelas)`);
+    }
+    if (row.installment_count && row.total_installments > row.installment_count) {
+      motivos.push(`Total de ${row.total_installments} parcelas excede o esperado (${row.installment_count})`);
+    }
+    if (row.expected_total > 0 && Math.abs(row.sum_installments - row.expected_total) > 1.00) {
+      motivos.push(`Soma das parcelas (R$ ${row.sum_installments.toFixed(2)}) diverge do valor esperado (R$ ${row.expected_total.toFixed(2)})`);
+    }
+    if (row.distinct_carnets > 1) {
+      motivos.push(`Múltiplos identificadores de carnê no Asaas (${row.distinct_carnets})`);
+    }
+    if (row.has_null_carnet && row.distinct_carnets >= 1 && row.total_installments > 1) {
+      motivos.push('Cobrança avulsa prévia coexistindo com carnê parcelado');
+    }
+
+    try {
+      const reconcileResult = await reconcileAsaasForQuote(row.cotacao_id);
+
+      const [afterRow] = await sql<Array<{ count: number }>>`
+        SELECT COUNT(*)::int AS count
+        FROM payment_installments
+        WHERE cotacao_id = ${row.cotacao_id}
+      `;
+      const installmentsAfter = afterRow?.count ?? 0;
+      const purged = Math.max(0, row.total_installments - installmentsAfter);
+
+      if (purged > 0) {
+        totalPurged += purged;
+      }
+
+      details.push({
+        cotacaoId: row.cotacao_id,
+        clientName: row.client_name || undefined,
+        motivo: motivos.join('; ') || 'Divergência detectada nas parcelas',
+        installmentsBefore: row.total_installments,
+        installmentsAfter,
+        purgedInstallmentsCount: purged,
+        reconcileResult,
+        ok: reconcileResult.ok,
+        error: reconcileResult.error,
+      });
+
+      if (!reconcileResult.ok) {
+        errorsCount++;
+      }
+
+      // Throttle de segurança de 150ms para chamadas de API Asaas
+      await new Promise((r) => setTimeout(r, 150));
+    } catch (err) {
+      errorsCount++;
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao sanear parcelas';
+      logger.error({ err, cotacaoId: row.cotacao_id }, 'asaas.sanitize_orphan_installments.error');
+
+      details.push({
+        cotacaoId: row.cotacao_id,
+        clientName: row.client_name || undefined,
+        motivo: motivos.join('; ') || 'Divergência detectada nas parcelas',
+        installmentsBefore: row.total_installments,
+        installmentsAfter: row.total_installments,
+        purgedInstallmentsCount: 0,
+        reconcileResult: {
+          ok: false,
+          cotacaoId: row.cotacao_id,
+          statusBefore: 'unknown',
+          statusAfter: 'unknown',
+          updated: false,
+          paid: false,
+          chargesFound: 0,
+          error: errorMessage,
+        },
+        ok: false,
+        error: errorMessage,
+      });
+    }
+  }
+
+  logger.info(
+    {
+      totalProcessed: targetQuotes.length,
+      totalPurged,
+      errorsCount,
+      durationMs: Date.now() - startTime,
+    },
+    'asaas.sanitize_orphan_installments.finished'
+  );
+
+  return {
+    totalProcessed: targetQuotes.length,
+    totalPurged,
+    errorsCount,
+    durationMs: Date.now() - startTime,
     details,
   };
 }

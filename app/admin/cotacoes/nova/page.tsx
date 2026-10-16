@@ -133,6 +133,7 @@ function AdminNovaCotacaoContent() {
   }
 
   const selectedPartner = partners.find(p => p.id === selectedPartnerId);
+  const currentProdId = selectedProductId || 'prod-rc-001';
 
   return (
     <div>
@@ -140,7 +141,7 @@ function AdminNovaCotacaoContent() {
         <div>
           <button 
             onClick={() => setSelectedPartnerId(null)}
-            className="text-sm font-medium mb-3 inline-block cursor-pointer" 
+            className="text-sm font-medium mb-3 inline-block cursor-pointer hover:underline" 
             style={{ color: 'var(--primary)' }}
           >
             ← Trocar parceiro
@@ -156,11 +157,51 @@ function AdminNovaCotacaoContent() {
         </div>
       </div>
 
+      {!cotacaoId && (
+        <div className="mb-6 bg-white p-4 rounded-xl border border-gray-200 shadow-xs">
+          <label className="block text-xs font-bold text-gray-700 uppercase tracking-wider mb-2">
+            Selecionar Produto para a Cotação
+          </label>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => setSelectedProductId('prod-rc-001')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border text-sm font-semibold transition cursor-pointer ${
+                currentProdId === 'prod-rc-001'
+                  ? 'border-emerald-600 bg-emerald-50 text-emerald-950 shadow-xs'
+                  : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <span>RC Advogados</span>
+              <span className="rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.5 text-xs font-medium">
+                Ativo
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSelectedProductId('prod-rc-med-001')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-lg border text-sm font-semibold transition cursor-pointer ${
+                currentProdId === 'prod-rc-med-001'
+                  ? 'border-amber-500 bg-amber-50 text-amber-950 shadow-xs'
+                  : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              <span>RC Médicos</span>
+              <span className="rounded-full bg-amber-100 border border-amber-300 text-amber-800 px-2 py-0.5 text-xs font-bold">
+                Em Desenvolvimento
+              </span>
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white p-6 rounded-xl shadow mb-8">
         <CotacaoFormRC
+          key={currentProdId}
           adminSelectedPartnerId={selectedPartnerId}
           initialCotacaoId={cotacaoId}
-          productId={selectedProductId}
+          productId={currentProdId}
         />
       </div>
     </div>

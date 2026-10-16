@@ -7,6 +7,7 @@ import { calcularPrecoServidor } from './pricing';
 import { getCorretoraParaContrato, CorretoraContratoInfo } from './corretora-resolver';
 import { parseAtuacaoList } from './atuacao';
 import { logger } from './logger';
+import { getRamoConfig, rcAdvogadosConfig, rcMedicosConfig, type RamoConfig } from './product-schemas';
 
 export interface ContratoPdfResult {
   buffer: Buffer;
@@ -180,6 +181,17 @@ export function determinarTipoContrato(
   const coberturaDigits = String(
     clientData.cobertura || clientData.lmi || clientData.valorCobertura || cotacao?.importancia_segurada || ''
   ).replace(/\D/g, '');
+
+  const isMedico =
+    clientData.flowKey === 'rc_medicos_v1' ||
+    clientData.flowKey === 'rc-medicos' ||
+    (cotacao as any)?.flow_key === 'rc_medicos_v1' ||
+    (cotacao as any)?.flow_key === 'rc-medicos' ||
+    (cotacao as any)?.product_id === 'prod-rc-med-001';
+
+  if (isMedico) {
+    return 'oficial';
+  }
 
   const is100k =
     tipoRaw.includes('100k') ||
@@ -452,8 +464,19 @@ function renderTimbradoHeaderAndFooter(
 /**
  * Renderiza o cabeçalho textual do documento (Título e Subtítulo).
  */
-function drawTitleBlock(page: PDFPage, pageWidth: number, pageHeight: number, yTop: number, fontRegular: PDFFont, fontBold: PDFFont): number {
-  const t1 = 'Seguro de Responsabilidade Civil para Advogado';
+function drawTitleBlock(
+  page: PDFPage,
+  pageWidth: number,
+  pageHeight: number,
+  yTop: number,
+  fontRegular: PDFFont,
+  fontBold: PDFFont,
+  ramoConfig?: RamoConfig | null
+): number {
+  const isMed = ramoConfig?.ramoId === 'rc-medicos';
+  const t1 = isMed
+    ? 'Seguro de Responsabilidade Civil para Médicos'
+    : 'Seguro de Responsabilidade Civil para Advogado';
   const t1W = fontBold.widthOfTextAtSize(t1, 11.5);
   page.drawText(t1, {
     x: (pageWidth - t1W) / 2,
@@ -463,7 +486,9 @@ function drawTitleBlock(page: PDFPage, pageWidth: number, pageHeight: number, yT
     color: rgb(0.08, 0.08, 0.08),
   });
 
-  const t2 = 'Termo de Adesão por parte do Advogado';
+  const t2 = isMed
+    ? 'Termo de Adesão por parte do Médico'
+    : 'Termo de Adesão por parte do Advogado';
   const t2W = fontRegular.widthOfTextAtSize(t2, 10.0);
   page.drawText(t2, {
     x: (pageWidth - t2W) / 2,
@@ -527,6 +552,8 @@ function drawProponenteBlock(
     enderecoCompleto: string;
     inicioProfissional: string;
     lgpdConcorda?: boolean;
+    registroLabel?: string;
+    registroValor?: string;
   },
   fontRegular: PDFFont,
   fontBold: PDFFont,
@@ -565,11 +592,13 @@ function drawProponenteBlock(
   drawCell(page, pageHeight, { x: x + colLabelW, y: currY, w: colValW, h: rowH, text: data.enderecoCompleto, font: fontRegular, fontSize: 7.5, bgColor: colorWhite, borderColor: colorBorder });
   currY += rowH;
 
-  // Linha 5: Início Profissional & OAB
+  // Linha 5: Início Profissional & OAB/CRM
+  const regLabel = data.registroLabel || 'OAB:';
+  const regValor = data.registroValor || data.oab || 'Não informado';
   drawCell(page, pageHeight, { x, y: currY, w: colLabelW, h: rowH, text: 'Início profissional:', font: fontBold, fontSize: 7.7, bgColor: colorGrayHeader, borderColor: colorBorder });
   drawCell(page, pageHeight, { x: x + colLabelW, y: currY, w: halfW - colLabelW, h: rowH, text: data.inicioProfissional, font: fontRegular, fontSize: 7.7, bgColor: colorWhite, borderColor: colorBorder });
-  drawCell(page, pageHeight, { x: x + halfW, y: currY, w: c2LabelW, h: rowH, text: 'OAB:', font: fontBold, fontSize: 7.7, bgColor: colorGrayHeader, borderColor: colorBorder });
-  drawCell(page, pageHeight, { x: x + halfW + c2LabelW, y: currY, w: halfW - c2LabelW, h: rowH, text: data.oab, font: fontRegular, fontSize: 7.7, bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page, pageHeight, { x: x + halfW, y: currY, w: c2LabelW, h: rowH, text: regLabel, font: fontBold, fontSize: 7.7, bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page, pageHeight, { x: x + halfW + c2LabelW, y: currY, w: halfW - c2LabelW, h: rowH, text: regValor, font: fontRegular, fontSize: 7.7, bgColor: colorWhite, borderColor: colorBorder });
   currY += rowH;
 
   return currY + 6.0;
@@ -1007,6 +1036,7 @@ function renderPropostaOficial(
     cidadeDataStr: string;
     proponenteData: any;
     seguroAnterior: any;
+    ramoConfig?: RamoConfig | null;
     infoProfissional: {
       escritorio: string;
       titularidade: string;
@@ -1030,6 +1060,16 @@ function renderPropostaOficial(
       fatoDetalhe: string;
       pagouReclamacao: string;
       pagouDetalhe: string;
+      processoConselho?: string;
+      processoConselhoDetalhe?: string;
+      reclamacaoErroMedico?: string;
+      reclamacaoErroMedicoDetalhe?: string;
+      complicacoesCirurgicas?: string;
+      complicacoesCirurgicasDetalhe?: string;
+      fatoPotencial?: string;
+      fatoPotencialDetalhe?: string;
+      pagamentoIndenizacao?: string;
+      pagamentoIndenizacaoDetalhe?: string;
     };
   },
   fontRegular: PDFFont,
@@ -1038,6 +1078,12 @@ function renderPropostaOficial(
   colorWhite: Color,
   colorBorder: Color
 ) {
+  const isMedico =
+    params.ramoConfig?.ramoId === 'rc-medicos' ||
+    params.cotacao?.product_id === 'prod-rc-med-001' ||
+    params.clientData?.flowKey === 'rc-medicos' ||
+    params.clientData?.flowKey === 'rc_medicos_v1';
+
   const contentX = 40.0;
   const contentW = pageWidth - 80.0; // 515.28 pt
 
@@ -1048,26 +1094,30 @@ function renderPropostaOficial(
   renderTimbradoHeaderAndFooter(page1, pageWidth, pageHeight, assets, params.corretora, fontRegular, fontBold);
 
   let y1 = 86.0;
-  y1 = drawTitleBlock(page1, pageWidth, pageHeight, y1, fontRegular, fontBold);
+  y1 = drawTitleBlock(page1, pageWidth, pageHeight, y1, fontRegular, fontBold, params.ramoConfig);
   y1 = drawSectionHeader(page1, pageHeight, contentX, y1, contentW, 'PROPONENTE', fontBold, colorGrayHeader, colorBorder);
   y1 = drawProponenteBlock(page1, pageHeight, contentX, y1, contentW, params.proponenteData, fontRegular, fontBold, colorGrayHeader, colorWhite, colorBorder);
 
   y1 += 4.0;
   y1 = drawSectionHeader(page1, pageHeight, contentX, y1, contentW, 'INFORMAÇÕES PROFISSIONAIS', fontBold, colorGrayHeader, colorBorder);
 
-  // Pergunta 1: Escritório associado
+  // Pergunta 1: Escritório associado / Clínica associada
   const profLabelW = 230.0;
   const profValW = contentW - profLabelW;
   const profRowH = 15.5;
+
+  const perguntaAssociacao = isMedico
+    ? 'O médico atua em clínica, consultório ou hospital associado?'
+    : 'O profissional é associado a algum escritório?';
 
   drawCell(page1, pageHeight, {
     x: contentX,
     y: y1,
     w: profLabelW,
     h: profRowH,
-    text: 'O profissional é associado a algum escritório?',
+    text: perguntaAssociacao,
     font: fontBold,
-    fontSize: 7.7,
+    fontSize: 7.5,
     bgColor: colorGrayHeader,
     borderColor: colorBorder,
   });
@@ -1090,9 +1140,11 @@ function renderPropostaOficial(
     y: y1,
     w: profLabelW,
     h: profRowH,
-    text: 'Faturamento Bruto referente aos últimos 12 meses:',
+    text: isMedico
+      ? 'Faturamento Bruto de honorários médicos nos últimos 12 meses:'
+      : 'Faturamento Bruto referente aos últimos 12 meses:',
     font: fontBold,
-    fontSize: 7.7,
+    fontSize: 7.3,
     bgColor: colorGrayHeader,
     borderColor: colorBorder,
   });
@@ -1115,9 +1167,11 @@ function renderPropostaOficial(
     y: y1,
     w: profLabelW,
     h: profRowH,
-    text: 'Faturamento Bruto Estimado nos próximos 12 meses:',
+    text: isMedico
+      ? 'Faturamento Bruto estimado para os próximos 12 meses:'
+      : 'Faturamento Bruto Estimado nos próximos 12 meses:',
     font: fontBold,
-    fontSize: 7.7,
+    fontSize: 7.3,
     bgColor: colorGrayHeader,
     borderColor: colorBorder,
   });
@@ -1134,10 +1188,15 @@ function renderPropostaOficial(
   });
   y1 += profRowH + 6.0;
 
-  // Áreas de Atuação
-  y1 = drawSectionHeader(page1, pageHeight, contentX, y1, contentW, 'ATUAÇÕES PROFISSIONAIS', fontBold, colorGrayHeader, colorBorder);
+  // Áreas de Atuação / Especialidades Médicas
+  const secTitle = isMedico ? 'ESPECIALIDADES MÉDICAS' : 'ATUAÇÕES PROFISSIONAIS';
+  const secSub = isMedico
+    ? 'Favor indicar as especialidades de atuação médica do profissional:'
+    : 'Favor indicar à atuação do Profissional nas áreas abaixo:';
 
-  page1.drawText('Favor indicar à atuação do Profissional nas áreas abaixo:', {
+  y1 = drawSectionHeader(page1, pageHeight, contentX, y1, contentW, secTitle, fontBold, colorGrayHeader, colorBorder);
+
+  page1.drawText(secSub, {
     x: contentX + 4.0,
     y: pageHeight - y1 - 9.0,
     size: 7.8,
@@ -1146,27 +1205,46 @@ function renderPropostaOficial(
   });
   y1 += 14.0;
 
-  const areasConfig = [
-    { key: 'civil', label: 'Civil' },
-    { key: 'direitoInternacional', label: 'Direito Internacional' },
-    { key: 'propriedadeIndustrial', label: 'Propriedade Industrial' },
-    { key: 'fusoesAquisicoes', label: 'Fusões e Aquisições' },
-    { key: 'bancarioFinanceiro', label: 'Bancário Financeiro' },
-    { key: 'direitoEmpresarial', label: 'Direito Empresarial' },
-    { key: 'criminal', label: 'Criminal' },
-    { key: 'trabalhista', label: 'Trabalhista' },
-    { key: 'tributaria', label: 'Tributário' },
-    { key: 'societario', label: 'Societário' },
-    { key: 'previdenciario', label: 'Previdenciário' },
-    { key: 'outros', label: 'Outros' },
-  ];
+  const areasConfig = isMedico
+    ? (rcMedicosConfig.especialidades || []).map((e) => ({ key: e.key, label: e.label }))
+    : [
+        { key: 'civil', label: 'Civil' },
+        { key: 'direitoInternacional', label: 'Direito Internacional' },
+        { key: 'propriedadeIndustrial', label: 'Propriedade Industrial' },
+        { key: 'fusoesAquisicoes', label: 'Fusões e Aquisições' },
+        { key: 'bancarioFinanceiro', label: 'Bancário Financeiro' },
+        { key: 'direitoEmpresarial', label: 'Direito Empresarial' },
+        { key: 'criminal', label: 'Criminal' },
+        { key: 'trabalhista', label: 'Trabalhista' },
+        { key: 'tributaria', label: 'Tributário' },
+        { key: 'societario', label: 'Societário' },
+        { key: 'previdenciario', label: 'Previdenciário' },
+        { key: 'outros', label: 'Outros' },
+      ];
 
-  const gridColW = contentW / 3;
-  const gridRowH = 14.5;
+  const gridCols = 3;
+  const gridRows = Math.ceil(areasConfig.length / gridCols);
+  const gridColW = contentW / gridCols;
+  const gridRowH = isMedico ? 13.5 : 14.5;
+  const fontSizeGrid = isMedico ? 6.7 : 7.7;
 
-  for (let row = 0; row < 4; row++) {
-    for (let col = 0; col < 3; col++) {
-      const idx = row * 3 + col;
+  for (let row = 0; row < gridRows; row++) {
+    for (let col = 0; col < gridCols; col++) {
+      const idx = row * gridCols + col;
+      if (idx >= areasConfig.length) {
+        drawCell(page1, pageHeight, {
+          x: contentX + col * gridColW,
+          y: y1,
+          w: gridColW,
+          h: gridRowH,
+          text: '',
+          font: fontRegular,
+          fontSize: fontSizeGrid,
+          bgColor: colorWhite,
+          borderColor: colorBorder,
+        });
+        continue;
+      }
       const area = areasConfig[idx];
       const isChecked = params.areasAtuacao.includes(area.key);
       const mark = isChecked ? '(X)' : '(  )';
@@ -1179,10 +1257,10 @@ function renderPropostaOficial(
         h: gridRowH,
         text: cellText,
         font: isChecked ? fontBold : fontRegular,
-        fontSize: 7.7,
+        fontSize: fontSizeGrid,
         bgColor: isChecked ? rgb(0.94, 0.97, 0.98) : colorWhite,
         borderColor: colorBorder,
-        paddingX: 6,
+        paddingX: 4,
       });
     }
     y1 += gridRowH;
@@ -1310,14 +1388,18 @@ function renderPropostaOficial(
   // Recusa de proposta
   const recusaValW = 65.0;
   const recusaLabelW = contentW - recusaValW;
+  const textoRecusa = isMedico
+    ? 'Já teve proposta de seguro de RC Médico recusada, cancelada ou não renovada por seguradora?'
+    : 'Foi recusada alguma proposta para seguro semelhante feita pelo profissional?';
+
   drawCell(page2, pageHeight, {
     x: contentX,
     y: y2,
     w: recusaLabelW,
     h: 15.5,
-    text: 'Foi recusada alguma proposta para seguro semelhante feita pelo profissional?',
+    text: textoRecusa,
     font: fontBold,
-    fontSize: 7.6,
+    fontSize: 7.4,
     bgColor: colorGrayHeader,
     borderColor: colorBorder,
   });
@@ -1362,115 +1444,202 @@ function renderPropostaOficial(
   }
   y2 += 4.0;
 
-  // Histórico de Reclamação
-  y2 = drawSectionHeader(page2, pageHeight, contentX, y2, contentW, 'HISTÓRICO DE RECLAMAÇÃO', fontBold, colorGrayHeader, colorBorder);
-
+  // Histórico de Reclamação / Questionário de Risco
   const questValW = 65.0;
   const questLabelW = contentW - questValW;
 
-  // Pergunta 1: Reclamações contra o profissional
-  drawCell(page2, pageHeight, {
-    x: contentX,
-    y: y2,
-    w: questLabelW,
-    h: 16.0,
-    text: 'Existem reclamações contra o profissional por danos causados pela prestação de seus serviços?',
-    font: fontBold,
-    fontSize: 7.4,
-    bgColor: colorGrayHeader,
-    borderColor: colorBorder,
-  });
-  drawCell(page2, pageHeight, {
-    x: contentX + questLabelW,
-    y: y2,
-    w: questValW,
-    h: 16.0,
-    text: params.questionario.reclamacaoProfissional,
-    font: fontBold,
-    fontSize: 7.4,
-    bgColor: colorWhite,
-    borderColor: colorBorder,
-    align: 'center',
-  });
-  y2 += 16.0;
+  if (isMedico) {
+    y2 = drawSectionHeader(page2, pageHeight, contentX, y2, contentW, 'QUESTIONÁRIO DE RISCO MÉDICO (UNDERWRITING)', fontBold, colorGrayHeader, colorBorder);
 
-  // Pergunta 2: Ação disciplinar ou investigações
-  drawCell(page2, pageHeight, {
-    x: contentX,
-    y: y2,
-    w: questLabelW,
-    h: 17.0,
-    text: 'O profissional sofreu reclamação(ões), ação disciplinar ou investigações por qualquer autoridade fiscal de órgão oficial, conselhos e instituições?',
-    font: fontBold,
-    fontSize: 7.1,
-    bgColor: colorGrayHeader,
-    borderColor: colorBorder,
-  });
-  drawCell(page2, pageHeight, {
-    x: contentX + questLabelW,
-    y: y2,
-    w: questValW,
-    h: 17.0,
-    text: params.questionario.investigacaoAutoridade,
-    font: fontBold,
-    fontSize: 7.4,
-    bgColor: colorWhite,
-    borderColor: colorBorder,
-    align: 'center',
-  });
-  y2 += 17.0;
+    const perguntasMedicas = [
+      {
+        pergunta: 'Já foi intimado, respondeu ou responde a sindicância ou Processo Ético (PEP) no CRM/CFM?',
+        resp: params.questionario.processoConselho || 'Não',
+        detalhe: params.questionario.processoConselhoDetalhe,
+      },
+      {
+        pergunta: 'Sofreu reclamação formal, processo cível de indenização ou inquérito por suposto erro médico (5 anos)?',
+        resp: params.questionario.reclamacaoErroMedico || 'Não',
+        detalhe: params.questionario.reclamacaoErroMedicoDetalhe,
+      },
+      {
+        pergunta: 'Nos últimos 3 anos vivenciou evento adverso grave em procedimentos (óbito perioperatório, infecção complexa)?',
+        resp: params.questionario.complicacoesCirurgicas || 'Não',
+        detalhe: params.questionario.complicacoesCirurgicasDetalhe,
+      },
+      {
+        pergunta: 'Tem ciência de notificação extrajudicial ou reclamação em ouvidoria que possa originar processo indenizatório?',
+        resp: params.questionario.fatoPotencial || 'Não',
+        detalhe: params.questionario.fatoPotencialDetalhe,
+      },
+      {
+        pergunta: 'Já realizou algum pagamento particular de indenização ou acordo direto com paciente por alegado erro médico?',
+        resp: params.questionario.pagamentoIndenizacao || 'Não',
+        detalhe: params.questionario.pagamentoIndenizacaoDetalhe,
+      },
+    ];
 
-  // Pergunta 3: Conhecimento de fatos ou circunstâncias
-  drawCell(page2, pageHeight, {
-    x: contentX,
-    y: y2,
-    w: questLabelW,
-    h: 16.0,
-    text: 'O profissional tem conhecimento de algum fato ou circunstância que possa gerar reclamação de terceiros?',
-    font: fontBold,
-    fontSize: 7.4,
-    bgColor: colorGrayHeader,
-    borderColor: colorBorder,
-  });
-  drawCell(page2, pageHeight, {
-    x: contentX + questLabelW,
-    y: y2,
-    w: questValW,
-    h: 16.0,
-    text: params.questionario.fatoTerceiros,
-    font: fontBold,
-    fontSize: 7.4,
-    bgColor: colorWhite,
-    borderColor: colorBorder,
-    align: 'center',
-  });
-  y2 += 16.0;
+    for (const q of perguntasMedicas) {
+      drawCell(page2, pageHeight, {
+        x: contentX,
+        y: y2,
+        w: questLabelW,
+        h: 15.5,
+        text: q.pergunta,
+        font: fontBold,
+        fontSize: 7.1,
+        bgColor: colorGrayHeader,
+        borderColor: colorBorder,
+      });
+      drawCell(page2, pageHeight, {
+        x: contentX + questLabelW,
+        y: y2,
+        w: questValW,
+        h: 15.5,
+        text: q.resp,
+        font: fontBold,
+        fontSize: 7.4,
+        bgColor: colorWhite,
+        borderColor: colorBorder,
+        align: 'center',
+      });
+      y2 += 15.5;
 
-  // Pergunta 4: Pagamento com Fundos Próprios
-  drawCell(page2, pageHeight, {
-    x: contentX,
-    y: y2,
-    w: questLabelW,
-    h: 16.0,
-    text: 'O profissional alguma vez pagou por uma reclamação com fundos próprios?',
-    font: fontBold,
-    fontSize: 7.4,
-    bgColor: colorGrayHeader,
-    borderColor: colorBorder,
-  });
-  drawCell(page2, pageHeight, {
-    x: contentX + questLabelW,
-    y: y2,
-    w: questValW,
-    h: 16.0,
-    text: params.questionario.pagouReclamacao,
-    font: fontBold,
-    fontSize: 7.4,
-    bgColor: colorWhite,
-    borderColor: colorBorder,
-    align: 'center',
-  });
-  y2 += 16.0 + 4.0;
+      if (q.resp === 'Sim' && q.detalhe && q.detalhe !== 'Não se aplica') {
+        drawCell(page2, pageHeight, {
+          x: contentX,
+          y: y2,
+          w: 120.0,
+          h: 14.5,
+          text: 'Se afirmativo, detalhes:',
+          font: fontRegular,
+          fontSize: 7.2,
+          bgColor: colorGrayHeader,
+          borderColor: colorBorder,
+        });
+        drawCell(page2, pageHeight, {
+          x: contentX + 120.0,
+          y: y2,
+          w: contentW - 120.0,
+          h: 14.5,
+          text: q.detalhe,
+          font: fontRegular,
+          fontSize: 7.2,
+          bgColor: colorWhite,
+          borderColor: colorBorder,
+        });
+        y2 += 14.5;
+      }
+    }
+    y2 += 4.0;
+  } else {
+    // Advogados (Original)
+    y2 = drawSectionHeader(page2, pageHeight, contentX, y2, contentW, 'HISTÓRICO DE RECLAMAÇÃO', fontBold, colorGrayHeader, colorBorder);
+
+    // Pergunta 1: Reclamações contra o profissional
+    drawCell(page2, pageHeight, {
+      x: contentX,
+      y: y2,
+      w: questLabelW,
+      h: 16.0,
+      text: 'Existem reclamações contra o profissional por danos causados pela prestação de seus serviços?',
+      font: fontBold,
+      fontSize: 7.4,
+      bgColor: colorGrayHeader,
+      borderColor: colorBorder,
+    });
+    drawCell(page2, pageHeight, {
+      x: contentX + questLabelW,
+      y: y2,
+      w: questValW,
+      h: 16.0,
+      text: params.questionario.reclamacaoProfissional,
+      font: fontBold,
+      fontSize: 7.4,
+      bgColor: colorWhite,
+      borderColor: colorBorder,
+      align: 'center',
+    });
+    y2 += 16.0;
+
+    // Pergunta 2: Ação disciplinar ou investigações
+    drawCell(page2, pageHeight, {
+      x: contentX,
+      y: y2,
+      w: questLabelW,
+      h: 17.0,
+      text: 'O profissional sofreu reclamação(ões), ação disciplinar ou investigações por qualquer autoridade fiscal de órgão oficial, conselhos e instituições?',
+      font: fontBold,
+      fontSize: 7.1,
+      bgColor: colorGrayHeader,
+      borderColor: colorBorder,
+    });
+    drawCell(page2, pageHeight, {
+      x: contentX + questLabelW,
+      y: y2,
+      w: questValW,
+      h: 17.0,
+      text: params.questionario.investigacaoAutoridade,
+      font: fontBold,
+      fontSize: 7.4,
+      bgColor: colorWhite,
+      borderColor: colorBorder,
+      align: 'center',
+    });
+    y2 += 17.0;
+
+    // Pergunta 3: Conhecimento de fatos ou circunstâncias
+    drawCell(page2, pageHeight, {
+      x: contentX,
+      y: y2,
+      w: questLabelW,
+      h: 16.0,
+      text: 'O profissional tem conhecimento de algum fato ou circunstância que possa gerar reclamação de terceiros?',
+      font: fontBold,
+      fontSize: 7.4,
+      bgColor: colorGrayHeader,
+      borderColor: colorBorder,
+    });
+    drawCell(page2, pageHeight, {
+      x: contentX + questLabelW,
+      y: y2,
+      w: questValW,
+      h: 16.0,
+      text: params.questionario.fatoTerceiros,
+      font: fontBold,
+      fontSize: 7.4,
+      bgColor: colorWhite,
+      borderColor: colorBorder,
+      align: 'center',
+    });
+    y2 += 16.0;
+
+    // Pergunta 4: Pagamento com Fundos Próprios
+    drawCell(page2, pageHeight, {
+      x: contentX,
+      y: y2,
+      w: questLabelW,
+      h: 16.0,
+      text: 'O profissional alguma vez pagou por uma reclamação com fundos próprios?',
+      font: fontBold,
+      fontSize: 7.4,
+      bgColor: colorGrayHeader,
+      borderColor: colorBorder,
+    });
+    drawCell(page2, pageHeight, {
+      x: contentX + questLabelW,
+      y: y2,
+      w: questValW,
+      h: 16.0,
+      text: params.questionario.pagouReclamacao,
+      font: fontBold,
+      fontSize: 7.4,
+      bgColor: colorWhite,
+      borderColor: colorBorder,
+      align: 'center',
+    });
+    y2 += 16.0 + 4.0;
+  }
 
   // Declaração do Proponente
   y2 = drawSectionHeader(page2, pageHeight, contentX, y2, contentW, 'DECLARAÇÃO DO PROPONENTE', fontBold, colorGrayHeader, colorBorder);
@@ -1631,13 +1800,33 @@ export async function renderContratoPdf(params: RenderContratoPdfParams): Promis
     clientData.dataAtividade || clientData.inicioProfissional || clientData.inicioAtividade
   ) || 'Não informado';
 
+  // Resolução declarativa do Ramo do Produto
+  const flowKey = clientData.flowKey || (cotacao as any).flow_key || null;
+  const productId = clientData.productId || (cotacao as any).product_id || null;
+  const ramoConfig = getRamoConfig(productId || flowKey || 'rc-advogados') || rcAdvogadosConfig;
+  const isMedico =
+    ramoConfig.ramoId === 'rc-medicos' ||
+    (ramoConfig as any).key === 'rc-medicos' ||
+    productId === 'prod-rc-med-001' ||
+    flowKey === 'rc-medicos' ||
+    flowKey === 'rc_medicos_v1';
+
+  const crmUf = clientData.crmUf ? `/${clientData.crmUf}` : '';
+  const crmStr = clientData.crm ? `${clientData.crm}${crmUf}` : '';
+  const registroLabel = isMedico ? 'CRM:' : 'OAB:';
+  const registroValor = isMedico
+    ? (crmStr || clientData.registroProfissionalNumero || 'Não informado')
+    : String(clientData.oab || clientData.registroProfissionalNumero || 'Não informado');
+
   // Proponente
   const proponenteData = {
     nome: cotacao.client_name,
     email: cotacao.client_email || clientData.email || 'Não informado',
     celular: cotacao.client_phone || clientData.celular || clientData.telefone || 'Não informado',
     cpf: formatCpf(cotacao.client_cpf_cnpj || clientData.cpf),
-    oab: String(clientData.oab || clientData.registroProfissionalNumero || 'Não informado'),
+    oab: registroValor,
+    registroLabel,
+    registroValor,
     dataNascto: formatData(clientData.dataNascto || clientData.nascimento) || 'Não informado',
     enderecoCompleto,
     inicioProfissional,
@@ -1760,12 +1949,17 @@ export async function renderContratoPdf(params: RenderContratoPdfParams): Promis
         cidadeDataStr,
         proponenteData,
         seguroAnterior,
+        ramoConfig,
         infoProfissional: {
-          escritorio: clientData.associadoEscritorio === 'Sim'
-            ? (clientData.nomeEscritorio || clientData.escritorioAssociado || clientData.escritorio || 'Sim (Associado a escritório)')
-            : (clientData.escritorioAssociado && clientData.escritorioAssociado !== 'Não associado' && clientData.escritorioAssociado !== 'Não'
-                ? clientData.escritorioAssociado
-                : 'Não associado'),
+          escritorio: isMedico
+            ? (clientData.associadoClinica === 'Sim' || clientData.associadoEscritorio === 'Sim'
+                ? (clientData.nomeClinica || clientData.nomeHospital || clientData.nomeEscritorio || clientData.escritorioAssociado || 'Sim (Associado a clínica/hospital)')
+                : 'Não associado')
+            : (clientData.associadoEscritorio === 'Sim'
+                ? (clientData.nomeEscritorio || clientData.escritorioAssociado || clientData.escritorio || 'Sim (Associado a escritório)')
+                : (clientData.escritorioAssociado && clientData.escritorioAssociado !== 'Não associado' && clientData.escritorioAssociado !== 'Não'
+                    ? clientData.escritorioAssociado
+                    : 'Não associado')),
           titularidade: clientData.titularidade || 'Não possui',
           faturamentoAntes: clientData.faturamentoAntes || 'Não informado',
           faturamentoDepois: clientData.faturamentoDepois || 'Não informado',
@@ -1787,6 +1981,16 @@ export async function renderContratoPdf(params: RenderContratoPdfParams): Promis
           fatoDetalhe: clientData.fatoDetalhe || 'Não se aplica',
           pagouReclamacao: clientData.pagouReclamacao === 'Sim' ? 'Sim' : 'Não',
           pagouDetalhe: clientData.pagouDetalhe || 'Não se aplica',
+          processoConselho: clientData.processoConselho === 'Sim' ? 'Sim' : 'Não',
+          processoConselhoDetalhe: clientData.processoConselhoDetalhe || 'Não se aplica',
+          reclamacaoErroMedico: clientData.reclamacaoErroMedico === 'Sim' ? 'Sim' : 'Não',
+          reclamacaoErroMedicoDetalhe: clientData.reclamacaoErroMedicoDetalhe || 'Não se aplica',
+          complicacoesCirurgicas: clientData.complicacoesCirurgicas === 'Sim' ? 'Sim' : 'Não',
+          complicacoesCirurgicasDetalhe: clientData.complicacoesCirurgicasDetalhe || 'Não se aplica',
+          fatoPotencial: clientData.fatoPotencial === 'Sim' ? 'Sim' : 'Não',
+          fatoPotencialDetalhe: clientData.fatoPotencialDetalhe || 'Não se aplica',
+          pagamentoIndenizacao: clientData.pagamentoIndenizacao === 'Sim' ? 'Sim' : 'Não',
+          pagamentoIndenizacaoDetalhe: clientData.pagamentoIndenizacaoDetalhe || 'Não se aplica',
         },
       },
       fontRegular,
@@ -1807,11 +2011,13 @@ export async function renderContratoPdf(params: RenderContratoPdfParams): Promis
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-zA-Z0-9]/g, '_');
   const idCurto = cotacao.id.slice(0, 8).toUpperCase();
-  const tipoDocSufixo = tipoContrato === '100k'
-    ? '100k'
-    : tipoContrato === '100k_renovacao'
-      ? '100k_Renovacao'
-      : 'Oficial';
+  const tipoDocSufixo = isMedico
+    ? 'Medico_Oficial'
+    : tipoContrato === '100k'
+      ? '100k'
+      : tipoContrato === '100k_renovacao'
+        ? '100k_Renovacao'
+        : 'Oficial';
 
   const docName = `Proposta_RC_${tipoDocSufixo}_${corretora.nomeFantasia.replace(/[^a-zA-Z0-9]/g, '')}_${cleanClientName}_${idCurto}.pdf`;
 
@@ -1857,11 +2063,16 @@ export async function gerarContratoPdfBuffer(cotacaoId: string): Promise<Contrat
   const corretora = await getCorretoraParaContrato(cotacao.id);
 
   // Recalcula valores de plano e parcelamento com segurança no servidor
+  const flowKey = clientData.flowKey || cotacao.flow_key || null;
+  const productId = clientData.productId || cotacao.product_id || null;
+
   const preco = await calcularPrecoServidor({
     tipoDePlano: clientData.tipo || clientData.tipoDePlano || null,
     qtdParcelasSolicitada: Number(clientData.parcela) || 1,
     cupomCodigo: clientData.cupomCodigo || null,
     descontoManualPercent: Number(clientData.descontoManualPercent ?? clientData.descontoPercentual) || 0,
+    flowKey,
+    productId,
   });
 
   const valorTotal = preco?.valorTotal ?? Number(cotacao.premio_final || cotacao.premio_calculado || 0);

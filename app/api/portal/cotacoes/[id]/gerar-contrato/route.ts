@@ -66,6 +66,15 @@ export async function POST(
 
     const clientData = parseJsonbField<Record<string, any>>(cotacao.client_data);
 
+    const flowKey = clientData.flowKey || cotacao.flow_key || null;
+    const productId = clientData.productId || cotacao.product_id || null;
+    const isMedico =
+      flowKey === 'rc_medicos_v1' ||
+      flowKey === 'rc-medicos' ||
+      cotacao.flow_key === 'rc_medicos_v1' ||
+      cotacao.flow_key === 'rc-medicos' ||
+      productId === 'prod-rc-med-001';
+
     // Preço recalculado no servidor a partir da tabela real de planos/cupom — nunca aceito de
     // clientData.valor/valorParcela, que vêm do cliente e são forjáveis.
     const preco = await calcularPrecoServidor({
@@ -73,6 +82,8 @@ export async function POST(
       qtdParcelasSolicitada: Number(clientData.parcela) || 1,
       cupomCodigo: clientData.cupomCodigo || null,
       descontoManualPercent: Number(clientData.descontoManualPercent ?? clientData.descontoPercentual) || 0,
+      flowKey,
+      productId,
     });
 
     const valorTotal = preco?.valorTotal ?? Number(cotacao.premio_final || cotacao.premio_calculado || 0);
@@ -128,6 +139,7 @@ export async function POST(
     // 2. Determina modo e template do ZapSign
     const zapConfig = await getZapSignConfig();
     const isDynamicPdf =
+      isMedico ||
       zapConfig.docGenerationMode === 'dynamic_pdf' ||
       req.nextUrl.searchParams.get('modo') === 'dynamic_pdf';
 

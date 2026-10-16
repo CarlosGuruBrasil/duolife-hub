@@ -410,8 +410,7 @@ async function runRuntimeSchemaSetup(): Promise<void> {
   await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS requires_underwriting BOOLEAN NOT NULL DEFAULT false`;
   await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS required_documents JSONB NOT NULL DEFAULT '[]'`;
   await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS integration_type TEXT NOT NULL DEFAULT 'full_journey'`;
-  await sql`ALTER TABLE products ADD COLUMN IF NOT EXISTS external_link_url TEXT`;
-  await sql`UPDATE products SET product_type = 'insurance', flow_key = 'rc_professional_v1', pricing_strategy = 'rc_wix_planos_v1', policy_prefix = 'DL-RC', integration_type = 'full_journey' WHERE code LIKE 'RC-%'`;
+  await sql`UPDATE products SET product_type = 'insurance', flow_key = 'rc-advogados', pricing_strategy = 'rc_wix_planos_v1', policy_prefix = 'DL-RC-ADV', integration_type = 'full_journey' WHERE code IN ('RC-001', 'RC-ADV-001')`;
 
   // Habilitação comercial é diferente de comissão: um parceiro só deve operar uma oferta
   // que a DuoLife disponibilizou explicitamente para ele.
@@ -1227,7 +1226,7 @@ export async function seedInitialData(): Promise<void> {
 
   // RC Médicos
   await sql`
-    INSERT INTO products (id, name, code, category, insurer_name, description, base_commission_rate, is_active, product_type, flow_key, pricing_strategy, policy_prefix)
+    INSERT INTO products (id, name, code, category, insurer_name, description, base_commission_rate, is_active, is_quoteable, product_type, flow_key, pricing_strategy, policy_prefix)
     VALUES (
       'prod-rc-med-001',
       'RC Profissional — Médicos & Profissionais da Saúde',
@@ -1237,12 +1236,19 @@ export async function seedInitialData(): Promise<void> {
       'Proteção contra processos de erro médico, procedimentos e custos de defesa perante conselhos de classe.',
       15.00,
       true,
+      true,
       'insurance',
       'rc-medicos',
-      'rc_medicos_v1',
+      'rc_medicos_planos_v1',
       'DL-RC-MED'
     )
-    ON CONFLICT (code) DO NOTHING
+    ON CONFLICT (code) DO UPDATE SET
+      flow_key = 'rc-medicos',
+      name = 'RC Profissional — Médicos & Profissionais da Saúde',
+      policy_prefix = 'DL-RC-MED',
+      pricing_strategy = 'rc_medicos_planos_v1',
+      is_active = true,
+      is_quoteable = true
   `;
 
   // RC Odonto

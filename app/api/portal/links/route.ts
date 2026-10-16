@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { ensureSchema } from '@/lib/schema';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
-import { verifyPartnerAuth, unauthorized } from '@/lib/auth';
+import { verifyPartnerAuth, isDevUser, isPlatformAdmin, unauthorized } from '@/lib/auth';
 
 const emptyToUndefined = (v: unknown) => (v === '' ? undefined : v);
 
@@ -139,6 +139,14 @@ export async function POST(req: NextRequest) {
     } else {
       // Produto padrão se não especificado
       targetProductId = 'prod-rc-001';
+    }
+
+    const isMed = targetProductId === 'prod-rc-med-001' || targetProductId === 'RC-MED-001';
+    if (isMed && !isDevUser(user) && !isPlatformAdmin(user)) {
+      return NextResponse.json(
+        { error: 'O produto RC Médico está em desenvolvimento e não permite geração de links públicos por parceiros de vendas.' },
+        { status: 403 }
+      );
     }
 
     const token = `dlk_${crypto.randomBytes(18).toString('base64url')}`;

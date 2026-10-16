@@ -319,6 +319,9 @@ export const STATUS_GERAL_LABEL_MAP: Record<string, StatusGeral> = {
 export const STATUS_PAGAMENTO_LABEL_MAP: Record<string, StatusPagamento> = {
   em_dia: 'Em dia',
   'em dia': 'Em dia',
+  partially_paid: 'Em dia',
+  parcialmente_pago: 'Em dia',
+  parcial: 'Em dia',
   atraso_le_50: 'Em atraso <= 50 dias',
   'em atraso <= 50 dias': 'Em atraso <= 50 dias',
   falta_pagamento_gt_50: 'Falta Pagamento > 50 dias',
@@ -432,7 +435,7 @@ export function normalizeStatusPagamento(raw: unknown): StatusPagamento | null {
   if (s.includes('<= 50') || s.includes('menor que 50') || s.includes('ate 50') || s.includes('atraso')) {
     return 'Em atraso <= 50 dias';
   }
-  if (s.includes('em dia') || s === 'pago' || s === 'paga' || s === 'recebido' || s === 'confirmado') {
+  if (s.includes('em dia') || s === 'pago' || s === 'paga' || s === 'recebido' || s === 'confirmado' || s === 'partially_paid' || s.includes('parcial')) {
     return 'Em dia';
   }
   if (s.includes('assinatura')) {
@@ -485,9 +488,17 @@ export function calculateMatrixStatus(input: MatrixStatusInput): MatrixStatusRes
   const normRawPagamento = normalizeStatusPagamento(input.rawStatusPagamento);
 
   if (normRawCliente && normRawGeral && normRawPagamento) {
-    const directRule = findMatrixRule(normRawCliente, normRawGeral, normRawPagamento);
-    if (directRule) {
-      return buildResult(directRule);
+    // Se o input operacional informa explicitamente que não há atraso (daysOverdue === 0 ou isFullyPaid),
+    // ignorar resíduo de texto bruto legado que alegue atraso
+    const hasConflictingOverdue =
+      (input.daysOverdue === 0 || input.isFullyPaid === true) &&
+      normRawPagamento === 'Em atraso <= 50 dias';
+
+    if (!hasConflictingOverdue) {
+      const directRule = findMatrixRule(normRawCliente, normRawGeral, normRawPagamento);
+      if (directRule) {
+        return buildResult(directRule);
+      }
     }
   }
 
@@ -527,17 +538,32 @@ export function calculateMatrixStatus(input: MatrixStatusInput): MatrixStatusRes
   // - Total de parcelas pagas for maior ou igual ao total contratado.
   const isPaidOrQuitado = Boolean(
     input.isFullyPaid === true ||
-    ['paid', 'pago', 'paga', 'received', 'recebido', 'confirmed', 'confirmado', 'quitado', 'quitada'].includes(paymentStatusClean) ||
+    ['paid', 'pago', 'paga', 'received', 'recebido', 'confirmed', 'confirmado', 'quitado', 'quitada', 'received_in_cash'].includes(paymentStatusClean) ||
     ((input.paidInstallments ?? 0) >= (input.totalInstallments || 1) && (input.totalInstallments ?? 0) > 0)
   );
 
-  // Se a apólice/cobrança está paga ou quitada, o atraso efetivo é ESTRITAMENTE 0 dias.
-  const rawMaxOverdue = Math.max(
-    0,
-    typeof input.daysOverdue === 'number' ? input.daysOverdue : 0,
-    typeof input.maxDaysOverdue === 'number' ? input.maxDaysOverdue : 0
+  // Cliente com pagamento parcial ativo (parcelas já quitadas e próximas parcelas a vencer no futuro, status partially_paid do ASAAS)
+  const isPartiallyPaid = Boolean(
+    paymentStatusClean === 'partially_paid' ||
+    paymentStatusClean === 'parcialmente_pago' ||
+    paymentStatusClean === 'parcial' ||
+    ((input.paidInstallments ?? 0) > 0 && (input.paidInstallments ?? 0) < (input.totalInstallments || 1))
   );
-  const maxOverdue = isPaidOrQuitado ? 0 : rawMaxOverdue;
+
+  // Se daysOverdue for explicitamente 0 (nenhuma parcela vencida em aberto),
+  // ou overdueCount for 0, o atraso efetivo é ESTRITAMENTE 0 dias.
+  const isExplicitlyZeroOverdue = input.daysOverdue === 0 || input.overdueCount === 0;
+
+  const rawMaxOverdue = isExplicitlyZeroOverdue
+    ? 0
+    : Math.max(
+        0,
+        typeof input.daysOverdue === 'number' ? input.daysOverdue : 0,
+        typeof input.maxDaysOverdue === 'number' ? input.maxDaysOverdue : 0
+      );
+
+  // Se estiver pago/quitado OU se daysOverdue for explicitamente 0, maxOverdue é ESTRITAMENTE 0.
+  const maxOverdue = (isPaidOrQuitado || isExplicitlyZeroOverdue) ? 0 : rawMaxOverdue;
 
   const expiryDate = parseDateSafely(input.expiryDate);
   const isExpired = Boolean(
@@ -546,8 +572,8 @@ export function calculateMatrixStatus(input: MatrixStatusInput): MatrixStatusRes
   );
 
   // 3. Regra de Inadimplência Crítica: Atraso > 50 dias cancela a apólice
-  // CRÍTICO: SOMENTE pode ser acionado se NÃO estiver pago/quitado!
-  if (!isPaidOrQuitado && (maxOverdue > 50 || input.cancelReason === 'delinquency' || input.cancelReason === 'overdue_gt_50')) {
+  // CRÍTICO: SOMENTE pode ser acionado se NÃO estiver pago/quitado E não for zero atraso explícito!
+  if (!isPaidOrQuitado && !isExplicitlyZeroOverdue && input.daysOverdue !== 0 && (maxOverdue > 50 || input.cancelReason === 'delinquency' || input.cancelReason === 'overdue_gt_50')) {
     if (hasSale || cotacaoStatusClean === 'emitida' || cotacaoStatusClean === 'aprovada' || normRawGeral === 'Negócio Fechado') {
       return buildResult(getRule('CANCELADO_INADIMPLENCIA_GT_50'));
     }
@@ -556,7 +582,7 @@ export function calculateMatrixStatus(input: MatrixStatusInput): MatrixStatusRes
   // 4. Regra de Cancelamentos
   if (isExplicitlyCanceled) {
     // Se era uma apólice fechada com inadimplência real > 50 dias e não foi quitada
-    if (hasSale && !isPaidOrQuitado && maxOverdue > 50) {
+    if (hasSale && !isPaidOrQuitado && !isExplicitlyZeroOverdue && input.daysOverdue !== 0 && maxOverdue > 50) {
       return buildResult(getRule('CANCELADO_INADIMPLENCIA_GT_50'));
     }
     // Se o contrato já havia sido assinado (estava na etapa de pagamento)
@@ -574,7 +600,19 @@ export function calculateMatrixStatus(input: MatrixStatusInput): MatrixStatusRes
 
   // 6. Regra de Negócio Fechado / Vigente (Apólice emitida em vigor)
   if (hasSale && saleStatusClean !== 'cancelada') {
-    if (!isPaidOrQuitado && maxOverdue > 0 && maxOverdue <= 50) {
+    // Garantir que:
+    // - se daysOverdue === 0 (nenhuma parcela vencida em aberto)
+    // - ou isPaidOrQuitado === true
+    // - ou isExplicitlyZeroOverdue === true
+    // - ou paymentStatus === 'partially_paid' sem parcelas vencidas (daysOverdue === 0 ou maxOverdue === 0)
+    // O status retornado NUNCA marque VIGENTE_ATRASO_LE_50 e seja sempre VIGENTE_EM_DIA.
+    const hasRealOverdue =
+      !isPaidOrQuitado &&
+      !isExplicitlyZeroOverdue &&
+      input.daysOverdue !== 0 &&
+      maxOverdue > 0;
+
+    if (hasRealOverdue && maxOverdue <= 50) {
       return buildResult(getRule('VIGENTE_ATRASO_LE_50'));
     }
     return buildResult(getRule('VIGENTE_EM_DIA'));
@@ -628,6 +666,55 @@ function buildResult(rule: MatrixRule): MatrixStatusResult {
 // ============================================================================
 
 /**
+ * Gera a subexpressão SQL determinística e infalível de cálculo de dias de atraso (maxOverdueSql).
+ * - Se COUNT(*) > 0 em payment_installments:
+ *   COALESCE(MAX(CASE WHEN (pi_o.paid_at IS NULL AND LOWER(COALESCE(pi_o.status, '')) NOT IN ('paid', 'received', 'confirmed', 'received_in_cash')) AND pi_o.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - pi_o.due_date)::int) ELSE 0 END), 0)
+ * - No fallback de payment_orders:
+ *   WHEN LOWER(COALESCE(po_o.status, '')) IN ('paid', 'received', 'confirmed', 'received_in_cash') THEN 0
+ *   WHEN LOWER(COALESCE(po_o.status, '')) = 'partially_paid' THEN 0
+ *   WHEN ${saleAlias}.status = 'ativa' THEN 0
+ *   WHEN LOWER(COALESCE(po_o.status, '')) IN ('pending', 'overdue') AND po_o.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - po_o.due_date)::int)
+ *   ELSE 0
+ */
+export function buildMaxOverdueSql(cotacaoIdExpr: string, saleAlias: string = 's'): string {
+  return `COALESCE(
+    (
+      SELECT CASE
+        WHEN COUNT(*) > 0 THEN
+          COALESCE(
+            MAX(
+              CASE
+                WHEN (pi_o.paid_at IS NULL AND LOWER(COALESCE(pi_o.status, '')) NOT IN ('paid', 'received', 'confirmed', 'received_in_cash'))
+                     AND pi_o.due_date < CURRENT_DATE
+                THEN GREATEST(0, (CURRENT_DATE - pi_o.due_date)::int)
+                ELSE 0
+              END
+            ),
+            0
+          )
+        ELSE NULL
+      END
+      FROM payment_installments pi_o
+      WHERE pi_o.cotacao_id = ${cotacaoIdExpr}
+    ),
+    (
+      SELECT CASE
+        WHEN LOWER(COALESCE(po_o.status, '')) IN ('paid', 'received', 'confirmed', 'received_in_cash') THEN 0
+        WHEN LOWER(COALESCE(po_o.status, '')) = 'partially_paid' THEN 0
+        WHEN ${saleAlias}.status = 'ativa' THEN 0
+        WHEN LOWER(COALESCE(po_o.status, '')) IN ('pending', 'overdue') AND po_o.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - po_o.due_date)::int)
+        ELSE 0
+      END
+      FROM payment_orders po_o
+      WHERE po_o.cotacao_id = ${cotacaoIdExpr}
+      ORDER BY po_o.created_at DESC
+      LIMIT 1
+    ),
+    0
+  )`.trim();
+}
+
+/**
  * Retorna as expressões SQL (PostgreSQL) para calcular dinamicamente os 3 status
  * em queries SELECT com base nas tabelas canônicas:
  * - cotacoes (alias padrão: c)
@@ -637,14 +724,15 @@ function buildResult(rule: MatrixRule): MatrixStatusResult {
 export interface SqlMatrixOptions {
   cotacaoAlias?: string; // padrão: 'c'
   saleAlias?: string; // padrão: 's'
-  maxOverdueDaysExpression?: string; // padrão: 'COALESCE(sub_p.max_overdue_days, 0)'
+  maxOverdueDaysExpression?: string; // padrão: subexpressão determinística gerada via buildMaxOverdueSql
   referenceDateExpression?: string; // padrão: 'CURRENT_DATE'
 }
 
 export function buildStatusMatrixSqlExpressions(options?: SqlMatrixOptions) {
   const c = options?.cotacaoAlias ?? 'c';
   const s = options?.saleAlias ?? 's';
-  const overdue = options?.maxOverdueDaysExpression ?? 'COALESCE(sub_p.max_overdue_days, 0)';
+  const maxOverdueSql = buildMaxOverdueSql(`COALESCE(${s}.cotacao_id, ${c}.id)`, s);
+  const overdue = options?.maxOverdueDaysExpression ?? maxOverdueSql;
   const refDate = options?.referenceDateExpression ?? 'CURRENT_DATE';
 
   const statusClienteSql = `
@@ -691,6 +779,7 @@ CASE
 END`.trim();
 
   return {
+    maxOverdueSql,
     statusClienteSql,
     statusGeralSql,
     statusPagamentoSql,
@@ -748,9 +837,12 @@ LEFT JOIN LATERAL (
 ) s ON TRUE
 LEFT JOIN LATERAL (
   SELECT
-    MAX(CASE WHEN pi.status = 'overdue' OR (pi.status = 'pending' AND pi.due_date < CURRENT_DATE)
-             THEN CURRENT_DATE - pi.due_date
-             ELSE 0 END) AS max_overdue_days
+    COALESCE(
+      MAX(CASE WHEN (pi.paid_at IS NULL AND LOWER(COALESCE(pi.status, '')) NOT IN ('paid', 'received', 'confirmed', 'received_in_cash')) AND pi.due_date < CURRENT_DATE
+               THEN GREATEST(0, (CURRENT_DATE - pi.due_date)::int)
+               ELSE 0 END),
+      0
+    ) AS max_overdue_days
   FROM payment_installments pi
   WHERE pi.cotacao_id = c.id
 ) sub_p ON TRUE
@@ -772,34 +864,13 @@ export function getSaleMatrixFilterSql(
 
   // Subexpressão determinística de quitação em vendas
   const isPaidSql = `(
-    (SELECT COUNT(*) > 0 AND COUNT(*) = COUNT(*) FILTER (WHERE pi_f.status IN ('paid', 'received', 'confirmed')) FROM payment_installments pi_f WHERE pi_f.cotacao_id = ${s}.cotacao_id)
+    (SELECT COUNT(*) > 0 AND COUNT(*) = COUNT(*) FILTER (WHERE LOWER(COALESCE(pi_f.status, '')) IN ('paid', 'received', 'confirmed', 'received_in_cash') OR pi_f.paid_at IS NOT NULL) FROM payment_installments pi_f WHERE pi_f.cotacao_id = ${s}.cotacao_id)
     OR
-    (SELECT po_f.status IN ('paid', 'received', 'confirmed') FROM payment_orders po_f WHERE po_f.cotacao_id = ${s}.cotacao_id ORDER BY po_f.created_at DESC LIMIT 1)
+    (SELECT LOWER(COALESCE(po_f.status, '')) IN ('paid', 'received', 'confirmed', 'received_in_cash') FROM payment_orders po_f WHERE po_f.cotacao_id = ${s}.cotacao_id ORDER BY po_f.created_at DESC LIMIT 1)
   )`;
 
   // Subexpressão de atraso máximo em vendas
-  const maxOverdueSql = `COALESCE(
-    (
-      SELECT CASE
-        WHEN COUNT(*) > 0 AND COUNT(*) = COUNT(*) FILTER (WHERE pi_o.status IN ('paid', 'received', 'confirmed')) THEN 0
-        ELSE MAX(CASE WHEN pi_o.status IN ('pending', 'overdue') AND pi_o.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - pi_o.due_date)::int) ELSE 0 END)
-      END
-      FROM payment_installments pi_o
-      WHERE pi_o.cotacao_id = ${s}.cotacao_id
-    ),
-    (
-      SELECT CASE
-        WHEN po_o.status IN ('paid', 'received', 'confirmed') THEN 0
-        WHEN po_o.status IN ('pending', 'overdue') AND po_o.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - po_o.due_date)::int)
-        ELSE 0
-      END
-      FROM payment_orders po_o
-      WHERE po_o.cotacao_id = ${s}.cotacao_id
-      ORDER BY po_o.created_at DESC
-      LIMIT 1
-    ),
-    0
-  )`;
+  const maxOverdueSql = buildMaxOverdueSql(`${s}.cotacao_id`, s);
 
   if (statusGeral) {
     const sg = statusGeral.toLowerCase().trim();
@@ -846,35 +917,14 @@ export function getCotacaoMatrixFilterSql(
   const s = saleAlias;
 
   const isPaidSql = `(
-    (SELECT COUNT(*) > 0 AND COUNT(*) = COUNT(*) FILTER (WHERE pi_f.status IN ('paid', 'received', 'confirmed')) FROM payment_installments pi_f WHERE pi_f.cotacao_id = ${c}.id)
+    (SELECT COUNT(*) > 0 AND COUNT(*) = COUNT(*) FILTER (WHERE LOWER(COALESCE(pi_f.status, '')) IN ('paid', 'received', 'confirmed', 'received_in_cash') OR pi_f.paid_at IS NOT NULL) FROM payment_installments pi_f WHERE pi_f.cotacao_id = ${c}.id)
     OR
-    (SELECT po_f.status IN ('paid', 'received', 'confirmed') FROM payment_orders po_f WHERE po_f.cotacao_id = ${c}.id ORDER BY po_f.created_at DESC LIMIT 1)
+    (SELECT LOWER(COALESCE(po_f.status, '')) IN ('paid', 'received', 'confirmed', 'received_in_cash') FROM payment_orders po_f WHERE po_f.cotacao_id = ${c}.id ORDER BY po_f.created_at DESC LIMIT 1)
     OR
     (${c}.status IN ('aprovada', 'emitida'))
   )`;
 
-  const maxOverdueSql = `COALESCE(
-    (
-      SELECT CASE
-        WHEN COUNT(*) > 0 AND COUNT(*) = COUNT(*) FILTER (WHERE pi_o.status IN ('paid', 'received', 'confirmed')) THEN 0
-        ELSE MAX(CASE WHEN pi_o.status IN ('pending', 'overdue') AND pi_o.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - pi_o.due_date)::int) ELSE 0 END)
-      END
-      FROM payment_installments pi_o
-      WHERE pi_o.cotacao_id = ${c}.id
-    ),
-    (
-      SELECT CASE
-        WHEN po_o.status IN ('paid', 'received', 'confirmed') THEN 0
-        WHEN po_o.status IN ('pending', 'overdue') AND po_o.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - po_o.due_date)::int)
-        ELSE 0
-      END
-      FROM payment_orders po_o
-      WHERE po_o.cotacao_id = ${c}.id
-      ORDER BY po_o.created_at DESC
-      LIMIT 1
-    ),
-    0
-  )`;
+  const maxOverdueSql = buildMaxOverdueSql(`${c}.id`, s);
 
   if (statusGeral) {
     const sg = statusGeral.toLowerCase().trim();
