@@ -468,10 +468,12 @@ export async function POST(req: NextRequest) {
     let renewedFromCotacaoId: string | null = null;
     if (isRenewal) {
       const [previous] = await sql`
-        SELECT id FROM cotacoes
-        WHERE client_id = ${client.id}
-          AND status IN ('aprovada', 'emitida', 'assinado', 'pagamento_gerado')
-        ORDER BY created_at DESC
+        SELECT c.id FROM cotacoes c
+        JOIN products p ON p.id = c.product_id
+        WHERE c.client_id = ${client.id}
+          AND c.status IN ('aprovada', 'emitida', 'assinado', 'pagamento_gerado')
+          AND (c.product_id = ${product.id} OR p.flow_key = ${product.flow_key})
+        ORDER BY c.created_at DESC
         LIMIT 1
       `;
       renewedFromCotacaoId = previous?.id || null;

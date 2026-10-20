@@ -5,6 +5,8 @@ import { Search, User, X, Loader2, CheckCircle, RefreshCw, ShieldCheck, Phone, M
 
 export interface RenewalData {
   hasPreviousPolicy: boolean;
+  ramoId?: string | null;
+  productName?: string | null;
   policyNumber: string;
   seguradora: string;
   vigenciaAnterior: string;
@@ -31,7 +33,15 @@ export interface ClienteBuscaResult {
   email: string;
   phone: string;
   birthDate: string;
-  oab: string;
+  oab?: string;
+  crm?: string;
+  crmUf?: string;
+  cro?: string;
+  croUf?: string;
+  crea?: string;
+  creaUf?: string;
+  crc?: string;
+  crcUf?: string;
   dataAtividade: string;
   address: {
     cep: string;
@@ -48,6 +58,8 @@ export interface ClienteBuscaResult {
 interface ClienteSearchSelectorProps {
   adminSelectedPartnerId?: string;
   publicToken?: string;
+  productId?: string;
+  ramoId?: string;
   selectedCliente: ClienteBuscaResult | null;
   isRenovacaoAtiva: boolean;
   initialCpf?: string;
@@ -67,6 +79,8 @@ function formatDateBr(iso?: string | null) {
 export default function ClienteSearchSelector({
   adminSelectedPartnerId,
   publicToken,
+  productId,
+  ramoId,
   selectedCliente,
   isRenovacaoAtiva,
   initialCpf,
@@ -100,12 +114,20 @@ export default function ClienteSearchSelector({
         if (adminSelectedPartnerId) {
           url.searchParams.set('partnerId', adminSelectedPartnerId);
         }
+        if (productId) {
+          url.searchParams.set('productId', productId);
+        }
+        if (ramoId) {
+          url.searchParams.set('ramoId', ramoId);
+        }
         const res = await fetch(url.toString(), { headers });
         const data = await res.json();
         if (data.clients && data.clients.length > 0) {
           const client = data.clients[0];
           onSelectCliente(client);
-          if (autoApplyRenewal && client.renewalData?.hasPreviousPolicy) {
+          // Blindagem: só auto-aplica renovação se a apólice for do MESMO ramo
+          const isSameRamo = !ramoId || !client.renewalData?.ramoId || client.renewalData.ramoId === ramoId;
+          if (autoApplyRenewal && client.renewalData?.hasPreviousPolicy && isSameRamo) {
             onApplyRenewal(client.renewalData);
           }
         }
@@ -117,7 +139,7 @@ export default function ClienteSearchSelector({
     }
 
     autoLoad();
-  }, [initialCpf, selectedCliente, autoApplyRenewal, adminSelectedPartnerId, publicToken, onSelectCliente, onApplyRenewal]);
+  }, [initialCpf, selectedCliente, autoApplyRenewal, adminSelectedPartnerId, publicToken, productId, ramoId, onSelectCliente, onApplyRenewal]);
 
   // Fecha dropdown ao clicar fora
   useEffect(() => {
@@ -154,6 +176,12 @@ export default function ClienteSearchSelector({
         if (adminSelectedPartnerId) {
           url.searchParams.set('partnerId', adminSelectedPartnerId);
         }
+        if (productId) {
+          url.searchParams.set('productId', productId);
+        }
+        if (ramoId) {
+          url.searchParams.set('ramoId', ramoId);
+        }
 
         const res = await fetch(url.toString(), {
           headers,
@@ -179,7 +207,7 @@ export default function ClienteSearchSelector({
       clearTimeout(timer);
       controller.abort();
     };
-  }, [query, adminSelectedPartnerId, publicToken]);
+  }, [query, adminSelectedPartnerId, publicToken, productId, ramoId]);
 
   function handleSelect(c: ClienteBuscaResult) {
     onSelectCliente(c);
@@ -226,7 +254,28 @@ export default function ClienteSearchSelector({
                       {selectedCliente.phone}
                     </span>
                   )}
-                  {selectedCliente.oab && (
+                  {/* Registro Profissional Contextualizado ao Ramo */}
+                  {selectedCliente.crm && ramoId === 'rc-medicos' && (
+                    <span className="font-medium text-emerald-800">
+                      CRM: {selectedCliente.crm}{selectedCliente.crmUf ? `/${selectedCliente.crmUf}` : ''}
+                    </span>
+                  )}
+                  {selectedCliente.cro && ramoId === 'rc-odonto' && (
+                    <span className="font-medium text-emerald-800">
+                      CRO: {selectedCliente.cro}{selectedCliente.croUf ? `/${selectedCliente.croUf}` : ''}
+                    </span>
+                  )}
+                  {selectedCliente.crea && ramoId === 'rc-engenheiros' && (
+                    <span className="font-medium text-emerald-800">
+                      CREA: {selectedCliente.crea}{selectedCliente.creaUf ? `/${selectedCliente.creaUf}` : ''}
+                    </span>
+                  )}
+                  {selectedCliente.crc && ramoId === 'rc-contadores' && (
+                    <span className="font-medium text-emerald-800">
+                      CRC: {selectedCliente.crc}{selectedCliente.crcUf ? `/${selectedCliente.crcUf}` : ''}
+                    </span>
+                  )}
+                  {selectedCliente.oab && (!ramoId || ramoId === 'rc-advogados') && (
                     <span className="font-medium text-emerald-800">
                       OAB: {selectedCliente.oab}
                     </span>
@@ -252,8 +301,8 @@ export default function ClienteSearchSelector({
             </button>
           </div>
 
-          {/* BANNER DE DETECÇÃO DE RENOVAÇÃO (OPÇÃO 1) */}
-          {selectedCliente.renewalData?.hasPreviousPolicy && (
+          {/* BANNER DE DETECÇÃO DE RENOVAÇÃO (OPÇÃO 1) - Restrito estritamente ao MESMO ramo */}
+          {selectedCliente.renewalData?.hasPreviousPolicy && (!ramoId || !selectedCliente.renewalData.ramoId || selectedCliente.renewalData.ramoId === ramoId) && (
             <div className="mt-3 pt-3 border-t border-emerald-200/80">
               {!isRenovacaoAtiva ? (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-900 flex items-center justify-between flex-wrap gap-3">
@@ -367,7 +416,7 @@ export default function ClienteSearchSelector({
                         <span className="text-xs font-mono text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded">
                           {cliente.documentFormatted || cliente.documentNumber}
                         </span>
-                        {cliente.renewalData?.hasPreviousPolicy && (
+                        {cliente.renewalData?.hasPreviousPolicy && (!ramoId || !cliente.renewalData.ramoId || cliente.renewalData.ramoId === ramoId) && (
                           <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
                             <ShieldCheck size={11} className="text-amber-600" />
                             Apólice anterior disponível
@@ -378,7 +427,11 @@ export default function ClienteSearchSelector({
                       <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 flex-wrap">
                         {cliente.email && <span>{cliente.email}</span>}
                         {cliente.phone && <span>• {cliente.phone}</span>}
-                        {cliente.oab && <span>• OAB: {cliente.oab}</span>}
+                        {cliente.crm && ramoId === 'rc-medicos' && <span>• CRM: {cliente.crm}{cliente.crmUf ? `/${cliente.crmUf}` : ''}</span>}
+                        {cliente.cro && ramoId === 'rc-odonto' && <span>• CRO: {cliente.cro}{cliente.croUf ? `/${cliente.croUf}` : ''}</span>}
+                        {cliente.crea && ramoId === 'rc-engenheiros' && <span>• CREA: {cliente.crea}{cliente.creaUf ? `/${cliente.creaUf}` : ''}</span>}
+                        {cliente.crc && ramoId === 'rc-contadores' && <span>• CRC: {cliente.crc}{cliente.crcUf ? `/${cliente.crcUf}` : ''}</span>}
+                        {cliente.oab && (!ramoId || ramoId === 'rc-advogados') && <span>• OAB: {cliente.oab}</span>}
                         {cliente.address?.cidade && (
                           <span>• {cliente.address.cidade}/{cliente.address.uf}</span>
                         )}

@@ -752,7 +752,12 @@ export default function DynamicCotacaoForm({
     setIsRenovacaoAtiva(false);
 
     const regKey = resolvedRamoConfig.registroProfissional?.key || 'oab';
-    const regVal = (cliente as any)[regKey] || cliente.oab || '';
+    const regUfKey = resolvedRamoConfig.registroProfissional?.ufKey;
+    const isAdvogado = resolvedRamoConfig.ramoId === 'rc-advogados';
+
+    // Pega o registro específico do ramo (evita colocar OAB em CRM ou vice-versa)
+    const regVal = (cliente as any)[regKey] || (isAdvogado ? cliente.oab : '') || '';
+    const regUfVal = regUfKey ? ((cliente as any)[regUfKey] || '') : '';
 
     setForm((prev) => ({
       ...prev,
@@ -762,7 +767,8 @@ export default function DynamicCotacaoForm({
       celular: cliente.phone ? maskPhone(cliente.phone) : prev.celular,
       registroProfissionalNumero: regVal || prev.registroProfissionalNumero,
       [regKey]: regVal || (prev as any)[regKey],
-      oab: cliente.oab || prev.oab,
+      ...(regUfKey && regUfVal ? { [regUfKey]: regUfVal } : {}),
+      oab: isAdvogado ? (cliente.oab || prev.oab) : prev.oab,
       dataNascto: cliente.birthDate || prev.dataNascto,
       dataAtividade: cliente.dataAtividade || prev.dataAtividade,
       cep: cliente.address?.cep ? maskCep(cliente.address.cep) : prev.cep,
@@ -780,6 +786,12 @@ export default function DynamicCotacaoForm({
   }
 
   function handleApplyRenewal(renewal: RenewalData) {
+    // Blindagem de segurança: rejeita renovações de outros ramos
+    if (renewal.ramoId && renewal.ramoId !== resolvedRamoConfig.ramoId) {
+      console.warn('Tentativa de aplicar renovação de ramo incompatível:', renewal.ramoId, 'no ramo:', resolvedRamoConfig.ramoId);
+      return;
+    }
+
     setIsRenovacaoAtiva(true);
     setForm((prev) => ({
       ...prev,
@@ -1653,6 +1665,8 @@ export default function DynamicCotacaoForm({
             <ClienteSearchSelector
               adminSelectedPartnerId={adminSelectedPartnerId}
               publicToken={publicToken}
+              productId={productId}
+              ramoId={resolvedRamoConfig.ramoId}
               selectedCliente={selectedCliente}
               isRenovacaoAtiva={isRenovacaoAtiva}
               initialCpf={effectiveInitialCpf}

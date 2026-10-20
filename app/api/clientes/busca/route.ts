@@ -4,6 +4,7 @@ import { sql } from '@/lib/pg';
 import { parseJsonbField } from '@/lib/json-safe';
 import { parseAtuacaoList } from '@/lib/atuacao';
 import { parseCurrencyToNumber, resolvePolicyExpiryDate } from '@/lib/format';
+import { getRamoConfig } from '@/lib/product-schemas';
 
 function escapeLike(value: string): string {
   return value.replace(/([\\%_])/g, '\\$1');
@@ -64,6 +65,14 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const q = (searchParams.get('q') || '').trim();
     const partnerIdParam = searchParams.get('partnerId') || null;
+    const productIdParam = searchParams.get('productId') || null;
+    const ramoIdParam = searchParams.get('ramoId') || null;
+
+    // Identifica o ramo do contexto da cotação atual (ex: 'rc-medicos', 'rc-advogados')
+    const targetRamoConfig = (ramoIdParam || productIdParam)
+      ? getRamoConfig(ramoIdParam || productIdParam)
+      : null;
+    const targetRamoId = targetRamoConfig?.ramoId || null;
 
     if (!q || q.length < 2) {
       return Response.json({ clients: [] });
@@ -229,6 +238,19 @@ export async function GET(req: NextRequest) {
       return Response.json({ clients: [] });
     }
 
+    // Função auxiliar para mapear qualquer produto para o ramoId canônico correspondente
+    function getProductRamoId(row: any): string | null {
+      if (!row) return null;
+      const cfg = getRamoConfig({
+        ramoId: row.product_flow_key,
+        flowKey: row.product_flow_key,
+        flow_key: row.product_flow_key,
+        code: row.product_code,
+        category: row.product_category,
+      }) || getRamoConfig(row.product_id);
+      return cfg?.ramoId || null;
+    }
+
     // Enriquece cada cliente com dados consolidados de endereço e dados de renovação
     const enrichedClients = await Promise.all(
       clients.map(async (client) => {
@@ -237,49 +259,75 @@ export async function GET(req: NextRequest) {
           ? (metadata.address as Record<string, unknown>)
           : null;
 
-        // Busca última apólice em sales
-        const [latestSale] = await sql`
-          SELECT s.*, p.name AS product_name
+        // Busca todas as apólices em sales do cliente
+        const clientSales = await sql`
+          SELECT s.*, p.name AS product_name, p.code AS product_code, p.flow_key AS product_flow_key, p.category AS product_category
           FROM sales s
           JOIN products p ON p.id = s.product_id
           WHERE s.client_id = ${client.id}
           ORDER BY s.created_at DESC
-          LIMIT 1
         `;
 
-        // Busca última cotação (com prioridade para aprovada/emitida ou a mais recente)
-        const [latestQuote] = await sql`
-          SELECT c.*, p.name AS product_name
+        // Busca todas as cotações do cliente
+        const clientQuotes = await sql`
+          SELECT c.*, p.name AS product_name, p.code AS product_code, p.flow_key AS product_flow_key, p.category AS product_category
           FROM cotacoes c
           JOIN products p ON p.id = c.product_id
           WHERE c.client_id = ${client.id}
           ORDER BY
             CASE WHEN c.status IN ('aprovada', 'emitida', 'assinado', 'pagamento_gerado') THEN 0 ELSE 1 END,
             c.created_at DESC
-          LIMIT 1
         `;
 
+        // Isolamento de Ramo para Renovação:
+        // Se targetRamoId foi especificado, apenas vendas/cotações daquele mesmo ramo são elegíveis para renovação
+        const matchingSales = targetRamoId
+          ? clientSales.filter((s: any) => getProductRamoId(s) === targetRamoId)
+          : clientSales;
+
+        const matchingQuotes = targetRamoId
+          ? clientQuotes.filter((c: any) => getProductRamoId(c) === targetRamoId)
+          : clientQuotes;
+
+        const latestSale = matchingSales[0] || null;
+        const latestQuote = matchingQuotes[0] || null;
+
+        // Cotação compatível do mesmo ramo (para renovação de cobertura/prêmio/atuação)
         const latestClientData = latestQuote ? parseJsonbField<Record<string, unknown>>(latestQuote.client_data) : {};
 
-        // Endereço consolidado
+        // Cotação geral mais recente (para fallback de dados cadastrais/endereço que não afetam renovação)
+        const generalLatestClientData = clientQuotes[0] ? parseJsonbField<Record<string, unknown>>(clientQuotes[0].client_data) : {};
+
+        // Endereço consolidado (aproveita de metadata ou do histórico geral do cliente)
         const address = {
-          cep: String(metaAddress?.cep || latestClientData.cep || ''),
-          logradouro: String(metaAddress?.logradouro || latestClientData.logradouro || latestClientData.rua || ''),
-          numero: String(metaAddress?.numero || latestClientData.numero || ''),
-          complemento: String(metaAddress?.complemento || latestClientData.complemento || ''),
-          bairro: String(metaAddress?.bairro || latestClientData.bairro || ''),
-          cidade: String(metaAddress?.cidade || latestClientData.cidade || ''),
-          uf: String(metaAddress?.uf || latestClientData.uf || '').toUpperCase(),
+          cep: String(metaAddress?.cep || generalLatestClientData.cep || latestClientData.cep || ''),
+          logradouro: String(metaAddress?.logradouro || generalLatestClientData.logradouro || generalLatestClientData.rua || latestClientData.logradouro || latestClientData.rua || ''),
+          numero: String(metaAddress?.numero || generalLatestClientData.numero || latestClientData.numero || ''),
+          complemento: String(metaAddress?.complemento || generalLatestClientData.complemento || latestClientData.complemento || ''),
+          bairro: String(metaAddress?.bairro || generalLatestClientData.bairro || latestClientData.bairro || ''),
+          cidade: String(metaAddress?.cidade || generalLatestClientData.cidade || latestClientData.cidade || ''),
+          uf: String(metaAddress?.uf || generalLatestClientData.uf || latestClientData.uf || '').toUpperCase(),
         };
 
-        // Dados profissionais
-        const oab = String(metadata.oab || latestClientData.oab || '');
-        const dataAtividade = formatDateToIso(metadata.dataAtividade || latestClientData.dataAtividade);
-        const birthDate = formatDateToIso(client.birth_date || latestClientData.dataNascto);
+        // Dados profissionais consolidados por especialidade / ramo
+        const oab = String(metadata.oab || (targetRamoId === 'rc-advogados' ? latestClientData.oab : '') || '');
+        const crm = String(metadata.crm || (targetRamoId === 'rc-medicos' ? latestClientData.crm : '') || '');
+        const crmUf = String(metadata.crmUf || (targetRamoId === 'rc-medicos' ? latestClientData.crmUf : '') || '');
+        const cro = String(metadata.cro || (targetRamoId === 'rc-odonto' ? latestClientData.cro : '') || '');
+        const croUf = String(metadata.croUf || (targetRamoId === 'rc-odonto' ? latestClientData.croUf : '') || '');
+        const crea = String(metadata.crea || (targetRamoId === 'rc-engenheiros' ? latestClientData.crea : '') || '');
+        const creaUf = String(metadata.creaUf || (targetRamoId === 'rc-engenheiros' ? latestClientData.creaUf : '') || '');
+        const crc = String(metadata.crc || (targetRamoId === 'rc-contadores' ? latestClientData.crc : '') || '');
+        const crcUf = String(metadata.crcUf || (targetRamoId === 'rc-contadores' ? latestClientData.crcUf : '') || '');
+
+        const dataAtividade = formatDateToIso(metadata.dataAtividade || latestClientData.dataAtividade || generalLatestClientData.dataAtividade);
+        const birthDate = formatDateToIso(client.birth_date || latestClientData.dataNascto || generalLatestClientData.dataNascto);
 
         // Dados para renovação
         const hasPreviousPolicy = !!latestSale || ['aprovada', 'emitida', 'assinado', 'pagamento_gerado'].includes(latestQuote?.status);
-        const policyNumber = latestSale?.policy_number || (latestQuote ? `DL-RC-${latestQuote.id.slice(0, 8).toUpperCase()}` : '');
+        const policyRamoId = latestSale ? getProductRamoId(latestSale) : (latestQuote ? getProductRamoId(latestQuote) : null);
+        const defaultPrefix = targetRamoConfig?.ramoId === 'rc-medicos' ? 'DL-RC-MED' : 'DL-RC';
+        const policyNumber = latestSale?.policy_number || (latestQuote ? `${defaultPrefix}-${latestQuote.id.slice(0, 8).toUpperCase()}` : '');
 
         // Determina vigência anterior e sugestão da nova
         const rawExpiryDate = latestSale?.expiry_date ? formatDateToIso(latestSale.expiry_date) : formatDateToIso(latestClientData.fimVigencia || latestClientData.vigencia || latestQuote?.valid_until);
@@ -302,7 +350,7 @@ export async function GET(req: NextRequest) {
         const premiumValue = latestSale?.premio_total || latestQuote?.premio_final || latestClientData.valor;
         const franquiaValue = latestClientData.franquia || latestClientData.planoFranquia || 'R$ 1.000,00';
 
-        // Áreas de atuação anteriores
+        // Áreas de atuação anteriores (apenas se for do mesmo ramo)
         const atuacao = parseAtuacaoList(latestClientData.atuacao);
 
         // PPE
@@ -317,6 +365,8 @@ export async function GET(req: NextRequest) {
 
         const renewalData = {
           hasPreviousPolicy,
+          ramoId: policyRamoId,
+          productName: latestSale?.product_name || latestQuote?.product_name || '',
           policyNumber,
           seguradora: String(latestClientData.seguradora || 'Kovr Seguradora'),
           vigenciaAnterior: expiryDate,
@@ -344,6 +394,14 @@ export async function GET(req: NextRequest) {
           phone: client.phone || '',
           birthDate,
           oab,
+          crm,
+          crmUf,
+          cro,
+          croUf,
+          crea,
+          creaUf,
+          crc,
+          crcUf,
           dataAtividade,
           address,
           renewalData,
