@@ -71,6 +71,16 @@ export interface RegistroProfissionalConfig {
   hasRqe?: boolean;
 }
 
+export interface AssociacaoProfissionalConfig {
+  enabled?: boolean;
+  label?: string;
+  sublabel?: string;
+  inputLabel?: string;
+  inputPlaceholder?: string;
+  inputHelpText?: string;
+  errorMessage?: string;
+}
+
 export interface RamoConfig {
   ramoId: string;
   name: string;
@@ -81,6 +91,7 @@ export interface RamoConfig {
   policyPrefix: string;
   targetAudience: string;
   registroProfissional?: RegistroProfissionalConfig;
+  associacaoProfissional?: AssociacaoProfissionalConfig;
   especialidadesLabel?: string;
   especialidades?: FieldOption[];
   faturamentoLabel?: string;

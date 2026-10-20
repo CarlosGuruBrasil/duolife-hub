@@ -23,6 +23,16 @@ export const rcMedicosConfig: RamoConfig = {
     hasRqe: true,
   },
 
+  associacaoProfissional: {
+    enabled: true,
+    label: 'O profissional é associado a alguma clínica ou hospital? *',
+    sublabel: 'Esta informação constará no contrato emitido e na apólice de seguro.',
+    inputLabel: 'Nome da Clínica ou Hospital *',
+    inputPlaceholder: 'Ex: Hospital São Lucas, Clínica Vida & Saúde, etc.',
+    inputHelpText: 'Informe a razão social ou nome comercial da clínica, consultório ou hospital ao qual atua associado.',
+    errorMessage: 'Por favor, informe o nome da clínica ou hospital ao qual o profissional é associado.',
+  },
+
   especialidadesLabel: 'Especialidades Médicas (Clínicas e Cirúrgicas)',
   especialidades: [
     { key: 'clinicaGeral', label: 'Clínica Médica / Medicina de Família', description: 'Atendimento ambulatorial clínico geral' },

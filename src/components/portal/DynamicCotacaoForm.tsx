@@ -618,9 +618,15 @@ export default function DynamicCotacaoForm({
             bairro: cd.bairro || '',
             cidade: cd.cidade || '',
             uf: cd.uf || 'SP',
-            associadoEscritorio: (cd.associadoEscritorio === 'Sim' || (cd.escritorioAssociado && cd.escritorioAssociado !== 'Não associado' && cd.escritorioAssociado !== 'Não')) ? 'Sim' : 'Não',
-            nomeEscritorio: cd.nomeEscritorio || (cd.escritorioAssociado && cd.escritorioAssociado !== 'Não associado' && cd.escritorioAssociado !== 'Não' ? cd.escritorioAssociado : ''),
-            escritorioAssociado: cd.escritorioAssociado || '',
+            associadoEscritorio: (
+              cd.associadoEscritorio === 'Sim' ||
+              cd.associadoClinica === 'Sim' ||
+              (cd.escritorioAssociado && cd.escritorioAssociado !== 'Não associado' && cd.escritorioAssociado !== 'Não') ||
+              (cd.nomeClinica && cd.nomeClinica.trim() !== '') ||
+              (cd.nomeHospital && cd.nomeHospital.trim() !== '')
+            ) ? 'Sim' : 'Não',
+            nomeEscritorio: cd.nomeEscritorio || cd.nomeClinica || cd.nomeHospital || (cd.escritorioAssociado && cd.escritorioAssociado !== 'Não associado' && cd.escritorioAssociado !== 'Não' ? cd.escritorioAssociado : ''),
+            escritorioAssociado: cd.escritorioAssociado || cd.nomeClinica || cd.nomeHospital || '',
             titularidadeTipo: ['Graduação', 'Especialização', 'Mestrado', 'Doutorado', 'Pós-Doutorado'].includes(cd.titularidade)
               ? cd.titularidade
               : (cd.titularidade ? 'Outro' : 'Graduação'),
@@ -1022,7 +1028,11 @@ export default function DynamicCotacaoForm({
 
       if (!isPlano100k) {
         if (form.associadoEscritorio === 'Sim' && (!form.nomeEscritorio || !form.nomeEscritorio.trim())) {
-          setError('Por favor, informe o nome do escritório ao qual o profissional é associado.');
+          const isMed = resolvedRamoConfig.ramoId === 'rc-medicos' || (resolvedRamoConfig as any).key === 'rc-medicos';
+          const defaultError = isMed
+            ? 'Por favor, informe o nome da clínica ou hospital ao qual o profissional é associado.'
+            : 'Por favor, informe o nome do escritório ao qual o profissional é associado.';
+          setError(resolvedRamoConfig.associacaoProfissional?.errorMessage || defaultError);
           return;
         }
 
@@ -1154,10 +1164,13 @@ export default function DynamicCotacaoForm({
         dataRetroativa: form.dataRetroativa ? formatDateForIso(form.dataRetroativa) : null,
         renovacao: form.isRenovacao === 'Sim',
         isRenovacao: form.isRenovacao,
-        // Associação a escritório
+        // Associação a escritório / clínica / hospital
         associadoEscritorio: form.associadoEscritorio || 'Não',
         nomeEscritorio: (form.nomeEscritorio || '').trim(),
         escritorioAssociado: form.associadoEscritorio === 'Sim' ? (form.nomeEscritorio || '').trim() : 'Não associado',
+        associadoClinica: form.associadoEscritorio || 'Não',
+        nomeClinica: (form.nomeEscritorio || '').trim(),
+        nomeHospital: (form.nomeEscritorio || '').trim(),
         // Titularidade Profissional
         titularidade: form.titularidadeTipo === 'Outro'
           ? (form.titularidadeOutro || '').trim() || 'Outro'
@@ -2063,80 +2076,101 @@ export default function DynamicCotacaoForm({
             </div>
           )}
 
-          {/* NOVO: Pergunta sobre Associação a Escritório (Todos os planos, exceto 100k) */}
-          {!isPlano100k && (
-            <div className="bg-gray-50 border border-gray-200 p-5 rounded-xl space-y-4">
-              <div>
-                <span className="field-label text-gray-900 block text-sm font-semibold">
-                  O profissional é associado a algum escritório? *
-                </span>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  Esta informação constará no contrato emitido e na apólice de seguro.
-                </p>
+          {/* Pergunta sobre Associação a Escritório / Clínica / Hospital (Todos os planos, exceto 100k) */}
+          {!isPlano100k && (() => {
+            const isMed = resolvedRamoConfig.ramoId === 'rc-medicos' || (resolvedRamoConfig as any).key === 'rc-medicos';
+            const assoc = resolvedRamoConfig.associacaoProfissional || (isMed ? {
+              enabled: true,
+              label: 'O profissional é associado a alguma clínica ou hospital? *',
+              sublabel: 'Esta informação constará no contrato emitido e na apólice de seguro.',
+              inputLabel: 'Nome da Clínica ou Hospital *',
+              inputPlaceholder: 'Ex: Hospital São Lucas, Clínica Vida & Saúde, etc.',
+              inputHelpText: 'Informe a razão social ou nome comercial da clínica, consultório ou hospital associado.',
+            } : {
+              enabled: true,
+              label: 'O profissional é associado a algum escritório? *',
+              sublabel: 'Esta informação constará no contrato emitido e na apólice de seguro.',
+              inputLabel: 'Nome do Escritório *',
+              inputPlaceholder: 'Ex: Albuquerque & Silveira Sociedade de Advogados',
+              inputHelpText: 'Informe a razão social ou nome comercial do escritório parceiro ou associado.',
+            });
 
-                <div className="flex items-center space-x-6 pt-3">
-                  <label className="flex items-center space-x-2.5 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={form.associadoEscritorio === 'Sim'}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        updateField('associadoEscritorio', checked ? 'Sim' : 'Não');
-                        if (!checked) {
-                          updateField('nomeEscritorio', '');
-                          updateField('escritorioAssociado', 'Não associado');
-                        }
-                      }}
-                      className="w-4 h-4 rounded text-primary focus:ring-primary border-gray-300 cursor-pointer"
-                    />
-                    <span className="text-sm font-medium text-gray-800">Sim</span>
-                  </label>
+            if (assoc.enabled === false) return null;
 
-                  <label className="flex items-center space-x-2.5 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={form.associadoEscritorio === 'Não'}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        updateField('associadoEscritorio', checked ? 'Não' : 'Sim');
-                        if (checked) {
-                          updateField('nomeEscritorio', '');
-                          updateField('escritorioAssociado', 'Não associado');
-                        }
-                      }}
-                      className="w-4 h-4 rounded text-primary focus:ring-primary border-gray-300 cursor-pointer"
-                    />
-                    <span className="text-sm font-medium text-gray-800">Não</span>
-                  </label>
+            return (
+              <div className="bg-gray-50 border border-gray-200 p-5 rounded-xl space-y-4">
+                <div>
+                  <span className="field-label text-gray-900 block text-sm font-semibold">
+                    {assoc.label || 'O profissional é associado a algum escritório? *'}
+                  </span>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {assoc.sublabel || 'Esta informação constará no contrato emitido e na apólice de seguro.'}
+                  </p>
+
+                  <div className="flex items-center space-x-6 pt-3">
+                    <label className="flex items-center space-x-2.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={form.associadoEscritorio === 'Sim'}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          updateField('associadoEscritorio', checked ? 'Sim' : 'Não');
+                          if (!checked) {
+                            updateField('nomeEscritorio', '');
+                            updateField('escritorioAssociado', 'Não associado');
+                          }
+                        }}
+                        className="w-4 h-4 rounded text-primary focus:ring-primary border-gray-300 cursor-pointer"
+                      />
+                      <span className="text-sm font-medium text-gray-800">Sim</span>
+                    </label>
+
+                    <label className="flex items-center space-x-2.5 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={form.associadoEscritorio === 'Não'}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          updateField('associadoEscritorio', checked ? 'Não' : 'Sim');
+                          if (checked) {
+                            updateField('nomeEscritorio', '');
+                            updateField('escritorioAssociado', 'Não associado');
+                          }
+                        }}
+                        className="w-4 h-4 rounded text-primary focus:ring-primary border-gray-300 cursor-pointer"
+                      />
+                      <span className="text-sm font-medium text-gray-800">Não</span>
+                    </label>
+                  </div>
                 </div>
+
+                {form.associadoEscritorio === 'Sim' && (
+                  <div className="pt-3 border-t border-gray-200/80 animate-fadeIn">
+                    <label className="block">
+                      <span className="field-label text-gray-900 font-semibold block mb-1">
+                        {assoc.inputLabel || 'Nome do Escritório *'}
+                      </span>
+                      <input
+                        type="text"
+                        required
+                        value={form.nomeEscritorio || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          updateField('nomeEscritorio', val);
+                          updateField('escritorioAssociado', val);
+                        }}
+                        placeholder={assoc.inputPlaceholder || 'Ex: Albuquerque & Silveira Sociedade de Advogados'}
+                        className="form-input"
+                      />
+                      <span className="text-[11px] text-gray-500 mt-1 block font-normal">
+                        {assoc.inputHelpText || 'Informe a razão social ou nome comercial do escritório parceiro ou associado.'}
+                      </span>
+                    </label>
+                  </div>
+                )}
               </div>
-
-              {form.associadoEscritorio === 'Sim' && (
-                <div className="pt-3 border-t border-gray-200/80 animate-fadeIn">
-                  <label className="block">
-                    <span className="field-label text-gray-900 font-semibold block mb-1">
-                      Nome do Escritório *
-                    </span>
-                    <input
-                      type="text"
-                      required
-                      value={form.nomeEscritorio || ''}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        updateField('nomeEscritorio', val);
-                        updateField('escritorioAssociado', val);
-                      }}
-                      placeholder="Ex: Albuquerque & Silveira Sociedade de Advogados"
-                      className="form-input"
-                    />
-                    <span className="text-[11px] text-gray-500 mt-1 block font-normal">
-                      Informe a razão social ou nome comercial do escritório parceiro ou associado.
-                    </span>
-                  </label>
-                </div>
-              )}
-            </div>
-          )}
+            );
+          })()}
 
           {/* Titularidade Profissional (Todos os planos, exceto 100k) */}
           {!isPlano100k && (

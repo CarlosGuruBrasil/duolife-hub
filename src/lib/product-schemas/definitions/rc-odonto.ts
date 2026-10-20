@@ -23,6 +23,16 @@ export const rcOdontoConfig: RamoConfig = {
     hasRqe: false,
   },
 
+  associacaoProfissional: {
+    enabled: true,
+    label: 'O profissional é associado a alguma clínica ou consultório odontológico? *',
+    sublabel: 'Esta informação constará no contrato emitido e na apólice de seguro.',
+    inputLabel: 'Nome da Clínica ou Consultório *',
+    inputPlaceholder: 'Ex: Clínica Odontológica Sorriso Perfeito',
+    inputHelpText: 'Informe a razão social ou nome comercial da clínica ou consultório parceiro ou associado.',
+    errorMessage: 'Por favor, informe o nome da clínica ou consultório ao qual o profissional é associado.',
+  },
+
   especialidadesLabel: 'Especialidades Odontológicas',
   especialidades: [
     { key: 'implantodontia', label: 'Implantodontia', description: 'Cirurgia de implantes dentários e enxertos ósseos' },
