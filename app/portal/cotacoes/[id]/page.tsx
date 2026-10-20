@@ -510,7 +510,7 @@ export default async function PortalCotacaoDetailPage({
   });
 
   return (
-    <div className="space-y-6 max-w-[1100px] mx-auto">
+    <div className="space-y-6">
       {/* Voltar */}
       <Link
         href={isFromVendas ? "/portal/vendas" : "/portal/cotacoes"}

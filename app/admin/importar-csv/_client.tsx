@@ -222,7 +222,7 @@ export default function CsvImportClient() {
     : 0;
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
+    <div className="space-y-6">
       {/* 1. Header Hero Card */}
       <section className="bg-white rounded-2xl border border-gray-200/80 p-6 md:p-8 shadow-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">

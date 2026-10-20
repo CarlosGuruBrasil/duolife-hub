@@ -333,7 +333,7 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
 
   if (loading) {
     return (
-      <div className="p-8 max-w-6xl mx-auto space-y-6">
+      <div className="space-y-6">
         <div className="h-8 bg-gray-200 rounded-xl w-48 animate-pulse" />
         <div className="h-40 bg-gray-200 rounded-3xl animate-pulse" />
         <div className="h-96 bg-gray-200 rounded-3xl animate-pulse" />

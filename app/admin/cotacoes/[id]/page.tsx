@@ -494,7 +494,7 @@ export default async function AdminCotacaoDetailPage({
   });
 
   return (
-    <div className="space-y-6 max-w-[1100px] mx-auto">
+    <div className="space-y-6">
       {/* Voltar */}
       <Link
         href={isFromVendas ? "/admin/vendas" : "/admin/cotacoes"}

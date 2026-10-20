@@ -90,7 +90,7 @@ function AdminNovaCotacaoContent() {
 
   if (!selectedPartnerId) {
     return (
-      <div className="max-w-2xl mx-auto mt-12">
+      <div className="space-y-6">
         <div className="mb-6">
           <Link href="/admin/cotacoes" className="text-sm font-medium" style={{ color: 'var(--primary)' }}>
             ← Voltar para cotações

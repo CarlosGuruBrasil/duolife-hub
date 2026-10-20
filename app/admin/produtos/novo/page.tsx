@@ -102,7 +102,7 @@ export default function NovoProdutoPage() {
   const rcFlow = form.useRcJourney;
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 pb-16">
+    <div className="space-y-6 pb-16">
       {/* Header com Navegação de Retorno */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-200/80 pb-5">
         <div>

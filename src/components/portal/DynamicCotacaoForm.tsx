@@ -1376,7 +1376,7 @@ export default function DynamicCotacaoForm({
   // RENDERIZAÇÃO PRINCIPAL DO COMPONENTE
   // ------------------------------------------------------------------
   return (
-    <div ref={formTopRef} className="max-w-4xl mx-auto scroll-mt-24">
+    <div ref={formTopRef} className="w-full scroll-mt-24">
       {/* Indicador de Passos da Esteira */}
       <div className="flex justify-between items-center mb-8 border-b border-gray-200 pb-4">
         {[

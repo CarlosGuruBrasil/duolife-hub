@@ -415,7 +415,7 @@ export default function AdminEmailsPage() {
   );
 
   return (
-    <div className="flex flex-col gap-6 max-w-7xl mx-auto pb-12">
+    <div className="flex flex-col gap-6 pb-12">
       {/* Cabeçalho Principal */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white border border-gray-200 rounded-2xl p-6 shadow-xs">
         <div className="flex items-center gap-3.5">

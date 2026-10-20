@@ -153,7 +153,7 @@ export default async function AdminClienteDetalhePage({ params }: { params: Prom
 
   return (
     <div className="bg-[#F9FAFB] min-h-screen -m-6 p-6 sm:p-10 font-sans">
-      <div className="max-w-[1440px] mx-auto space-y-8">
+      <div className="space-y-8">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <Link href="/admin/clientes" className="mb-3 inline-flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-gray-700">
