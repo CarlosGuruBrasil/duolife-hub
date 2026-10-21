@@ -63,8 +63,10 @@ export async function listMcpProducts(): Promise<McpProductSummary[]> {
     dbProducts = [];
   }
 
-  // 2. Mapeia os 5 ramos de RC homologados garantindo que o catálogo declarativo seja a autoridade
-  const registeredRamos = Object.values(RAMOS_REGISTRY).filter((r) => r.ramoId !== 'do-executivos');
+  // 2. Mapeia estritamente os 2 ramos oficiais do catálogo: RC Advogados e RC Médicos
+  const registeredRamos = Object.values(RAMOS_REGISTRY).filter((r) =>
+    r.ramoId === 'rc-advogados' || r.ramoId === 'rc-medicos'
+  );
 
   const result: McpProductSummary[] = [];
 

@@ -394,16 +394,17 @@ function parseCurrencyValue(val: unknown): number | null {
 }
 
 async function upsertProductFromWixPlano(mirror: Awaited<ReturnType<typeof upsertItem>>) {
-  // A coleção 'Planos' no Wix representa os valores/opções de apólice do produto único RC Advogados (RC-ADV-001).
+  // A coleção 'Planos' no Wix representa os valores/opções de apólice do produto único RC Advogados (prod-rc-001 / RC-ADV-001).
   // Mantemos a coleção espelhada em wix_items para uso na cotação.
   const [product] = await sql`
     INSERT INTO products (
-      name, code, category, product_type, integration_type, insurer_name, insurer_cnpj,
+      id, name, code, category, product_type, integration_type, insurer_name, insurer_cnpj,
       description, public_title, target_audience, base_commission_rate, min_premium,
       flow_key, pricing_strategy, policy_prefix, is_active, is_quoteable, is_contractable,
       is_payable, validity_days, sale_recognition, renewal_enabled, requires_underwriting,
       required_documents
     ) VALUES (
+      'prod-rc-001',
       'RC Profissional — Advogados & Escritórios',
       'RC-ADV-001',
       'Responsabilidade Civil',
@@ -416,14 +417,16 @@ async function upsertProductFromWixPlano(mirror: Awaited<ReturnType<typeof upser
       'Advogados autônomos e escritórios de advocacia',
       15.00,
       516.67,
-      'rc_professional_v1',
+      'rc-advogados',
       'rc_wix_planos_v1',
       'DL-RC-ADV',
       true, true, true, true, 365, 'on_payment', true, false,
       '["Comprovante de Inscrição na OAB", "Documento de Identidade com CPF"]'::jsonb
     )
-    ON CONFLICT (code) DO UPDATE SET
+    ON CONFLICT (id) DO UPDATE SET
       name = EXCLUDED.name,
+      code = EXCLUDED.code,
+      flow_key = 'rc-advogados',
       integration_type = 'full_journey',
       is_active = true,
       is_quoteable = true
@@ -443,46 +446,10 @@ async function upsertProductFromWixPlano(mirror: Awaited<ReturnType<typeof upser
   return product?.id || null;
 }
 
-async function upsertProductFromWixSeguro(mirror: Awaited<ReturnType<typeof upsertItem>>) {
-  const { data } = mirror;
-  const nome = normalizeMaybeString(data.nome) || normalizeMaybeString(data.titulo) || null;
-  if (!nome) return null;
-
-  const code = `WIX-SRV-${nome.toUpperCase().replace(/[^A-Z0-9]/g, '-').slice(0, 30)}`;
-  const empresa = normalizeMaybeString(data.empresa) || 'NET4LIFE';
-  const category = empresa === 'Workgroup' ? 'Ferramentas & App' : 'Serviços (Seguros e Planos)';
-  const productType = nome.toLowerCase().includes('seguro') || nome.toLowerCase().includes('plano') ? 'insurance' : 'service';
-  const description = normalizeMaybeString(data.descrio) || normalizeMaybeString(data.titulo) || nome;
-
-  const [product] = await sql`
-    INSERT INTO products (
-      name, code, category, product_type, insurer_name, description,
-      public_title, target_audience, base_commission_rate, is_active, is_quoteable,
-      is_contractable, is_payable, validity_days, sale_recognition, renewal_enabled
-    ) VALUES (
-      ${nome}, ${code}, ${category}, ${productType}, ${empresa}, ${description},
-      ${nome}, 'Clientes e Parceiros DuoLife / NET4LIFE', 15.00, true, true,
-      true, true, 365, 'on_payment', true
-    )
-    ON CONFLICT (code) DO UPDATE SET
-      name = EXCLUDED.name,
-      description = EXCLUDED.description,
-      is_active = true,
-      is_quoteable = true
-    RETURNING id
-  `;
-
-  if (product?.id) {
-    await sql`
-      INSERT INTO partner_product_availability (partner_id, product_id, is_active)
-      SELECT pa.id, ${product.id}, true
-      FROM partners pa
-      WHERE pa.status = 'active'
-      ON CONFLICT (partner_id, product_id) DO UPDATE SET is_active = true
-    `;
-  }
-
-  return product?.id || null;
+async function upsertProductFromWixSeguro(_mirror: Awaited<ReturnType<typeof upsertItem>>) {
+  // Não criamos produtos avulsos na tabela 'products' a partir da coleção 'Seguros' do Wix.
+  // O catálogo oficial da DuoLife mantém estritamente RC Advogados e RC Médicos.
+  return null;
 }
 
 export interface WixPullEntitiesSelection {

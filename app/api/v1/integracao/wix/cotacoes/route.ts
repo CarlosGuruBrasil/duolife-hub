@@ -176,7 +176,7 @@ export async function POST(req: NextRequest) {
     try {
       const [prodRow] = await sql<any[]>`
         SELECT id FROM products
-        WHERE flow_key = 'rc-advogados' OR code = 'RC-001'
+        WHERE id = 'prod-rc-001' OR flow_key = 'rc-advogados' OR code IN ('RC-ADV-001', 'RC-001')
         LIMIT 1
       `;
       if (prodRow?.id) {

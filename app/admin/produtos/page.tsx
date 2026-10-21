@@ -223,90 +223,108 @@ export default function ProdutosCatalogPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 text-xs">
-                {filteredProducts.map((p) => (
-                  <tr
-                    key={p.id}
-                    onClick={() => router.push(`/admin/produtos/${p.id}`)}
-                    className="hover:bg-gray-50/80 transition-colors cursor-pointer group"
-                  >
-                    <td className="px-5 py-4">
-                      <div className="font-extrabold text-gray-900 group-hover:text-[#0e4a5a] transition-colors">
-                        {p.name}
-                      </div>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="inline-block rounded-md bg-cyan-50 border border-cyan-100 px-2 py-0.5 text-[10px] font-black text-[#0e4a5a] uppercase">
-                          {p.code}
-                        </span>
-                        <span className="text-[11px] font-medium text-gray-500">{p.category}</span>
-                      </div>
-                    </td>
+                {filteredProducts.map((p) => {
+                  const isFullJourney =
+                    p.integration_type === 'full_journey' ||
+                    p.flow_key === 'rc_professional_v1' ||
+                    p.flow_key === 'rc-advogados' ||
+                    p.flow_key === 'rc-medicos';
+                  const isMedDev =
+                    p.id === 'prod-rc-med-001' ||
+                    p.code === 'RC-MED-001' ||
+                    p.flow_key === 'rc-medicos' ||
+                    p.flow_key === 'rc_medicos_v1';
 
-                    <td className="px-5 py-4">
-                      <div className="font-semibold text-gray-800">{p.insurer_name || 'KEV Seguros'}</div>
-                      {p.insurer_cnpj && <div className="text-[10px] text-gray-400 font-mono">{p.insurer_cnpj}</div>}
-                    </td>
-
-                    <td className="px-5 py-4">
-                      <span
-                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-extrabold uppercase ${
-                          p.integration_type === 'full_journey' || p.flow_key === 'rc_professional_v1'
-                            ? 'bg-cyan-50 text-cyan-800 border border-cyan-200'
-                            : 'bg-purple-50 text-purple-800 border border-purple-200'
-                        }`}
-                      >
-                        {p.integration_type === 'full_journey' || p.flow_key === 'rc_professional_v1' ? (
-                          <Shield className="h-3 w-3 text-cyan-600" />
-                        ) : (
-                          <Briefcase className="h-3 w-3 text-purple-600" />
-                        )}
-                        {p.integration_type === 'full_journey' || p.flow_key === 'rc_professional_v1'
-                          ? 'Jornada Completa'
-                          : 'Link Direto'}
-                      </span>
-                    </td>
-
-                    <td className="px-5 py-4">
-                      <div className="font-bold text-gray-900">
-                        {p.base_commission_rate ? `${p.base_commission_rate}%` : 'Sob consulta'}
-                      </div>
-                      {p.min_premium && (
-                        <div className="text-[10px] text-gray-400 font-medium">
-                          A partir de R$ {Number(p.min_premium).toFixed(2).replace('.', ',')}
+                  return (
+                    <tr
+                      key={p.id}
+                      onClick={() => router.push(`/admin/produtos/${p.id}`)}
+                      className="hover:bg-gray-50/80 transition-colors cursor-pointer group"
+                    >
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-extrabold text-gray-900 group-hover:text-[#0e4a5a] transition-colors">
+                            {p.name}
+                          </span>
+                          {isMedDev && (
+                            <span className="inline-flex items-center rounded-full bg-amber-50 border border-amber-300 px-2 py-0.5 text-[10px] font-bold text-amber-800">
+                              Em Desenvolvimento
+                            </span>
+                          )}
                         </div>
-                      )}
-                    </td>
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="inline-block rounded-md bg-cyan-50 border border-cyan-100 px-2 py-0.5 text-[10px] font-black text-[#0e4a5a] uppercase">
+                            {p.code}
+                          </span>
+                          <span className="text-[11px] font-medium text-gray-500">{p.category}</span>
+                        </div>
+                      </td>
 
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-1.5 text-gray-700 font-semibold">
-                        <Users className="h-3.5 w-3.5 text-gray-400" />
-                        <span>{p.partners_count} Parceiros</span>
-                      </div>
-                    </td>
+                      <td className="px-5 py-4">
+                        <div className="font-semibold text-gray-800">{p.insurer_name || 'KEV Seguros'}</div>
+                        {p.insurer_cnpj && <div className="text-[10px] text-gray-400 font-mono">{p.insurer_cnpj}</div>}
+                      </td>
 
-                    <td className="px-5 py-4">
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase ${
-                          p.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
-                        }`}
-                      >
-                        <span className={`h-1.5 w-1.5 rounded-full ${p.is_active ? 'bg-emerald-500' : 'bg-gray-400'}`} />
-                        {p.is_active ? 'Ativo' : 'Inativo'}
-                      </span>
-                    </td>
+                      <td className="px-5 py-4">
+                        <span
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-extrabold uppercase ${
+                            isFullJourney
+                              ? 'bg-cyan-50 text-cyan-800 border border-cyan-200'
+                              : 'bg-purple-50 text-purple-800 border border-purple-200'
+                          }`}
+                        >
+                          {isFullJourney ? (
+                            <Shield className="h-3 w-3 text-cyan-600" />
+                          ) : (
+                            <Briefcase className="h-3 w-3 text-purple-600" />
+                          )}
+                          {isFullJourney ? 'Jornada Completa' : 'Link Direto'}
+                        </span>
+                      </td>
 
-                    <td className="px-5 py-4 text-right">
-                      <Link
-                        href={`/admin/produtos/${p.id}`}
-                        onClick={(e) => e.stopPropagation()}
-                        className="inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-extrabold text-[#0e4a5a] hover:bg-gray-50 transition-all shadow-2xs"
-                      >
-                        <Eye className="h-3.5 w-3.5 text-[#00d4e0]" />
-                        <span>Ver Produto</span>
-                        <ChevronRight className="h-3.5 w-3.5 text-gray-400" />
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
+                      <td className="px-5 py-4">
+                        <div className="font-bold text-gray-900">
+                          {p.base_commission_rate ? `${p.base_commission_rate}%` : 'Sob consulta'}
+                        </div>
+                        {p.min_premium && (
+                          <div className="text-[10px] text-gray-400 font-medium">
+                            A partir de R$ {Number(p.min_premium).toFixed(2).replace('.', ',')}
+                          </div>
+                        )}
+                      </td>
+
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-1.5 text-gray-700 font-semibold">
+                          <Users className="h-3.5 w-3.5 text-gray-400" />
+                          <span>{p.partners_count} Parceiros</span>
+                        </div>
+                      </td>
+
+                      <td className="px-5 py-4">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold uppercase ${
+                            p.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
+                          }`}
+                        >
+                          <span className={`h-1.5 w-1.5 rounded-full ${p.is_active ? 'bg-emerald-500' : 'bg-gray-400'}`} />
+                          {p.is_active ? 'Ativo' : 'Inativo'}
+                        </span>
+                      </td>
+
+                      <td className="px-5 py-4 text-right">
+                        <Link
+                          href={`/admin/produtos/${p.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-1 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-extrabold text-[#0e4a5a] hover:bg-gray-50 transition-all shadow-2xs"
+                        >
+                          <Eye className="h-3.5 w-3.5 text-[#00d4e0]" />
+                          <span>Ver Produto</span>
+                          <ChevronRight className="h-3.5 w-3.5 text-gray-400" />
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

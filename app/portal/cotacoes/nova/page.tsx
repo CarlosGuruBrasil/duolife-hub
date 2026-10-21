@@ -5,6 +5,7 @@ import CotacaoFormRC from '@/components/portal/CotacaoFormRC';
 import GerarLinkClienteButton from '@/components/portal/GerarLinkClienteButton';
 import { verifyPartnerAuth, isDevUser, isPlatformAdmin } from '@/lib/auth';
 import { sql } from '@/lib/pg';
+import { seedInitialData } from '@/lib/schema';
 import { getRamoConfig } from '@/lib/product-schemas';
 
 type Product = {
@@ -31,6 +32,8 @@ export default async function NovaCotacaoPage({
 }) {
   const user = await verifyPartnerAuth();
   if (!user) redirect('/login');
+
+  await seedInitialData();
 
   const isDev = isDevUser(user) || isPlatformAdmin(user);
 

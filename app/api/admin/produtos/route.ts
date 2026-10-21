@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { isPlatformAdmin, verifyAdminAuth, unauthorized } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
+import { ensureSchema, seedInitialData } from '@/lib/schema';
 
 const schema = z.object({
   name: z.string().trim().min(3).max(120),
@@ -34,8 +35,25 @@ export async function GET() {
   if (!admin) return unauthorized();
   if (!isPlatformAdmin(admin)) return Response.json({ error: 'Sem permissão para gerenciar produtos' }, { status: 403 });
   try {
+    await ensureSchema();
+    await seedInitialData();
     const [products, partners] = await Promise.all([
-      sql`SELECT id, name, code, category, product_type, integration_type, external_link_url, insurer_name, description, base_commission_rate, min_premium, flow_key, is_active, is_quoteable, public_title, target_audience, insurer_cnpj, validity_days, sale_recognition, renewal_enabled, requires_underwriting, required_documents, (SELECT count(*)::int FROM partner_product_availability ppa WHERE ppa.product_id = products.id AND ppa.is_active) AS partners_count FROM products ORDER BY created_at DESC`,
+      sql`
+        SELECT
+          id, name, code, category, product_type, integration_type, external_link_url,
+          insurer_name, description, base_commission_rate, min_premium, flow_key,
+          is_active, is_quoteable, public_title, target_audience, insurer_cnpj,
+          validity_days, sale_recognition, renewal_enabled, requires_underwriting, required_documents,
+          (SELECT count(*)::int FROM partner_product_availability ppa WHERE ppa.product_id = products.id AND ppa.is_active) AS partners_count
+        FROM products
+        ORDER BY
+          CASE
+            WHEN code = 'RC-ADV-001' OR id = 'prod-rc-001' THEN 0
+            WHEN code = 'RC-MED-001' OR id = 'prod-rc-med-001' THEN 1
+            ELSE 2
+          END ASC,
+          created_at ASC
+      `,
       sql`SELECT id, razao_social, nome_fantasia FROM partners WHERE status = 'active' ORDER BY COALESCE(nome_fantasia, razao_social)`,
     ]);
     return Response.json({ products, partners });
