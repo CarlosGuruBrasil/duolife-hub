@@ -88,35 +88,30 @@ export const GRUPOS_TARIFARIOS_SAUDE: GrupoTarifarioOption[] = [
 ];
 
 /**
- * Constrói a grade de planos da saúde (250k, 500k e 1M) para um multiplicador de grupo.
- * Estrutura modular preparada para receber a matriz final de valores da seguradora.
+ * Matriz Oficial de Planos da Saúde por Grupo Tarifário (G1 a G8).
+ * Extraída diretamente das planilhas comerciais da Seguradora Kovr.
+ * Coberturas: 250k (R$ 250.000), 500k (R$ 500.000) e 1M (R$ 1.000.000).
  */
-function buildGradePlanosSaude(multiplicador: number): PlanoDefinition[] {
-  const base250k = Math.round(1800 * multiplicador);
-  const base500k = Math.round(3100 * multiplicador);
-  const base1M = Math.round(5200 * multiplicador);
-
-  function parcelar(total: number) {
-    return {
-      parcela: `R$ ${total.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      parcela2X: `R$ ${(total / 2).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      parcela3X: `R$ ${(total / 3).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      parcela4X: `R$ ${(total / 4).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      parcela5X: `R$ ${(total / 5).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      parcela6X: `R$ ${(total / 6).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      valorPagoKovr: Math.round(total * 0.65),
-      maxParcelas: 6,
-    };
-  }
-
-  return [
+export const PLANOS_SAUDE_POR_GRUPO: Record<string, PlanoDefinition[]> = {
+  // ==========================================================================
+  // G1: Outros profissionais da saúde, exceto médicos
+  // Origem: RC_AREA_MEDICA_OUTROS_PROFISSIONAIS_DA_SAUDE.xlsx
+  // ==========================================================================
+  G1: [
     {
       tipoDePlano: '250k',
       nomeExibido: 'Plano 250 Mil',
       cobertura: 'R$ 250.000,00',
       franquia: 'R$ 2.500,00',
       ordem: 1,
-      ...parcelar(base250k),
+      parcela: 'R$ 893,05',
+      parcela2X: 'R$ 446,52',
+      parcela3X: 'R$ 297,68',
+      parcela4X: 'R$ 223,26',
+      parcela5X: 'R$ 178,61',
+      parcela6X: 'R$ 148,84',
+      valorPagoKovr: 370.56,
+      maxParcelas: 6,
     },
     {
       tipoDePlano: '500k',
@@ -124,7 +119,14 @@ function buildGradePlanosSaude(multiplicador: number): PlanoDefinition[] {
       cobertura: 'R$ 500.000,00',
       franquia: 'R$ 5.000,00',
       ordem: 2,
-      ...parcelar(base500k),
+      parcela: 'R$ 1.428,65',
+      parcela2X: 'R$ 714,32',
+      parcela3X: 'R$ 476,22',
+      parcela4X: 'R$ 357,16',
+      parcela5X: 'R$ 285,73',
+      parcela6X: 'R$ 238,11',
+      valorPagoKovr: 592.8,
+      maxParcelas: 6,
     },
     {
       tipoDePlano: '1M',
@@ -132,25 +134,373 @@ function buildGradePlanosSaude(multiplicador: number): PlanoDefinition[] {
       cobertura: 'R$ 1.000.000,00',
       franquia: 'R$ 10.000,00',
       ordem: 3,
-      ...parcelar(base1M),
+      parcela: 'R$ 2.285,84',
+      parcela2X: 'R$ 1.142,92',
+      parcela3X: 'R$ 761,95',
+      parcela4X: 'R$ 571,46',
+      parcela5X: 'R$ 457,17',
+      parcela6X: 'R$ 380,97',
+      valorPagoKovr: 948.48,
+      maxParcelas: 6,
     },
-  ];
-}
-
-/**
- * Matriz de Planos da Saúde por Grupo Tarifário (G1 a G8).
- * Quando a tabela final de prêmios da seguradora for enviada,
- * basta ajustar os valores diretamente nesta matriz.
- */
-export const PLANOS_SAUDE_POR_GRUPO: Record<string, PlanoDefinition[]> = {
-  G1: buildGradePlanosSaude(0.70), // Outros profissionais de saúde
-  G2: buildGradePlanosSaude(0.85), // Dentistas
-  G3: buildGradePlanosSaude(0.75), // Residente geral
-  G4: buildGradePlanosSaude(1.10), // Residente GO
-  G5: buildGradePlanosSaude(1.00), // Médicos sem cirurgia (Referência Base)
-  G6: buildGradePlanosSaude(1.40), // Médicos com cirurgia
-  G7: buildGradePlanosSaude(1.75), // Ginecologia e Obstetrícia
-  G8: buildGradePlanosSaude(2.10), // Cirurgia Plástica
+  ],
+  // ==========================================================================
+  // G2: Dentistas
+  // Origem: RC_AREA_MEDICA_DENTISTAS.xlsx
+  // ==========================================================================
+  G2: [
+    {
+      tipoDePlano: '250k',
+      nomeExibido: 'Plano 250 Mil',
+      cobertura: 'R$ 250.000,00',
+      franquia: 'R$ 2.500,00',
+      ordem: 1,
+      parcela: 'R$ 937,30',
+      parcela2X: 'R$ 468,65',
+      parcela3X: 'R$ 312,43',
+      parcela4X: 'R$ 234,32',
+      parcela5X: 'R$ 187,46',
+      parcela6X: 'R$ 156,22',
+      valorPagoKovr: 388.92,
+      maxParcelas: 6,
+    },
+    {
+      tipoDePlano: '500k',
+      nomeExibido: 'Plano 500 Mil',
+      cobertura: 'R$ 500.000,00',
+      franquia: 'R$ 5.000,00',
+      ordem: 2,
+      parcela: 'R$ 1.499,79',
+      parcela2X: 'R$ 749,90',
+      parcela3X: 'R$ 499,93',
+      parcela4X: 'R$ 374,95',
+      parcela5X: 'R$ 299,96',
+      parcela6X: 'R$ 249,97',
+      valorPagoKovr: 622.32,
+      maxParcelas: 6,
+    },
+    {
+      tipoDePlano: '1M',
+      nomeExibido: 'Plano 1 Milhão',
+      cobertura: 'R$ 1.000.000,00',
+      franquia: 'R$ 10.000,00',
+      ordem: 3,
+      parcela: 'R$ 2.399,78',
+      parcela2X: 'R$ 1.199,89',
+      parcela3X: 'R$ 799,93',
+      parcela4X: 'R$ 599,95',
+      parcela5X: 'R$ 479,96',
+      parcela6X: 'R$ 399,96',
+      valorPagoKovr: 995.76,
+      maxParcelas: 6,
+    },
+  ],
+  // ==========================================================================
+  // G3: Residente médico, exceto Ginecologia/Obstetrícia e Cirurgia Plástica
+  // Origem: RC_AREA_MEDICA_RESIDENTE_EXCETO_GINECO_OBSTETRA_E_CIRURGIAO_PLASTICO.xlsx
+  // ==========================================================================
+  G3: [
+    {
+      tipoDePlano: '250k',
+      nomeExibido: 'Plano 250 Mil',
+      cobertura: 'R$ 250.000,00',
+      franquia: 'R$ 2.500,00',
+      ordem: 1,
+      parcela: 'R$ 1.026,95',
+      parcela2X: 'R$ 513,47',
+      parcela3X: 'R$ 342,32',
+      parcela4X: 'R$ 256,74',
+      parcela5X: 'R$ 205,39',
+      parcela6X: 'R$ 171,16',
+      valorPagoKovr: 426.12,
+      maxParcelas: 6,
+    },
+    {
+      tipoDePlano: '500k',
+      nomeExibido: 'Plano 500 Mil',
+      cobertura: 'R$ 500.000,00',
+      franquia: 'R$ 5.000,00',
+      ordem: 2,
+      parcela: 'R$ 1.642,95',
+      parcela2X: 'R$ 821,47',
+      parcela3X: 'R$ 547,65',
+      parcela4X: 'R$ 410,74',
+      parcela5X: 'R$ 328,59',
+      parcela6X: 'R$ 273,82',
+      valorPagoKovr: 681.72,
+      maxParcelas: 6,
+    },
+    {
+      tipoDePlano: '1M',
+      nomeExibido: 'Plano 1 Milhão',
+      cobertura: 'R$ 1.000.000,00',
+      franquia: 'R$ 10.000,00',
+      ordem: 3,
+      parcela: 'R$ 2.628,54',
+      parcela2X: 'R$ 1.314,27',
+      parcela3X: 'R$ 876,18',
+      parcela4X: 'R$ 657,13',
+      parcela5X: 'R$ 525,71',
+      parcela6X: 'R$ 438,09',
+      valorPagoKovr: 1090.68,
+      maxParcelas: 6,
+    },
+  ],
+  // ==========================================================================
+  // G4: Residente médico — Ginecologia e Obstetrícia
+  // Origem: RC AREA MEDICA_RESIDENTE - GINECO_OBSTETRA.xlsx
+  // ==========================================================================
+  G4: [
+    {
+      tipoDePlano: '250k',
+      nomeExibido: 'Plano 250 Mil',
+      cobertura: 'R$ 250.000,00',
+      franquia: 'R$ 2.500,00',
+      ordem: 1,
+      parcela: 'R$ 1.115,73',
+      parcela2X: 'R$ 557,87',
+      parcela3X: 'R$ 371,91',
+      parcela4X: 'R$ 278,93',
+      parcela5X: 'R$ 223,15',
+      parcela6X: 'R$ 185,96',
+      valorPagoKovr: 462.96,
+      maxParcelas: 6,
+    },
+    {
+      tipoDePlano: '500k',
+      nomeExibido: 'Plano 500 Mil',
+      cobertura: 'R$ 500.000,00',
+      franquia: 'R$ 5.000,00',
+      ordem: 2,
+      parcela: 'R$ 1.785,81',
+      parcela2X: 'R$ 892,90',
+      parcela3X: 'R$ 595,27',
+      parcela4X: 'R$ 446,45',
+      parcela5X: 'R$ 357,16',
+      parcela6X: 'R$ 297,63',
+      valorPagoKovr: 741.0,
+      maxParcelas: 6,
+    },
+    {
+      tipoDePlano: '1M',
+      nomeExibido: 'Plano 1 Milhão',
+      cobertura: 'R$ 1.000.000,00',
+      franquia: 'R$ 10.000,00',
+      ordem: 3,
+      parcela: 'R$ 2.857,30',
+      parcela2X: 'R$ 1.428,65',
+      parcela3X: 'R$ 952,43',
+      parcela4X: 'R$ 714,32',
+      parcela5X: 'R$ 571,46',
+      parcela6X: 'R$ 476,22',
+      valorPagoKovr: 1185.6,
+      maxParcelas: 6,
+    },
+  ],
+  // ==========================================================================
+  // G5: Demais especialidades médicas sem cirurgia
+  // Origem: RC_AREA_MEDICA_ESPECIALIDADES_SEM_CIRURGIA.xlsx
+  // ==========================================================================
+  G5: [
+    {
+      tipoDePlano: '250k',
+      nomeExibido: 'Plano 250 Mil',
+      cobertura: 'R$ 250.000,00',
+      franquia: 'R$ 2.500,00',
+      ordem: 1,
+      parcela: 'R$ 1.294,46',
+      parcela2X: 'R$ 647,23',
+      parcela3X: 'R$ 431,49',
+      parcela4X: 'R$ 323,61',
+      parcela5X: 'R$ 258,89',
+      parcela6X: 'R$ 215,74',
+      valorPagoKovr: 537.12,
+      maxParcelas: 6,
+    },
+    {
+      tipoDePlano: '500k',
+      nomeExibido: 'Plano 500 Mil',
+      cobertura: 'R$ 500.000,00',
+      franquia: 'R$ 5.000,00',
+      ordem: 2,
+      parcela: 'R$ 2.071,54',
+      parcela2X: 'R$ 1.035,77',
+      parcela3X: 'R$ 690,51',
+      parcela4X: 'R$ 517,88',
+      parcela5X: 'R$ 414,31',
+      parcela6X: 'R$ 345,26',
+      valorPagoKovr: 859.56,
+      maxParcelas: 6,
+    },
+    {
+      tipoDePlano: '1M',
+      nomeExibido: 'Plano 1 Milhão',
+      cobertura: 'R$ 1.000.000,00',
+      franquia: 'R$ 10.000,00',
+      ordem: 3,
+      parcela: 'R$ 3.314,23',
+      parcela2X: 'R$ 1.657,12',
+      parcela3X: 'R$ 1.104,74',
+      parcela4X: 'R$ 828,56',
+      parcela5X: 'R$ 662,85',
+      parcela6X: 'R$ 552,37',
+      valorPagoKovr: 1375.2,
+      maxParcelas: 6,
+    },
+  ],
+  // ==========================================================================
+  // G6: Demais especialidades médicas com cirurgia
+  // Origem: RC_AREA_MEDICA_ESPECIALIDADES_COM_CIRURGIA.xlsx
+  // ==========================================================================
+  G6: [
+    {
+      tipoDePlano: '250k',
+      nomeExibido: 'Plano 250 Mil',
+      cobertura: 'R$ 250.000,00',
+      franquia: 'R$ 2.500,00',
+      ordem: 1,
+      parcela: 'R$ 1.696,16',
+      parcela2X: 'R$ 848,08',
+      parcela3X: 'R$ 565,39',
+      parcela4X: 'R$ 424,04',
+      parcela5X: 'R$ 339,23',
+      parcela6X: 'R$ 282,69',
+      valorPagoKovr: 703.8,
+      maxParcelas: 6,
+    },
+    {
+      tipoDePlano: '500k',
+      nomeExibido: 'Plano 500 Mil',
+      cobertura: 'R$ 500.000,00',
+      franquia: 'R$ 5.000,00',
+      ordem: 2,
+      parcela: 'R$ 2.714,14',
+      parcela2X: 'R$ 1.357,07',
+      parcela3X: 'R$ 904,71',
+      parcela4X: 'R$ 678,54',
+      parcela5X: 'R$ 542,83',
+      parcela6X: 'R$ 452,36',
+      valorPagoKovr: 1126.2,
+      maxParcelas: 6,
+    },
+    {
+      tipoDePlano: '1M',
+      nomeExibido: 'Plano 1 Milhão',
+      cobertura: 'R$ 1.000.000,00',
+      franquia: 'R$ 10.000,00',
+      ordem: 3,
+      parcela: 'R$ 4.342,92',
+      parcela2X: 'R$ 2.171,46',
+      parcela3X: 'R$ 1.447,64',
+      parcela4X: 'R$ 1.085,73',
+      parcela5X: 'R$ 868,58',
+      parcela6X: 'R$ 723,82',
+      valorPagoKovr: 1802.04,
+      maxParcelas: 6,
+    },
+  ],
+  // ==========================================================================
+  // G7: Ginecologia e Obstetrícia
+  // Origem: RC_AREA_MEDICA_GINECOLOGIA_E_OBSTETRICIA.xlsx
+  // ==========================================================================
+  G7: [
+    {
+      tipoDePlano: '250k',
+      nomeExibido: 'Plano 250 Mil',
+      cobertura: 'R$ 250.000,00',
+      franquia: 'R$ 2.500,00',
+      ordem: 1,
+      parcela: 'R$ 3.124,81',
+      parcela2X: 'R$ 1.562,40',
+      parcela3X: 'R$ 1.041,60',
+      parcela4X: 'R$ 781,20',
+      parcela5X: 'R$ 624,96',
+      parcela6X: 'R$ 520,80',
+      valorPagoKovr: 1296.6,
+      maxParcelas: 6,
+    },
+    {
+      tipoDePlano: '500k',
+      nomeExibido: 'Plano 500 Mil',
+      cobertura: 'R$ 500.000,00',
+      franquia: 'R$ 5.000,00',
+      ordem: 2,
+      parcela: 'R$ 4.999,98',
+      parcela2X: 'R$ 2.499,99',
+      parcela3X: 'R$ 1.666,66',
+      parcela4X: 'R$ 1.249,99',
+      parcela5X: 'R$ 1.000,00',
+      parcela6X: 'R$ 833,33',
+      valorPagoKovr: 2074.68,
+      maxParcelas: 6,
+    },
+    {
+      tipoDePlano: '1M',
+      nomeExibido: 'Plano 1 Milhão',
+      cobertura: 'R$ 1.000.000,00',
+      franquia: 'R$ 10.000,00',
+      ordem: 3,
+      parcela: 'R$ 8.000,14',
+      parcela2X: 'R$ 4.000,07',
+      parcela3X: 'R$ 2.666,71',
+      parcela4X: 'R$ 2.000,03',
+      parcela5X: 'R$ 1.600,03',
+      parcela6X: 'R$ 1.333,36',
+      valorPagoKovr: 3319.56,
+      maxParcelas: 6,
+    },
+  ],
+  // ==========================================================================
+  // G8: Cirurgião plástico
+  // Origem: RC_AREA_MEDICA_CIRURGIAO_PLASTICO.xlsx
+  // ==========================================================================
+  G8: [
+    {
+      tipoDePlano: '250k',
+      nomeExibido: 'Plano 250 Mil',
+      cobertura: 'R$ 250.000,00',
+      franquia: 'R$ 2.500,00',
+      ordem: 1,
+      parcela: 'R$ 4.910,62',
+      parcela2X: 'R$ 2.455,31',
+      parcela3X: 'R$ 1.636,87',
+      parcela4X: 'R$ 1.227,65',
+      parcela5X: 'R$ 982,12',
+      parcela6X: 'R$ 818,44',
+      valorPagoKovr: 2037.6,
+      maxParcelas: 6,
+    },
+    {
+      tipoDePlano: '500k',
+      nomeExibido: 'Plano 500 Mil',
+      cobertura: 'R$ 500.000,00',
+      franquia: 'R$ 5.000,00',
+      ordem: 2,
+      parcela: 'R$ 7.856,99',
+      parcela2X: 'R$ 3.928,49',
+      parcela3X: 'R$ 2.619,00',
+      parcela4X: 'R$ 1.964,25',
+      parcela5X: 'R$ 1.571,40',
+      parcela6X: 'R$ 1.309,50',
+      valorPagoKovr: 3260.16,
+      maxParcelas: 6,
+    },
+    {
+      tipoDePlano: '1M',
+      nomeExibido: 'Plano 1 Milhão',
+      cobertura: 'R$ 1.000.000,00',
+      franquia: 'R$ 10.000,00',
+      ordem: 3,
+      parcela: 'R$ 12.571,23',
+      parcela2X: 'R$ 6.285,62',
+      parcela3X: 'R$ 4.190,41',
+      parcela4X: 'R$ 3.142,81',
+      parcela5X: 'R$ 2.514,25',
+      parcela6X: 'R$ 2.095,21',
+      valorPagoKovr: 5216.28,
+      maxParcelas: 6,
+    },
+  ],
 };
 
 /**
