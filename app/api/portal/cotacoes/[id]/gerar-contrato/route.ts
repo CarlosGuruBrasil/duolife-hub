@@ -265,6 +265,47 @@ export async function POST(
     const mes = hoje.toLocaleString('pt-BR', { month: 'long' });
     const ano = String(hoje.getFullYear());
 
+    const questionarioRisco = (clientData.questionarioRisco && typeof clientData.questionarioRisco === 'object'
+      ? clientData.questionarioRisco
+      : {}) as Record<string, any>;
+
+    const resolveSimNao = (...candidates: any[]): 'Sim' | 'Não' => {
+      for (const raw of candidates) {
+        if (raw === undefined || raw === null || raw === '') continue;
+        if (raw === true || raw === 1) return 'Sim';
+        if (raw === false || raw === 0) return 'Não';
+        const norm = String(raw)
+          .trim()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase();
+        if (!norm) continue;
+        if (norm === 'sim' || norm === 's' || norm === 'true' || norm === '1' || norm === 'yes' || norm === 'y') {
+          return 'Sim';
+        }
+        if (norm === 'nao' || norm === 'n' || norm === 'false' || norm === '0' || norm === 'no') {
+          return 'Não';
+        }
+      }
+      return 'Não';
+    };
+
+    const resolveDetalhe = (resposta: 'Sim' | 'Não', ...candidates: any[]): string => {
+      if (resposta !== 'Sim') return ' ';
+      for (const raw of candidates) {
+        if (raw !== undefined && raw !== null && String(raw).trim() !== '') {
+          return String(raw).trim();
+        }
+      }
+      return ' ';
+    };
+
+    const propostaRecusada = resolveSimNao(clientData.propostaRecusada, questionarioRisco.propostaRecusada);
+    const reclamacaoProfissional = resolveSimNao(clientData.reclamacaoProfissional, questionarioRisco.reclamacaoProfissional);
+    const investigacaoAutoridade = resolveSimNao(clientData.investigacaoAutoridade, questionarioRisco.investigacaoAutoridade);
+    const fatoTerceiros = resolveSimNao(clientData.fatoTerceiros, questionarioRisco.fatoTerceiros);
+    const pagouReclamacao = resolveSimNao(clientData.pagouReclamacao, questionarioRisco.pagouReclamacao);
+
     // 5. Monta o dicionário de variáveis para o template do ZapSign
     const variaveis: Record<string, string> = {
       // Dados Pessoais
@@ -311,8 +352,8 @@ export async function POST(
       "outros": checkArea("outros"),
 
       // PPE
-      "ppeCargos": clientData.ppeCargos === 'Sim' || clientData.ppeCargos === true ? 'Sim' : 'Não',
-      "ppeRepresenta": clientData.ppeRepresenta === 'Sim' || clientData.ppeRepresenta === true ? 'Sim' : 'Não',
+      "ppeCargos": resolveSimNao(clientData.ppeCargos, clientData.ppe),
+      "ppeRepresenta": resolveSimNao(clientData.ppeRepresenta, clientData.ppeRelacionado),
       "ppeCargoSelect": ppeDescricao || ' ',
 
       // Dados de seguro anterior (opcional)
@@ -322,6 +363,18 @@ export async function POST(
       "premio": clientData.premio || ' ',
       "limite": clientData.limite || ' ',
       "dataRetroativa": clientData.dataRetroativa ? formatData(clientData.dataRetroativa) : 'Início de Vigência',
+
+      // Questionário de Risco / Histórico de Reclamação
+      "propostaRecusada": propostaRecusada,
+      "propostaDetalhe": resolveDetalhe(propostaRecusada, clientData.propostaDetalhe, questionarioRisco.propostaDetalhe),
+      "reclamacaoProfissional": reclamacaoProfissional,
+      "reclamacaoDetalhe": resolveDetalhe(reclamacaoProfissional, clientData.reclamacaoDetalhe, questionarioRisco.reclamacaoDetalhe),
+      "investigacaoAutoridade": investigacaoAutoridade,
+      "investigacaoDetalhe": resolveDetalhe(investigacaoAutoridade, clientData.investigacaoDetalhe, questionarioRisco.investigacaoDetalhe),
+      "fatoTerceiros": fatoTerceiros,
+      "fatoDetalhe": resolveDetalhe(fatoTerceiros, clientData.fatoDetalhe, questionarioRisco.fatoDetalhe),
+      "pagouReclamacao": pagouReclamacao,
+      "pagouDetalhe": resolveDetalhe(pagouReclamacao, clientData.pagouDetalhe, questionarioRisco.pagouDetalhe),
 
       // Variáveis do Plano / Parcelamento
       // "valor" é o prêmio à vista; "valorTotalParcelado" é o total efetivamente cobrado quando parcelado

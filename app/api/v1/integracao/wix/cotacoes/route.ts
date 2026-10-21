@@ -72,22 +72,40 @@ const wixCotacaoSchema = z.object({
     .nullable()
     .transform((v) => (v !== undefined && v !== null ? String(v) : null)),
   oabUf: z.unknown().optional().nullable().transform((v) => (v ? String(v).trim().toUpperCase() : null)),
+  dataAtividade: z.unknown().optional().nullable().transform((v) => (v ? String(v) : null)),
   associadoEscritorio: z.unknown().optional().nullable(),
+  escritorioAssociado: z.unknown().optional().nullable().transform((v) => (v ? String(v) : null)),
   nomeEscritorio: z.unknown().optional().nullable().transform((v) => (v ? String(v) : null)),
+  titularidade: z.unknown().optional().nullable().transform((v) => (v ? String(v) : null)),
   cnpjEscritorio: z
     .union([z.string(), z.number()])
     .optional()
     .nullable()
     .transform((v) => (v ? String(v).replace(/\D/g, '') : null)),
   faturamentoAnual: z.union([z.number(), z.string()]).optional().nullable(),
+  faturamentoAntes: z.union([z.number(), z.string()]).optional().nullable(),
+  faturamentoDepois: z.union([z.number(), z.string()]).optional().nullable(),
+  atuacao: z.union([z.array(z.string()), z.string()]).optional().nullable(),
   especialidades: z.union([z.array(z.string()), z.string()]).optional().nullable(),
 
   // PPE (Pessoa Politicamente Exposta)
   ppe: z.unknown().optional().nullable(),
+  ppeCargos: z.unknown().optional().nullable(),
+  ppeRepresenta: z.unknown().optional().nullable(),
+  ppeRelacionado: z.unknown().optional().nullable(),
+  ppeCargoSelect: z.unknown().optional().nullable(),
   ppeCargo: z.unknown().optional().nullable().transform((v) => (v ? String(v) : null)),
   ppeParentesco: z.unknown().optional().nullable().transform((v) => (v ? String(v) : null)),
   ppeNome: z.unknown().optional().nullable().transform((v) => (v ? String(v) : null)),
   ppeCpf: z.unknown().optional().nullable().transform((v) => (v ? String(v) : null)),
+
+  // Seguro Anterior
+  seguradora: z.unknown().optional().nullable().transform((v) => (v ? String(v) : null)),
+  vigencia: z.unknown().optional().nullable().transform((v) => (v ? String(v) : null)),
+  limite: z.unknown().optional().nullable().transform((v) => (v ? String(v) : null)),
+  franquiaAnterior: z.unknown().optional().nullable().transform((v) => (v ? String(v) : null)),
+  premio: z.unknown().optional().nullable().transform((v) => (v ? String(v) : null)),
+  dataRetroativa: z.unknown().optional().nullable().transform((v) => (v ? String(v) : null)),
 
   // Análise de Risco / Sinistros
   propostaRecusada: z.unknown().optional().nullable(),
@@ -110,7 +128,7 @@ const wixCotacaoSchema = z.object({
 
   // Parceiro e Rastreabilidade
   partnerCode: z.unknown().optional().nullable().transform((v) => (v ? String(v).trim() : null)),
-});
+}).passthrough();
 
 export async function POST(req: NextRequest) {
   const auth = await authenticateWixRequest(req);
@@ -239,9 +257,41 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    const questionarioRisco = (data.questionarioRisco && typeof data.questionarioRisco === 'object'
+      ? data.questionarioRisco
+      : {}) as Record<string, unknown>;
+
+    const resolveSimNao = (...candidates: unknown[]): 'Sim' | 'Não' => {
+      for (const raw of candidates) {
+        if (raw === undefined || raw === null || raw === '') continue;
+        if (raw === true || raw === 1) return 'Sim';
+        if (raw === false || raw === 0) return 'Não';
+        const norm = String(raw)
+          .trim()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase();
+        if (!norm) continue;
+        if (norm === 'sim' || norm === 's' || norm === 'true' || norm === '1' || norm === 'yes' || norm === 'y') {
+          return 'Sim';
+        }
+        if (norm === 'nao' || norm === 'n' || norm === 'false' || norm === '0' || norm === 'no') {
+          return 'Não';
+        }
+      }
+      return 'Não';
+    };
+
     // 6. Preparação dos dados adicionais armazenados na Cotação
     const clientData = {
       ...data,
+      ppeCargos: resolveSimNao(data.ppeCargos, data.ppe),
+      ppeRepresenta: resolveSimNao(data.ppeRepresenta, data.ppeRelacionado),
+      propostaRecusada: resolveSimNao(data.propostaRecusada, questionarioRisco.propostaRecusada),
+      reclamacaoProfissional: resolveSimNao(data.reclamacaoProfissional, questionarioRisco.reclamacaoProfissional),
+      investigacaoAutoridade: resolveSimNao(data.investigacaoAutoridade, questionarioRisco.investigacaoAutoridade),
+      fatoTerceiros: resolveSimNao(data.fatoTerceiros, questionarioRisco.fatoTerceiros),
+      pagouReclamacao: resolveSimNao(data.pagouReclamacao, questionarioRisco.pagouReclamacao),
       tipo: data.plano,
       tipoDePlano: data.plano,
       parcela: String(preco.qtdParcelas),

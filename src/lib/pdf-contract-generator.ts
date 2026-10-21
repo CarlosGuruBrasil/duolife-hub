@@ -1950,6 +1950,40 @@ export async function renderContratoPdf(params: RenderContratoPdfParams): Promis
       }
     }
 
+    const questionarioRisco = (clientData.questionarioRisco && typeof clientData.questionarioRisco === 'object'
+      ? clientData.questionarioRisco
+      : {}) as Record<string, any>;
+
+    const resolveSimNaoPdf = (...candidates: any[]): 'Sim' | 'Não' => {
+      for (const raw of candidates) {
+        if (raw === undefined || raw === null || raw === '') continue;
+        if (raw === true || raw === 1) return 'Sim';
+        if (raw === false || raw === 0) return 'Não';
+        const norm = String(raw)
+          .trim()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase();
+        if (!norm) continue;
+        if (norm === 'sim' || norm === 's' || norm === 'true' || norm === '1' || norm === 'yes' || norm === 'y') {
+          return 'Sim';
+        }
+        if (norm === 'nao' || norm === 'n' || norm === 'false' || norm === '0' || norm === 'no') {
+          return 'Não';
+        }
+      }
+      return 'Não';
+    };
+
+    const resolveDetalhePdf = (...candidates: any[]): string => {
+      for (const raw of candidates) {
+        if (raw !== undefined && raw !== null && String(raw).trim() !== '') {
+          return String(raw).trim();
+        }
+      }
+      return 'Não se aplica';
+    };
+
     renderPropostaOficial(
       pdfDoc,
       pageWidth,
@@ -1980,31 +2014,31 @@ export async function renderContratoPdf(params: RenderContratoPdfParams): Promis
         },
         areasAtuacao,
         ppe: {
-          ppeCargos: clientData.ppeCargos === 'Sim' || clientData.ppeCargos === true ? 'Sim' : 'Não',
-          ppeRepresenta: clientData.ppeRepresenta === 'Sim' || clientData.ppeRepresenta === true ? 'Sim' : 'Não',
+          ppeCargos: resolveSimNaoPdf(clientData.ppeCargos, clientData.ppe),
+          ppeRepresenta: resolveSimNaoPdf(clientData.ppeRepresenta, clientData.ppeRelacionado),
           ppeCargoSelect: ppeDescricao,
         },
         questionario: {
-          propostaRecusada: clientData.propostaRecusada === 'Sim' ? 'Sim' : 'Não',
-          propostaDetalhe: clientData.propostaDetalhe || 'Não se aplica',
-          reclamacaoProfissional: clientData.reclamacaoProfissional === 'Sim' ? 'Sim' : 'Não',
-          reclamacaoDetalhe: clientData.reclamacaoDetalhe || 'Não se aplica',
-          investigacaoAutoridade: clientData.investigacaoAutoridade === 'Sim' ? 'Sim' : 'Não',
-          investigacaoDetalhe: clientData.investigacaoDetalhe || 'Não se aplica',
-          fatoTerceiros: clientData.fatoTerceiros === 'Sim' ? 'Sim' : 'Não',
-          fatoDetalhe: clientData.fatoDetalhe || 'Não se aplica',
-          pagouReclamacao: clientData.pagouReclamacao === 'Sim' ? 'Sim' : 'Não',
-          pagouDetalhe: clientData.pagouDetalhe || 'Não se aplica',
-          processoConselho: clientData.processoConselho === 'Sim' ? 'Sim' : 'Não',
-          processoConselhoDetalhe: clientData.processoConselhoDetalhe || 'Não se aplica',
-          reclamacaoErroMedico: clientData.reclamacaoErroMedico === 'Sim' ? 'Sim' : 'Não',
-          reclamacaoErroMedicoDetalhe: clientData.reclamacaoErroMedicoDetalhe || 'Não se aplica',
-          complicacoesCirurgicas: clientData.complicacoesCirurgicas === 'Sim' ? 'Sim' : 'Não',
-          complicacoesCirurgicasDetalhe: clientData.complicacoesCirurgicasDetalhe || 'Não se aplica',
-          fatoPotencial: clientData.fatoPotencial === 'Sim' ? 'Sim' : 'Não',
-          fatoPotencialDetalhe: clientData.fatoPotencialDetalhe || 'Não se aplica',
-          pagamentoIndenizacao: clientData.pagamentoIndenizacao === 'Sim' ? 'Sim' : 'Não',
-          pagamentoIndenizacaoDetalhe: clientData.pagamentoIndenizacaoDetalhe || 'Não se aplica',
+          propostaRecusada: resolveSimNaoPdf(clientData.propostaRecusada, questionarioRisco.propostaRecusada),
+          propostaDetalhe: resolveDetalhePdf(clientData.propostaDetalhe, questionarioRisco.propostaDetalhe),
+          reclamacaoProfissional: resolveSimNaoPdf(clientData.reclamacaoProfissional, questionarioRisco.reclamacaoProfissional),
+          reclamacaoDetalhe: resolveDetalhePdf(clientData.reclamacaoDetalhe, questionarioRisco.reclamacaoDetalhe),
+          investigacaoAutoridade: resolveSimNaoPdf(clientData.investigacaoAutoridade, questionarioRisco.investigacaoAutoridade),
+          investigacaoDetalhe: resolveDetalhePdf(clientData.investigacaoDetalhe, questionarioRisco.investigacaoDetalhe),
+          fatoTerceiros: resolveSimNaoPdf(clientData.fatoTerceiros, questionarioRisco.fatoTerceiros),
+          fatoDetalhe: resolveDetalhePdf(clientData.fatoDetalhe, questionarioRisco.fatoDetalhe),
+          pagouReclamacao: resolveSimNaoPdf(clientData.pagouReclamacao, questionarioRisco.pagouReclamacao),
+          pagouDetalhe: resolveDetalhePdf(clientData.pagouDetalhe, questionarioRisco.pagouDetalhe),
+          processoConselho: resolveSimNaoPdf(clientData.processoConselho, questionarioRisco.processoConselho),
+          processoConselhoDetalhe: resolveDetalhePdf(clientData.processoConselhoDetalhe, questionarioRisco.processoConselhoDetalhe),
+          reclamacaoErroMedico: resolveSimNaoPdf(clientData.reclamacaoErroMedico, questionarioRisco.reclamacaoErroMedico),
+          reclamacaoErroMedicoDetalhe: resolveDetalhePdf(clientData.reclamacaoErroMedicoDetalhe, questionarioRisco.reclamacaoErroMedicoDetalhe),
+          complicacoesCirurgicas: resolveSimNaoPdf(clientData.complicacoesCirurgicas, questionarioRisco.complicacoesCirurgicas),
+          complicacoesCirurgicasDetalhe: resolveDetalhePdf(clientData.complicacoesCirurgicasDetalhe, questionarioRisco.complicacoesCirurgicasDetalhe),
+          fatoPotencial: resolveSimNaoPdf(clientData.fatoPotencial, questionarioRisco.fatoPotencial),
+          fatoPotencialDetalhe: resolveDetalhePdf(clientData.fatoPotencialDetalhe, questionarioRisco.fatoPotencialDetalhe),
+          pagamentoIndenizacao: resolveSimNaoPdf(clientData.pagamentoIndenizacao, questionarioRisco.pagamentoIndenizacao),
+          pagamentoIndenizacaoDetalhe: resolveDetalhePdf(clientData.pagamentoIndenizacaoDetalhe, questionarioRisco.pagamentoIndenizacaoDetalhe),
         },
       },
       fontRegular,

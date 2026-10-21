@@ -448,36 +448,36 @@ export async function PATCH(
     // --- 3. QUESTIONÁRIO DE RISCO (UNDERWRITING) ---
     const rawPropostaRecusada = pickField('propostaRecusada', ...rawProposalSources);
     const propostaRecusada = rawPropostaRecusada !== undefined
-      ? (normalizeSimNao(rawPropostaRecusada) ?? String(rawPropostaRecusada))
-      : (normalizeSimNao(currentClientData.propostaRecusada) ?? cleanString(currentClientData.propostaRecusada));
+      ? (normalizeSimNao(rawPropostaRecusada) ?? 'Não')
+      : (normalizeSimNao(currentClientData.propostaRecusada) ?? cleanString(currentClientData.propostaRecusada) ?? 'Não');
     const propostaDetalhe = cleanString(pickField('propostaDetalhe', ...rawProposalSources)) ??
       cleanString(currentClientData.propostaDetalhe);
 
     const rawReclamacao = pickField('reclamacaoProfissional', ...rawProposalSources);
     const reclamacaoProfissional = rawReclamacao !== undefined
-      ? (normalizeSimNao(rawReclamacao) ?? String(rawReclamacao))
-      : (normalizeSimNao(currentClientData.reclamacaoProfissional) ?? cleanString(currentClientData.reclamacaoProfissional));
+      ? (normalizeSimNao(rawReclamacao) ?? 'Não')
+      : (normalizeSimNao(currentClientData.reclamacaoProfissional) ?? cleanString(currentClientData.reclamacaoProfissional) ?? 'Não');
     const reclamacaoDetalhe = cleanString(pickField('reclamacaoDetalhe', ...rawProposalSources)) ??
       cleanString(currentClientData.reclamacaoDetalhe);
 
     const rawInvestigacao = pickField('investigacaoAutoridade', ...rawProposalSources);
     const investigacaoAutoridade = rawInvestigacao !== undefined
-      ? (normalizeSimNao(rawInvestigacao) ?? String(rawInvestigacao))
-      : (normalizeSimNao(currentClientData.investigacaoAutoridade) ?? cleanString(currentClientData.investigacaoAutoridade));
+      ? (normalizeSimNao(rawInvestigacao) ?? 'Não')
+      : (normalizeSimNao(currentClientData.investigacaoAutoridade) ?? cleanString(currentClientData.investigacaoAutoridade) ?? 'Não');
     const investigacaoDetalhe = cleanString(pickField('investigacaoDetalhe', ...rawProposalSources)) ??
       cleanString(currentClientData.investigacaoDetalhe);
 
     const rawFatoTerceiros = pickField('fatoTerceiros', ...rawProposalSources);
     const fatoTerceiros = rawFatoTerceiros !== undefined
-      ? (normalizeSimNao(rawFatoTerceiros) ?? String(rawFatoTerceiros))
-      : (normalizeSimNao(currentClientData.fatoTerceiros) ?? cleanString(currentClientData.fatoTerceiros));
+      ? (normalizeSimNao(rawFatoTerceiros) ?? 'Não')
+      : (normalizeSimNao(currentClientData.fatoTerceiros) ?? cleanString(currentClientData.fatoTerceiros) ?? 'Não');
     const fatoDetalhe = cleanString(pickField('fatoDetalhe', ...rawProposalSources)) ??
       cleanString(currentClientData.fatoDetalhe);
 
     const rawPagouReclamacao = pickField('pagouReclamacao', ...rawProposalSources);
     const pagouReclamacao = rawPagouReclamacao !== undefined
-      ? (normalizeSimNao(rawPagouReclamacao) ?? String(rawPagouReclamacao))
-      : (normalizeSimNao(currentClientData.pagouReclamacao) ?? cleanString(currentClientData.pagouReclamacao));
+      ? (normalizeSimNao(rawPagouReclamacao) ?? 'Não')
+      : (normalizeSimNao(currentClientData.pagouReclamacao) ?? cleanString(currentClientData.pagouReclamacao) ?? 'Não');
     const pagouDetalhe = cleanString(pickField('pagouDetalhe', ...rawProposalSources)) ??
       cleanString(currentClientData.pagouDetalhe);
 

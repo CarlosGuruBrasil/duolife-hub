@@ -457,8 +457,22 @@ export async function POST(req: NextRequest) {
       return Response.json({ error: 'Não foi possível calcular o preço do plano selecionado' }, { status: 422 });
     }
 
+    const normalizeSimNao = (val: unknown): 'Sim' | 'Não' => {
+      if (val === true || val === 1) return 'Sim';
+      if (typeof val === 'string') {
+        const norm = val.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+        if (norm === 'sim' || norm === 's' || norm === 'true' || norm === '1' || norm === 'yes') return 'Sim';
+      }
+      return 'Não';
+    };
+
     const clientDataFinal = {
       ...clientDataInput,
+      propostaRecusada: normalizeSimNao(clientDataInput.propostaRecusada),
+      reclamacaoProfissional: normalizeSimNao(clientDataInput.reclamacaoProfissional),
+      investigacaoAutoridade: normalizeSimNao(clientDataInput.investigacaoAutoridade),
+      fatoTerceiros: normalizeSimNao(clientDataInput.fatoTerceiros),
+      pagouReclamacao: normalizeSimNao(clientDataInput.pagouReclamacao),
       valor: preco.valorTotal,
       valorOriginal: preco.valorOriginal,
       valorDesconto: preco.valorDesconto,
