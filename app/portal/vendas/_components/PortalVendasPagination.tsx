@@ -72,13 +72,13 @@ export function PortalVendasPagination({
           {currentPage > 1 ? (
             <Link
               href={createPageUrl(currentPage - 1)}
-              className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors shadow-2xs"
+              className="inline-flex min-h-[44px] min-w-[44px] sm:h-9 sm:min-h-[36px] sm:min-w-[36px] items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors shadow-2xs"
             >
               <ChevronLeft className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Anterior</span>
             </Link>
           ) : (
-            <span className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-gray-100 bg-gray-50 px-2.5 text-xs font-semibold text-gray-300 cursor-not-allowed">
+            <span className="inline-flex min-h-[44px] min-w-[44px] sm:h-9 sm:min-h-[36px] sm:min-w-[36px] items-center justify-center gap-1 rounded-lg border border-gray-100 bg-gray-50 px-2.5 text-xs font-semibold text-gray-400 cursor-not-allowed">
               <ChevronLeft className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Anterior</span>
             </span>
@@ -91,7 +91,7 @@ export function PortalVendasPagination({
                 return (
                   <span
                     key={`ellipsis-${idx}`}
-                    className="flex h-8 w-8 items-center justify-center text-xs text-gray-400 font-bold"
+                    className="flex min-h-[44px] min-w-[44px] sm:h-9 sm:min-h-[36px] sm:min-w-[36px] items-center justify-center text-xs text-gray-400 font-bold"
                   >
                     ...
                   </span>
@@ -105,7 +105,7 @@ export function PortalVendasPagination({
                 <Link
                   key={`page-${pageNum}`}
                   href={createPageUrl(pageNum)}
-                  className={`flex h-8 w-8 items-center justify-center rounded-lg text-xs font-bold transition-all shadow-2xs ${
+                  className={`flex min-h-[44px] min-w-[44px] sm:h-9 sm:min-h-[36px] sm:min-w-[36px] items-center justify-center rounded-lg text-xs font-bold transition-all shadow-2xs ${
                     isActive
                       ? 'bg-[#0e4a5a] text-white'
                       : 'border border-gray-200 bg-white text-gray-700 hover:bg-gray-50'
@@ -121,13 +121,13 @@ export function PortalVendasPagination({
           {currentPage < totalPages ? (
             <Link
               href={createPageUrl(currentPage + 1)}
-              className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors shadow-2xs"
+              className="inline-flex min-h-[44px] min-w-[44px] sm:h-9 sm:min-h-[36px] sm:min-w-[36px] items-center justify-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors shadow-2xs"
             >
               <span className="hidden sm:inline">Próximo</span>
               <ChevronRight className="h-3.5 w-3.5" />
             </Link>
           ) : (
-            <span className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-gray-100 bg-gray-50 px-2.5 text-xs font-semibold text-gray-300 cursor-not-allowed">
+            <span className="inline-flex min-h-[44px] min-w-[44px] sm:h-9 sm:min-h-[36px] sm:min-w-[36px] items-center justify-center gap-1 rounded-lg border border-gray-100 bg-gray-50 px-2.5 text-xs font-semibold text-gray-400 cursor-not-allowed">
               <span className="hidden sm:inline">Próximo</span>
               <ChevronRight className="h-3.5 w-3.5" />
             </span>

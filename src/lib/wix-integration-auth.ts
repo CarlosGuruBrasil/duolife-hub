@@ -72,8 +72,11 @@ export async function verifyWixIntegrationAuth(
     };
   }
 
-  // 2. Chave de desenvolvimento local
-  if (rawToken === 'dlmcp_live_dev_test_key_001_secret') {
+  // 2. Chave de desenvolvimento local (apenas fora de produção)
+  if (
+    process.env.NODE_ENV !== 'production' &&
+    rawToken === 'dlmcp_live_dev_test_key_001_secret'
+  ) {
     return {
       authenticated: true,
       clientId: 'dev-mock-client-id',

@@ -1,12 +1,21 @@
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
-import { canManageOwnCompany, normalizePartnerRole, verifyPartnerAuth, unauthorized } from '@/lib/auth';
+import {
+  type AuthUser,
+  canManageOwnCompany,
+  isInternalUser,
+  normalizePartnerRole,
+  roleIsCorretora,
+  verifyPartnerAuth,
+  unauthorized,
+} from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 
 const partnerUserSchema = z.object({
   id: z.string().trim().optional(),
+  partnerId: z.string().trim().optional().nullable(),
   name: z.string().trim().min(2),
   email: z.string().trim().email(),
   password: z.string().min(8).optional(),
@@ -15,11 +24,60 @@ const partnerUserSchema = z.object({
 });
 
 const toggleSchema = z.object({
+  partnerId: z.string().trim().optional().nullable(),
   userId: z.string().trim().min(1),
   isActive: z.boolean(),
 });
 
-export async function GET() {
+async function resolveScopedPartnerId(
+  user: AuthUser,
+  candidatePartnerId?: string | null
+): Promise<{ partnerId: string } | { error: string; status: number }> {
+  const requestedPartnerId = candidatePartnerId?.trim() || null;
+
+  if (user.partnerId) {
+    if (requestedPartnerId && requestedPartnerId !== user.partnerId) {
+      return { error: 'Acesso negado: você só pode gerenciar usuários da sua própria empresa', status: 403 };
+    }
+    return { partnerId: user.partnerId };
+  }
+
+  if (!requestedPartnerId) {
+    return { error: 'Informe o partnerId da empresa parceira para gerenciar seus usuários', status: 400 };
+  }
+
+  if (roleIsCorretora(user.role)) {
+    if (!user.corretoraId) {
+      return { error: 'Nenhuma corretora vinculada ao usuário', status: 400 };
+    }
+    const [partner] = await sql`
+      SELECT id FROM partners
+      WHERE id = ${requestedPartnerId}
+        AND corretora_id = ${user.corretoraId}
+      LIMIT 1
+    `;
+    if (!partner) {
+      return { error: 'Parceiro não encontrado nesta corretora', status: 403 };
+    }
+    return { partnerId: partner.id };
+  }
+
+  if (isInternalUser(user)) {
+    const [partner] = await sql`
+      SELECT id FROM partners
+      WHERE id = ${requestedPartnerId}
+      LIMIT 1
+    `;
+    if (!partner) {
+      return { error: 'Parceiro não encontrado', status: 404 };
+    }
+    return { partnerId: partner.id };
+  }
+
+  return { error: 'Nenhum parceiro vinculado ao usuário', status: 400 };
+}
+
+export async function GET(req: Request) {
   const user = await verifyPartnerAuth();
   if (!user) return unauthorized();
   if (!canManageOwnCompany(user)) {
@@ -28,6 +86,13 @@ export async function GET() {
 
   try {
     await ensureSchema();
+    const url = new URL(req.url);
+    const queryPartnerId = url.searchParams.get('partnerId');
+    const resolved = await resolveScopedPartnerId(user, queryPartnerId);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+
     const users = await sql`
       SELECT
         id,
@@ -39,7 +104,7 @@ export async function GET() {
         last_login_at,
         created_at
       FROM partner_users
-      WHERE partner_id = ${user.partnerId!}
+      WHERE partner_id = ${resolved.partnerId}
       ORDER BY
         CASE role
           WHEN 'director' THEN 1
@@ -66,12 +131,20 @@ export async function POST(req: Request) {
 
   try {
     await ensureSchema();
+    const url = new URL(req.url);
+    const queryPartnerId = url.searchParams.get('partnerId');
     const parsed = partnerUserSchema.safeParse(await req.json());
     if (!parsed.success) {
       return Response.json({ error: 'Dados do colaborador inválidos' }, { status: 400 });
     }
 
     const data = parsed.data;
+    const resolved = await resolveScopedPartnerId(user, data.partnerId || queryPartnerId);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+    const targetPartnerId = resolved.partnerId;
+
     const normalizedRole = normalizePartnerRole(data.role);
     const managerUserId = data.managerUserId || null;
 
@@ -80,7 +153,7 @@ export async function POST(req: Request) {
         SELECT id, role
         FROM partner_users
         WHERE id = ${managerUserId}
-          AND partner_id = ${user.partnerId!}
+          AND partner_id = ${targetPartnerId}
           AND is_active = true
         LIMIT 1
       `;
@@ -98,7 +171,7 @@ export async function POST(req: Request) {
         SELECT id, password_hash, role
         FROM partner_users
         WHERE id = ${data.id}
-          AND partner_id = ${user.partnerId!}
+          AND partner_id = ${targetPartnerId}
         LIMIT 1
       `;
       if (!existing) {
@@ -119,6 +192,7 @@ export async function POST(req: Request) {
           manager_user_id = ${managerUserId},
           updated_at = NOW()
         WHERE id = ${data.id}
+          AND partner_id = ${targetPartnerId}
       `;
     } else {
       if (!data.password) {
@@ -138,7 +212,7 @@ export async function POST(req: Request) {
           updated_at
         )
         VALUES (
-          ${user.partnerId!},
+          ${targetPartnerId},
           ${data.name},
           ${data.email.toLowerCase()},
           ${passwordHash},
@@ -167,16 +241,24 @@ export async function PATCH(req: Request) {
 
   try {
     await ensureSchema();
+    const url = new URL(req.url);
+    const queryPartnerId = url.searchParams.get('partnerId');
     const parsed = toggleSchema.safeParse(await req.json());
     if (!parsed.success) {
       return Response.json({ error: 'Dados inválidos' }, { status: 400 });
     }
 
+    const resolved = await resolveScopedPartnerId(user, parsed.data.partnerId || queryPartnerId);
+    if ('error' in resolved) {
+      return Response.json({ error: resolved.error }, { status: resolved.status });
+    }
+    const targetPartnerId = resolved.partnerId;
+
     const [target] = await sql`
       SELECT id, role
       FROM partner_users
       WHERE id = ${parsed.data.userId}
-        AND partner_id = ${user.partnerId!}
+        AND partner_id = ${targetPartnerId}
       LIMIT 1
     `;
     if (!target) {
@@ -190,6 +272,7 @@ export async function PATCH(req: Request) {
       UPDATE partner_users
       SET is_active = ${parsed.data.isActive}, updated_at = NOW()
       WHERE id = ${parsed.data.userId}
+        AND partner_id = ${targetPartnerId}
     `;
 
     return Response.json({ ok: true });

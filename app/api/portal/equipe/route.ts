@@ -3,23 +3,33 @@ import crypto from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { sql } from '@/lib/pg';
-import { canManageTeam, roleIsCorretora, verifyPartnerAuth, unauthorized } from '@/lib/auth';
+import {
+  canManageTeam,
+  canManageCorretoraWide,
+  isIndividualPartnerManager,
+  isInternalUser,
+  verifyPartnerAuth,
+  unauthorized,
+} from '@/lib/auth';
 import { ensureSchema } from '@/lib/schema';
 import { logger } from '@/lib/logger';
 import { sendEmail } from '@/lib/mailer';
 
 const createVendedorSchema = z.object({
+  type: z.enum(['partner', 'member']).optional(),
+  partnerId: z.string().trim().optional().nullable(),
+  managerUserId: z.string().trim().optional().nullable(),
   name: z.string().trim().min(2, 'Nome é obrigatório'),
   email: z.string().trim().email('E-mail inválido'),
   phone: z.string().trim().optional().nullable(),
   cpfCnpj: z.string().trim().optional().nullable(),
   personType: z.enum(['pf', 'pj']).default('pf'),
-  role: z.enum(['broker', 'manager']).default('broker'),
+  role: z.enum(['broker', 'manager', 'partner']).default('broker'),
   password: z.string().optional().nullable(),
   sendInviteEmail: z.boolean().default(true),
 });
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const user = await verifyPartnerAuth();
   if (!user || !canManageTeam(user)) {
     return unauthorized();
@@ -27,11 +37,22 @@ export async function GET() {
 
   await ensureSchema();
 
+  const isCorretoraWide = canManageCorretoraWide(user);
+  const isPartnerManager = isIndividualPartnerManager(user);
+
+  if (!isCorretoraWide && !isPartnerManager) {
+    return NextResponse.json({ error: 'Acesso negado à gestão de equipe' }, { status: 403 });
+  }
+
   // Identifica a corretora alvo
-  let corretoraId = user.corretoraId;
+  let corretoraId = user.corretoraId || req.nextUrl.searchParams.get('corretoraId') || null;
   if (!corretoraId && user.partnerId) {
     const [p] = await sql`SELECT corretora_id FROM partners WHERE id = ${user.partnerId}`;
     corretoraId = p?.corretora_id || null;
+  }
+  if (!corretoraId && isInternalUser(user)) {
+    const [defaultCorretora] = await sql`SELECT id FROM corretoras WHERE status = 'active' ORDER BY created_at ASC LIMIT 1`;
+    corretoraId = defaultCorretora?.id || null;
   }
 
   if (!corretoraId) {
@@ -49,63 +70,147 @@ export async function GET() {
       return NextResponse.json({ error: 'Corretora não encontrada' }, { status: 404 });
     }
 
-    const vendedores = await sql`
-      SELECT
-        p.id AS partner_id,
-        p.razao_social,
-        p.nome_fantasia,
-        p.cpf,
-        p.cnpj,
-        p.person_type,
-        p.email,
-        p.phone,
-        p.status AS partner_status,
-        p.created_at,
-        pu.id AS user_id,
-        pu.name AS user_name,
-        pu.email AS user_email,
-        pu.role AS user_role,
-        pu.is_active AS user_active,
-        pu.last_login_at,
-        pu.manager_user_id,
-        m.name AS manager_name,
-        COALESCE(sales_agg.total_vendas, 0) AS total_vendas,
-        COALESCE(sales_agg.volume_vendas, 0) AS volume_vendas,
-        COALESCE(quotes_agg.total_cotacoes, 0) AS total_cotacoes
-      FROM partners p
-      LEFT JOIN partner_users pu ON pu.partner_id = p.id
-      LEFT JOIN partner_users m ON m.id = pu.manager_user_id
-      LEFT JOIN (
-        SELECT partner_id, COUNT(*) AS total_vendas, SUM(premio_total) AS volume_vendas
-        FROM sales
-        WHERE corretora_id = ${corretoraId}
-        GROUP BY partner_id
-      ) sales_agg ON sales_agg.partner_id = p.id
-      LEFT JOIN (
-        SELECT partner_id, COUNT(*) AS total_cotacoes
-        FROM cotacoes
-        WHERE corretora_id = ${corretoraId}
-        GROUP BY partner_id
-      ) quotes_agg ON quotes_agg.partner_id = p.id
-      WHERE p.corretora_id = ${corretoraId}
-      ORDER BY pu.is_active DESC, p.created_at DESC
-    `;
+    // Se for diretor/gerente de um parceiro individual, restringe estritamente ao seu próprio user.partnerId
+    const vendedores = isPartnerManager
+      ? await sql`
+          SELECT
+            p.id AS partner_id,
+            p.razao_social,
+            p.nome_fantasia,
+            p.cpf,
+            p.cnpj,
+            p.person_type,
+            COALESCE(pu.email, p.email) AS email,
+            p.phone,
+            p.status AS partner_status,
+            p.created_at,
+            pu.id AS user_id,
+            pu.name AS user_name,
+            pu.email AS user_email,
+            pu.role AS user_role,
+            pu.is_active AS user_active,
+            pu.last_login_at,
+            pu.manager_user_id,
+            m.name AS manager_name,
+            COALESCE(sales_agg.total_vendas, 0) AS total_vendas,
+            COALESCE(sales_agg.volume_vendas, 0) AS volume_vendas,
+            COALESCE(quotes_agg.total_cotacoes, 0) AS total_cotacoes
+          FROM partners p
+          LEFT JOIN partner_users pu ON pu.partner_id = p.id
+          LEFT JOIN partner_users m ON m.id = pu.manager_user_id
+          LEFT JOIN (
+            SELECT partner_user_id, COUNT(*) AS total_vendas, SUM(premio_total) AS volume_vendas
+            FROM sales
+            WHERE partner_id = ${user.partnerId}
+            GROUP BY partner_user_id
+          ) sales_agg ON sales_agg.partner_user_id = pu.id
+          LEFT JOIN (
+            SELECT partner_user_id, COUNT(*) AS total_cotacoes
+            FROM cotacoes
+            WHERE partner_id = ${user.partnerId}
+            GROUP BY partner_user_id
+          ) quotes_agg ON quotes_agg.partner_user_id = pu.id
+          WHERE p.id = ${user.partnerId}
+            AND (pu.partner_id = ${user.partnerId} OR pu.partner_id IS NULL)
+          ORDER BY pu.is_active DESC, pu.created_at DESC
+        `
+      : await sql`
+          SELECT
+            p.id AS partner_id,
+            p.razao_social,
+            p.nome_fantasia,
+            p.cpf,
+            p.cnpj,
+            p.person_type,
+            p.email,
+            p.phone,
+            p.status AS partner_status,
+            p.created_at,
+            pu.id AS user_id,
+            pu.name AS user_name,
+            pu.email AS user_email,
+            pu.role AS user_role,
+            pu.is_active AS user_active,
+            pu.last_login_at,
+            pu.manager_user_id,
+            m.name AS manager_name,
+            COALESCE(sales_agg.total_vendas, 0) AS total_vendas,
+            COALESCE(sales_agg.volume_vendas, 0) AS volume_vendas,
+            COALESCE(quotes_agg.total_cotacoes, 0) AS total_cotacoes
+          FROM partners p
+          LEFT JOIN partner_users pu ON pu.partner_id = p.id
+          LEFT JOIN partner_users m ON m.id = pu.manager_user_id
+          LEFT JOIN (
+            SELECT partner_id, COUNT(*) AS total_vendas, SUM(premio_total) AS volume_vendas
+            FROM sales
+            WHERE corretora_id = ${corretoraId}
+            GROUP BY partner_id
+          ) sales_agg ON sales_agg.partner_id = p.id
+          LEFT JOIN (
+            SELECT partner_id, COUNT(*) AS total_cotacoes
+            FROM cotacoes
+            WHERE corretora_id = ${corretoraId}
+            GROUP BY partner_id
+          ) quotes_agg ON quotes_agg.partner_id = p.id
+          WHERE p.corretora_id = ${corretoraId}
+          ORDER BY pu.is_active DESC, p.created_at DESC
+        `;
 
-    // Lista de possíveis gestores (diretores e managers da corretora)
-    const managers = await sql`
-      SELECT pu.id, pu.name, pu.role
-      FROM partner_users pu
-      JOIN partners p ON p.id = pu.partner_id
-      WHERE p.corretora_id = ${corretoraId}
-        AND pu.role IN ('director', 'manager')
-        AND pu.is_active = true
-      ORDER BY pu.name ASC
-    `;
+    const partners = isPartnerManager
+      ? await sql`
+          SELECT p.id, p.corretora_id, p.razao_social, p.nome_fantasia, p.cpf, p.cnpj, p.person_type, p.email, p.phone, p.status, p.created_at
+          FROM partners p
+          WHERE p.id = ${user.partnerId}
+          ORDER BY p.created_at DESC
+        `
+      : await sql`
+          SELECT p.id, p.corretora_id, p.razao_social, p.nome_fantasia, p.cpf, p.cnpj, p.person_type, p.email, p.phone, p.status, p.created_at
+          FROM partners p
+          WHERE p.corretora_id = ${corretoraId}
+          ORDER BY p.created_at DESC
+        `;
+
+    const members = isPartnerManager
+      ? await sql`
+          SELECT pu.id, pu.partner_id, pu.name, pu.email, pu.role, pu.is_active, pu.manager_user_id, pu.last_login_at, pu.created_at
+          FROM partner_users pu
+          WHERE pu.partner_id = ${user.partnerId}
+          ORDER BY pu.is_active DESC, pu.created_at ASC
+        `
+      : await sql`
+          SELECT pu.id, pu.partner_id, pu.name, pu.email, pu.role, pu.is_active, pu.manager_user_id, pu.last_login_at, pu.created_at
+          FROM partner_users pu
+          JOIN partners p ON p.id = pu.partner_id
+          WHERE p.corretora_id = ${corretoraId}
+          ORDER BY pu.is_active DESC, pu.created_at ASC
+        `;
+
+    // Lista de possíveis gestores (restrito ao parceiro se for gestor de parceiro individual)
+    const managers = isPartnerManager
+      ? await sql`
+          SELECT pu.id, pu.name, pu.role
+          FROM partner_users pu
+          JOIN partners p ON p.id = pu.partner_id
+          WHERE p.id = ${user.partnerId}
+            AND pu.partner_id = ${user.partnerId}
+            AND pu.role IN ('director', 'manager')
+            AND pu.is_active = true
+          ORDER BY pu.name ASC
+        `
+      : await sql`
+          SELECT pu.id, pu.name, pu.role
+          FROM partner_users pu
+          JOIN partners p ON p.id = pu.partner_id
+          WHERE p.corretora_id = ${corretoraId}
+            AND pu.role IN ('director', 'manager')
+            AND pu.is_active = true
+          ORDER BY pu.name ASC
+        `;
 
     const stats = {
       totalVendedores: vendedores.length,
-      ativos: vendedores.filter(v => v.user_active).length,
-      inativos: vendedores.filter(v => !v.user_active).length,
+      ativos: vendedores.filter((v) => v.user_active).length,
+      inativos: vendedores.filter((v) => !v.user_active).length,
       totalCotacoes: vendedores.reduce((acc, v) => acc + Number(v.total_cotacoes || 0), 0),
       totalVendas: vendedores.reduce((acc, v) => acc + Number(v.total_vendas || 0), 0),
       volumeTotal: vendedores.reduce((acc, v) => acc + Number(v.volume_vendas || 0), 0),
@@ -119,6 +224,8 @@ export async function GET() {
         razao_social: corretora.razao_social,
       },
       vendedores,
+      partners,
+      members,
       managers,
       stats,
     });
@@ -136,10 +243,21 @@ export async function POST(req: NextRequest) {
 
   await ensureSchema();
 
+  const isCorretoraWide = canManageCorretoraWide(user);
+  const isPartnerManager = isIndividualPartnerManager(user);
+
+  if (!isCorretoraWide && !isPartnerManager) {
+    return NextResponse.json({ error: 'Acesso negado à gestão de equipe' }, { status: 403 });
+  }
+
   let corretoraId = user.corretoraId;
   if (!corretoraId && user.partnerId) {
     const [p] = await sql`SELECT corretora_id FROM partners WHERE id = ${user.partnerId}`;
     corretoraId = p?.corretora_id || null;
+  }
+  if (!corretoraId && isInternalUser(user)) {
+    const [defaultCorretora] = await sql`SELECT id FROM corretoras WHERE status = 'active' ORDER BY created_at ASC LIMIT 1`;
+    corretoraId = defaultCorretora?.id || null;
   }
 
   if (!corretoraId) {
@@ -153,13 +271,48 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: parsed.error.issues[0]?.message || 'Dados inválidos' }, { status: 400 });
     }
 
-    const { name, email, phone, cpfCnpj, personType, role, password, sendInviteEmail } = parsed.data;
+    const {
+      type,
+      partnerId: requestedPartnerId,
+      managerUserId,
+      name,
+      email,
+      phone,
+      cpfCnpj,
+      personType,
+      role,
+      password,
+      sendInviteEmail,
+    } = parsed.data;
     const cleanEmail = email.toLowerCase().trim();
 
-    // Verifica unicidade de e-mail em partner_users e corretora_users
+    // Regra de isolamento Multi-Tenant para Diretor/Gerente de um Parceiro Individual:
+    // - Bloqueia type === 'partner' (apenas corretora/admin pode cadastrar novas empresas parceiras)
+    // - Força partnerId = user.partnerId e bloqueia tentativa de usar outro partnerId
+    if (isPartnerManager) {
+      if (type === 'partner') {
+        return NextResponse.json(
+          { error: 'Apenas a corretora ou administração pode cadastrar novas empresas parceiras' },
+          { status: 403 }
+        );
+      }
+      if (requestedPartnerId && requestedPartnerId !== user.partnerId) {
+        return NextResponse.json(
+          { error: 'Acesso negado: você só pode cadastrar membros na sua própria empresa parceira' },
+          { status: 403 }
+        );
+      }
+    }
+
+    // Verifica unicidade de e-mail em partner_users, corretora_users e admin_users
     const [existingPartnerUser] = await sql`SELECT id FROM partner_users WHERE email = ${cleanEmail}`;
     if (existingPartnerUser) {
       return NextResponse.json({ error: 'Já existe um vendedor cadastrado com este e-mail' }, { status: 409 });
+    }
+
+    const [existingCorretoraUser] = await sql`SELECT id FROM corretora_users WHERE email = ${cleanEmail}`;
+    if (existingCorretoraUser) {
+      return NextResponse.json({ error: 'Este e-mail pertence a um gestor de corretora' }, { status: 409 });
     }
 
     const [existingAdminUser] = await sql`SELECT id FROM admin_users WHERE email = ${cleanEmail}`;
@@ -168,46 +321,97 @@ export async function POST(req: NextRequest) {
     }
 
     // Define senha
-    const plainPassword = password && password.trim().length >= 6
-      ? password.trim()
-      : crypto.randomBytes(6).toString('hex'); // 12 caracteres hex se não definida
+    const plainPassword =
+      password && password.trim().length >= 6
+        ? password.trim()
+        : crypto.randomBytes(6).toString('hex'); // 12 caracteres hex se não definida
     const passwordHash = await bcrypt.hash(plainPassword, 10);
 
-    // Cria registro em partners vinculado à corretora
-    const digitsOnly = (cpfCnpj || '').replace(/\D/g, '');
-    const isPj = personType === 'pj' || digitsOnly.length > 11;
-    const cpf = !isPj && digitsOnly.length === 11 ? digitsOnly : null;
-    const cnpj = isPj && digitsOnly.length === 14 ? digitsOnly : null;
+    // Determina se estamos adicionando um membro a um parceiro existente ou criando um novo parceiro na corretora
+    const shouldCreateMemberOnly = isPartnerManager || type === 'member' || Boolean(requestedPartnerId);
 
-    const [newPartner] = await sql`
-      INSERT INTO partners (
-        corretora_id,
-        razao_social,
-        nome_fantasia,
-        cnpj,
-        cpf,
-        person_type,
-        email,
-        phone,
-        status,
-        metadata
-      )
-      VALUES (
-        ${corretoraId},
-        ${name},
-        ${name},
-        ${cnpj},
-        ${cpf},
-        ${isPj ? 'pj' : 'pf'},
-        ${cleanEmail},
-        ${phone || null},
-        'active',
-        '{"source": "portal_equipe"}'::jsonb
-      )
-      RETURNING id, razao_social, nome_fantasia, email, status, created_at
-    `;
+    let targetPartner: any = null;
 
-    // Cria credencial de login em partner_users
+    if (shouldCreateMemberOnly) {
+      const targetPartnerId = isPartnerManager ? user.partnerId! : requestedPartnerId;
+      if (!targetPartnerId) {
+        return NextResponse.json({ error: 'Parceiro de destino é obrigatório para cadastro de membro' }, { status: 400 });
+      }
+
+      const [existingPartner] = await sql`
+        SELECT id, razao_social, nome_fantasia, email, status, created_at
+        FROM partners
+        WHERE id = ${targetPartnerId}
+          AND corretora_id = ${corretoraId}
+        LIMIT 1
+      `;
+
+      if (!existingPartner) {
+        return NextResponse.json({ error: 'Empresa parceira não encontrada nesta corretora' }, { status: 404 });
+      }
+
+      if (managerUserId) {
+        const [validManager] = await sql`
+          SELECT id FROM partner_users
+          WHERE id = ${managerUserId}
+            AND partner_id = ${targetPartnerId}
+            AND is_active = true
+          LIMIT 1
+        `;
+        if (!validManager) {
+          return NextResponse.json({ error: 'Gestor informado não pertence a este parceiro' }, { status: 400 });
+        }
+      }
+
+      targetPartner = existingPartner;
+    } else {
+      // Gestor da corretora / Admin interno criando uma nova empresa parceira na corretora
+      const digitsOnly = (cpfCnpj || '').replace(/\D/g, '');
+      const isPj = personType === 'pj' || digitsOnly.length > 11;
+      const cpf = !isPj && digitsOnly.length === 11 ? digitsOnly : null;
+      const cnpj = isPj && digitsOnly.length === 14 ? digitsOnly : null;
+
+      const [newPartner] = await sql`
+        INSERT INTO partners (
+          corretora_id,
+          razao_social,
+          nome_fantasia,
+          cnpj,
+          cpf,
+          person_type,
+          email,
+          phone,
+          status,
+          metadata
+        )
+        VALUES (
+          ${corretoraId},
+          ${name},
+          ${name},
+          ${cnpj},
+          ${cpf},
+          ${isPj ? 'pj' : 'pf'},
+          ${cleanEmail},
+          ${phone || null},
+          'active',
+          '{"source": "portal_equipe"}'::jsonb
+        )
+        RETURNING id, razao_social, nome_fantasia, email, status, created_at
+      `;
+
+      // Concede acesso imediato a todos os produtos ativos da plataforma
+      await sql`
+        INSERT INTO partner_product_availability (partner_id, product_id, is_active)
+        SELECT ${newPartner.id}, id, true
+        FROM products
+        WHERE is_active = true
+        ON CONFLICT (partner_id, product_id) DO NOTHING
+      `;
+
+      targetPartner = newPartner;
+    }
+
+    // Cria credencial de login em partner_users vinculada ao targetPartner.id
     const [newUser] = await sql`
       INSERT INTO partner_users (
         partner_id,
@@ -215,32 +419,25 @@ export async function POST(req: NextRequest) {
         email,
         password_hash,
         role,
+        manager_user_id,
         permissions,
         is_active,
         created_at,
         updated_at
       )
       VALUES (
-        ${newPartner.id},
+        ${targetPartner.id},
         ${name},
         ${cleanEmail},
         ${passwordHash},
         ${role},
+        ${managerUserId || null},
         '{}'::jsonb,
         true,
         NOW(),
         NOW()
       )
-      RETURNING id, name, email, role, is_active, created_at
-    `;
-
-    // Concede acesso imediato a todos os produtos ativos da plataforma
-    await sql`
-      INSERT INTO partner_product_availability (partner_id, product_id, is_active)
-      SELECT ${newPartner.id}, id, true
-      FROM products
-      WHERE is_active = true
-      ON CONFLICT (partner_id, product_id) DO NOTHING
+      RETURNING id, partner_id, name, email, role, is_active, created_at
     `;
 
     // Dispara e-mail de convite se solicitado
@@ -281,7 +478,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       ok: true,
-      partner: newPartner,
+      partner: targetPartner,
       user: newUser,
       passwordGenerated: !emailEnviado && !password ? plainPassword : undefined,
       emailSent: emailEnviado,

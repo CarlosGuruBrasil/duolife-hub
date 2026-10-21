@@ -27,6 +27,8 @@ export interface PartnerAccessContext {
   partnerId: string | null;
   corretoraId: string | null;
   isCorretoraUser: boolean;
+  isInternal: boolean;
+  partnerRole: PartnerRole | null;
   role: PartnerRole | UserRole;
   visibleUserIds: string[] | null;
 }
@@ -202,11 +204,26 @@ export function isPlatformAdmin(user: AuthUser): boolean {
 }
 
 export function canManageOwnCompany(user: AuthUser): boolean {
-  return roleIsCorretora(user.role) || user.partnerRole === 'director';
+  return isInternalUser(user) || roleIsCorretora(user.role) || user.partnerRole === 'director';
 }
 
 export function canManageTeam(user: AuthUser): boolean {
-  return roleIsCorretora(user.role) || user.partnerRole === 'director' || user.partnerRole === 'manager';
+  return isInternalUser(user) || roleIsCorretora(user.role) || user.partnerRole === 'director' || user.partnerRole === 'manager';
+}
+
+// Gestor da Corretora ou Admin Interno: tem visão de toda a corretoraId (todos os parceiros e membros da corretora)
+export function canManageCorretoraWide(user: AuthUser): boolean {
+  return roleIsCorretora(user.role) || isInternalUser(user);
+}
+
+// Diretor/Gerente de um Parceiro Individual: restrito estritamente ao seu próprio user.partnerId
+export function isIndividualPartnerManager(user: AuthUser): boolean {
+  return (
+    !roleIsCorretora(user.role) &&
+    !isInternalUser(user) &&
+    Boolean(user.partnerId) &&
+    (user.partnerRole === 'director' || user.partnerRole === 'manager')
+  );
 }
 
 export async function getPartnerAccessContext(user: AuthUser): Promise<PartnerAccessContext | null> {
@@ -215,6 +232,8 @@ export async function getPartnerAccessContext(user: AuthUser): Promise<PartnerAc
       partnerId: null,
       corretoraId: user.corretoraId || null,
       isCorretoraUser: true,
+      isInternal: false,
+      partnerRole: null,
       role: user.role,
       visibleUserIds: null,
     };
@@ -229,6 +248,8 @@ export async function getPartnerAccessContext(user: AuthUser): Promise<PartnerAc
       partnerId: user.partnerId,
       corretoraId,
       isCorretoraUser: false,
+      isInternal: false,
+      partnerRole: user.partnerRole,
       role: user.partnerRole,
       visibleUserIds: null,
     };
@@ -256,6 +277,8 @@ export async function getPartnerAccessContext(user: AuthUser): Promise<PartnerAc
       partnerId: user.partnerId,
       corretoraId,
       isCorretoraUser: false,
+      isInternal: false,
+      partnerRole: user.partnerRole,
       role: user.partnerRole,
       visibleUserIds: rows.map((row) => row.id),
     };
@@ -265,6 +288,8 @@ export async function getPartnerAccessContext(user: AuthUser): Promise<PartnerAc
     partnerId: user.partnerId,
     corretoraId,
     isCorretoraUser: false,
+    isInternal: false,
+    partnerRole: user.partnerRole,
     role: user.partnerRole,
     visibleUserIds: [user.userId],
   };

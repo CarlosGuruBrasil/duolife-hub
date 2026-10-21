@@ -85,7 +85,7 @@ export default function PortalShell({ children, user }: PortalShellProps) {
           <button
             type="button"
             aria-label="Abrir menu mobile"
-            className="flex items-center justify-center p-2 rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-100 lg:hidden"
+            className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center p-2 rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-100 lg:hidden"
             onClick={() => setOpen((prev) => !prev)}
           >
             <Menu className="h-5 w-5" />
@@ -114,7 +114,7 @@ export default function PortalShell({ children, user }: PortalShellProps) {
 
           <div className="hidden items-center gap-2.5 text-xs font-semibold text-gray-400 sm:flex pl-2 border-l border-gray-200">
             <span className="flex items-center gap-1.5 text-[#0e4a5a] font-bold">
-              <Sparkles className="h-3.5 w-3.5 text-[#00d4e0]" /> Portal do Parceiro
+              <Sparkles className="h-3.5 w-3.5 text-primary" /> Portal do Parceiro
             </span>
             <span>/</span>
             <span className="capitalize font-bold text-gray-800">{currentPathLabel}</span>
@@ -179,7 +179,7 @@ export default function PortalShell({ children, user }: PortalShellProps) {
                   onClick={() => setProfileDropdownOpen(false)}
                   className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900"
                 >
-                  <UserRound className="h-4 w-4 text-[#00d4e0]" />
+                  <UserRound className="h-4 w-4 text-primary" />
                   <span>Meu Perfil</span>
                 </Link>
                 <Link

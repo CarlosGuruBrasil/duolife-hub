@@ -193,7 +193,10 @@ async function runRuntimeSchemaSetup(): Promise<void> {
       email         = EXCLUDED.email,
       phone         = EXCLUDED.phone,
       address       = EXCLUDED.address,
-      metadata      = EXCLUDED.metadata,
+      metadata      = CASE
+        WHEN corretoras.metadata IS NULL OR corretoras.metadata = '{}'::jsonb THEN EXCLUDED.metadata
+        ELSE corretoras.metadata
+      END,
       updated_at    = NOW()
   `;
 
@@ -1243,12 +1246,12 @@ async function runSeedInitialData(): Promise<void> {
       COALESCE((SELECT category FROM products WHERE code LIKE 'RC-MED-LEGACY-%' LIMIT 1), 'Responsabilidade Civil Profissional'),
       'insurance',
       'full_journey',
-      COALESCE((SELECT insurer_name FROM products WHERE code LIKE 'RC-MED-LEGACY-%' LIMIT 1), 'KEV Seguros'),
+      COALESCE((SELECT insurer_name FROM products WHERE code LIKE 'RC-MED-LEGACY-%' LIMIT 1), 'Kovr Seguradora'),
       (SELECT insurer_cnpj FROM products WHERE code LIKE 'RC-MED-LEGACY-%' LIMIT 1),
       'Proteção completa contra reclamações de erro médico, procedimentos cirúrgicos, custos de defesa em conselhos de classe (CRM) e indenizações de terceiros.',
       'Seguro RC Profissional Médicos',
       'Médicos de todas as especialidades, cirurgiões, residentes e clínicas médicas',
-      COALESCE((SELECT base_commission_rate FROM products WHERE code LIKE 'RC-MED-LEGACY-%' LIMIT 1), 10.00),
+      COALESCE((SELECT base_commission_rate FROM products WHERE code LIKE 'RC-MED-LEGACY-%' LIMIT 1), 30.73),
       (SELECT min_premium FROM products WHERE code LIKE 'RC-MED-LEGACY-%' LIMIT 1),
       'rc-medicos',
       'rc_medicos_planos_v1',
@@ -1263,7 +1266,14 @@ async function runSeedInitialData(): Promise<void> {
       pricing_strategy = 'rc_medicos_planos_v1',
       policy_prefix = 'DL-RC-MED',
       integration_type = 'full_journey',
-      is_quoteable = true
+      insurer_name = CASE
+        WHEN products.insurer_name IS NULL OR products.insurer_name = 'KEV Seguros' THEN 'Kovr Seguradora'
+        ELSE products.insurer_name
+      END,
+      base_commission_rate = CASE
+        WHEN products.base_commission_rate IS NULL OR products.base_commission_rate IN (10, 15) THEN 30.73
+        ELSE products.base_commission_rate
+      END
   `;
 
   // Migra referências de eventuais registros legados de RC Médicos para 'prod-rc-med-001'
@@ -1323,7 +1333,7 @@ async function runSeedInitialData(): Promise<void> {
       'Seguro de Responsabilidade Civil Profissional para Advogados. Proteção contra falhas de prazos judiciais, erros em peças processuais e custos de defesa na OAB. Coberturas de R$ 100k até R$ 3 Milhões.',
       'Seguro RC Profissional Advogados',
       'Advogados autônomos e escritórios de advocacia',
-      15.00,
+      28.53,
       516.67,
       'rc-advogados',
       'rc_wix_planos_v1',
@@ -1338,61 +1348,128 @@ async function runSeedInitialData(): Promise<void> {
       category = EXCLUDED.category,
       product_type = 'insurance',
       integration_type = 'full_journey',
-      insurer_name = EXCLUDED.insurer_name,
-      insurer_cnpj = EXCLUDED.insurer_cnpj,
+      insurer_name = COALESCE(products.insurer_name, EXCLUDED.insurer_name),
+      insurer_cnpj = COALESCE(products.insurer_cnpj, EXCLUDED.insurer_cnpj),
       description = EXCLUDED.description,
       public_title = EXCLUDED.public_title,
       target_audience = EXCLUDED.target_audience,
-      base_commission_rate = COALESCE(products.base_commission_rate, EXCLUDED.base_commission_rate),
-      min_premium = EXCLUDED.min_premium,
+      base_commission_rate = CASE
+        WHEN products.base_commission_rate IS NULL OR products.base_commission_rate = 15 THEN 28.53
+        ELSE products.base_commission_rate
+      END,
+      min_premium = COALESCE(products.min_premium, EXCLUDED.min_premium),
       flow_key = 'rc-advogados',
       pricing_strategy = 'rc_wix_planos_v1',
-      policy_prefix = 'DL-RC-ADV',
-      is_active = true,
-      is_quoteable = true,
-      is_contractable = true,
-      is_payable = true
+      policy_prefix = 'DL-RC-ADV'
   `;
 
-  // 5. Migra todas as referências de produtos duplicados/descontinuados (RC-001 duplicado, Odonto, Engenheiros, Contadores) para 'prod-rc-001'
-  await sql`UPDATE cotacoes SET product_id = 'prod-rc-001' WHERE product_id NOT IN ('prod-rc-001', 'prod-rc-med-001')`;
-  await sql`UPDATE sales SET product_id = 'prod-rc-001' WHERE product_id NOT IN ('prod-rc-001', 'prod-rc-med-001')`;
-  await sql`UPDATE leads SET product_id = 'prod-rc-001' WHERE product_id IS NOT NULL AND product_id NOT IN ('prod-rc-001', 'prod-rc-med-001')`;
-  await sql`UPDATE public_sale_links SET product_id = 'prod-rc-001' WHERE product_id IS NOT NULL AND product_id NOT IN ('prod-rc-001', 'prod-rc-med-001')`;
-  await sql`UPDATE payment_orders SET product_id = 'prod-rc-001' WHERE product_id NOT IN ('prod-rc-001', 'prod-rc-med-001')`;
+  // 5. Migra todas as referências apenas dos produtos legados/descontinuados para 'prod-rc-001'
+  await sql`
+    UPDATE cotacoes SET product_id = 'prod-rc-001'
+    WHERE product_id IN (
+      SELECT id FROM products
+      WHERE id NOT IN ('prod-rc-001', 'prod-rc-med-001')
+        AND (code IN ('RC-001', 'RC-ODONTO-001', 'RC-ENG-001', 'RC-CONT-001') OR code LIKE 'RC-MED-LEGACY-%' OR code LIKE 'RC-ADV-LEGACY-%' OR id IN ('prod-rc-odonto-001', 'prod-rc-eng-001', 'prod-rc-cont-001'))
+    )
+  `;
+  await sql`
+    UPDATE sales SET product_id = 'prod-rc-001'
+    WHERE product_id IN (
+      SELECT id FROM products
+      WHERE id NOT IN ('prod-rc-001', 'prod-rc-med-001')
+        AND (code IN ('RC-001', 'RC-ODONTO-001', 'RC-ENG-001', 'RC-CONT-001') OR code LIKE 'RC-MED-LEGACY-%' OR code LIKE 'RC-ADV-LEGACY-%' OR id IN ('prod-rc-odonto-001', 'prod-rc-eng-001', 'prod-rc-cont-001'))
+    )
+  `;
+  await sql`
+    UPDATE leads SET product_id = 'prod-rc-001'
+    WHERE product_id IS NOT NULL AND product_id IN (
+      SELECT id FROM products
+      WHERE id NOT IN ('prod-rc-001', 'prod-rc-med-001')
+        AND (code IN ('RC-001', 'RC-ODONTO-001', 'RC-ENG-001', 'RC-CONT-001') OR code LIKE 'RC-MED-LEGACY-%' OR code LIKE 'RC-ADV-LEGACY-%' OR id IN ('prod-rc-odonto-001', 'prod-rc-eng-001', 'prod-rc-cont-001'))
+    )
+  `;
+  await sql`
+    UPDATE public_sale_links SET product_id = 'prod-rc-001'
+    WHERE product_id IS NOT NULL AND product_id IN (
+      SELECT id FROM products
+      WHERE id NOT IN ('prod-rc-001', 'prod-rc-med-001')
+        AND (code IN ('RC-001', 'RC-ODONTO-001', 'RC-ENG-001', 'RC-CONT-001') OR code LIKE 'RC-MED-LEGACY-%' OR code LIKE 'RC-ADV-LEGACY-%' OR id IN ('prod-rc-odonto-001', 'prod-rc-eng-001', 'prod-rc-cont-001'))
+    )
+  `;
+  await sql`
+    UPDATE payment_orders SET product_id = 'prod-rc-001'
+    WHERE product_id IN (
+      SELECT id FROM products
+      WHERE id NOT IN ('prod-rc-001', 'prod-rc-med-001')
+        AND (code IN ('RC-001', 'RC-ODONTO-001', 'RC-ENG-001', 'RC-CONT-001') OR code LIKE 'RC-MED-LEGACY-%' OR code LIKE 'RC-ADV-LEGACY-%' OR id IN ('prod-rc-odonto-001', 'prod-rc-eng-001', 'prod-rc-cont-001'))
+    )
+  `;
   try {
-    await sql`UPDATE ai_sales_sessions SET product_id = 'prod-rc-001' WHERE product_id IS NOT NULL AND product_id NOT IN ('prod-rc-001', 'prod-rc-med-001')`;
+    await sql`
+      UPDATE ai_sales_sessions SET product_id = 'prod-rc-001'
+      WHERE product_id IS NOT NULL AND product_id IN (
+        SELECT id FROM products
+        WHERE id NOT IN ('prod-rc-001', 'prod-rc-med-001')
+          AND (code IN ('RC-001', 'RC-ODONTO-001', 'RC-ENG-001', 'RC-CONT-001') OR code LIKE 'RC-MED-LEGACY-%' OR code LIKE 'RC-ADV-LEGACY-%' OR id IN ('prod-rc-odonto-001', 'prod-rc-eng-001', 'prod-rc-cont-001'))
+      )
+    `;
   } catch {}
 
   await sql`
     INSERT INTO partner_commission_rates (partner_id, product_id, rate, valid_from, valid_until)
     SELECT partner_id, 'prod-rc-001', rate, valid_from, valid_until
     FROM partner_commission_rates
-    WHERE product_id NOT IN ('prod-rc-001', 'prod-rc-med-001')
+    WHERE product_id IN (
+      SELECT id FROM products
+      WHERE id NOT IN ('prod-rc-001', 'prod-rc-med-001')
+        AND (code IN ('RC-001', 'RC-ODONTO-001', 'RC-ENG-001', 'RC-CONT-001') OR code LIKE 'RC-MED-LEGACY-%' OR code LIKE 'RC-ADV-LEGACY-%' OR id IN ('prod-rc-odonto-001', 'prod-rc-eng-001', 'prod-rc-cont-001'))
+    )
     ON CONFLICT (partner_id, product_id, valid_from) DO NOTHING
   `;
-  await sql`DELETE FROM partner_commission_rates WHERE product_id NOT IN ('prod-rc-001', 'prod-rc-med-001')`;
+  await sql`
+    DELETE FROM partner_commission_rates
+    WHERE product_id IN (
+      SELECT id FROM products
+      WHERE id NOT IN ('prod-rc-001', 'prod-rc-med-001')
+        AND (code IN ('RC-001', 'RC-ODONTO-001', 'RC-ENG-001', 'RC-CONT-001') OR code LIKE 'RC-MED-LEGACY-%' OR code LIKE 'RC-ADV-LEGACY-%' OR id IN ('prod-rc-odonto-001', 'prod-rc-eng-001', 'prod-rc-cont-001'))
+    )
+  `;
 
   await sql`
     INSERT INTO partner_product_availability (partner_id, product_id, is_active)
     SELECT partner_id, 'prod-rc-001', BOOL_OR(is_active)
     FROM partner_product_availability
-    WHERE product_id NOT IN ('prod-rc-001', 'prod-rc-med-001')
+    WHERE product_id IN (
+      SELECT id FROM products
+      WHERE id NOT IN ('prod-rc-001', 'prod-rc-med-001')
+        AND (code IN ('RC-001', 'RC-ODONTO-001', 'RC-ENG-001', 'RC-CONT-001') OR code LIKE 'RC-MED-LEGACY-%' OR code LIKE 'RC-ADV-LEGACY-%' OR id IN ('prod-rc-odonto-001', 'prod-rc-eng-001', 'prod-rc-cont-001'))
+    )
     GROUP BY partner_id
     ON CONFLICT (partner_id, product_id) DO UPDATE SET is_active = partner_product_availability.is_active OR EXCLUDED.is_active
   `;
-  await sql`DELETE FROM partner_product_availability WHERE product_id NOT IN ('prod-rc-001', 'prod-rc-med-001')`;
+  await sql`
+    DELETE FROM partner_product_availability
+    WHERE product_id IN (
+      SELECT id FROM products
+      WHERE id NOT IN ('prod-rc-001', 'prod-rc-med-001')
+        AND (code IN ('RC-001', 'RC-ODONTO-001', 'RC-ENG-001', 'RC-CONT-001') OR code LIKE 'RC-MED-LEGACY-%' OR code LIKE 'RC-ADV-LEGACY-%' OR id IN ('prod-rc-odonto-001', 'prod-rc-eng-001', 'prod-rc-cont-001'))
+    )
+  `;
 
-  // 6. Remove definitivamente todos os produtos que não sejam os 2 oficiais
-  await sql`DELETE FROM products WHERE id NOT IN ('prod-rc-001', 'prod-rc-med-001')`;
+  // 6. Remove definitivamente apenas os produtos legados descartados (preservando novos produtos criados pelo admin)
+  await sql`
+    DELETE FROM products
+    WHERE id NOT IN ('prod-rc-001', 'prod-rc-med-001')
+      AND (code IN ('RC-001', 'RC-ODONTO-001', 'RC-ENG-001', 'RC-CONT-001') OR code LIKE 'RC-MED-LEGACY-%' OR code LIKE 'RC-ADV-LEGACY-%' OR id IN ('prod-rc-odonto-001', 'prod-rc-eng-001', 'prod-rc-cont-001'))
+  `;
 
-  // 7. Garante disponibilidade para parceiros ativos nos 2 produtos oficiais
+  // 7. Garante disponibilidade inicial para parceiros ativos nos 2 produtos oficiais sem sobrescrever bloqueios do admin
   await sql`
     INSERT INTO partner_product_availability (partner_id, product_id, is_active)
     SELECT pa.id, pr.id, true
     FROM partners pa
     CROSS JOIN products pr
     WHERE pa.status = 'active' AND pr.id IN ('prod-rc-001', 'prod-rc-med-001')
-    ON CONFLICT (partner_id, product_id) DO UPDATE SET is_active = true
+    ON CONFLICT (partner_id, product_id) DO NOTHING
   `;
 }

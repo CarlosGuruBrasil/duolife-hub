@@ -87,7 +87,10 @@ export async function verifyMcpApiKey(authHeader: string | null): Promise<McpCli
     };
   } catch {
     // Se o banco estiver indisponível em ambiente de teste e for a chave de teste local
-    if (rawToken === 'dlmcp_live_dev_test_key_001_secret') {
+    if (
+      process.env.NODE_ENV !== 'production' &&
+      rawToken === 'dlmcp_live_dev_test_key_001_secret'
+    ) {
       return {
         clientId: 'dev-mock-client-id',
         clientName: 'Agente de Testes Local (Dev)',
@@ -120,6 +123,7 @@ interface RateRecord {
   resetAt: number;
 }
 const rateLimitsMap = new Map<string, RateRecord>();
+const MAX_RATE_LIMIT_ENTRIES = 5000;
 
 export function checkMcpRateLimit(
   identifier: string,
@@ -127,6 +131,26 @@ export function checkMcpRateLimit(
 ): { ok: boolean; retryAfterSeconds: number } {
   const now = Date.now();
   const windowMs = 60 * 1000;
+
+  // Proteção contra vazamento de memória (OOM)
+  if (rateLimitsMap.size > MAX_RATE_LIMIT_ENTRIES) {
+    for (const [key, entry] of rateLimitsMap.entries()) {
+      if (now > entry.resetAt) {
+        rateLimitsMap.delete(key);
+      }
+    }
+    // Se ainda exceder o limite após limpar expirados, remove as entradas mais antigas
+    if (rateLimitsMap.size > MAX_RATE_LIMIT_ENTRIES) {
+      const overflow = rateLimitsMap.size - MAX_RATE_LIMIT_ENTRIES;
+      let removed = 0;
+      for (const key of rateLimitsMap.keys()) {
+        rateLimitsMap.delete(key);
+        removed += 1;
+        if (removed >= overflow) break;
+      }
+    }
+  }
+
   const current = rateLimitsMap.get(identifier);
 
   if (!current || now > current.resetAt) {

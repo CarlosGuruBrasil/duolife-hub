@@ -31,8 +31,6 @@ async function createOrUpdateAdmin(formData: FormData) {
   // Operação não gerencia usuários internos — poder criar um administrador é escalonamento de privilégio.
   if (!isPlatformAdmin(user)) redirect('/admin');
 
-  await ensureSchema();
-
   const name = String(formData.get('name') || '').trim();
   const email = String(formData.get('email') || '').trim().toLowerCase();
   const password = String(formData.get('password') || '');
@@ -97,8 +95,6 @@ async function toggleAdminStatus(formData: FormData) {
   // Operação não gerencia usuários internos — poder criar um administrador é escalonamento de privilégio.
   if (!isPlatformAdmin(user)) redirect('/admin');
 
-  await ensureSchema();
-
   const id = String(formData.get('id') || '');
   const nextActive = String(formData.get('is_active') || '') === 'true' ? 'false' : 'true';
 
@@ -148,7 +144,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
 
       <div className="bg-white rounded-2xl border border-gray-200/80 p-6 shadow-xs">
         <div className="mb-4 flex items-center gap-2 font-black text-[#072a33]">
-          <UserPlus size={18} className="text-[#00d4e0]" /> {editing ? 'Editar acesso interno' : 'Criar acesso interno'}
+          <UserPlus size={18} className="text-primary" /> {editing ? 'Editar acesso interno' : 'Criar acesso interno'}
         </div>
         <form action={createOrUpdateAdmin} className="grid gap-4 md:grid-cols-4">
           <input type="hidden" name="id" value={editing?.id || ''} />
@@ -236,7 +232,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
                     <td className="px-5 py-4 text-gray-500 text-xs border-b border-gray-100">{formatDate(admin.created_at)}</td>
                     <td className="px-5 py-4 text-right border-b border-gray-100">
                       <div className="flex justify-end gap-2">
-                        <Link href={`/admin/usuarios?edit=${admin.id}`} className="btn-outline text-xs px-3 py-1.5 min-h-0">
+                        <Link href={`/admin/usuarios?edit=${admin.id}`} className="btn-outline text-xs px-3 py-1.5 min-h-[44px] sm:min-h-[36px] inline-flex items-center justify-center">
                           Editar
                         </Link>
                         <form action={toggleAdminStatus} className="inline-flex">
@@ -245,7 +241,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
                           <button
                             type="submit"
                             disabled={admin.id === user.userId}
-                            className="btn-outline text-xs px-3 py-1.5 min-h-0"
+                            className="btn-outline text-xs px-3 py-1.5 min-h-[44px] sm:min-h-[36px] inline-flex items-center justify-center"
                           >
                             {admin.is_active ? 'Desativar' : 'Ativar'}
                           </button>

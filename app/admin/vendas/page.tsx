@@ -414,7 +414,7 @@ export default async function AdminVendasPage({
             {hasActiveFilters && (
               <Link
                 href="/admin/vendas"
-                className="mt-5 inline-flex items-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-gray-800"
+                className="mt-5 gap-2 rounded-xl bg-primary px-4 py-2.5 min-h-[44px] sm:min-h-0 inline-flex items-center justify-center text-xs font-semibold text-white transition hover:bg-primary/90"
               >
                 Limpar todos os filtros
               </Link>

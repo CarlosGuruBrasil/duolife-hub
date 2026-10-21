@@ -998,7 +998,7 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
 
       {/* MODAL DIALOG CENTRADO PARA CRIAR/EDITAR CUPOM */}
       {couponModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4 animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-100 space-y-5 animate-in zoom-in-95">
             <div className="flex items-center justify-between border-b border-gray-100 pb-3">
               <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">

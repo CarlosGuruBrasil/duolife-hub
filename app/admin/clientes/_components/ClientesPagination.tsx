@@ -74,14 +74,14 @@ export function ClientesPagination({
         {currentPage > 1 ? (
           <Link
             href={createPageUrl(currentPage - 1)}
-            className="inline-flex items-center gap-1 min-h-[38px] px-3 rounded-xl border border-gray-200 bg-white text-xs font-bold text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors shadow-2xs"
+            className="inline-flex items-center justify-center gap-1 min-h-[44px] min-w-[44px] sm:min-h-[38px] sm:min-w-[38px] px-3 rounded-xl border border-gray-200 bg-white text-xs font-bold text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors shadow-2xs"
             aria-label="Página anterior"
           >
             <ChevronLeft size={15} />
             <span className="hidden sm:inline">Anterior</span>
           </Link>
         ) : (
-          <span className="inline-flex items-center gap-1 min-h-[38px] px-3 rounded-xl border border-gray-100 bg-gray-50 text-xs font-bold text-gray-300 cursor-not-allowed">
+          <span className="inline-flex items-center justify-center gap-1 min-h-[44px] min-w-[44px] sm:min-h-[38px] sm:min-w-[38px] px-3 rounded-xl border border-gray-100 bg-gray-50 text-xs font-bold text-gray-400 cursor-not-allowed">
             <ChevronLeft size={15} />
             <span className="hidden sm:inline">Anterior</span>
           </span>
@@ -102,7 +102,7 @@ export function ClientesPagination({
               <Link
                 key={pageItem}
                 href={createPageUrl(pageItem as number)}
-                className={`flex h-9 w-9 items-center justify-center rounded-xl text-xs font-bold transition-all ${
+                className={`flex min-h-[44px] min-w-[44px] sm:min-h-[38px] sm:min-w-[38px] items-center justify-center rounded-xl text-xs font-bold transition-all ${
                   isCurrent
                     ? 'bg-[#0e4a5a] text-white shadow-xs'
                     : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200 hover:border-gray-300'
@@ -124,14 +124,14 @@ export function ClientesPagination({
         {currentPage < totalPages ? (
           <Link
             href={createPageUrl(currentPage + 1)}
-            className="inline-flex items-center gap-1 min-h-[38px] px-3 rounded-xl border border-gray-200 bg-white text-xs font-bold text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors shadow-2xs"
+            className="inline-flex items-center justify-center gap-1 min-h-[44px] min-w-[44px] sm:min-h-[38px] sm:min-w-[38px] px-3 rounded-xl border border-gray-200 bg-white text-xs font-bold text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-colors shadow-2xs"
             aria-label="Próxima página"
           >
             <span className="hidden sm:inline">Próxima</span>
             <ChevronRight size={15} />
           </Link>
         ) : (
-          <span className="inline-flex items-center gap-1 min-h-[38px] px-3 rounded-xl border border-gray-100 bg-gray-50 text-xs font-bold text-gray-300 cursor-not-allowed">
+          <span className="inline-flex items-center justify-center gap-1 min-h-[44px] min-w-[44px] sm:min-h-[38px] sm:min-w-[38px] px-3 rounded-xl border border-gray-100 bg-gray-50 text-xs font-bold text-gray-400 cursor-not-allowed">
             <span className="hidden sm:inline">Próxima</span>
             <ChevronRight size={15} />
           </span>

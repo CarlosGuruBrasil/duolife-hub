@@ -183,6 +183,7 @@ export async function POST(req: NextRequest) {
     const publicToken = req.headers.get('x-public-token');
     let targetPartnerId: string | null = null;
     let userId: string | null = null;
+    let publicLinkId: string | null = null;
     let sourceToken: string | null = null;
     let flowType = 'internal';
     let publicLinkProductId: string | null = null;
@@ -190,10 +191,11 @@ export async function POST(req: NextRequest) {
     let isInternal = false;
     let canBypassProductAvailability = false;
     let user: any = null;
+    let access: Awaited<ReturnType<typeof getPartnerAccessContext>> = null;
 
     if (publicToken) {
       const [link] = await sql`
-        SELECT partner_id, id, flow_type, product_id, COALESCE(discount_percent, 0) AS discount_percent
+        SELECT id, partner_id, flow_type, product_id, status, expires_at, created_by_user_id, COALESCE(discount_percent, 0) AS discount_percent
         FROM public_sale_links
         WHERE token = ${publicToken}
           AND status = 'active'
@@ -202,7 +204,9 @@ export async function POST(req: NextRequest) {
       `;
       if (!link) return Response.json({ error: 'Token público inválido ou expirado' }, { status: 401 });
       
+      publicLinkId = link.id;
       targetPartnerId = link.partner_id;
+      userId = link.created_by_user_id || null;
       publicLinkProductId = link.product_id;
       publicLinkDiscountPercent = Number(link.discount_percent || 0);
       sourceToken = publicToken;
@@ -240,6 +244,10 @@ export async function POST(req: NextRequest) {
       targetPartnerId = user.partnerId;
       isInternal = isInternalUser(user);
       canBypassProductAvailability = isPlatformAdmin(user) || isDevUser(user);
+
+      if (! isInternal) {
+        access = await getPartnerAccessContext(user);
+      }
 
       if (isInternal) {
         if (!data.adminSelectedPartnerId) {
@@ -345,7 +353,7 @@ export async function POST(req: NextRequest) {
       product.flow_key === 'rc-medicos';
 
     if (isMedProduct) {
-      const allowed = user && (isDevUser(user) || isPlatformAdmin(user));
+      const allowed = (user && (isDevUser(user) || isPlatformAdmin(user))) || Boolean(publicLinkId);
       if (!allowed) {
         return Response.json(
           { error: 'O seguro RC Médico encontra-se em desenvolvimento e ainda não está liberado para venda por parceiros.' },
@@ -440,7 +448,7 @@ export async function POST(req: NextRequest) {
       qtdParcelasSolicitada: Number(clientDataInput.parcela) || 1,
       cupomCodigo: effectiveCupomCodigo,
       descontoManualPercent: effectiveDescontoPercent,
-      flowKey: product.flow_key,
+      flowKey: product.flow_key || (clientDataInput.flowKey as string) || null,
       productId: product.id,
       grupoTarifario: (clientDataInput.grupoTarifario as string) || (clientDataInput.grupo as string) || null,
     });
@@ -463,6 +471,11 @@ export async function POST(req: NextRequest) {
     };
     const premioCalculado = preco.valorTotal;
 
+    const [partnerCorretora] = targetPartnerId ? await sql<{ corretora_id: string | null }[]>`
+      SELECT corretora_id FROM partners WHERE id = ${targetPartnerId} LIMIT 1
+    ` : [];
+    const targetCorretoraId = user?.corretoraId || access?.corretoraId || partnerCorretora?.corretora_id || null;
+
     // Renovação como conceito de primeira classe (não só uma flag solta em client_data.renovacao).
     // Tenta linkar com a cotação aprovada/emitida mais recente do mesmo cliente, quando existir.
     const isRenewal = data.clientData?.renovacao === true || data.clientData?.renovacao === 'true' || data.clientData?.isRenovacao === 'Sim';
@@ -474,6 +487,7 @@ export async function POST(req: NextRequest) {
         WHERE c.client_id = ${client.id}
           AND c.status IN ('aprovada', 'emitida', 'assinado', 'pagamento_gerado')
           AND (c.product_id = ${product.id} OR p.flow_key = ${product.flow_key})
+          AND (${isInternal ? sql`TRUE` : access?.isCorretoraUser ? sql`c.corretora_id = ${targetCorretoraId}` : sql`c.partner_id = ${targetPartnerId}`})
         ORDER BY c.created_at DESC
         LIMIT 1
       `;
@@ -498,12 +512,27 @@ export async function POST(req: NextRequest) {
               WHERE id = ${existingId}
               LIMIT 1
             `
-          : await sql`
-              SELECT id, status FROM cotacoes
-              WHERE id = ${existingId}
-                AND partner_id = ${targetPartnerId}
-              LIMIT 1
-            `;
+          : access?.isCorretoraUser
+            ? await sql`
+                SELECT id, status FROM cotacoes
+                WHERE id = ${existingId}
+                  AND (partner_id = ${targetPartnerId} OR corretora_id = ${targetCorretoraId})
+                LIMIT 1
+              `
+            : access?.visibleUserIds?.length
+              ? await sql`
+                  SELECT id, status FROM cotacoes
+                  WHERE id = ${existingId}
+                    AND partner_id = ${targetPartnerId}
+                    AND (partner_user_id IN ${sql(access.visibleUserIds)} OR partner_user_id IS NULL)
+                  LIMIT 1
+                `
+              : await sql`
+                  SELECT id, status FROM cotacoes
+                  WHERE id = ${existingId}
+                    AND partner_id = ${targetPartnerId}
+                  LIMIT 1
+                `;
 
       if (!existingQuote) {
         return Response.json({ error: 'Cotação não encontrada ou acesso negado' }, { status: 404 });
@@ -539,11 +568,6 @@ export async function POST(req: NextRequest) {
         return Response.json({ ok: true, cotacao: updatedCotacao }, { status: 200 });
       }
     }
-
-    const [partnerCorretora] = targetPartnerId ? await sql<{ corretora_id: string | null }[]>`
-      SELECT corretora_id FROM partners WHERE id = ${targetPartnerId} LIMIT 1
-    ` : [];
-    const targetCorretoraId = user?.corretoraId || partnerCorretora?.corretora_id || null;
 
     const [cotacao] = await sql`
       INSERT INTO cotacoes (

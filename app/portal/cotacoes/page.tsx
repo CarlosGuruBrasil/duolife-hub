@@ -20,6 +20,7 @@ interface CotacaoRow {
   client_name: string;
   client_cpf_cnpj: string;
   importancia_segurada: string | null;
+  premio_calculado?: string | null;
   premio_final: string | null;
   status: string;
   created_at: string;
@@ -227,6 +228,7 @@ export default async function CotacoesPage({
       c.client_name,
       c.client_cpf_cnpj,
       c.importancia_segurada,
+      c.premio_calculado,
       c.premio_final,
       c.status,
       c.created_at,
@@ -403,7 +405,7 @@ export default async function CotacoesPage({
             {hasActiveFilters ? (
               <Link
                 href="/portal/cotacoes"
-                className="mt-5 inline-flex items-center gap-2 rounded-xl bg-gray-900 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-gray-800"
+                className="mt-5 gap-2 rounded-xl bg-primary px-4 py-2.5 min-h-[44px] sm:min-h-0 inline-flex items-center justify-center text-xs font-semibold text-white transition hover:bg-primary/90"
               >
                 Limpar todos os filtros
               </Link>
@@ -470,7 +472,7 @@ export default async function CotacoesPage({
                         </td>
                         <td className="px-5 py-4 text-gray-600 font-medium border-b border-gray-100">{cotacao.product_name}</td>
                         <td className="px-5 py-4 text-gray-600 border-b border-gray-100">{formatCurrency(cotacao.importancia_segurada)}</td>
-                        <td className="px-5 py-4 text-gray-900 font-semibold border-b border-gray-100">{formatCurrency(cotacao.premio_final)}</td>
+                        <td className="px-5 py-4 text-gray-900 font-semibold border-b border-gray-100">{formatCurrency(cotacao.premio_final ?? cotacao.premio_calculado ?? (cotacao.client_data as any)?.valor ?? null)}</td>
                         {isCorretora && (
                           <td className="px-5 py-4 text-xs font-semibold text-gray-700 border-b border-gray-100">
                             {cotacao.partner_name || 'Corretora'}

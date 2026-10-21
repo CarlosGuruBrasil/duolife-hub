@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { verifyAuth, unauthorized } from '@/lib/auth';
+import { verifyAuth, unauthorized, isInternalUser } from '@/lib/auth';
 import { getAccessibleQuoteById } from '@/lib/access';
 import { upsertInsuranceClient } from '@/lib/insurance-ops';
 import { parseJsonbField } from '@/lib/json-safe';
@@ -240,10 +240,26 @@ export async function PATCH(
       if (num > 0) importanciaSegurada = num;
     }
 
-    const rawPlanoNome = proposal.planoNome ?? payload.plano_nome ?? payload.nomePlano ?? sanitizedInputClientData.nomePlano;
-    const planoNome: string = isFinancialMutable && rawPlanoNome !== undefined
-      ? String(rawPlanoNome)
-      : String(currentClientData.nomePlano || currentClientData.tipoDePlano || currentClientData.tipo || 'RC Advogados');
+    const rawPlanoCodigo =
+      proposal.tipoDePlano ??
+      proposal.tipo ??
+      payload.tipoDePlano ??
+      payload.tipo ??
+      sanitizedInputClientData.tipoDePlano ??
+      sanitizedInputClientData.tipo;
+    const planoCodigo: string = isFinancialMutable && rawPlanoCodigo !== undefined && String(rawPlanoCodigo).trim() !== ''
+      ? String(rawPlanoCodigo).trim()
+      : String(currentClientData.tipo ?? currentClientData.tipoDePlano ?? currentClientData.nomePlano ?? 'RC Advogados');
+
+    const rawPlanoNome =
+      proposal.planoNome ??
+      proposal.nomePlano ??
+      payload.plano_nome ??
+      payload.nomePlano ??
+      sanitizedInputClientData.nomePlano;
+    const planoNome: string = isFinancialMutable && rawPlanoNome !== undefined && String(rawPlanoNome).trim() !== ''
+      ? String(rawPlanoNome).trim()
+      : String(currentClientData.nomePlano ?? planoCodigo);
 
     const rawFranquia = proposal.franquia ?? payload.planoFranquia ?? payload.franquia ?? sanitizedInputClientData.planoFranquia;
     const franquia = rawFranquia !== undefined
@@ -262,11 +278,15 @@ export async function PATCH(
 
     const cupomCodigo = (payload.cupomCodigo ?? sanitizedInputClientData.cupomCodigo ?? currentClientData.cupomCodigo) as string | null | undefined;
 
-    // Extração de prêmio manual enviado via formulário/modal de edição (permitido para cotações em rascunho/enviada)
-    const rawPremio = proposal.premioFinal ?? payload.premio_final ?? payload.premioFinal ?? (isFinancialMutable ? (sanitizedInputClientData.valor ?? sanitizedInputClientData.premioFinal) : undefined);
+    // Extração de prêmio manual: permitido APENAS para operadores internos (isInternalUser)
+    // quando enviado explicitamente em payload.premioFinal / proposalData.premioFinal.
+    // Nunca utiliza sanitizedInputClientData.valor para evitar manipulação por parceiro ou reenvio de valor antigo.
+    const rawAdminPremio = isInternalUser(user)
+      ? (proposal.premioFinal ?? payload.premioFinal ?? payload.premio_final)
+      : undefined;
     let userSpecifiedPremio: number | null = null;
-    if (isFinancialMutable && rawPremio !== undefined && rawPremio !== null && rawPremio !== '') {
-      const parsed = parseCurrencyToNumber(rawPremio, 0);
+    if (isFinancialMutable && rawAdminPremio !== undefined && rawAdminPremio !== null && rawAdminPremio !== '') {
+      const parsed = parseCurrencyToNumber(rawAdminPremio, 0);
       if (parsed > 0) {
         userSpecifiedPremio = parsed;
       }
@@ -276,38 +296,57 @@ export async function PATCH(
     let valorParcelaCalculada: number | null = null;
     let parcelasCalculadas: number = parcela;
 
+    const resolvedGrupoTarifario =
+      String(
+        sanitizedInputClientData.grupoTarifario ||
+        proposal.grupoTarifario ||
+        currentClientData.grupoTarifario ||
+        currentClientData.grupo ||
+        ''
+      ).trim() || null;
+
     if (isFinancialMutable) {
       if (userSpecifiedPremio !== null && userSpecifiedPremio > 0) {
-        // Usuário/operador editou explicitamente o valor do prêmio
+        // Operador interno editou explicitamente o valor do prêmio
         premioFinal = userSpecifiedPremio;
         parcelasCalculadas = parcela;
         valorParcelaCalculada = parcelasCalculadas > 0
           ? Math.round((premioFinal / parcelasCalculadas) * 100) / 100
           : premioFinal;
       } else {
-        const targetPlano = (sanitizedInputClientData.tipo || sanitizedInputClientData.tipoDePlano || rawPlanoNome || currentClientData.tipoDePlano || currentClientData.tipo || currentClientData.nomePlano) as string | null | undefined;
-        const targetGrupo = (sanitizedInputClientData.grupoTarifario || sanitizedInputClientData.grupo || currentClientData.grupoTarifario || currentClientData.grupo) as string | null | undefined;
+        let resolvedFlowKey =
+          (cotacao as Record<string, unknown>).product_flow_key ||
+          cotacao.flow_key ||
+          sanitizedInputClientData.flowKey ||
+          currentClientData.flowKey ||
+          null;
+        if (!resolvedFlowKey && cotacao.product_id) {
+          const [prodRow] = await sql`SELECT flow_key FROM products WHERE id = ${cotacao.product_id} LIMIT 1`;
+          resolvedFlowKey = prodRow?.flow_key || null;
+        }
+
         const precoCalculado = await calcularPrecoServidor({
-          tipoDePlano: targetPlano,
+          tipoDePlano: planoCodigo,
           qtdParcelasSolicitada: parcela,
           cupomCodigo,
           descontoManualPercent: Number(
+            proposal.descontoManualPercent ??
             payload.descontoManualPercent ??
             sanitizedInputClientData.descontoManualPercent ??
             sanitizedInputClientData.descontoPercentual ??
             currentClientData.descontoManualPercent ??
             currentClientData.descontoPercentual
           ) || 0,
-          flowKey: cotacao.flow_key,
+          flowKey: resolvedFlowKey ? String(resolvedFlowKey) : null,
           productId: cotacao.product_id,
-          grupoTarifario: targetGrupo,
+          grupoTarifario: resolvedGrupoTarifario,
         });
 
         if (precoCalculado) {
           premioFinal = precoCalculado.valorTotal;
           valorParcelaCalculada = precoCalculado.valorParcela;
           parcelasCalculadas = precoCalculado.qtdParcelas;
-        } else if (user.role !== 'duolife_admin' && !cotacao.premio_final) {
+        } else if (!isInternalUser(user) && !cotacao.premio_final) {
           return Response.json({ error: 'Não foi possível calcular o preço oficial do plano selecionado' }, { status: 422 });
         }
       }
@@ -441,6 +480,116 @@ export async function PATCH(
       : (normalizeSimNao(currentClientData.pagouReclamacao) ?? cleanString(currentClientData.pagouReclamacao));
     const pagouDetalhe = cleanString(pickField('pagouDetalhe', ...rawProposalSources)) ??
       cleanString(currentClientData.pagouDetalhe);
+
+    // --- 3B. QUESTIONÁRIO DE RISCO MÉDICO & CAMPOS DE SAÚDE ---
+    const grupoTarifario = cleanString(
+      pickField('grupoTarifario', ...rawProposalSources) ??
+      pickField('grupo', ...rawProposalSources)
+    ) ?? cleanString(currentClientData.grupoTarifario ?? currentClientData.grupo);
+
+    const grupoTarifarioLabel = cleanString(pickField('grupoTarifarioLabel', ...rawProposalSources)) ??
+      cleanString(currentClientData.grupoTarifarioLabel);
+
+    const rawAssociadoClinica = pickField('associadoClinica', ...rawProposalSources);
+    const associadoClinica = rawAssociadoClinica !== undefined
+      ? (normalizeSimNao(rawAssociadoClinica) ?? String(rawAssociadoClinica))
+      : (normalizeSimNao(currentClientData.associadoClinica) ?? cleanString(currentClientData.associadoClinica));
+
+    const nomeClinica = cleanString(pickField('nomeClinica', ...rawProposalSources)) ??
+      cleanString(currentClientData.nomeClinica);
+
+    const nomeHospital = cleanString(pickField('nomeHospital', ...rawProposalSources)) ??
+      cleanString(currentClientData.nomeHospital);
+
+    const modalidadeContratacao = cleanString(pickField('modalidadeContratacao', ...rawProposalSources)) ??
+      cleanString(currentClientData.modalidadeContratacao);
+
+    const registroProfissionalNumero = cleanString(pickField('registroProfissionalNumero', ...rawProposalSources)) ??
+      cleanString(currentClientData.registroProfissionalNumero);
+    const registroProfissionalUf = cleanUf(pickField('registroProfissionalUf', ...rawProposalSources)) ??
+      cleanUf(currentClientData.registroProfissionalUf);
+
+    const currentQuestionarioRisco = (currentClientData.questionarioRisco && typeof currentClientData.questionarioRisco === 'object')
+      ? (currentClientData.questionarioRisco as Record<string, unknown>)
+      : {};
+    const inputQuestionarioRisco = pickField<Record<string, unknown>>('questionarioRisco', ...rawProposalSources);
+    const medRiskSources: (Record<string, unknown> | undefined | null)[] = [
+      inputQuestionarioRisco && typeof inputQuestionarioRisco === 'object' ? inputQuestionarioRisco : null,
+      ...rawProposalSources,
+      currentQuestionarioRisco,
+      currentClientData,
+    ];
+
+    const rawProcessoConselho = pickField('processoConselho', ...medRiskSources);
+    const processoConselho = rawProcessoConselho !== undefined
+      ? (normalizeSimNao(rawProcessoConselho) ?? String(rawProcessoConselho))
+      : undefined;
+    const processoConselhoDetalhe = cleanString(
+      pickField('processoConselho_detalhe', ...medRiskSources) ??
+      pickField('processoConselhoDetalhe', ...medRiskSources)
+    );
+
+    const rawReclamacaoErroMedico = pickField('reclamacaoErroMedico', ...medRiskSources);
+    const reclamacaoErroMedico = rawReclamacaoErroMedico !== undefined
+      ? (normalizeSimNao(rawReclamacaoErroMedico) ?? String(rawReclamacaoErroMedico))
+      : undefined;
+    const reclamacaoErroMedicoDetalhe = cleanString(
+      pickField('reclamacaoErroMedico_detalhe', ...medRiskSources) ??
+      pickField('reclamacaoErroMedicoDetalhe', ...medRiskSources)
+    );
+
+    const rawComplicacoesCirurgicas = pickField('complicacoesCirurgicas', ...medRiskSources);
+    const complicacoesCirurgicas = rawComplicacoesCirurgicas !== undefined
+      ? (normalizeSimNao(rawComplicacoesCirurgicas) ?? String(rawComplicacoesCirurgicas))
+      : undefined;
+    const complicacoesCirurgicasDetalhe = cleanString(
+      pickField('complicacoesCirurgicas_detalhe', ...medRiskSources) ??
+      pickField('complicacoesCirurgicasDetalhe', ...medRiskSources)
+    );
+
+    const rawFatoPotencial = pickField('fatoPotencial', ...medRiskSources);
+    const fatoPotencial = rawFatoPotencial !== undefined
+      ? (normalizeSimNao(rawFatoPotencial) ?? String(rawFatoPotencial))
+      : undefined;
+    const fatoPotencialDetalhe = cleanString(
+      pickField('fatoPotencial_detalhe', ...medRiskSources) ??
+      pickField('fatoPotencialDetalhe', ...medRiskSources)
+    );
+
+    const rawPagamentoIndenizacao = pickField('pagamentoIndenizacao', ...medRiskSources);
+    const pagamentoIndenizacao = rawPagamentoIndenizacao !== undefined
+      ? (normalizeSimNao(rawPagamentoIndenizacao) ?? String(rawPagamentoIndenizacao))
+      : undefined;
+    const pagamentoIndenizacaoDetalhe = cleanString(
+      pickField('pagamentoIndenizacao_detalhe', ...medRiskSources) ??
+      pickField('pagamentoIndenizacaoDetalhe', ...medRiskSources)
+    );
+
+    const hasMedQuestionario =
+      Object.keys(currentQuestionarioRisco).length > 0 ||
+      Boolean(inputQuestionarioRisco && typeof inputQuestionarioRisco === 'object' && Object.keys(inputQuestionarioRisco).length > 0) ||
+      processoConselho !== undefined ||
+      reclamacaoErroMedico !== undefined ||
+      complicacoesCirurgicas !== undefined ||
+      fatoPotencial !== undefined ||
+      pagamentoIndenizacao !== undefined;
+
+    const mergedQuestionarioRisco = hasMedQuestionario
+      ? {
+          ...currentQuestionarioRisco,
+          ...(inputQuestionarioRisco && typeof inputQuestionarioRisco === 'object' ? inputQuestionarioRisco : {}),
+          ...(processoConselho !== undefined ? { processoConselho } : {}),
+          ...(processoConselhoDetalhe !== undefined ? { processoConselho_detalhe: processoConselhoDetalhe, processoConselhoDetalhe } : {}),
+          ...(reclamacaoErroMedico !== undefined ? { reclamacaoErroMedico } : {}),
+          ...(reclamacaoErroMedicoDetalhe !== undefined ? { reclamacaoErroMedico_detalhe: reclamacaoErroMedicoDetalhe, reclamacaoErroMedicoDetalhe } : {}),
+          ...(complicacoesCirurgicas !== undefined ? { complicacoesCirurgicas } : {}),
+          ...(complicacoesCirurgicasDetalhe !== undefined ? { complicacoesCirurgicas_detalhe: complicacoesCirurgicasDetalhe, complicacoesCirurgicasDetalhe } : {}),
+          ...(fatoPotencial !== undefined ? { fatoPotencial } : {}),
+          ...(fatoPotencialDetalhe !== undefined ? { fatoPotencial_detalhe: fatoPotencialDetalhe, fatoPotencialDetalhe } : {}),
+          ...(pagamentoIndenizacao !== undefined ? { pagamentoIndenizacao } : {}),
+          ...(pagamentoIndenizacaoDetalhe !== undefined ? { pagamentoIndenizacao_detalhe: pagamentoIndenizacaoDetalhe, pagamentoIndenizacaoDetalhe } : {}),
+        }
+      : undefined;
 
     // --- 4. SEGURO ANTERIOR (RENOVAÇÃO) ---
     const rawRenovacao = pickField('isRenovacao', ...rawProposalSources) ??
@@ -577,8 +726,8 @@ export async function PATCH(
       uf: updatedAddress.uf,
       // Plano e coberturas oficiais recalculados
       nomePlano: planoNome,
-      tipoDePlano: planoNome,
-      tipo: planoNome,
+      tipoDePlano: planoCodigo,
+      tipo: planoCodigo,
       planoFranquia: franquia,
       franquia: franquia,
       parcela: parcelasCalculadas,
@@ -632,6 +781,27 @@ export async function PATCH(
       ...(fatoDetalhe !== undefined ? { fatoDetalhe } : {}),
       ...(pagouReclamacao !== undefined ? { pagouReclamacao } : {}),
       ...(pagouDetalhe !== undefined ? { pagouDetalhe } : {}),
+
+      // 3B. Questionário de Risco Médico & Campos de Saúde
+      ...(grupoTarifario !== undefined ? { grupoTarifario } : {}),
+      ...(grupoTarifarioLabel !== undefined ? { grupoTarifarioLabel } : {}),
+      ...(associadoClinica !== undefined ? { associadoClinica } : {}),
+      ...(nomeClinica !== undefined ? { nomeClinica } : {}),
+      ...(nomeHospital !== undefined ? { nomeHospital } : {}),
+      ...(modalidadeContratacao !== undefined ? { modalidadeContratacao } : {}),
+      ...(registroProfissionalNumero !== undefined ? { registroProfissionalNumero } : {}),
+      ...(registroProfissionalUf !== undefined ? { registroProfissionalUf } : {}),
+      ...(processoConselho !== undefined ? { processoConselho } : {}),
+      ...(processoConselhoDetalhe !== undefined ? { processoConselho_detalhe: processoConselhoDetalhe, processoConselhoDetalhe } : {}),
+      ...(reclamacaoErroMedico !== undefined ? { reclamacaoErroMedico } : {}),
+      ...(reclamacaoErroMedicoDetalhe !== undefined ? { reclamacaoErroMedico_detalhe: reclamacaoErroMedicoDetalhe, reclamacaoErroMedicoDetalhe } : {}),
+      ...(complicacoesCirurgicas !== undefined ? { complicacoesCirurgicas } : {}),
+      ...(complicacoesCirurgicasDetalhe !== undefined ? { complicacoesCirurgicas_detalhe: complicacoesCirurgicasDetalhe, complicacoesCirurgicasDetalhe } : {}),
+      ...(fatoPotencial !== undefined ? { fatoPotencial } : {}),
+      ...(fatoPotencialDetalhe !== undefined ? { fatoPotencial_detalhe: fatoPotencialDetalhe, fatoPotencialDetalhe } : {}),
+      ...(pagamentoIndenizacao !== undefined ? { pagamentoIndenizacao } : {}),
+      ...(pagamentoIndenizacaoDetalhe !== undefined ? { pagamentoIndenizacao_detalhe: pagamentoIndenizacaoDetalhe, pagamentoIndenizacaoDetalhe } : {}),
+      ...(mergedQuestionarioRisco !== undefined ? { questionarioRisco: mergedQuestionarioRisco } : {}),
 
       // 4. Seguro Anterior (Renovação)
       ...(isRenovacao !== undefined ? { isRenovacao } : {}),

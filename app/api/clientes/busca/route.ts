@@ -64,7 +64,6 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const q = (searchParams.get('q') || '').trim();
-    const partnerIdParam = searchParams.get('partnerId') || null;
     const productIdParam = searchParams.get('productId') || null;
     const ramoIdParam = searchParams.get('ramoId') || null;
 
@@ -81,6 +80,15 @@ export async function GET(req: NextRequest) {
     const textLike = `%${escapeLike(q)}%`;
     const digitsOnly = q.replace(/\D/g, '');
     const digitsLike = digitsOnly.length >= 3 ? `%${escapeLike(digitsOnly)}%` : null;
+
+    const isSubordinateBroker = Boolean(
+      access &&
+      !access.isInternal &&
+      !access.isCorretoraUser &&
+      (access.partnerRole === 'broker' || access.partnerRole === 'partner' || String(access.role) === 'viewer') &&
+      Array.isArray(access.visibleUserIds) &&
+      access.visibleUserIds.length > 0
+    );
 
     // Constrói a busca base de clientes
     let clients: any[] = [];
@@ -178,58 +186,111 @@ export async function GET(req: NextRequest) {
       // Parceiro pesquisa exclusivamente clientes da sua carteira (isolamento multi-tenant contra IDOR / LGPD)
       const isExactDoc = digitsOnly.length >= 11;
       const targetPartnerId = access.partnerId;
+      const visibleIds = access.visibleUserIds || [];
 
       if (isExactDoc) {
-        // Busca por documento exato restrita à carteira do parceiro logado
-        clients = await sql`
-          SELECT DISTINCT ic.id, ic.document_number, ic.document_type, ic.full_name, ic.email, ic.phone, ic.birth_date, ic.metadata, ic.created_at
-          FROM insurance_clients ic
-          LEFT JOIN cotacoes c ON c.client_id = ic.id AND c.partner_id = ${targetPartnerId}
-          LEFT JOIN sales s ON s.client_id = ic.id AND s.partner_id = ${targetPartnerId}
-          WHERE (
-            c.id IS NOT NULL OR s.id IS NOT NULL OR (ic.metadata->>'partnerId') = ${targetPartnerId}
-          )
-          AND ic.document_number = ${digitsOnly}
-          LIMIT 1
-        `;
+        // Busca por documento exato restrita à carteira do parceiro (e do corretor subordinado se for broker/partner/viewer)
+        clients = isSubordinateBroker
+          ? await sql`
+              SELECT DISTINCT ic.id, ic.document_number, ic.document_type, ic.full_name, ic.email, ic.phone, ic.birth_date, ic.metadata, ic.created_at
+              FROM insurance_clients ic
+              LEFT JOIN cotacoes c ON c.client_id = ic.id AND c.partner_id = ${targetPartnerId} AND c.partner_user_id IN ${sql(visibleIds)}
+              LEFT JOIN sales s ON s.client_id = ic.id AND s.partner_id = ${targetPartnerId} AND s.partner_user_id IN ${sql(visibleIds)}
+              WHERE (
+                c.id IS NOT NULL
+                OR s.id IS NOT NULL
+                OR ((ic.metadata->>'partnerId') = ${targetPartnerId} AND (ic.metadata->>'partnerUserId') IN ${sql(visibleIds)})
+              )
+              AND ic.document_number = ${digitsOnly}
+              LIMIT 1
+            `
+          : await sql`
+              SELECT DISTINCT ic.id, ic.document_number, ic.document_type, ic.full_name, ic.email, ic.phone, ic.birth_date, ic.metadata, ic.created_at
+              FROM insurance_clients ic
+              LEFT JOIN cotacoes c ON c.client_id = ic.id AND c.partner_id = ${targetPartnerId}
+              LEFT JOIN sales s ON s.client_id = ic.id AND s.partner_id = ${targetPartnerId}
+              WHERE (
+                c.id IS NOT NULL OR s.id IS NOT NULL OR (ic.metadata->>'partnerId') = ${targetPartnerId}
+              )
+              AND ic.document_number = ${digitsOnly}
+              LIMIT 1
+            `;
       }
 
       // Se não encontrou por doc exato, busca na carteira do parceiro
       if (clients.length === 0) {
         if (digitsLike) {
-          clients = await sql`
-            SELECT DISTINCT ic.id, ic.document_number, ic.document_type, ic.full_name, ic.email, ic.phone, ic.birth_date, ic.metadata, ic.created_at
-            FROM insurance_clients ic
-            LEFT JOIN cotacoes c ON c.client_id = ic.id AND c.partner_id = ${targetPartnerId}
-            LEFT JOIN sales s ON s.client_id = ic.id AND s.partner_id = ${targetPartnerId}
-            WHERE (
-              c.id IS NOT NULL OR s.id IS NOT NULL OR (ic.metadata->>'partnerId') = ${targetPartnerId}
-            )
-            AND (
-              ic.full_name ILIKE ${textLike}
-              OR ic.email ILIKE ${textLike}
-              OR ic.document_number ILIKE ${digitsLike}
-              OR ic.phone ILIKE ${digitsLike}
-            )
-            ORDER BY ic.created_at DESC
-            LIMIT 8
-          `;
+          clients = isSubordinateBroker
+            ? await sql`
+                SELECT DISTINCT ic.id, ic.document_number, ic.document_type, ic.full_name, ic.email, ic.phone, ic.birth_date, ic.metadata, ic.created_at
+                FROM insurance_clients ic
+                LEFT JOIN cotacoes c ON c.client_id = ic.id AND c.partner_id = ${targetPartnerId} AND c.partner_user_id IN ${sql(visibleIds)}
+                LEFT JOIN sales s ON s.client_id = ic.id AND s.partner_id = ${targetPartnerId} AND s.partner_user_id IN ${sql(visibleIds)}
+                WHERE (
+                  c.id IS NOT NULL
+                  OR s.id IS NOT NULL
+                  OR ((ic.metadata->>'partnerId') = ${targetPartnerId} AND (ic.metadata->>'partnerUserId') IN ${sql(visibleIds)})
+                )
+                AND (
+                  ic.full_name ILIKE ${textLike}
+                  OR ic.email ILIKE ${textLike}
+                  OR ic.document_number ILIKE ${digitsLike}
+                  OR ic.phone ILIKE ${digitsLike}
+                )
+                ORDER BY ic.created_at DESC
+                LIMIT 8
+              `
+            : await sql`
+                SELECT DISTINCT ic.id, ic.document_number, ic.document_type, ic.full_name, ic.email, ic.phone, ic.birth_date, ic.metadata, ic.created_at
+                FROM insurance_clients ic
+                LEFT JOIN cotacoes c ON c.client_id = ic.id AND c.partner_id = ${targetPartnerId}
+                LEFT JOIN sales s ON s.client_id = ic.id AND s.partner_id = ${targetPartnerId}
+                WHERE (
+                  c.id IS NOT NULL OR s.id IS NOT NULL OR (ic.metadata->>'partnerId') = ${targetPartnerId}
+                )
+                AND (
+                  ic.full_name ILIKE ${textLike}
+                  OR ic.email ILIKE ${textLike}
+                  OR ic.document_number ILIKE ${digitsLike}
+                  OR ic.phone ILIKE ${digitsLike}
+                )
+                ORDER BY ic.created_at DESC
+                LIMIT 8
+              `;
         } else {
-          clients = await sql`
-            SELECT DISTINCT ic.id, ic.document_number, ic.document_type, ic.full_name, ic.email, ic.phone, ic.birth_date, ic.metadata, ic.created_at
-            FROM insurance_clients ic
-            LEFT JOIN cotacoes c ON c.client_id = ic.id AND c.partner_id = ${targetPartnerId}
-            LEFT JOIN sales s ON s.client_id = ic.id AND s.partner_id = ${targetPartnerId}
-            WHERE (
-              c.id IS NOT NULL OR s.id IS NOT NULL OR (ic.metadata->>'partnerId') = ${targetPartnerId}
-            )
-            AND (
-              ic.full_name ILIKE ${textLike}
-              OR ic.email ILIKE ${textLike}
-            )
-            ORDER BY ic.created_at DESC
-            LIMIT 8
-          `;
+          clients = isSubordinateBroker
+            ? await sql`
+                SELECT DISTINCT ic.id, ic.document_number, ic.document_type, ic.full_name, ic.email, ic.phone, ic.birth_date, ic.metadata, ic.created_at
+                FROM insurance_clients ic
+                LEFT JOIN cotacoes c ON c.client_id = ic.id AND c.partner_id = ${targetPartnerId} AND c.partner_user_id IN ${sql(visibleIds)}
+                LEFT JOIN sales s ON s.client_id = ic.id AND s.partner_id = ${targetPartnerId} AND s.partner_user_id IN ${sql(visibleIds)}
+                WHERE (
+                  c.id IS NOT NULL
+                  OR s.id IS NOT NULL
+                  OR ((ic.metadata->>'partnerId') = ${targetPartnerId} AND (ic.metadata->>'partnerUserId') IN ${sql(visibleIds)})
+                )
+                AND (
+                  ic.full_name ILIKE ${textLike}
+                  OR ic.email ILIKE ${textLike}
+                )
+                ORDER BY ic.created_at DESC
+                LIMIT 8
+              `
+            : await sql`
+                SELECT DISTINCT ic.id, ic.document_number, ic.document_type, ic.full_name, ic.email, ic.phone, ic.birth_date, ic.metadata, ic.created_at
+                FROM insurance_clients ic
+                LEFT JOIN cotacoes c ON c.client_id = ic.id AND c.partner_id = ${targetPartnerId}
+                LEFT JOIN sales s ON s.client_id = ic.id AND s.partner_id = ${targetPartnerId}
+                WHERE (
+                  c.id IS NOT NULL OR s.id IS NOT NULL OR (ic.metadata->>'partnerId') = ${targetPartnerId}
+                )
+                AND (
+                  ic.full_name ILIKE ${textLike}
+                  OR ic.email ILIKE ${textLike}
+                )
+                ORDER BY ic.created_at DESC
+                LIMIT 8
+              `;
         }
       }
     }
@@ -259,25 +320,87 @@ export async function GET(req: NextRequest) {
           ? (metadata.address as Record<string, unknown>)
           : null;
 
-        // Busca todas as apólices em sales do cliente
-        const clientSales = await sql`
-          SELECT s.*, p.name AS product_name, p.code AS product_code, p.flow_key AS product_flow_key, p.category AS product_category
-          FROM sales s
-          JOIN products p ON p.id = s.product_id
-          WHERE s.client_id = ${client.id}
-          ORDER BY s.created_at DESC
-        `;
+        // Busca apólices em sales do cliente (isoladas pelo escopo do parceiro/corretora quando !isAdmin)
+        const clientSales = isAdmin
+          ? await sql`
+              SELECT s.*, p.name AS product_name, p.code AS product_code, p.flow_key AS product_flow_key, p.category AS product_category
+              FROM sales s
+              JOIN products p ON p.id = s.product_id
+              WHERE s.client_id = ${client.id}
+              ORDER BY s.created_at DESC
+            `
+          : access?.isCorretoraUser
+            ? await sql`
+                SELECT s.*, p.name AS product_name, p.code AS product_code, p.flow_key AS product_flow_key, p.category AS product_category
+                FROM sales s
+                JOIN products p ON p.id = s.product_id
+                WHERE s.client_id = ${client.id}
+                  AND (s.corretora_id = ${access.corretoraId} OR s.partner_id IN (SELECT id FROM partners WHERE corretora_id = ${access.corretoraId}))
+                ORDER BY s.created_at DESC
+              `
+            : isSubordinateBroker
+              ? await sql`
+                  SELECT s.*, p.name AS product_name, p.code AS product_code, p.flow_key AS product_flow_key, p.category AS product_category
+                  FROM sales s
+                  JOIN products p ON p.id = s.product_id
+                  WHERE s.client_id = ${client.id}
+                    AND s.partner_id = ${access!.partnerId}
+                    AND s.partner_user_id IN ${sql(access!.visibleUserIds!)}
+                  ORDER BY s.created_at DESC
+                `
+              : await sql`
+                  SELECT s.*, p.name AS product_name, p.code AS product_code, p.flow_key AS product_flow_key, p.category AS product_category
+                  FROM sales s
+                  JOIN products p ON p.id = s.product_id
+                  WHERE s.client_id = ${client.id}
+                    AND s.partner_id = ${access!.partnerId}
+                  ORDER BY s.created_at DESC
+                `;
 
-        // Busca todas as cotações do cliente
-        const clientQuotes = await sql`
-          SELECT c.*, p.name AS product_name, p.code AS product_code, p.flow_key AS product_flow_key, p.category AS product_category
-          FROM cotacoes c
-          JOIN products p ON p.id = c.product_id
-          WHERE c.client_id = ${client.id}
-          ORDER BY
-            CASE WHEN c.status IN ('aprovada', 'emitida', 'assinado', 'pagamento_gerado') THEN 0 ELSE 1 END,
-            c.created_at DESC
-        `;
+        // Busca cotações do cliente (isoladas pelo escopo do parceiro/corretora quando !isAdmin)
+        const clientQuotes = isAdmin
+          ? await sql`
+              SELECT c.*, p.name AS product_name, p.code AS product_code, p.flow_key AS product_flow_key, p.category AS product_category
+              FROM cotacoes c
+              JOIN products p ON p.id = c.product_id
+              WHERE c.client_id = ${client.id}
+              ORDER BY
+                CASE WHEN c.status IN ('aprovada', 'emitida', 'assinado', 'pagamento_gerado') THEN 0 ELSE 1 END,
+                c.created_at DESC
+            `
+          : access?.isCorretoraUser
+            ? await sql`
+                SELECT c.*, p.name AS product_name, p.code AS product_code, p.flow_key AS product_flow_key, p.category AS product_category
+                FROM cotacoes c
+                JOIN products p ON p.id = c.product_id
+                WHERE c.client_id = ${client.id}
+                  AND (c.corretora_id = ${access.corretoraId} OR c.partner_id IN (SELECT id FROM partners WHERE corretora_id = ${access.corretoraId}))
+                ORDER BY
+                  CASE WHEN c.status IN ('aprovada', 'emitida', 'assinado', 'pagamento_gerado') THEN 0 ELSE 1 END,
+                  c.created_at DESC
+              `
+            : isSubordinateBroker
+              ? await sql`
+                  SELECT c.*, p.name AS product_name, p.code AS product_code, p.flow_key AS product_flow_key, p.category AS product_category
+                  FROM cotacoes c
+                  JOIN products p ON p.id = c.product_id
+                  WHERE c.client_id = ${client.id}
+                    AND c.partner_id = ${access!.partnerId}
+                    AND c.partner_user_id IN ${sql(access!.visibleUserIds!)}
+                  ORDER BY
+                    CASE WHEN c.status IN ('aprovada', 'emitida', 'assinado', 'pagamento_gerado') THEN 0 ELSE 1 END,
+                    c.created_at DESC
+                `
+              : await sql`
+                  SELECT c.*, p.name AS product_name, p.code AS product_code, p.flow_key AS product_flow_key, p.category AS product_category
+                  FROM cotacoes c
+                  JOIN products p ON p.id = c.product_id
+                  WHERE c.client_id = ${client.id}
+                    AND c.partner_id = ${access!.partnerId}
+                  ORDER BY
+                    CASE WHEN c.status IN ('aprovada', 'emitida', 'assinado', 'pagamento_gerado') THEN 0 ELSE 1 END,
+                    c.created_at DESC
+                `;
 
         // Isolamento de Ramo para Renovação:
         // Se targetRamoId foi especificado, apenas vendas/cotações daquele mesmo ramo são elegíveis para renovação
@@ -298,7 +421,7 @@ export async function GET(req: NextRequest) {
         // Cotação geral mais recente (para fallback de dados cadastrais/endereço que não afetam renovação)
         const generalLatestClientData = clientQuotes[0] ? parseJsonbField<Record<string, unknown>>(clientQuotes[0].client_data) : {};
 
-        // Endereço consolidado (aproveita de metadata ou do histórico geral do cliente)
+        // Endereço consolidado (aproveita de metadata ou do histórico geral do cliente no escopo permitido)
         const address = {
           cep: String(metaAddress?.cep || generalLatestClientData.cep || latestClientData.cep || ''),
           logradouro: String(metaAddress?.logradouro || generalLatestClientData.logradouro || generalLatestClientData.rua || latestClientData.logradouro || latestClientData.rua || ''),

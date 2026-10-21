@@ -733,7 +733,7 @@ export default function AdminEmailsPage() {
 
       {/* Drawer / Modal Lateral: Editor de Templates Split-View */}
       {isEditorOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200">
           <div
             className="w-full max-w-6xl bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-right duration-300 border-l border-gray-200 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
@@ -942,7 +942,7 @@ export default function AdminEmailsPage() {
                         type="button"
                         disabled={sendingTest}
                         onClick={handleSendTestEmail}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-gray-900 px-3 py-1.5 text-xs font-bold text-white hover:bg-gray-800 disabled:opacity-50 transition"
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3 py-1.5 text-xs font-bold text-white hover:bg-primary/90 disabled:opacity-50 transition"
                       >
                         <Send className="size-3" />
                         {sendingTest ? 'Enviando...' : 'Enviar Teste'}
@@ -982,7 +982,7 @@ export default function AdminEmailsPage() {
 
       {/* Modal de Visualização Rápida */}
       {previewTemplate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in">
           <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl overflow-hidden border border-gray-200 flex flex-col max-h-[90vh]">
             <header className="px-6 py-4 border-b border-gray-200 flex justify-between items-center bg-gray-50/50">
               <div>

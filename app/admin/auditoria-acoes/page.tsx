@@ -672,7 +672,7 @@ export default function AuditoriaAcoesPage() {
                 <tr>
                   <td colSpan={6} className="py-16 text-center text-gray-400">
                     <div className="flex flex-col items-center justify-center gap-2 max-w-sm mx-auto">
-                      <Activity className="h-8 w-8 text-gray-300" />
+                      <Activity className="h-8 w-8 text-gray-500" />
                       <span className="text-sm font-bold text-gray-800">
                         Nenhum registro encontrado
                       </span>
@@ -878,7 +878,7 @@ export default function AuditoriaAcoesPage() {
 
       {/* 5. Modal / Slide-over de Inspeção Detalhada com Diff Visual (Opção 3) */}
       {selectedLog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="relative flex flex-col w-full max-w-4xl max-h-[92vh] rounded-3xl border border-gray-200 bg-white shadow-2xl overflow-hidden">
             {/* Cabeçalho do Modal */}
             <div className="flex items-start justify-between p-5 border-b border-gray-200 bg-gray-50/80">
@@ -1145,7 +1145,7 @@ export default function AuditoriaAcoesPage() {
                     </div>
                   ) : (
                     <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center">
-                      <Layers className="h-10 w-10 text-gray-300 mx-auto mb-2" />
+                      <Layers className="h-10 w-10 text-gray-500 mx-auto mb-2" />
                       <h4 className="text-sm font-bold text-gray-800">
                         Nenhum diff estrutural detectado
                       </h4>

@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { verifyAuth, isInternalUser, unauthorized, getPartnerAccessContext } from '@/lib/auth';
+import { verifyAuth, isInternalUser, unauthorized, getPartnerAccessContext, type PartnerAccessContext } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
 import { parseJsonbField } from '@/lib/json-safe';
@@ -37,6 +37,89 @@ function parseBirthDateInput(value: string | null | undefined): string | null {
   return `${yearNum}-${String(monthNum).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
 }
 
+async function hasClientScopeAccess(clientId: string, access: PartnerAccessContext): Promise<boolean> {
+  if (access.isCorretoraUser && access.corretoraId) {
+    const [row] = await sql`
+      SELECT 1
+      FROM insurance_clients ic
+      WHERE ic.id = ${clientId}
+        AND (
+          EXISTS (
+            SELECT 1 FROM cotacoes c
+            WHERE c.client_id = ic.id
+              AND (c.corretora_id = ${access.corretoraId} OR c.partner_id IN (SELECT id FROM partners WHERE corretora_id = ${access.corretoraId}))
+          )
+          OR EXISTS (
+            SELECT 1 FROM sales s
+            WHERE s.client_id = ic.id
+              AND (s.corretora_id = ${access.corretoraId} OR s.partner_id IN (SELECT id FROM partners WHERE corretora_id = ${access.corretoraId}))
+          )
+          OR EXISTS (
+            SELECT 1 FROM leads l
+            WHERE l.cpf_cnpj = ic.document_number
+              AND (l.corretora_id = ${access.corretoraId} OR l.partner_id IN (SELECT id FROM partners WHERE corretora_id = ${access.corretoraId}))
+          )
+          OR (ic.metadata->>'corretoraId') = ${access.corretoraId}
+        )
+      LIMIT 1
+    `;
+    return !!row;
+  }
+
+  if (!access.partnerId) return false;
+
+  if (access.visibleUserIds === null) {
+    const [row] = await sql`
+      SELECT 1
+      FROM insurance_clients ic
+      WHERE ic.id = ${clientId}
+        AND (
+          EXISTS (
+            SELECT 1 FROM cotacoes c
+            WHERE c.client_id = ic.id AND c.partner_id = ${access.partnerId}
+          )
+          OR EXISTS (
+            SELECT 1 FROM sales s
+            WHERE s.client_id = ic.id AND s.partner_id = ${access.partnerId}
+          )
+          OR EXISTS (
+            SELECT 1 FROM leads l
+            WHERE l.cpf_cnpj = ic.document_number AND l.partner_id = ${access.partnerId}
+          )
+          OR (ic.metadata->>'partnerId') = ${access.partnerId}
+        )
+      LIMIT 1
+    `;
+    return !!row;
+  }
+
+  if (access.visibleUserIds.length > 0) {
+    const [row] = await sql`
+      SELECT 1
+      FROM insurance_clients ic
+      WHERE ic.id = ${clientId}
+        AND (
+          EXISTS (
+            SELECT 1 FROM cotacoes c
+            WHERE c.client_id = ic.id
+              AND c.partner_id = ${access.partnerId}
+              AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
+          )
+          OR EXISTS (
+            SELECT 1 FROM sales s
+            WHERE s.client_id = ic.id
+              AND s.partner_id = ${access.partnerId}
+              AND (s.partner_user_id IN ${sql(access.visibleUserIds)} OR s.partner_user_id IS NULL)
+          )
+        )
+      LIMIT 1
+    `;
+    return !!row;
+  }
+
+  return false;
+}
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -54,35 +137,9 @@ export async function GET(
       return Response.json({ error: 'Acesso negado' }, { status: 403 });
     }
 
-    // Se parceiro, valida se o cliente possui cotações acessíveis
+    // Se parceiro ou corretora, valida se o cliente possui registros acessíveis no seu escopo
     if (!isAdmin && access) {
-      let hasAccess = false;
-      if (access.isCorretoraUser) {
-        const [row] = await sql`
-          SELECT 1 FROM cotacoes
-          WHERE client_id = ${id}
-            AND (corretora_id = ${access.corretoraId} OR partner_id IN (SELECT id FROM partners WHERE corretora_id = ${access.corretoraId}))
-          LIMIT 1
-        `;
-        hasAccess = !!row;
-      } else if (access.visibleUserIds === null) {
-        const [row] = await sql`
-          SELECT 1 FROM cotacoes
-          WHERE client_id = ${id} AND partner_id = ${access.partnerId}
-          LIMIT 1
-        `;
-        hasAccess = !!row;
-      } else if (access.visibleUserIds.length > 0) {
-        const [row] = await sql`
-          SELECT 1 FROM cotacoes
-          WHERE client_id = ${id}
-            AND partner_id = ${access.partnerId}
-            AND (partner_user_id IN ${sql(access.visibleUserIds)} OR partner_user_id IS NULL)
-          LIMIT 1
-        `;
-        hasAccess = !!row;
-      }
-
+      const hasAccess = await hasClientScopeAccess(id, access);
       if (!hasAccess) {
         return Response.json({ error: 'Cliente não encontrado ou acesso negado' }, { status: 404 });
       }
@@ -109,19 +166,48 @@ export async function GET(
       return Response.json({ error: 'Cliente não encontrado' }, { status: 404 });
     }
 
-    // Extrai endereço do metadata ou da cotação mais recente do cliente como fallback seguro
+    // Extrai endereço do metadata ou da cotação mais recente do cliente (restrita ao escopo do tenant)
     const metadata = parseJsonbField<Record<string, unknown>>(client.metadata);
     const metaAddress = (metadata.address && typeof metadata.address === 'object' && !Array.isArray(metadata.address))
       ? (metadata.address as Record<string, unknown>)
       : null;
 
-    const [latestQuote] = await sql`
-      SELECT client_data
-      FROM cotacoes
-      WHERE client_id = ${id}
-      ORDER BY created_at DESC
-      LIMIT 1
-    `;
+    const [latestQuote] = isAdmin
+      ? await sql`
+          SELECT client_data
+          FROM cotacoes
+          WHERE client_id = ${id}
+          ORDER BY created_at DESC
+          LIMIT 1
+        `
+      : access?.isCorretoraUser && access.corretoraId
+        ? await sql`
+            SELECT client_data
+            FROM cotacoes
+            WHERE client_id = ${id}
+              AND (corretora_id = ${access.corretoraId} OR partner_id IN (SELECT id FROM partners WHERE corretora_id = ${access.corretoraId}))
+            ORDER BY created_at DESC
+            LIMIT 1
+          `
+        : access?.visibleUserIds === null
+          ? await sql`
+              SELECT client_data
+              FROM cotacoes
+              WHERE client_id = ${id}
+                AND partner_id = ${access.partnerId}
+              ORDER BY created_at DESC
+              LIMIT 1
+            `
+          : await sql`
+              SELECT client_data
+              FROM cotacoes
+              WHERE client_id = ${id}
+                AND partner_id = ${access!.partnerId}
+                AND (partner_user_id IN ${sql(access!.visibleUserIds || [])} OR partner_user_id IS NULL)
+              ORDER BY created_at DESC
+              LIMIT 1
+            `;
+
     const latestClientData = latestQuote ? parseJsonbField<Record<string, unknown>>(latestQuote.client_data) : {};
 
     const address = {
@@ -134,7 +220,7 @@ export async function GET(
       uf: String(metaAddress?.uf || latestClientData.uf || ''),
     };
 
-    // Retorna cotações vinculadas ao cliente para facilitar exibição
+    // Retorna cotações vinculadas ao cliente respeitando o isolamento multi-tenant
     let cotacoes;
     if (isAdmin) {
       cotacoes = await sql`
@@ -151,7 +237,22 @@ export async function GET(
         ORDER BY c.created_at DESC
       `;
     } else if (access) {
-      if (access.visibleUserIds === null) {
+      if (access.isCorretoraUser && access.corretoraId) {
+        cotacoes = await sql`
+          SELECT
+            c.*,
+            p.name AS product_name,
+            p.flow_key AS product_flow_key,
+            part.nome_fantasia AS partner_name,
+            part.razao_social AS partner_razao_social
+          FROM cotacoes c
+          LEFT JOIN products p ON p.id = c.product_id
+          LEFT JOIN partners part ON part.id = c.partner_id
+          WHERE c.client_id = ${id}
+            AND (c.corretora_id = ${access.corretoraId} OR c.partner_id IN (SELECT id FROM partners WHERE corretora_id = ${access.corretoraId}))
+          ORDER BY c.created_at DESC
+        `;
+      } else if (access.visibleUserIds === null) {
         cotacoes = await sql`
           SELECT
             c.*,
@@ -221,27 +322,9 @@ export async function PATCH(
       return Response.json({ error: 'Acesso negado' }, { status: 403 });
     }
 
-    // Se parceiro, valida se o cliente possui cotações acessíveis
+    // Se parceiro ou corretora, valida se o cliente possui registros acessíveis no seu escopo
     if (!isAdmin && access) {
-      let hasAccess = false;
-      if (access.visibleUserIds === null) {
-        const [row] = await sql`
-          SELECT 1 FROM cotacoes
-          WHERE client_id = ${id} AND partner_id = ${access.partnerId}
-          LIMIT 1
-        `;
-        hasAccess = !!row;
-      } else if (access.visibleUserIds.length > 0) {
-        const [row] = await sql`
-          SELECT 1 FROM cotacoes
-          WHERE client_id = ${id}
-            AND partner_id = ${access.partnerId}
-            AND (partner_user_id IN ${sql(access.visibleUserIds)} OR partner_user_id IS NULL)
-          LIMIT 1
-        `;
-        hasAccess = !!row;
-      }
-
+      const hasAccess = await hasClientScopeAccess(id, access);
       if (!hasAccess) {
         return Response.json({ error: 'Cliente não encontrado ou acesso negado' }, { status: 404 });
       }
@@ -266,6 +349,45 @@ export async function PATCH(
           return Response.json({ error: 'CPF deve conter 11 dígitos ou CNPJ deve conter 14 dígitos' }, { status: 400 });
         }
         if (normalizedDoc !== existingClient.document_number) {
+          // Quando !isAdmin (!access.isInternal), bloqueia a troca de CPF/CNPJ caso o cliente possua
+          // vendas ou cotações vinculadas a outros parceiros/corretoras, evitando corromper o cadastro compartilhado
+          if (!isAdmin && access) {
+            const [sharedRecord] = access.isCorretoraUser && access.corretoraId
+              ? await sql`
+                  SELECT 1 FROM (
+                    SELECT id FROM cotacoes
+                    WHERE client_id = ${id}
+                      AND (corretora_id IS DISTINCT FROM ${access.corretoraId})
+                      AND (partner_id IS NULL OR partner_id NOT IN (SELECT id FROM partners WHERE corretora_id = ${access.corretoraId}))
+                    UNION ALL
+                    SELECT id FROM sales
+                    WHERE client_id = ${id}
+                      AND (corretora_id IS DISTINCT FROM ${access.corretoraId})
+                      AND (partner_id IS NULL OR partner_id NOT IN (SELECT id FROM partners WHERE corretora_id = ${access.corretoraId}))
+                  ) shared_refs
+                  LIMIT 1
+                `
+              : await sql`
+                  SELECT 1 FROM (
+                    SELECT id FROM cotacoes
+                    WHERE client_id = ${id}
+                      AND partner_id IS DISTINCT FROM ${access.partnerId}
+                    UNION ALL
+                    SELECT id FROM sales
+                    WHERE client_id = ${id}
+                      AND partner_id IS DISTINCT FROM ${access.partnerId}
+                  ) shared_refs
+                  LIMIT 1
+                `;
+
+            if (sharedRecord) {
+              return Response.json(
+                { error: 'Não é permitido alterar o CPF/CNPJ de um cliente que possui cotações ou apólices vinculadas a outros parceiros' },
+                { status: 403 }
+              );
+            }
+          }
+
           const [conflict] = await sql`
             SELECT id FROM insurance_clients WHERE document_number = ${normalizedDoc} AND id != ${id} LIMIT 1
           `;
@@ -353,12 +475,19 @@ export async function PATCH(
               FROM cotacoes
               WHERE client_id = ${existingClient.id} OR client_cpf_cnpj = ${existingClient.document_number}
             `
-          : await sql<{ id: string; status: string; client_data: unknown }[]>`
-              SELECT id, status, client_data
-              FROM cotacoes
-              WHERE (client_id = ${existingClient.id} OR client_cpf_cnpj = ${existingClient.document_number})
-                AND partner_id = ${access!.partnerId}
-            `;
+          : access?.isCorretoraUser && access.corretoraId
+            ? await sql<{ id: string; status: string; client_data: unknown }[]>`
+                SELECT id, status, client_data
+                FROM cotacoes
+                WHERE (client_id = ${existingClient.id} OR client_cpf_cnpj = ${existingClient.document_number})
+                  AND (corretora_id = ${access.corretoraId} OR partner_id IN (SELECT id FROM partners WHERE corretora_id = ${access.corretoraId}))
+              `
+            : await sql<{ id: string; status: string; client_data: unknown }[]>`
+                SELECT id, status, client_data
+                FROM cotacoes
+                WHERE (client_id = ${existingClient.id} OR client_cpf_cnpj = ${existingClient.document_number})
+                  AND partner_id = ${access!.partnerId}
+              `;
 
         for (const q of quotesToUpdate) {
           const cd = parseJsonbField<Record<string, unknown>>(q.client_data);

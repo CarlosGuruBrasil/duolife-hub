@@ -114,31 +114,29 @@ export async function POST(req: NextRequest) {
 
     const { productId, discountPercent, label, expiresInDays } = parsed.data;
 
-    // Se productId for fornecido, valida se o parceiro tem permissão para ofertar esse produto
-    let targetProductId = productId || null;
-    if (targetProductId) {
-      const [available] = await sql`
-        SELECT p.id, p.name FROM products p
-        JOIN partner_product_availability ppa ON ppa.product_id = p.id
-        WHERE p.id = ${targetProductId}
-          AND ppa.partner_id = ${effectivePartnerId}
-          AND ppa.is_active = true
-          AND p.is_active = true
-        LIMIT 1
-      `;
-      if (!available) {
-        // Fallback: se não estiver explicitamente mapeado em partner_product_availability,
-        // checa se é um produto padrão ativo
-        const [prod] = await sql`
-          SELECT id FROM products WHERE id = ${targetProductId} AND is_active = true LIMIT 1
-        `;
-        if (!prod) {
-          return NextResponse.json({ error: 'Produto selecionado não está disponível' }, { status: 422 });
-        }
-      }
-    } else {
-      // Produto padrão se não especificado
-      targetProductId = 'prod-rc-001';
+    // Define o produto alvo (ou padrão) e valida disponibilidade do produto e permissão do parceiro
+    const targetProductId = productId || 'prod-rc-001';
+
+    const [ppa] = await sql`
+      SELECT is_active
+      FROM partner_product_availability
+      WHERE partner_id = ${effectivePartnerId}
+        AND product_id = ${targetProductId}
+      LIMIT 1
+    `;
+
+    if (ppa && ppa.is_active === false) {
+      return NextResponse.json(
+        { error: 'Este produto não está habilitado para este parceiro' },
+        { status: 403 }
+      );
+    }
+
+    const [prod] = await sql`
+      SELECT id, name FROM products WHERE id = ${targetProductId} AND is_active = true LIMIT 1
+    `;
+    if (!prod) {
+      return NextResponse.json({ error: 'Produto selecionado não está disponível' }, { status: 422 });
     }
 
     const isMed = targetProductId === 'prod-rc-med-001' || targetProductId === 'RC-MED-001';

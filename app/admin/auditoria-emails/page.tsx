@@ -785,10 +785,10 @@ export default function AuditoriaEmailsPage() {
                       </div>
                     ) : (
                       /* Container Mobile */
-                      <div className="w-[385px] bg-gray-900 rounded-[36px] shadow-2xl p-2.5 border-4 border-gray-800 transition-all">
+                      <div className="w-full max-w-[385px] bg-gray-100 rounded-[36px] shadow-xl p-2.5 border-4 border-gray-300 transition-all">
                         {/* Top notch de Smartphone */}
                         <div className="flex items-center justify-center py-1">
-                          <div className="h-3.5 w-24 bg-gray-800 rounded-full" />
+                          <div className="h-3.5 w-24 bg-gray-300 rounded-full" />
                         </div>
                         <div className="rounded-[24px] overflow-hidden bg-white flex flex-col">
                           <div className="border-b border-gray-200 bg-gray-50 px-3 py-2 text-[11px]">
@@ -878,7 +878,7 @@ export default function AuditoriaEmailsPage() {
                     <span className="text-gray-500 font-semibold uppercase text-[10px] tracking-wider block mb-2">
                       Metadados, Variáveis & Contexto da Automação
                     </span>
-                    <pre className="max-h-60 overflow-auto rounded-lg bg-gray-900 p-3 font-mono text-[11px] text-emerald-400">
+                    <pre className="max-h-60 overflow-auto rounded-lg bg-gray-50 border border-gray-200 p-3 font-mono text-[11px] text-gray-800">
                       {JSON.stringify(selectedLog.metadata, null, 2)}
                     </pre>
                   </div>
@@ -912,8 +912,8 @@ export default function AuditoriaEmailsPage() {
                     </button>
                   </div>
 
-                  <div className="flex-1 overflow-hidden rounded-xl border border-gray-800 bg-gray-900">
-                    <pre className="h-full overflow-auto p-4 font-mono text-[11px] text-emerald-400 select-all whitespace-pre-wrap">
+                  <div className="flex-1 overflow-hidden rounded-xl border border-gray-200 bg-white">
+                    <pre className="h-full overflow-auto p-4 font-mono text-[11px] text-gray-800 select-all whitespace-pre-wrap">
                       {previewHtml || 'Nenhum código HTML disponível para este disparo.'}
                     </pre>
                   </div>

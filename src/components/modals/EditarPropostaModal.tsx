@@ -1150,7 +1150,7 @@ export default function EditarPropostaModal({
     >
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs transition-opacity"
+        className="fixed inset-0 bg-black/40 backdrop-blur-xs transition-opacity"
         onClick={() => {
           if (!saving && !regerandoMinuta) onClose();
         }}
@@ -2392,7 +2392,7 @@ export default function EditarPropostaModal({
                             onClick={() => setPpeCargos('Não')}
                             className={`min-h-[44px] px-4 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
                               ppeCargos === 'Não'
-                                ? 'bg-gray-900 text-white border-gray-900'
+                                ? 'bg-primary text-white border-primary'
                                 : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
                             }`}
                           >
@@ -2422,7 +2422,7 @@ export default function EditarPropostaModal({
                             onClick={() => setPpeRepresenta('Não')}
                             className={`min-h-[44px] px-4 py-1.5 rounded-lg text-xs font-bold border transition-all cursor-pointer ${
                               ppeRepresenta === 'Não'
-                                ? 'bg-gray-900 text-white border-gray-900'
+                                ? 'bg-primary text-white border-primary'
                                 : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
                             }`}
                           >
