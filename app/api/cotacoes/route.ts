@@ -442,6 +442,7 @@ export async function POST(req: NextRequest) {
       descontoManualPercent: effectiveDescontoPercent,
       flowKey: product.flow_key,
       productId: product.id,
+      grupoTarifario: (clientDataInput.grupoTarifario as string) || (clientDataInput.grupo as string) || null,
     });
 
     if (!preco) {

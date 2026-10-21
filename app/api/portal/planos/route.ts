@@ -9,6 +9,7 @@ export async function GET(req: Request) {
   const requestedPartnerId = url.searchParams.get('partnerId');
   const requestedProductId = url.searchParams.get('productId');
   const requestedFlowKey = url.searchParams.get('flowKey');
+  const requestedGrupo = url.searchParams.get('grupo') || url.searchParams.get('grupoTarifario');
 
   let targetPartnerId: string | null = null;
   let linkedProductId: string | null = null;
@@ -69,7 +70,16 @@ export async function GET(req: Request) {
       resolvedFlowKey === 'rc_professional_v1' ||
       resolvedFlowKey === 'rc-advogados';
 
+    const ramoConfig = !isRcAdvogados
+      ? getRamoConfig({
+          flowKey: resolvedFlowKey || undefined,
+          code: productCode || undefined,
+          category: productCategory || undefined,
+        })
+      : null;
+
     let planos: any[] = [];
+    let effectiveGrupoTarifario: string | undefined = undefined;
 
     if (isRcAdvogados) {
       // Se for RC Advogados ou não informado, mantém a consulta da coleção Wix 'Planos'
@@ -104,15 +114,18 @@ export async function GET(req: Request) {
           (a, b) => (Number(a.ordem) || 0) - (Number(b.ordem) || 0)
         );
       }
-    } else {
-      // Se especificado productId ou flowKey de outro ramo, retorna os planos do RamoConfig ordenados por ordem
-      const ramoConfig = getRamoConfig({
-        flowKey: resolvedFlowKey || undefined,
-        code: productCode || undefined,
-        category: productCategory || undefined,
-      });
-
-      if (ramoConfig && Array.isArray(ramoConfig.planos)) {
+    } else if (ramoConfig) {
+      // Se especificado productId ou flowKey de outro ramo, retorna os planos do RamoConfig
+      // Se o ramo tiver planos por grupo tarifário (ex: RC Saúde G1 a G8)
+      if (ramoConfig.planosPorGrupo) {
+        effectiveGrupoTarifario = requestedGrupo && ramoConfig.planosPorGrupo[requestedGrupo]
+          ? requestedGrupo
+          : 'G5';
+        const grupoPlanos = ramoConfig.planosPorGrupo[effectiveGrupoTarifario] || ramoConfig.planos;
+        planos = [...grupoPlanos].sort(
+          (a, b) => (Number(a.ordem) || 0) - (Number(b.ordem) || 0)
+        );
+      } else if (Array.isArray(ramoConfig.planos)) {
         planos = [...ramoConfig.planos].sort(
           (a, b) => (Number(a.ordem) || 0) - (Number(b.ordem) || 0)
         );
@@ -158,6 +171,9 @@ export async function GET(req: Request) {
     return Response.json({
       ok: true,
       planos,
+      gruposTarifarios: ramoConfig?.gruposTarifarios || undefined,
+      gruposTarifariosLabel: ramoConfig?.gruposTarifariosLabel || undefined,
+      grupoTarifarioSelecionado: effectiveGrupoTarifario,
       commissionRate: publicToken ? undefined : commissionRate,
       flowKey: resolvedFlowKey,
       code: productCode,

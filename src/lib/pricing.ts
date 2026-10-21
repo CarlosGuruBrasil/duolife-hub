@@ -92,6 +92,7 @@ export interface CalcularPrecoServidorParams {
   flowKey?: string | null;
   productId?: string | null;
   productCode?: string | null;
+  grupoTarifario?: string | null;
 }
 
 // Recalcula o preço inteiramente a partir da tabela canônica de planos (Wix para RC Advogados
@@ -134,7 +135,12 @@ export async function calcularPrecoServidor(
       code: resolvedCode || undefined,
     });
     if (ramoConfig) {
-      plano = ramoConfig.planos.find((p) => p.tipoDePlano === params.tipoDePlano) || null;
+      if (ramoConfig.planosPorGrupo && params.grupoTarifario && ramoConfig.planosPorGrupo[params.grupoTarifario]) {
+        plano = ramoConfig.planosPorGrupo[params.grupoTarifario].find((p) => p.tipoDePlano === params.tipoDePlano) || null;
+      }
+      if (!plano) {
+        plano = ramoConfig.planos.find((p) => p.tipoDePlano === params.tipoDePlano) || null;
+      }
     }
   }
 

@@ -81,6 +81,17 @@ export interface AssociacaoProfissionalConfig {
   errorMessage?: string;
 }
 
+export interface GrupoTarifarioOption {
+  id: string; // 'G1', 'G2', ..., 'G8'
+  codigo: string;
+  label: string;
+  description?: string;
+  registroKey?: string;
+  registroLabel?: string;
+  registroPlaceholder?: string;
+  isCirurgico?: boolean;
+}
+
 export interface RamoConfig {
   ramoId: string;
   name: string;
@@ -92,6 +103,9 @@ export interface RamoConfig {
   targetAudience: string;
   registroProfissional?: RegistroProfissionalConfig;
   associacaoProfissional?: AssociacaoProfissionalConfig;
+  gruposTarifariosLabel?: string;
+  gruposTarifarios?: GrupoTarifarioOption[];
+  planosPorGrupo?: Record<string, PlanoDefinition[]>;
   especialidadesLabel?: string;
   especialidades?: FieldOption[];
   faturamentoLabel?: string;

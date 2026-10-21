@@ -114,6 +114,9 @@ export interface DynamicFormState {
   cidade: string;
   uf: string;
 
+  // Passo 1: Grupo Tarifário / Categoria de Risco (quando aplicável ao ramo, ex: RC Saúde G1 a G8)
+  grupoTarifario: string;
+
   // Passo 3: Perfil Profissional, Áreas de Atuação e Faturamento
   associadoEscritorio: 'Sim' | 'Não' | string;
   nomeEscritorio: string;
@@ -197,6 +200,7 @@ const initialFormState: DynamicFormState = {
   bairro: '',
   cidade: '',
   uf: 'SP',
+  grupoTarifario: 'G5',
   associadoEscritorio: 'Não',
   nomeEscritorio: '',
   escritorioAssociado: 'Não associado',
@@ -446,6 +450,7 @@ export default function DynamicCotacaoForm({
       const queryParams = new URLSearchParams();
       if (adminSelectedPartnerId) queryParams.set('partnerId', adminSelectedPartnerId);
       if (productId) queryParams.set('productId', productId);
+      if (form.grupoTarifario) queryParams.set('grupo', form.grupoTarifario);
       const partnerQuery = queryParams.toString() ? `?${queryParams.toString()}` : '';
 
       const res = await fetch(`/api/portal/planos${partnerQuery}`, {
@@ -512,6 +517,33 @@ export default function DynamicCotacaoForm({
   useEffect(() => {
     loadPlanos();
   }, [loadPlanos]);
+
+  // Alternância de Grupo Tarifário (Saúde G1 a G8) com atualização instantânea dos planos
+  const handleSelectGrupoTarifario = useCallback(
+    (grupoId: string) => {
+      setForm((prev) => ({
+        ...prev,
+        grupoTarifario: grupoId,
+      }));
+
+      // Se o ramo tiver planos por grupo em memória, atualiza instantaneamente sem latência de rede
+      if (resolvedRamoConfig.planosPorGrupo && resolvedRamoConfig.planosPorGrupo[grupoId]) {
+        const novosPlanos = (resolvedRamoConfig.planosPorGrupo[grupoId] as Plano[]).map((p) => ({
+          ...p,
+          nomeExibido: p.nomeExibido?.replace('Millhões', 'Milhões'),
+        }));
+        setPlanos(novosPlanos);
+
+        setPlanoSel((current) => {
+          if (!current) return null;
+          const matchingPlano = novosPlanos.find((p) => p.tipoDePlano === current.tipoDePlano);
+          return matchingPlano || null;
+        });
+        setParcelaSel(null);
+      }
+    },
+    [resolvedRamoConfig.planosPorGrupo]
+  );
 
   // Carrega cargos PPE do sistema
   useEffect(() => {
@@ -1061,8 +1093,9 @@ export default function DynamicCotacaoForm({
         }
 
         if (resolvedRamoConfig.especialidades && resolvedRamoConfig.especialidades.length > 0) {
-          if (form.especialidades.length === 0) {
-            setError('Selecione ao menos uma especialidade ou área de atuação.');
+          const isOutrosOuDentista = form.grupoTarifario === 'G1' || form.grupoTarifario === 'G2';
+          if (!isOutrosOuDentista && form.especialidades.length === 0) {
+            setError('Selecione ao menos uma especialidade ou área de atuação médica.');
             return;
           }
         }
@@ -1528,6 +1561,70 @@ export default function DynamicCotacaoForm({
             </div>
           </div>
 
+          {/* Seletor de Categoria Profissional / Especialidade de Saúde (Grupos G1 a G8) */}
+          {resolvedRamoConfig.gruposTarifarios && resolvedRamoConfig.gruposTarifarios.length > 0 && (
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 sm:p-5 space-y-3.5">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1.5">
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-primary block">
+                    {resolvedRamoConfig.gruposTarifariosLabel || 'Categoria Profissional / Especialidade de Saúde'} *
+                  </label>
+                  <span className="text-[11px] text-gray-500 font-medium">
+                    Selecione a categoria de atuação para calcular a tabela de coberturas (250k, 500k e 1M).
+                  </span>
+                </div>
+                {form.grupoTarifario && (
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 self-start sm:self-auto border border-emerald-200">
+                    Grupo Ativo: {form.grupoTarifario}
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                {resolvedRamoConfig.gruposTarifarios.map((grupo) => {
+                  const isSelected = form.grupoTarifario === grupo.id;
+                  return (
+                    <button
+                      key={grupo.id}
+                      type="button"
+                      onClick={() => handleSelectGrupoTarifario(grupo.id)}
+                      className={`text-left p-3 rounded-xl border-2 transition-all cursor-pointer flex flex-col justify-between ${
+                        isSelected
+                          ? 'border-emerald-600 bg-emerald-50/70 shadow-xs ring-2 ring-emerald-500/20'
+                          : 'border-gray-200 bg-white hover:border-emerald-300 hover:bg-gray-50'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between gap-1 mb-1">
+                          <span
+                            className={`text-[11px] font-mono font-bold px-2 py-0.5 rounded ${
+                              isSelected ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-700'
+                            }`}
+                          >
+                            {grupo.id}
+                          </span>
+                          {grupo.isCirurgico && (
+                            <span className="text-[10px] font-semibold text-amber-800 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">
+                              Cirúrgico
+                            </span>
+                          )}
+                        </div>
+                        <h5 className="text-xs font-bold text-gray-900 leading-snug">
+                          {grupo.label.replace(/^G\d+:\s*/, '')}
+                        </h5>
+                        {grupo.description && (
+                          <p className="text-[11px] text-gray-500 mt-1 leading-tight line-clamp-2">
+                            {grupo.description}
+                          </p>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Lista Dinâmica de Planos */}
           {loadingPlanos ? (
             <div className="py-12 text-center text-gray-500 flex flex-col items-center justify-center space-y-3">
@@ -1780,75 +1877,84 @@ export default function DynamicCotacaoForm({
               />
             </label>
 
-            {/* Conselho de Classe Dinâmico */}
-            {resolvedRamoConfig.registroProfissional && (
-              <>
-                {resolvedRamoConfig.registroProfissional.ufKey ? (
-                  <div className="grid grid-cols-3 gap-2">
-                    <label className="block col-span-2">
-                      <span className="field-label">{resolvedRamoConfig.registroProfissional.label} *</span>
+            {/* Conselho de Classe Dinâmico Contextualizado ao Ramo e Grupo */}
+            {resolvedRamoConfig.registroProfissional && (() => {
+              const grupoAtivo = resolvedRamoConfig.gruposTarifarios?.find((g) => g.id === form.grupoTarifario);
+              const labelEfetivo = grupoAtivo?.registroLabel || resolvedRamoConfig.registroProfissional.label;
+              const placeholderEfetivo = grupoAtivo?.registroPlaceholder || resolvedRamoConfig.registroProfissional.placeholder;
+              const isDentista = form.grupoTarifario === 'G2';
+              const isOutrosSaude = form.grupoTarifario === 'G1';
+
+              return (
+                <>
+                  {resolvedRamoConfig.registroProfissional.ufKey ? (
+                    <div className="grid grid-cols-3 gap-2">
+                      <label className="block col-span-2">
+                        <span className="field-label">{labelEfetivo} *</span>
+                        <input
+                          required={resolvedRamoConfig.registroProfissional.required}
+                          value={form.registroProfissionalNumero || (form as any)[resolvedRamoConfig.registroProfissional.key] || ''}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            updateField('registroProfissionalNumero', val);
+                            updateField(resolvedRamoConfig.registroProfissional!.key, val);
+                            if (isDentista) updateField('cro', val);
+                          }}
+                          className="form-input"
+                          placeholder={placeholderEfetivo}
+                        />
+                      </label>
+
+                      <label className="block">
+                        <span className="field-label">UF</span>
+                        <select
+                          value={form.registroProfissionalUf || (form as any)[resolvedRamoConfig.registroProfissional.ufKey] || 'SP'}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            updateField('registroProfissionalUf', val);
+                            updateField(resolvedRamoConfig.registroProfissional!.ufKey!, val);
+                          }}
+                          className="form-input"
+                        >
+                          {BRAZILIAN_UFS.map((uf) => (
+                            <option key={uf} value={uf}>{uf}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  ) : (
+                    <label className="block">
+                      <span className="field-label">{labelEfetivo} *</span>
                       <input
                         required={resolvedRamoConfig.registroProfissional.required}
-                        value={form.registroProfissionalNumero || (form as any)[resolvedRamoConfig.registroProfissional.key] || ''}
+                        value={form.registroProfissionalNumero || form.oab || ''}
                         onChange={(e) => {
                           const val = e.target.value;
                           updateField('registroProfissionalNumero', val);
                           updateField(resolvedRamoConfig.registroProfissional!.key, val);
+                          updateField('oab', val);
                         }}
                         className="form-input"
-                        placeholder={resolvedRamoConfig.registroProfissional.placeholder}
+                        placeholder={placeholderEfetivo}
                       />
                     </label>
+                  )}
 
+                  {/* Campo RQE (Registro de Especialista) para médicos */}
+                  {resolvedRamoConfig.registroProfissional.hasRqe && !isDentista && !isOutrosSaude && (
                     <label className="block">
-                      <span className="field-label">UF</span>
-                      <select
-                        value={form.registroProfissionalUf || (form as any)[resolvedRamoConfig.registroProfissional.ufKey] || 'SP'}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          updateField('registroProfissionalUf', val);
-                          updateField(resolvedRamoConfig.registroProfissional!.ufKey!, val);
-                        }}
+                      <span className="field-label">RQE - Registro de Qualificação de Especialista (Opcional)</span>
+                      <input
+                        value={form.rqe}
+                        onChange={(e) => updateField('rqe', e.target.value)}
                         className="form-input"
-                      >
-                        {BRAZILIAN_UFS.map((uf) => (
-                          <option key={uf} value={uf}>{uf}</option>
-                        ))}
-                      </select>
+                        placeholder="Ex: RQE 12345 (se houver especialidade registrada)"
+                      />
                     </label>
-                  </div>
-                ) : (
-                  <label className="block">
-                    <span className="field-label">{resolvedRamoConfig.registroProfissional.label} *</span>
-                    <input
-                      required={resolvedRamoConfig.registroProfissional.required}
-                      value={form.registroProfissionalNumero || form.oab || ''}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        updateField('registroProfissionalNumero', val);
-                        updateField(resolvedRamoConfig.registroProfissional!.key, val);
-                        updateField('oab', val);
-                      }}
-                      className="form-input"
-                      placeholder={resolvedRamoConfig.registroProfissional.placeholder}
-                    />
-                  </label>
-                )}
-
-                {/* Campo RQE (Registro de Especialista) se aplicável (médicos) */}
-                {resolvedRamoConfig.registroProfissional.hasRqe && (
-                  <label className="block">
-                    <span className="field-label">RQE - Registro de Qualificação de Especialista (Opcional)</span>
-                    <input
-                      value={form.rqe}
-                      onChange={(e) => updateField('rqe', e.target.value)}
-                      className="form-input"
-                      placeholder="Ex: RQE 12345 (se houver especialidade registrada)"
-                    />
-                  </label>
-                )}
-              </>
-            )}
+                  )}
+                </>
+              );
+            })()}
 
             <label className="block">
               <span className="field-label">Data de Nascimento *</span>

@@ -166,6 +166,8 @@ export function sanitizePlanFinancials(options: {
     expectedLmi = 100000;
   } else if (planoLower.includes('200k') || planoLower.includes('200 mil') || planoLower.includes('200.000')) {
     expectedLmi = 200000;
+  } else if (planoLower.includes('250k') || planoLower.includes('250 mil') || planoLower.includes('250.000')) {
+    expectedLmi = 250000;
   } else if (planoLower.includes('300k') || planoLower.includes('300 mil') || planoLower.includes('300.000')) {
     expectedLmi = 300000;
   } else if (planoLower.includes('500k') || planoLower.includes('500 mil') || planoLower.includes('500.000')) {
@@ -252,6 +254,7 @@ export function formatPlanLabel(
     // Nomes com "mil" (ex: "Plano 100 Mil", "100 mil", "100.000")
     if (clean.includes('100 mil') || clean.includes('100.000') || clean === '100') return '100k';
     if (clean.includes('200 mil') || clean.includes('200.000') || clean === '200') return '200k';
+    if (clean.includes('250 mil') || clean.includes('250.000') || clean === '250') return '250k';
     if (clean.includes('300 mil') || clean.includes('300.000') || clean === '300') return '300k';
     if (clean.includes('400 mil') || clean.includes('400.000') || clean === '400') return '400k';
     if (clean.includes('500 mil') || clean.includes('500.000') || clean === '500') return '500k';

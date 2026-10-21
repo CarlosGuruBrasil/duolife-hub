@@ -1811,12 +1811,26 @@ export async function renderContratoPdf(params: RenderContratoPdfParams): Promis
     flowKey === 'rc-medicos' ||
     flowKey === 'rc_medicos_v1';
 
-  const crmUf = clientData.crmUf ? `/${clientData.crmUf}` : '';
-  const crmStr = clientData.crm ? `${clientData.crm}${crmUf}` : '';
-  const registroLabel = isMedico ? 'CRM:' : 'OAB:';
-  const registroValor = isMedico
-    ? (crmStr || clientData.registroProfissionalNumero || 'Não informado')
-    : String(clientData.oab || clientData.registroProfissionalNumero || 'Não informado');
+  const isDentista = clientData.grupoTarifario === 'G2' || Boolean(clientData.cro);
+  const isOutrosSaude = clientData.grupoTarifario === 'G1';
+  let registroLabel = 'OAB:';
+  let registroValor = String(clientData.oab || clientData.registroProfissionalNumero || 'Não informado');
+
+  if (isMedico) {
+    if (isDentista) {
+      const croUf = clientData.croUf ? `/${clientData.croUf}` : '';
+      registroLabel = 'CRO:';
+      registroValor = clientData.cro ? `${clientData.cro}${croUf}` : String(clientData.registroProfissionalNumero || 'Não informado');
+    } else if (isOutrosSaude) {
+      registroLabel = 'Conselho:';
+      registroValor = String(clientData.registroProfissionalNumero || 'Não informado');
+    } else {
+      const crmUf = clientData.crmUf ? `/${clientData.crmUf}` : '';
+      const crmStr = clientData.crm ? `${clientData.crm}${crmUf}` : '';
+      registroLabel = 'CRM:';
+      registroValor = crmStr || String(clientData.registroProfissionalNumero || 'Não informado');
+    }
+  }
 
   // Proponente
   const proponenteData = {

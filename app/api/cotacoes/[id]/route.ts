@@ -286,6 +286,7 @@ export async function PATCH(
           : premioFinal;
       } else {
         const targetPlano = (sanitizedInputClientData.tipo || sanitizedInputClientData.tipoDePlano || rawPlanoNome || currentClientData.tipoDePlano || currentClientData.tipo || currentClientData.nomePlano) as string | null | undefined;
+        const targetGrupo = (sanitizedInputClientData.grupoTarifario || sanitizedInputClientData.grupo || currentClientData.grupoTarifario || currentClientData.grupo) as string | null | undefined;
         const precoCalculado = await calcularPrecoServidor({
           tipoDePlano: targetPlano,
           qtdParcelasSolicitada: parcela,
@@ -297,6 +298,9 @@ export async function PATCH(
             currentClientData.descontoManualPercent ??
             currentClientData.descontoPercentual
           ) || 0,
+          flowKey: cotacao.flow_key,
+          productId: cotacao.product_id,
+          grupoTarifario: targetGrupo,
         });
 
         if (precoCalculado) {

@@ -84,6 +84,7 @@ export async function POST(
       descontoManualPercent: Number(clientData.descontoManualPercent ?? clientData.descontoPercentual) || 0,
       flowKey,
       productId,
+      grupoTarifario: (clientData.grupoTarifario as string) || (clientData.grupo as string) || null,
     });
 
     const valorTotal = preco?.valorTotal ?? Number(cotacao.premio_final || cotacao.premio_calculado || 0);
