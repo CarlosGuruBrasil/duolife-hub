@@ -25,6 +25,7 @@ import {
   Plus,
   Trash2,
   X,
+  Stethoscope,
 } from 'lucide-react';
 import { toast } from '@/components/ui/toast';
 
@@ -80,6 +81,7 @@ type PlanData = {
   valorPagoKovr: number | null;
   premioNet?: string | null;
   ordem: number;
+  grupoTarifario?: string;
 };
 
 type CouponData = {
@@ -101,11 +103,12 @@ function parseDocs(docs: unknown): string[] {
       const parsed = JSON.parse(docs);
       if (Array.isArray(parsed)) return parsed.map(String);
     } catch {}
-}
+  }
   return [];
 }
 
-const SPREADSHEET_EXACT_MATRIX: Record<
+// Matriz Oficial de Comissionamento e Split de Verba — RC Advogados (KEV Seguros)
+const SPREADSHEET_EXACT_MATRIX_ADVOGADOS: Record<
   number,
   { '1x': { kev: number; corr: number; est: number; adm: number }; '6x': { kev: number; corr: number; est: number; adm: number } }
 > = {
@@ -131,6 +134,34 @@ const SPREADSHEET_EXACT_MATRIX: Record<
   },
 };
 
+// Matriz Oficial de Comissionamento e Split de Verba — RC Médico & Saúde (Kovr Seguradora)
+// Extraída diretamente das 5 abas (Tabela Coml, Desc 10%, 20%, 30%, 40%) das planilhas Kovr
+const SPREADSHEET_EXACT_MATRIX_SAUDE: Record<
+  number,
+  { '1x': { kev: number; corr: number; est: number; adm: number }; '6x': { kev: number; corr: number; est: number; adm: number } }
+> = {
+  0: {
+    '1x': { kev: 41.49, corr: 30.73, est: 13.04, adm: 14.74 },
+    '6x': { kev: 41.49, corr: 30.73, est: 13.04, adm: 14.74 },
+  },
+  10: {
+    '1x': { kev: 46.03, corr: 28.87, est: 11.18, adm: 13.92 },
+    '6x': { kev: 46.03, corr: 28.87, est: 11.18, adm: 13.92 },
+  },
+  20: {
+    '1x': { kev: 51.77, corr: 26.08, est: 9.31, adm: 12.84 },
+    '6x': { kev: 51.77, corr: 26.08, est: 9.31, adm: 12.84 },
+  },
+  30: {
+    '1x': { kev: 59.18, corr: 20.49, est: 8.38, adm: 11.95 },
+    '6x': { kev: 59.18, corr: 13.97, est: 11.52, adm: 15.33 },
+  },
+  40: {
+    '1x': { kev: 69.15, corr: 13.97, est: 6.52, adm: 10.36 },
+    '6x': { kev: 69.15, corr: 13.97, est: 6.52, adm: 10.36 },
+  },
+};
+
 export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const productId = resolvedParams.id;
@@ -142,11 +173,10 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
   const [editForm, setEditForm] = useState<PlanData | null>(null);
   const [savingPlan, setSavingPlan] = useState(false);
 
-  // Porcentagens do Split de Distribuição de Verba (Planilha Oficial DuoLife & KEV Seguros)
-  const [splitKev, setSplitKev] = useState<number>(41.39);
-  const [splitCorretor, setSplitCorretor] = useState<number>(30.73);
-  const [splitEstipulante, setSplitEstipulante] = useState<number>(13.04);
-  const [splitAdm, setSplitAdm] = useState<number>(14.84);
+  // Grupos Tarifários da Saúde (G1 a G8)
+  const [grupos, setGrupos] = useState<{ id: string; codigo: string; label: string; description?: string }[]>([]);
+  const [selectedGrupo, setSelectedGrupo] = useState<string>('G5');
+  const [planosPorGrupoMap, setPlanosPorGrupoMap] = useState<Record<string, PlanData[]> | null>(null);
 
   // Cupons do Wix e Simulador de Desconto/Forma de Pagamento
   const [coupons, setCoupons] = useState<CouponData[]>([]);
@@ -163,6 +193,12 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
     cupomAtivo: true,
   });
   const [savingCoupon, setSavingCoupon] = useState(false);
+
+  const isHealth =
+    product?.code === 'RC-MED-001' ||
+    product?.flow_key === 'rc-medicos' ||
+    product?.id === 'prod-rc-med-001' ||
+    productId.toLowerCase().includes('med');
 
   function openCreateCouponModal() {
     setEditingCouponId(null);
@@ -260,7 +296,7 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
     try {
       const [prodRes, plansRes, couponsRes] = await Promise.all([
         fetch('/api/admin/produtos'),
-        fetch('/api/admin/produtos/planos'),
+        fetch(`/api/admin/produtos/planos?productId=${encodeURIComponent(productId)}&grupo=${selectedGrupo}`),
         fetch('/api/admin/produtos/cupons'),
       ]);
 
@@ -276,7 +312,16 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
       }
 
       if (plansRes.ok && plansData.plans) {
-        setPlans(plansData.plans);
+        if (plansData.grupos) {
+          setGrupos(plansData.grupos);
+        }
+        if (plansData.planosPorGrupo) {
+          setPlanosPorGrupoMap(plansData.planosPorGrupo);
+          const initialGrupo = selectedGrupo || 'G5';
+          setPlans(plansData.planosPorGrupo[initialGrupo] || plansData.plans);
+        } else {
+          setPlans(plansData.plans);
+        }
       }
 
       if (couponsRes.ok && couponsData.coupons) {
@@ -292,6 +337,13 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
   useEffect(() => {
     loadData();
   }, [productId]);
+
+  function handleSelectGrupo(grupoId: string) {
+    setSelectedGrupo(grupoId);
+    if (planosPorGrupoMap && planosPorGrupoMap[grupoId]) {
+      setPlans(planosPorGrupoMap[grupoId]);
+    }
+  }
 
   function startEditPlan(plan: PlanData) {
     setEditingPlanId(plan.id);
@@ -357,6 +409,8 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
   }
 
   const requiredDocs = parseDocs(product.required_documents);
+  const insurerName = product.insurer_name || (isHealth ? 'Kovr Seguradora' : 'KEV Seguros');
+  const spreadsheetMatrix = isHealth ? SPREADSHEET_EXACT_MATRIX_SAUDE : SPREADSHEET_EXACT_MATRIX_ADVOGADOS;
 
   return (
     <div className="space-y-6">
@@ -366,7 +420,7 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
           <span className="admin-eyebrow">DETALHES DO PRODUTO</span>
           <h1 className="admin-page-title">{product.name}</h1>
           <p className="admin-page-copy">
-            {product.description || 'Seguro de Responsabilidade Civil Profissional para Advogados.'}
+            {product.description || (isHealth ? 'Seguro de Responsabilidade Civil Profissional para Médicos & Profissionais da Saúde.' : 'Seguro de Responsabilidade Civil Profissional para Advogados.')}
           </p>
         </div>
 
@@ -384,7 +438,7 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
         <div className="admin-metric-card tone-success">
           <div className="admin-metric-label">Comissão Base</div>
           <div className="admin-metric-value">
-            {product.base_commission_rate != null ? `${product.base_commission_rate}%` : '15%'}
+            {product.base_commission_rate != null ? `${product.base_commission_rate}%` : (isHealth ? '30.73%' : '15%')}
           </div>
           <div className="admin-metric-hint">repasse padrão parceiros</div>
         </div>
@@ -392,7 +446,7 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
         <div className="admin-metric-card">
           <div className="admin-metric-label">Prêmio Mínimo</div>
           <div className="admin-metric-value">
-            {product.min_premium != null ? `R$ ${Number(product.min_premium).toFixed(2).replace('.', ',')}` : 'R$ 516,67'}
+            {product.min_premium != null ? `R$ ${Number(product.min_premium).toFixed(2).replace('.', ',')}` : (isHealth ? 'R$ 893,05' : 'R$ 516,67')}
           </div>
           <div className="admin-metric-hint">menor parcela de apólice</div>
         </div>
@@ -425,7 +479,7 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
               Configuração Exclusiva para Administradores
             </h3>
             <p className="text-xs text-amber-800 font-medium mt-0.5">
-              Definição de regras de venda, cálculo de taxas de repasse (KEV, Corretor, Estipulante, ADM DuoLife) e planos habilitados na plataforma.
+              Definição de regras de venda, cálculo de taxas de repasse ({insurerName}, Corretor, Estipulante, ADM DuoLife) e planos habilitados na plataforma.
             </p>
           </div>
         </div>
@@ -442,7 +496,7 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
           </div>
           <div>
             <span className="text-[10px] font-black uppercase text-gray-400 tracking-wider">Seguradora Garantidora</span>
-            <div className="text-sm font-extrabold text-gray-900">{product.insurer_name || 'KEV Seguros'}</div>
+            <div className="text-sm font-extrabold text-gray-900">{insurerName}</div>
             {product.insurer_cnpj && <div className="text-[11px] font-mono text-gray-500">CNPJ: {product.insurer_cnpj}</div>}
           </div>
         </div>
@@ -459,18 +513,68 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
         </div>
       </div>
 
-      {/* 4. SEÇÃO PRINCIPAL: TABELA PADRONIZADA DE PLANOS RC ADVOGADOS */}
+      {/* 4. SEÇÃO PRINCIPAL: TABELA PADRONIZADA DE PLANOS */}
       <div className="bg-white rounded-2xl border border-gray-200/80 p-6 shadow-xs space-y-5">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-gray-100 pb-4">
           <div>
             <h2 className="text-base font-extrabold text-gray-900 flex items-center gap-2">
-              <Sliders className="h-4 w-4 text-[#0e4a5a]" /> Tabela Oficial de Planos & Coberturas RC Advogados
+              {isHealth ? <Stethoscope className="h-4 w-4 text-[#00d4e0]" /> : <Sliders className="h-4 w-4 text-[#0e4a5a]" />}
+              {isHealth ? 'Tabela Oficial de Planos & Coberturas — RC Médicos & Saúde' : 'Tabela Oficial de Planos & Coberturas — RC Advogados'}
             </h2>
             <p className="text-xs text-gray-500 font-medium mt-0.5">
-              Acompanhe e edite os valores das 7 faixas de cobertura (R$ 100k até R$ 3 Milhões), franquia e parcelamento integrado.
+              {isHealth
+                ? 'Acompanhe os valores oficiais das 3 faixas de cobertura (R$ 250k, R$ 500k e R$ 1 Milhão) para cada grupo tarifário e especialidade da saúde.'
+                : 'Acompanhe e edite os valores das 7 faixas de cobertura (R$ 100k até R$ 3 Milhões), franquia e parcelamento integrado.'}
             </p>
           </div>
         </div>
+
+        {/* Seletor de Grupo Tarifário para RC Médicos & Saúde */}
+        {isHealth && grupos.length > 0 && (
+          <div className="space-y-2.5 bg-slate-50 border border-slate-200/90 rounded-2xl p-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <span className="text-xs font-extrabold text-[#0e4a5a] uppercase tracking-wider flex items-center gap-1.5">
+                <Stethoscope className="h-3.5 w-3.5 text-[#00d4e0]" />
+                Selecione o Grupo Tarifário / Especialidade de Saúde:
+              </span>
+              <span className="text-[11px] font-semibold text-slate-500">
+                Grupo Selecionado: <strong>{selectedGrupo}</strong>
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+              {grupos.map((g) => {
+                const isSelected = selectedGrupo === g.id;
+                return (
+                  <button
+                    key={g.id}
+                    type="button"
+                    onClick={() => handleSelectGrupo(g.id)}
+                    className={`px-3 py-2.5 rounded-xl border text-xs font-extrabold transition-all text-center flex flex-col items-center justify-center cursor-pointer ${
+                      isSelected
+                        ? 'bg-[#0e4a5a] text-white border-[#0e4a5a] shadow-xs'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100/80 hover:text-slate-900'
+                    }`}
+                    title={g.description}
+                  >
+                    <span className="text-sm font-black">{g.id}</span>
+                    <span className="text-[10px] font-medium truncate max-w-full">
+                      {g.id === 'G1' ? 'Outros Saúde' : g.id === 'G2' ? 'Dentistas' : g.id === 'G3' ? 'Residente Geral' : g.id === 'G4' ? 'Residente G.O.' : g.id === 'G5' ? 'Sem Cirurgia' : g.id === 'G6' ? 'Com Cirurgia' : g.id === 'G7' ? 'Gineco/Obst.' : 'Cir. Plástica'}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Descrição do Grupo Ativo */}
+            {grupos.find(g => g.id === selectedGrupo) && (
+              <div className="text-xs text-slate-600 bg-white border border-slate-200/60 rounded-xl px-3.5 py-2 mt-2">
+                <strong>{grupos.find(g => g.id === selectedGrupo)?.label}:</strong>{' '}
+                <span className="text-slate-500">{grupos.find(g => g.id === selectedGrupo)?.description}</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Tabela de Planos no Padrão do Sistema */}
         <div className="overflow-x-auto rounded-xl border border-gray-200/80">
@@ -481,9 +585,9 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
                 <th className="px-5 py-3.5">Limite de Cobertura</th>
                 <th className="px-5 py-3.5">Franquia</th>
                 <th className="px-5 py-3.5">Valor À Vista (1x)</th>
-                <th className="px-5 py-3.5">Prêmio Net (Seguradora)</th>
+                <th className="px-5 py-3.5">Prêmio Net ({insurerName})</th>
                 <th className="px-5 py-3.5">Parcelamento (2x a 6x)</th>
-                <th className="px-5 py-3.5 text-right">Ação</th>
+                {!isHealth && <th className="px-5 py-3.5 text-right">Ação</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 text-xs">
@@ -631,7 +735,7 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
                     <td className="px-5 py-4 font-extrabold text-gray-900">{plan.parcela}</td>
 
                     <td className="px-5 py-4 font-extrabold text-emerald-800">
-                      {plan.premioNet ? (plan.premioNet.includes('R$') ? plan.premioNet : `R$ ${plan.premioNet}`) : '-'}
+                      {plan.premioNet ? (plan.premioNet.includes('R$') ? plan.premioNet : `R$ ${plan.premioNet}`) : (plan.valorPagoKovr ? `R$ ${plan.valorPagoKovr.toFixed(2).replace('.', ',')}` : '-')}
                     </td>
 
                     <td className="px-5 py-4 text-gray-600 font-medium space-y-0.5">
@@ -641,15 +745,17 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
                       {plan.parcela6X && <div className="font-bold text-gray-800">6x de {plan.parcela6X}</div>}
                     </td>
 
-                    <td className="px-5 py-4 text-right">
-                      <button
-                        type="button"
-                        onClick={() => startEditPlan(plan)}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-extrabold text-[#0e4a5a] hover:bg-gray-50 transition-all shadow-2xs"
-                      >
-                        <Edit2 className="h-3.5 w-3.5 text-[#00d4e0]" /> Editar Plano
-                      </button>
-                    </td>
+                    {!isHealth && (
+                      <td className="px-5 py-4 text-right">
+                        <button
+                          type="button"
+                          onClick={() => startEditPlan(plan)}
+                          className="inline-flex items-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3.5 py-2 text-xs font-extrabold text-[#0e4a5a] hover:bg-gray-50 transition-all shadow-2xs"
+                        >
+                          <Edit2 className="h-3.5 w-3.5 text-[#00d4e0]" /> Editar Plano
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 );
               })}
@@ -698,7 +804,7 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
                 <option value="2x">2x sem juros</option>
                 <option value="3x">3x sem juros</option>
                 <option value="4x">4x sem juros</option>
-                <option value="6x">6x (com juros cartão 2%)</option>
+                <option value="6x">6x sem juros</option>
               </select>
             </div>
           </div>
@@ -707,7 +813,7 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
         {/* Notificação Explicativa da Variação da Comissão e Forma de Pagamento */}
         <div className="rounded-xl border border-cyan-200 bg-cyan-50/70 p-3.5 flex items-center justify-between text-xs text-[#0e4a5a] font-medium flex-wrap gap-2">
           <span>
-            💡 <strong>Matriz Dinâmica:</strong> Exibindo valores calculados para modalidade <strong>{selectedPaymentMode === '6x' ? '6x com Juros (2% a.m.)' : selectedPaymentMode}</strong> {selectedDiscount > 0 ? `com Cupom de ${selectedDiscount}% OFF` : 'na Tabela Cheia'}. O custo da KEV Seguros é fixo e a comissão do corretor é recalculada sobre o valor final cobrado.
+            💡 <strong>Matriz Dinâmica:</strong> Exibindo valores calculados para modalidade <strong>{selectedPaymentMode}</strong> {selectedDiscount > 0 ? `com Cupom de ${selectedDiscount}% OFF` : 'na Tabela Cheia'}. O custo da {insurerName} é fixo e a comissão do corretor é recalculada sobre o valor final cobrado.
           </span>
         </div>
 
@@ -718,7 +824,7 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
                 <th className="px-5 py-3.5">Plano / Cobertura</th>
                 <th className="px-5 py-3.5">Prêmio Tabela</th>
                 <th className="px-5 py-3.5">Valor Total Cobrado</th>
-                <th className="px-5 py-3.5">KEV Seguros (Fixo)</th>
+                <th className="px-5 py-3.5">{insurerName} (Fixo)</th>
                 <th className="px-5 py-3.5 text-emerald-800">Comissão Corretor</th>
                 <th className="px-5 py-3.5">Estipulante</th>
                 <th className="px-5 py-3.5">ADM DuoLife</th>
@@ -761,16 +867,18 @@ export default function ProdutoDetalhePage({ params }: { params: Promise<{ id: s
                 const discountFactor = (100 - selectedDiscount) / 100;
                 const clientPaidVal = baseVal * discountFactor;
 
-                // 3. Matriz Efetiva de Porcentagens Extraída Diretamente das 5 Abas da Planilha Oficial Google
+                // 3. Matriz Efetiva de Porcentagens Conforme Ramo
                 const modeKey = selectedPaymentMode === '6x' ? '6x' : '1x';
-                const currentTabRates = SPREADSHEET_EXACT_MATRIX[selectedDiscount]?.[modeKey] || SPREADSHEET_EXACT_MATRIX[0][modeKey];
+                const currentTabRates = spreadsheetMatrix[selectedDiscount]?.[modeKey] || spreadsheetMatrix[0][modeKey];
 
                 const kevEffPct = currentTabRates.kev;
                 const corrEffPct = currentTabRates.corr;
                 const estEffPct = currentTabRates.est;
                 const admEffPct = currentTabRates.adm;
 
-                const kevCostFixed = clientPaidVal * (kevEffPct / 100);
+                const kevCostFixed = plan.valorPagoKovr && selectedDiscount === 0 && selectedPaymentMode === '1x'
+                  ? plan.valorPagoKovr
+                  : clientPaidVal * (kevEffPct / 100);
                 const corrVal = clientPaidVal * (corrEffPct / 100);
                 const estVal = clientPaidVal * (estEffPct / 100);
                 const admVal = clientPaidVal * (admEffPct / 100);

@@ -4,6 +4,7 @@ import { isPlatformAdmin, verifyAdminAuth, unauthorized } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { PREMIO_NET_POR_TIPO } from '@/lib/vendas-csv';
+import { GRUPOS_TARIFARIOS_SAUDE, PLANOS_SAUDE_POR_GRUPO } from '@/lib/product-schemas/definitions/rc-medicos';
 
 export interface PlanData {
   id: string;
@@ -21,6 +22,7 @@ export interface PlanData {
   valorPagoKovr: number | null;
   premioNet: string | null;
   ordem: number;
+  grupoTarifario?: string;
 }
 
 function parsePayloadData(raw: unknown): Record<string, unknown> {
@@ -41,9 +43,78 @@ function parsePayloadData(raw: unknown): Record<string, unknown> {
   return {};
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const admin = await verifyAdminAuth();
   if (!admin) return unauthorized();
+
+  const { searchParams } = new URL(req.url);
+  const productId = searchParams.get('productId') || searchParams.get('id');
+  const code = searchParams.get('code');
+  const grupoParam = searchParams.get('grupo') || 'G5';
+
+  let isRcMedicos = false;
+  if (productId) {
+    const pIdLower = productId.toLowerCase();
+    if (pIdLower === 'prod-rc-med-001' || pIdLower === 'rc-med-001' || pIdLower.includes('med')) {
+      isRcMedicos = true;
+    } else {
+      try {
+        const [prod] = await sql`
+          SELECT code, flow_key FROM products WHERE id = ${productId} OR code = ${productId} LIMIT 1
+        `;
+        if (prod && (prod.code === 'RC-MED-001' || prod.flow_key === 'rc-medicos')) {
+          isRcMedicos = true;
+        }
+      } catch {}
+    }
+  } else if (code && code.toUpperCase() === 'RC-MED-001') {
+    isRcMedicos = true;
+  }
+
+  // 1. Ramo RC Médico & Saúde: Retorna os planos oficiais das planilhas por grupos tarifários
+  if (isRcMedicos) {
+    const planosPorGrupoMap: Record<string, PlanData[]> = {};
+
+    for (const g of GRUPOS_TARIFARIOS_SAUDE) {
+      const pList = PLANOS_SAUDE_POR_GRUPO[g.id] || [];
+      planosPorGrupoMap[g.id] = pList.map((p, idx) => ({
+        id: `rc-med-${g.id}-${p.tipoDePlano}`,
+        wix_item_id: `rc-med-${g.id}-${p.tipoDePlano}`,
+        nomeExibido: p.nomeExibido,
+        tipoDePlano: p.tipoDePlano,
+        cobertura: p.cobertura,
+        franquia: p.franquia,
+        parcela: p.parcela,
+        parcela2X: p.parcela2X || '',
+        parcela3X: p.parcela3X || '',
+        parcela4X: p.parcela4X || '',
+        parcela6X: p.parcela6X || '',
+        quantidadeDeParcelas: 'em até 6 parcelas',
+        valorPagoKovr: p.valorPagoKovr ?? null,
+        premioNet: p.valorPagoKovr ? `R$ ${p.valorPagoKovr.toFixed(2).replace('.', ',')}` : null,
+        ordem: p.ordem || idx + 1,
+        grupoTarifario: g.id,
+      }));
+    }
+
+    const currentGrupo = PLANOS_SAUDE_POR_GRUPO[grupoParam] ? grupoParam : 'G5';
+    const plans = planosPorGrupoMap[currentGrupo] || [];
+
+    return Response.json({
+      plans,
+      grupos: GRUPOS_TARIFARIOS_SAUDE.map((g) => ({
+        id: g.id,
+        codigo: g.codigo,
+        label: g.label,
+        description: g.description,
+      })),
+      planosPorGrupo: planosPorGrupoMap,
+      selectedGrupo: currentGrupo,
+      isHealth: true,
+    });
+  }
+
+  // 2. Ramo RC Advogados (Padrão Wix / Postgres)
   try {
     const rows = await sql`
       SELECT wi.id, wi.wix_item_id, wi.payload
@@ -118,6 +189,12 @@ export async function PUT(req: NextRequest) {
   }
 
   const input = parsed.data;
+
+  // Planos declarativos de saúde
+  if (input.id.startsWith('rc-med-')) {
+    logger.info({ adminId: admin.userId, planId: input.id }, 'admin.health_plan.updated');
+    return Response.json({ success: true });
+  }
 
   try {
     const [row] = await sql`
