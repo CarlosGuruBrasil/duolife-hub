@@ -1285,9 +1285,10 @@ async function runSeedInitialData(): Promise<void> {
   await sql`DELETE FROM partner_commission_rates WHERE product_id IN (SELECT id FROM products WHERE code LIKE 'RC-MED-LEGACY-%')`;
   await sql`
     INSERT INTO partner_product_availability (partner_id, product_id, is_active)
-    SELECT partner_id, 'prod-rc-med-001', is_active
+    SELECT partner_id, 'prod-rc-med-001', BOOL_OR(is_active)
     FROM partner_product_availability
     WHERE product_id IN (SELECT id FROM products WHERE code LIKE 'RC-MED-LEGACY-%')
+    GROUP BY partner_id
     ON CONFLICT (partner_id, product_id) DO UPDATE SET is_active = partner_product_availability.is_active OR EXCLUDED.is_active
   `;
   await sql`DELETE FROM partner_product_availability WHERE product_id IN (SELECT id FROM products WHERE code LIKE 'RC-MED-LEGACY-%')`;
@@ -1374,9 +1375,10 @@ async function runSeedInitialData(): Promise<void> {
 
   await sql`
     INSERT INTO partner_product_availability (partner_id, product_id, is_active)
-    SELECT partner_id, 'prod-rc-001', is_active
+    SELECT partner_id, 'prod-rc-001', BOOL_OR(is_active)
     FROM partner_product_availability
     WHERE product_id NOT IN ('prod-rc-001', 'prod-rc-med-001')
+    GROUP BY partner_id
     ON CONFLICT (partner_id, product_id) DO UPDATE SET is_active = partner_product_availability.is_active OR EXCLUDED.is_active
   `;
   await sql`DELETE FROM partner_product_availability WHERE product_id NOT IN ('prod-rc-001', 'prod-rc-med-001')`;
