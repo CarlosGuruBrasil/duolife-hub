@@ -323,20 +323,38 @@ export default async function AdminCotacaoDetailPage({
   const checkoutId = String(clientData.checkoutId || '');
 
   // Dados unificados do Contrato ZapSign
-  const isAssinado = [
-    'assinado',
-    'signed',
-    'pagamento_gerado',
-    'aprovada',
-    'emitida',
-    'ativa',
-    'active',
-  ].includes(String(cotacao.status || '').toLowerCase()) ||
-  signatureDoc?.status === 'signed' ||
-  Boolean(signatureDoc?.signed_file_url) ||
-  Boolean(clientData.contratoPdf) ||
-  Boolean(clientData.signedFileUrl) ||
-  Boolean(clientData.assinadoEm);
+  const rawStatusAssinatura = (clientData.statusAssinatura as string | undefined) || null;
+  const isAprovadaOuEmitida = ['aprovada', 'emitida', 'ativa', 'active'].includes(String(cotacao.status || '').toLowerCase());
+
+  // Proponente assinou se clienteAssinou for true ou se status for falta_corretora ou todas_assinadas:
+  const isProponenteAssinado = Boolean(clientData.clienteAssinou) ||
+    rawStatusAssinatura === 'falta_corretora' ||
+    rawStatusAssinatura === 'todas_assinadas' ||
+    (isAprovadaOuEmitida && rawStatusAssinatura !== 'falta_cliente' && rawStatusAssinatura !== 'faltam_ambas');
+
+  // Corretora só consta como assinada se ela de fato assinou (NUNCA se falta_corretora!):
+  const isCorretoraAssinada = rawStatusAssinatura === 'falta_corretora'
+    ? false
+    : (Boolean(clientData.corretoraAssinou) ||
+       rawStatusAssinatura === 'falta_cliente' ||
+       rawStatusAssinatura === 'todas_assinadas' ||
+       (isAprovadaOuEmitida && rawStatusAssinatura !== 'falta_corretora' && rawStatusAssinatura !== 'faltam_ambas'));
+
+  const statusAssinatura = rawStatusAssinatura || (
+    isProponenteAssinado && isCorretoraAssinada
+      ? 'todas_assinadas'
+      : isProponenteAssinado
+      ? 'falta_corretora'
+      : isCorretoraAssinada
+      ? 'falta_cliente'
+      : 'faltam_ambas'
+  );
+
+  // O contrato SÓ é considerado totalmente assinado se as DUAS partes assinaram
+  const isTotalmenteAssinado = (isProponenteAssinado && isCorretoraAssinada) || statusAssinatura === 'todas_assinadas';
+
+  // isAssinado para fluxos gerais do sistema (exige que ambas as partes tenham formalizado)
+  const isAssinado = isTotalmenteAssinado || isAprovadaOuEmitida;
 
   const docToken = String(
     signatureDoc?.external_document_id ||
@@ -380,11 +398,8 @@ export default async function AdminCotacaoDetailPage({
     (cotacao.status === 'contrato_gerado' && dataCriacaoMs > 0 && cotacaoUpdatedAtMs - dataCriacaoMs > 5000);
 
   // Status detalhado de signatários e preferência de pagamento
-  const statusAssinatura = (clientData.statusAssinatura as string | undefined) || (isAssinado ? 'todas_assinadas' : 'faltam_ambas');
   const rawSignUrlCorretora = (clientData.signUrlCorretora as string | undefined) || null;
   const signUrlCorretora = rawSignUrlCorretora ? safeExternalUrl(rawSignUrlCorretora) : null;
-  const isProponenteAssinado = isAssinado || Boolean(clientData.clienteAssinou) || statusAssinatura === 'falta_corretora' || statusAssinatura === 'todas_assinadas';
-  const isCorretoraAssinada = isAssinado || Boolean(clientData.corretoraAssinou) || statusAssinatura === 'falta_cliente' || statusAssinatura === 'todas_assinadas';
   const formaPagamentoPreferida = clientData.formaPagamentoPreferida as string | undefined;
   const parcelasPreferidas = Number(clientData.parcelasPreferidas) || 1;
   const rawVigencia = clientData.dataInicioVigencia || clientData.vigencia || clientData.dataVigencia;
@@ -1498,7 +1513,7 @@ export default async function AdminCotacaoDetailPage({
               )}
             </div>
 
-            {isAssinado ? (
+            {isTotalmenteAssinado ? (
               <div className="space-y-4">
                 {/* Banner de Status Limpo e Elegante */}
                 <div className="bg-purple-50/70 border border-purple-200/80 rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-2">
@@ -1611,7 +1626,7 @@ export default async function AdminCotacaoDetailPage({
                   )}
                 </div>
               </div>
-            ) : signUrl || docToken || cotacao.status === 'contrato_gerado' ? (
+            ) : signUrl || docToken || cotacao.status === 'contrato_gerado' || isProponenteAssinado ? (
               <div className="space-y-4">
                 {/* Banner de Status Limpo */}
                 <div className={`border rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-2 ${

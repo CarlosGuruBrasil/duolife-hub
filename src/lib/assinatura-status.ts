@@ -97,12 +97,9 @@ export function getCotacaoAssinaturaInfo(
   }
 
   // 2. Fallbacks para cotações antigas sem o campo explícito
-  const isContratoAssinado =
-    ['assinado', 'signed', 'pagamento_gerado', 'aprovada', 'emitida', 'ativa', 'active'].includes(
-      rawStatus
-    ) || Boolean(cData.contratoPdf || cData.signedFileUrl || cData.assinadoEm);
+  const isVendaConcluida = ['aprovada', 'emitida', 'ativa', 'active'].includes(rawStatus);
 
-  if (isContratoAssinado) {
+  if (isVendaConcluida) {
     return {
       status: 'todas_assinadas',
       label: '2/2 Assinadas',
@@ -113,7 +110,8 @@ export function getCotacaoAssinaturaInfo(
 
   const hasContratoGerado =
     rawStatus === 'contrato_gerado' ||
-    Boolean(cData.signUrl || cData.docToken || cData.linkContrato);
+    rawStatus === 'assinado' ||
+    Boolean(cData.contratoPdf || cData.signUrl || cData.docToken || cData.contratoToken || cData.linkContrato);
 
   if (hasContratoGerado) {
     return {

@@ -72,57 +72,24 @@ export async function POST(
       }
     }
 
-    // Se já estiver em estados avançados de assinatura e já possui o link legítimo do PDF, retorna diretamente
-    if (['assinado', 'pagamento_gerado', 'aprovada', 'emitida', 'ativa'].includes(cotacao.status) && existingPdf) {
-      return Response.json({
-        ok: true,
-        status: cotacao.status,
-        assinado: true,
-        statusAssinatura: 'todas_assinadas',
-        assinaturasConcluidas: 2,
-        totalAssinaturas: 2,
-        podeSalvarPreferencia: true,
-        signUrlCorretora: clientData.signUrlCorretora || null,
-        signatarios: [
-          {
-            nome: cotacao.client_name || 'Proponente',
-            papel: 'cliente',
-            assinado: true,
-            email: cotacao.client_email || ''
-          },
-          {
-            nome: 'Corretora',
-            papel: 'corretora',
-            assinado: true,
-            email: 'contato@net4life.com.br'
-          }
-        ],
-        contratoPdf: existingPdf,
-        checkoutId: clientData.checkoutId || null,
-        linkBoleto: clientData.linkBoleto || null,
-        dueDate: clientData.dataVencimento || null,
-        message: 'Todas as assinaturas foram concluídas com sucesso!'
-      });
-    }
-
     if (!docToken) {
       return Response.json({
         ok: true,
         status: cotacao.status,
-        assinado: ['assinado', 'pagamento_gerado', 'aprovada', 'emitida', 'ativa'].includes(cotacao.status),
-        statusAssinatura: ['assinado', 'pagamento_gerado', 'aprovada', 'emitida', 'ativa'].includes(cotacao.status)
+        assinado: ['aprovada', 'emitida', 'ativa'].includes(cotacao.status),
+        statusAssinatura: ['aprovada', 'emitida', 'ativa'].includes(cotacao.status)
           ? 'todas_assinadas'
           : 'faltam_ambas',
-        assinaturasConcluidas: ['assinado', 'pagamento_gerado', 'aprovada', 'emitida', 'ativa'].includes(cotacao.status) ? 2 : 0,
+        assinaturasConcluidas: ['aprovada', 'emitida', 'ativa'].includes(cotacao.status) ? 2 : 0,
         totalAssinaturas: 2,
         podeSalvarPreferencia: false,
         signUrlCorretora: null,
         signatarios: [],
         contratoPdf: existingPdf || '',
-        message: ['assinado', 'pagamento_gerado', 'aprovada', 'emitida', 'ativa'].includes(cotacao.status)
+        message: ['aprovada', 'emitida', 'ativa'].includes(cotacao.status)
           ? 'Contrato assinado.'
           : 'Nenhum contrato gerado para esta cotação',
-        error: ['assinado', 'pagamento_gerado', 'aprovada', 'emitida', 'ativa'].includes(cotacao.status)
+        error: ['aprovada', 'emitida', 'ativa'].includes(cotacao.status)
           ? undefined
           : 'Nenhum contrato gerado para esta cotação'
       });
@@ -198,19 +165,36 @@ export async function POST(
 
     const docStatusFinalizado = resJson.status === 'signed' || resJson.status === 'completed';
 
-    // Status individual de cada signatário
-    const clienteAssinou = Boolean(
-      docStatusFinalizado ||
-      (proponenteSigner && proponenteSigner.status === 'signed') ||
-      clientData.clienteAssinou
-    );
+    // Determina o status dos signatários estritamente pela resposta atual da ZapSign
+    let clienteAssinou = false;
+    let corretoraAssinou = false;
 
-    const corretoraAssinou = Boolean(
-      docStatusFinalizado ||
-      (corretoraSigner && corretoraSigner.status === 'signed') ||
-      (signersList.length <= 1 && docStatusFinalizado) ||
-      clientData.corretoraAssinou
-    );
+    if (docStatusFinalizado) {
+      clienteAssinou = true;
+      corretoraAssinou = true;
+    } else {
+      const proponenteSigned = Boolean(proponenteSigner && proponenteSigner.status === 'signed');
+      const corretoraSigned = Boolean(corretoraSigner && corretoraSigner.status === 'signed');
+      const signedCount = signersList.filter((s: any) => s.status === 'signed').length;
+
+      if (proponenteSigned && corretoraSigned) {
+        clienteAssinou = true;
+        corretoraAssinou = true;
+      } else if (proponenteSigned && !corretoraSigned) {
+        clienteAssinou = true;
+        corretoraAssinou = false;
+      } else if (!proponenteSigned && corretoraSigned) {
+        clienteAssinou = false;
+        corretoraAssinou = true;
+      } else if (signedCount === 1) {
+        // Se 1 signatário assinou na plataforma web, foi o proponente
+        clienteAssinou = true;
+        corretoraAssinou = false;
+      } else {
+        clienteAssinou = false;
+        corretoraAssinou = false;
+      }
+    }
 
     let statusAssinatura: 'todas_assinadas' | 'falta_corretora' | 'falta_cliente' | 'faltam_ambas';
     if (clienteAssinou && corretoraAssinou) {
@@ -443,18 +427,32 @@ export async function POST(
       });
     }
 
-    // Atualiza client_data na cotação para refletir o status parcial sem avançar o status da cotação
+    // Quando não estão todas assinadas: se a cotação estava marcada como 'assinado' indevidamente,
+    // reverte para 'contrato_gerado' e limpa assinadoEm para refletir a pendência da 2ª assinatura.
+    delete clientData.assinadoEm;
+    const newCotacaoStatus = cotacao.status === 'assinado' ? 'contrato_gerado' : cotacao.status;
+
     await sql`
       UPDATE cotacoes
       SET
+        status = ${newCotacaoStatus},
         client_data = ${JSON.stringify(clientData)}::jsonb,
         updated_at = NOW()
       WHERE id = ${cotacao.id}
     `;
 
+    await sql`
+      UPDATE signature_documents
+      SET
+        status = 'pending',
+        raw_payload = ${JSON.stringify(resJson)}::jsonb,
+        updated_at = NOW()
+      WHERE cotacao_id = ${cotacao.id} AND provider = 'zapsign'
+    `;
+
     return Response.json({
       ok: true,
-      status: cotacao.status,
+      status: newCotacaoStatus,
       assinado: false,
       statusAssinatura,
       assinaturasConcluidas,

@@ -201,7 +201,13 @@ export default async function AdminCotacoesPage({
   } else if (statusAssinatura === 'faltam_ambas') {
     conditions.push(sql`(c.client_data->>'statusAssinatura' = 'faltam_ambas' OR (c.status = 'contrato_gerado' AND (c.client_data->>'statusAssinatura' IS NULL OR c.client_data->>'statusAssinatura' = '')))`);
   } else if (statusAssinatura === 'ambas_assinadas') {
-    conditions.push(sql`(c.client_data->>'statusAssinatura' = 'todas_assinadas' OR c.status IN ('assinado', 'pagamento_gerado', 'aprovada', 'emitida'))`);
+    conditions.push(sql`(
+      c.client_data->>'statusAssinatura' = 'todas_assinadas'
+      OR (
+        c.status IN ('aprovada', 'emitida')
+        AND (c.client_data->>'statusAssinatura' IS NULL OR c.client_data->>'statusAssinatura' NOT IN ('falta_corretora', 'falta_cliente', 'faltam_ambas'))
+      )
+    )`);
   }
 
   if (productId) conditions.push(sql`c.product_id = ${productId}`);
