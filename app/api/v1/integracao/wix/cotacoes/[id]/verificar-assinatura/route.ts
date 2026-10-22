@@ -120,7 +120,9 @@ export async function POST(
                     signed_at = COALESCE(signed_at, NOW()),
                     raw_payload = ${JSON.stringify(zapDoc)}::jsonb,
                     updated_at = NOW()
-                WHERE cotacao_id = ${cotacao.id} AND provider = 'zapsign'
+                WHERE cotacao_id = ${cotacao.id}
+                  AND provider = 'zapsign'
+                  AND external_document_id = ${docToken}
               `;
             }
           } else {

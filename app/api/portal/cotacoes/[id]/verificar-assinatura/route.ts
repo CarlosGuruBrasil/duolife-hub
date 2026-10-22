@@ -350,6 +350,7 @@ export async function POST(
           updated_at = NOW()
         WHERE cotacao_id = ${cotacao.id}
           AND provider = 'zapsign'
+          AND external_document_id = ${docToken}
       `;
 
       // Dispara gatilho de Contrato Assinado
@@ -494,13 +495,24 @@ export async function POST(
       WHERE id = ${cotacao.id}
     `;
 
+    // Cancela qualquer outro documento da mesma cotação que tenha ficado em status ativo
+    await sql`
+      UPDATE signature_documents
+      SET status = 'cancelled', updated_at = NOW()
+      WHERE cotacao_id = ${cotacao.id}
+        AND external_document_id != ${docToken}
+        AND status NOT IN ('cancelled', 'refused', 'expired')
+    `;
+
     await sql`
       UPDATE signature_documents
       SET
         status = 'pending',
         raw_payload = ${JSON.stringify(resJson)}::jsonb,
         updated_at = NOW()
-      WHERE cotacao_id = ${cotacao.id} AND provider = 'zapsign'
+      WHERE cotacao_id = ${cotacao.id}
+        AND provider = 'zapsign'
+        AND external_document_id = ${docToken}
     `;
 
     return Response.json({
