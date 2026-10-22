@@ -10,6 +10,7 @@ import {
   STATUS_GERAL_OPTIONS,
   STATUS_PAGAMENTO_OPTIONS,
 } from '@/lib/status-matrix';
+import { STATUS_ASSINATURA_FILTER_OPTIONS } from '@/lib/assinatura-status';
 
 export interface CorretoraOption {
   id: string;
@@ -51,6 +52,7 @@ export function CotacoesAdvancedFilters({
   const [status, setStatus] = useState(searchParams.get('status') || '');
   const [statusGeral, setStatusGeral] = useState(searchParams.get('statusGeral') || '');
   const [statusPagamento, setStatusPagamento] = useState(searchParams.get('statusPagamento') || '');
+  const [statusAssinatura, setStatusAssinatura] = useState(searchParams.get('statusAssinatura') || '');
   const [productId, setProductId] = useState(searchParams.get('productId') || '');
   const [corretoraId, setCorretoraId] = useState(searchParams.get('corretoraId') || '');
   const [partnerId, setPartnerId] = useState(searchParams.get('partnerId') || '');
@@ -65,6 +67,7 @@ export function CotacoesAdvancedFilters({
     setStatus(searchParams.get('status') || '');
     setStatusGeral(searchParams.get('statusGeral') || '');
     setStatusPagamento(searchParams.get('statusPagamento') || '');
+    setStatusAssinatura(searchParams.get('statusAssinatura') || '');
     setProductId(searchParams.get('productId') || '');
     setCorretoraId(searchParams.get('corretoraId') || '');
     setPartnerId(searchParams.get('partnerId') || '');
@@ -165,10 +168,9 @@ export function CotacoesAdvancedFilters({
 
   const handleClear = () => {
     setStatus('');
-    setProductId('');
-    setCorretoraId('');
     setStatusGeral('');
     setStatusPagamento('');
+    setStatusAssinatura('');
     setProductId('');
     setCorretoraId('');
     setPartnerId('');
@@ -181,6 +183,7 @@ export function CotacoesAdvancedFilters({
     params.delete('status');
     params.delete('statusGeral');
     params.delete('statusPagamento');
+    params.delete('statusAssinatura');
     params.delete('productId');
     params.delete('corretoraId');
     params.delete('partnerId');
@@ -293,7 +296,29 @@ export function CotacoesAdvancedFilters({
           </select>
         </div>
 
-        {/* 4. Produto */}
+        {/* 4. Status de Assinatura */}
+        <div>
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
+            Status de Assinatura
+          </label>
+          <select
+            value={statusAssinatura}
+            onChange={(e) => {
+              setStatusAssinatura(e.target.value);
+              updateSingleFilter('statusAssinatura', e.target.value);
+            }}
+            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none cursor-pointer"
+          >
+            <option value="">Todas as assinaturas</option>
+            {STATUS_ASSINATURA_FILTER_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* 5. Produto */}
         <div>
           <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
             Produto
@@ -315,7 +340,7 @@ export function CotacoesAdvancedFilters({
           </select>
         </div>
 
-        {/* 3. Corretora (empresa CNPJ) */}
+        {/* 6. Corretora (empresa CNPJ) */}
         <div>
           <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
             Corretora
@@ -337,7 +362,7 @@ export function CotacoesAdvancedFilters({
           </select>
         </div>
 
-        {/* 4. Vendedor */}
+        {/* 7. Vendedor */}
         <div>
           <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
             Vendedor
@@ -359,7 +384,7 @@ export function CotacoesAdvancedFilters({
           </select>
         </div>
 
-        {/* 5. Renovação */}
+        {/* 8. Renovação */}
         <div>
           <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
             Renovação

@@ -78,7 +78,30 @@ export async function POST(
         ok: true,
         status: cotacao.status,
         assinado: true,
-        contratoPdf: existingPdf
+        statusAssinatura: 'todas_assinadas',
+        assinaturasConcluidas: 2,
+        totalAssinaturas: 2,
+        podeSalvarPreferencia: true,
+        signUrlCorretora: clientData.signUrlCorretora || null,
+        signatarios: [
+          {
+            nome: cotacao.client_name || 'Proponente',
+            papel: 'cliente',
+            assinado: true,
+            email: cotacao.client_email || ''
+          },
+          {
+            nome: 'Corretora',
+            papel: 'corretora',
+            assinado: true,
+            email: 'contato@net4life.com.br'
+          }
+        ],
+        contratoPdf: existingPdf,
+        checkoutId: clientData.checkoutId || null,
+        linkBoleto: clientData.linkBoleto || null,
+        dueDate: clientData.dataVencimento || null,
+        message: 'Todas as assinaturas foram concluídas com sucesso!'
       });
     }
 
@@ -87,7 +110,18 @@ export async function POST(
         ok: true,
         status: cotacao.status,
         assinado: ['assinado', 'pagamento_gerado', 'aprovada', 'emitida', 'ativa'].includes(cotacao.status),
+        statusAssinatura: ['assinado', 'pagamento_gerado', 'aprovada', 'emitida', 'ativa'].includes(cotacao.status)
+          ? 'todas_assinadas'
+          : 'faltam_ambas',
+        assinaturasConcluidas: ['assinado', 'pagamento_gerado', 'aprovada', 'emitida', 'ativa'].includes(cotacao.status) ? 2 : 0,
+        totalAssinaturas: 2,
+        podeSalvarPreferencia: false,
+        signUrlCorretora: null,
+        signatarios: [],
         contratoPdf: existingPdf || '',
+        message: ['assinado', 'pagamento_gerado', 'aprovada', 'emitida', 'ativa'].includes(cotacao.status)
+          ? 'Contrato assinado.'
+          : 'Nenhum contrato gerado para esta cotação',
         error: ['assinado', 'pagamento_gerado', 'aprovada', 'emitida', 'ativa'].includes(cotacao.status)
           ? undefined
           : 'Nenhum contrato gerado para esta cotação'
@@ -122,60 +156,133 @@ export async function POST(
     }
 
     const resJson = await response.json();
-    
-    // ZapSign considera o documento finalizado se status for "signed" ou "completed",
-    // ou se todos os signatários assinaram.
-    const todosAssinaram =
-      resJson.status === 'signed' ||
-      resJson.status === 'completed' ||
-      (Array.isArray(resJson.signers) &&
-        resJson.signers.length > 0 &&
-        resJson.signers.every((s: any) => s.status === 'signed'));
-
-    // Localiza o signatário do Proponente / Cliente
     const signersList = Array.isArray(resJson.signers) ? resJson.signers : [];
     const clientEmail = (cotacao.client_email || clientData.email || '').toLowerCase().trim();
     const clientName = (cotacao.client_name || clientData.nome || '').toLowerCase().trim();
 
-    const proponenteSigner = signersList.find((s: any) => {
+    // Identificação dos signatários
+    let proponenteSigner = signersList.find((s: any) => {
       const sEmail = (s.email || '').toLowerCase().trim();
       const sName = (s.name || '').toLowerCase().trim();
       const isClientEmail = Boolean(clientEmail && sEmail === clientEmail);
       const isClientName = Boolean(clientName && (sName.includes(clientName) || clientName.includes(sName)));
-      const isNotCorretora =
-        !sEmail.includes('net4life.com.br') &&
-        !sEmail.includes('corretora') &&
-        !sName.includes('corretora');
-      return isClientEmail || isClientName || isNotCorretora;
-    }) || signersList[0] || null;
+      return isClientEmail || isClientName;
+    });
 
-    const proponenteAssinou = proponenteSigner?.status === 'signed';
-    const peloMenosUmAssinou = signersList.some((s: any) => s.status === 'signed');
+    let corretoraSigner = signersList.find((s: any) => {
+      if (s === proponenteSigner) return false;
+      const sEmail = (s.email || '').toLowerCase().trim();
+      const sName = (s.name || '').toLowerCase().trim();
+      return (
+        sEmail.includes('net4life.com.br') ||
+        sEmail.includes('corretora') ||
+        sEmail.includes('duolife') ||
+        sName.includes('corretora') ||
+        sName.includes('net4life')
+      );
+    });
 
-    // O proponente assinou seu termo no portal (ou todos assinaram, ou 1/2 foi concluído pelo proponente)
-    const isSigned = todosAssinaram || proponenteAssinou || peloMenosUmAssinou;
-
-    if (isSigned) {
-      const pdfLink =
-        resJson.signed_file ||
-        resJson.signed_file_url ||
-        resJson.original_file ||
-        clientData.contratoPdf ||
-        existingPdf ||
-        null;
-      const signerSignUrl = proponenteSigner?.sign_url || signersList[0]?.sign_url || null;
-      
-      if (pdfLink) {
-        clientData.contratoPdf = pdfLink;
+    // Fallbacks para associação dos signatários por posição
+    if (signersList.length >= 2) {
+      if (!proponenteSigner && corretoraSigner) {
+        proponenteSigner = signersList.find((s: any) => s !== corretoraSigner) || signersList[0];
+      } else if (proponenteSigner && !corretoraSigner) {
+        corretoraSigner = signersList.find((s: any) => s !== proponenteSigner) || signersList[1];
+      } else if (!proponenteSigner && !corretoraSigner) {
+        proponenteSigner = signersList[0];
+        corretoraSigner = signersList[1];
       }
-      if (signerSignUrl) {
-        clientData.signUrl = signerSignUrl;
+    } else if (signersList.length === 1 && !proponenteSigner) {
+      proponenteSigner = signersList[0];
+    }
+
+    const docStatusFinalizado = resJson.status === 'signed' || resJson.status === 'completed';
+
+    // Status individual de cada signatário
+    const clienteAssinou = Boolean(
+      docStatusFinalizado ||
+      (proponenteSigner && proponenteSigner.status === 'signed') ||
+      clientData.clienteAssinou
+    );
+
+    const corretoraAssinou = Boolean(
+      docStatusFinalizado ||
+      (corretoraSigner && corretoraSigner.status === 'signed') ||
+      (signersList.length <= 1 && docStatusFinalizado) ||
+      clientData.corretoraAssinou
+    );
+
+    let statusAssinatura: 'todas_assinadas' | 'falta_corretora' | 'falta_cliente' | 'faltam_ambas';
+    if (clienteAssinou && corretoraAssinou) {
+      statusAssinatura = 'todas_assinadas';
+    } else if (clienteAssinou && !corretoraAssinou) {
+      statusAssinatura = 'falta_corretora';
+    } else if (!clienteAssinou && corretoraAssinou) {
+      statusAssinatura = 'falta_cliente';
+    } else {
+      statusAssinatura = 'faltam_ambas';
+    }
+
+    const totalAssinaturas = 2;
+    const assinaturasConcluidas = (clienteAssinou ? 1 : 0) + (corretoraAssinou ? 1 : 0);
+    const todasAssinadas = statusAssinatura === 'todas_assinadas';
+    const podeSalvarPreferencia = statusAssinatura === 'falta_corretora' || clienteAssinou;
+
+    const signUrlProponente = proponenteSigner?.sign_url || clientData.signUrlProponente || clientData.signUrl || null;
+    const signUrlCorretora = corretoraSigner?.sign_url || clientData.signUrlCorretora || null;
+
+    const signatarios = [
+      {
+        nome: proponenteSigner?.name || cotacao.client_name || 'Proponente',
+        papel: 'cliente' as const,
+        assinado: clienteAssinou,
+        email: proponenteSigner?.email || cotacao.client_email || ''
+      },
+      {
+        nome: corretoraSigner?.name || 'Corretora',
+        papel: 'corretora' as const,
+        assinado: corretoraAssinou,
+        email: corretoraSigner?.email || 'contato@net4life.com.br'
       }
+    ];
+
+    let message = 'Aguardando assinaturas do Proponente e da Corretora.';
+    if (statusAssinatura === 'todas_assinadas') {
+      message = 'Todas as assinaturas foram concluídas com sucesso!';
+    } else if (statusAssinatura === 'falta_corretora') {
+      message = 'O Proponente já assinou. Aguardando assinatura da Corretora para emissão da fatura.';
+    } else if (statusAssinatura === 'falta_cliente') {
+      message = 'A Corretora já assinou. Aguardando assinatura do Proponente.';
+    }
+
+    // Atualiza dados no client_data da cotação
+    clientData.statusAssinatura = statusAssinatura;
+    clientData.clienteAssinou = clienteAssinou;
+    clientData.corretoraAssinou = corretoraAssinou;
+    if (signUrlCorretora) clientData.signUrlCorretora = signUrlCorretora;
+    if (signUrlProponente) clientData.signUrlProponente = signUrlProponente;
+
+    const pdfLink =
+      resJson.signed_file ||
+      resJson.signed_file_url ||
+      resJson.original_file ||
+      clientData.contratoPdf ||
+      existingPdf ||
+      null;
+
+    if (pdfLink) {
+      clientData.contratoPdf = pdfLink;
+    }
+    if (signUrlProponente) {
+      clientData.signUrl = signUrlProponente;
+    }
+
+    if (todasAssinadas) {
       clientData.assinadoEm = clientData.assinadoEm || new Date().toISOString();
 
       const canAdvanceToAssinado = ['contrato_gerado', 'enviada', 'rascunho'].includes(cotacao.status);
 
-      // Atualiza no banco
+      // Atualiza status da cotação
       if (canAdvanceToAssinado) {
         await sql`
           UPDATE cotacoes
@@ -200,7 +307,7 @@ export async function POST(
         SET
           status = 'signed',
           signed_file_url = COALESCE(${pdfLink}, signed_file_url),
-          sign_url = COALESCE(${signerSignUrl}, sign_url),
+          sign_url = COALESCE(${signUrlProponente}, sign_url),
           signed_at = COALESCE(signed_at, NOW()),
           raw_payload = ${JSON.stringify(resJson)}::jsonb,
           updated_at = NOW()
@@ -221,7 +328,6 @@ export async function POST(
           SELECT full_name, email, document_number, phone FROM insurance_clients WHERE id = ${cotacaoCompleta.client_id} LIMIT 1
         ` : [];
 
-        // Busca vendedor responsável pela proposta (partner_users)
         const [vendedorRow] = cotacaoCompleta?.partner_user_id ? await sql<{ id: string; nome: string; email: string }[]>`
           SELECT id, name AS nome, email
           FROM partner_users
@@ -284,27 +390,37 @@ export async function POST(
         logger.error({ dispatchErr, cotacaoId: cotacao.id }, 'api.portal.verificar-assinatura.dispatch_event_failed');
       }
 
-      // Gera cobrança Asaas em background (respeitando regra de vigência e permissão)
+      // Regra obrigatória: A cobrança Asaas só é emitida automaticamente se já houver formaPagamentoPreferida salva em client_data
       let paymentInfo: any = null;
-      try {
-        const isManualAdmin = user ? isInternalUser(user) : false;
-        paymentInfo = await generateAsaasPaymentForQuote(cotacao.id, { isManualAdmin });
-      } catch (paymentErr) {
-        logger.error({ paymentErr, cotacaoId: cotacao.id }, 'api.portal.verificar-assinatura.asaas_payment_failed');
+      if (clientData.formaPagamentoPreferida) {
+        try {
+          const isManualAdmin = user ? isInternalUser(user) : false;
+          paymentInfo = await generateAsaasPaymentForQuote(cotacao.id, { isManualAdmin });
+        } catch (paymentErr) {
+          logger.error({ paymentErr, cotacaoId: cotacao.id }, 'api.portal.verificar-assinatura.asaas_payment_failed');
+        }
       }
 
       return Response.json({
         ok: true,
         status: canAdvanceToAssinado ? 'assinado' : cotacao.status,
         assinado: true,
+        statusAssinatura,
+        assinaturasConcluidas,
+        totalAssinaturas,
+        podeSalvarPreferencia,
+        signUrlCorretora,
+        signatarios,
+        message,
         contratoPdf: pdfLink,
-        checkoutId: paymentInfo?.checkoutId,
-        linkBoleto: paymentInfo?.linkBoleto,
-        dueDate: paymentInfo?.dueDate,
+        checkoutId: paymentInfo?.checkoutId || clientData.checkoutId || null,
+        linkBoleto: paymentInfo?.linkBoleto || clientData.linkBoleto || null,
+        dueDate: paymentInfo?.dueDate || clientData.dataVencimento || null,
         paymentError: paymentInfo?.ok === false ? paymentInfo.error : undefined,
       });
     }
 
+    // Caso não estejam todas assinadas: verifica se expirou
     const isExpired = resJson.status === 'expired' || (clientData.contratoPrazoLimite && new Date() > new Date(clientData.contratoPrazoLimite));
     if (isExpired) {
       await sql`
@@ -316,15 +432,37 @@ export async function POST(
         ok: true,
         status: cotacao.status,
         assinado: false,
+        statusAssinatura,
+        assinaturasConcluidas,
+        totalAssinaturas,
+        podeSalvarPreferencia,
+        signUrlCorretora,
+        signatarios,
         expirado: true,
         message: 'O prazo de assinatura de 7 dias expirou sem assinatura. Clique em "Regerar Minuta" para emitir um novo contrato.'
       });
     }
 
+    // Atualiza client_data na cotação para refletir o status parcial sem avançar o status da cotação
+    await sql`
+      UPDATE cotacoes
+      SET
+        client_data = ${JSON.stringify(clientData)}::jsonb,
+        updated_at = NOW()
+      WHERE id = ${cotacao.id}
+    `;
+
     return Response.json({
       ok: true,
       status: cotacao.status,
-      assinado: false
+      assinado: false,
+      statusAssinatura,
+      assinaturasConcluidas,
+      totalAssinaturas,
+      podeSalvarPreferencia,
+      signUrlCorretora,
+      signatarios,
+      message,
     });
 
   } catch (err: unknown) {

@@ -31,6 +31,9 @@ export function CotacoesFilterSection({
 
   const activeFiltersCount = [
     searchParams.get('status'),
+    searchParams.get('statusGeral'),
+    searchParams.get('statusPagamento'),
+    searchParams.get('statusAssinatura'),
     searchParams.get('productId'),
     searchParams.get('corretoraId'),
     searchParams.get('partnerId'),

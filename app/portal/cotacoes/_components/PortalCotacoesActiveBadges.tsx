@@ -7,6 +7,7 @@ import {
   formatStatusGeralLabel,
   formatStatusPagamentoLabel,
 } from '@/lib/status-matrix';
+import { formatStatusAssinaturaFilterLabel } from '@/lib/assinatura-status';
 
 interface Option {
   id: string;
@@ -41,6 +42,7 @@ export function PortalCotacoesActiveBadges({
   const status = searchParams.get('status');
   const statusGeral = searchParams.get('statusGeral');
   const statusPagamento = searchParams.get('statusPagamento');
+  const statusAssinatura = searchParams.get('statusAssinatura');
   const productId = searchParams.get('productId');
   const periodPreset = searchParams.get('periodPreset');
   const startDate = searchParams.get('startDate');
@@ -109,6 +111,17 @@ export function PortalCotacoesActiveBadges({
         id: 'statusPagamento',
         label: `Status Pagamento: ${rawLabel}`,
         onRemove: () => removeFilter('statusPagamento'),
+      });
+    }
+  }
+
+  if (statusAssinatura) {
+    const rawLabel = formatStatusAssinaturaFilterLabel(statusAssinatura);
+    if (rawLabel) {
+      badges.push({
+        id: 'statusAssinatura',
+        label: `Assinatura: ${rawLabel}`,
+        onRemove: () => removeFilter('statusAssinatura'),
       });
     }
   }

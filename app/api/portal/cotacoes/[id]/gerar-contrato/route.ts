@@ -118,6 +118,11 @@ export async function POST(
         ok: true,
         docToken: clientData.contratoToken,
         signUrl: clientData.signUrl,
+        signUrlCorretora: clientData.signUrlCorretora || null,
+        signUrlProponente: clientData.signUrlProponente || clientData.signUrl || null,
+        statusAssinatura: clientData.statusAssinatura || 'faltam_ambas',
+        clienteAssinou: Boolean(clientData.clienteAssinou),
+        corretoraAssinou: Boolean(clientData.corretoraAssinou),
         alreadyExisted: true,
       });
     }
@@ -585,14 +590,20 @@ export async function POST(
         logger.error({ cotacaoId: cotacao.id, body: responseText }, 'api.portal.gerar-contrato.zapsign_sem_token');
         return Response.json({ error: 'Resposta inesperada da ZapSign ao criar documento' }, { status: 502 });
       }
-      signUrl = resJson.signers?.[0]?.sign_url || '';
+      const signersList = Array.isArray(resJson.signers) ? resJson.signers : [];
+      signUrlProponente = signersList[0]?.sign_url || '';
+      signUrlCorretora = signersList[1]?.sign_url || '';
+      signUrl = signUrlProponente;
     }
 
     // 7. Atualiza a cotação no Banco
     clientData.contratoToken = docToken;
     clientData.signUrl = signUrl;
+    clientData.signUrlProponente = signUrlProponente || signUrl;
     if (signUrlCorretora) clientData.signUrlCorretora = signUrlCorretora;
-    if (signUrlProponente) clientData.signUrlProponente = signUrlProponente;
+    clientData.statusAssinatura = 'faltam_ambas';
+    clientData.clienteAssinou = false;
+    clientData.corretoraAssinou = false;
     clientData.contratoGeradoEm = new Date().toISOString();
     clientData.contratoPrazoLimite = deadlineIso;
     clientData.contratoModo = isDynamicPdf ? 'dynamic_pdf' : 'template';
@@ -748,7 +759,12 @@ export async function POST(
     return Response.json({
       ok: true,
       docToken,
-      signUrl
+      signUrl,
+      signUrlCorretora: signUrlCorretora || clientData.signUrlCorretora || null,
+      signUrlProponente: signUrlProponente || signUrl,
+      statusAssinatura: 'faltam_ambas',
+      clienteAssinou: false,
+      corretoraAssinou: false,
     });
 
   } catch (err: unknown) {

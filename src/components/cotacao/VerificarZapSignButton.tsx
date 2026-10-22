@@ -38,7 +38,11 @@ export function VerificarZapSignButton({
       }
 
       if (body.assinado) {
-        toast.success('Contrato confirmado como ASSINADO no ZapSign!');
+        toast.success('Contrato confirmado como 100% ASSINADO por ambas as partes no ZapSign!');
+      } else if (body.statusAssinatura === 'falta_corretora') {
+        toast.warning('O Proponente já assinou! Falta a assinatura da Corretora.');
+      } else if (body.statusAssinatura === 'falta_cliente') {
+        toast.warning('A Corretora já assinou! Falta a assinatura do Proponente.');
       } else {
         toast.warning('O contrato ainda consta como PENDENTE de assinatura no ZapSign.');
       }

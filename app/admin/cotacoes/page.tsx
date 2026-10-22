@@ -17,6 +17,7 @@ import TransferirParceiroCotacaoButton from '@/components/modals/TransferirParce
 
 import { MatrixStatusBadge } from '@/components/common/MatrixStatusBadge';
 import { calculateMatrixStatus, getCotacaoMatrixFilterSql } from '@/lib/status-matrix';
+import { getCotacaoAssinaturaInfo } from '@/lib/assinatura-status';
 
 export const dynamic = 'force-dynamic';
 
@@ -134,6 +135,7 @@ export default async function AdminCotacoesPage({
   const rawStatus = typeof params.status === 'string' ? params.status.toLowerCase().trim() : '';
   const statusGeral = typeof params.statusGeral === 'string' ? params.statusGeral.trim() : '';
   const statusPagamento = typeof params.statusPagamento === 'string' ? params.statusPagamento.trim() : '';
+  const statusAssinatura = typeof params.statusAssinatura === 'string' ? params.statusAssinatura.trim() : '';
   const statusVariants = statusAliases[rawStatus] || (statusLabel[rawStatus] ? [rawStatus] : null);
   const status = statusLabel[rawStatus] ? rawStatus : (statusVariants ? statusVariants[0] : '');
   const q = (typeof params.q === 'string' ? params.q : '').trim().slice(0, 120);
@@ -187,6 +189,19 @@ export default async function AdminCotacoesPage({
     for (const clause of matrixClauses) {
       conditions.push(sql.unsafe(clause));
     }
+  }
+
+  // Filtro de Status de Assinatura
+  if (statusAssinatura === 'falta_1') {
+    conditions.push(sql`(c.client_data->>'statusAssinatura' IN ('falta_corretora', 'falta_cliente'))`);
+  } else if (statusAssinatura === 'falta_corretora') {
+    conditions.push(sql`(c.client_data->>'statusAssinatura' = 'falta_corretora')`);
+  } else if (statusAssinatura === 'falta_cliente') {
+    conditions.push(sql`(c.client_data->>'statusAssinatura' = 'falta_cliente')`);
+  } else if (statusAssinatura === 'faltam_ambas') {
+    conditions.push(sql`(c.client_data->>'statusAssinatura' = 'faltam_ambas' OR (c.status = 'contrato_gerado' AND (c.client_data->>'statusAssinatura' IS NULL OR c.client_data->>'statusAssinatura' = '')))`);
+  } else if (statusAssinatura === 'ambas_assinadas') {
+    conditions.push(sql`(c.client_data->>'statusAssinatura' = 'todas_assinadas' OR c.status IN ('assinado', 'pagamento_gerado', 'aprovada', 'emitida'))`);
   }
 
   if (productId) conditions.push(sql`c.product_id = ${productId}`);
@@ -389,6 +404,9 @@ export default async function AdminCotacoesPage({
 
   const hasFilters = Boolean(
     status ||
+    statusGeral ||
+    statusPagamento ||
+    statusAssinatura ||
     q ||
     productId ||
     corretoraId ||
@@ -501,6 +519,8 @@ export default async function AdminCotacoesPage({
                     paymentStatus: cotacao.payment_order_status || (cotacao.is_fully_paid ? 'paid' : undefined),
                   });
 
+                  const assinaturaInfo = getCotacaoAssinaturaInfo(cotacao.status, clientData);
+
                   return (
                     <tr key={cotacao.id} className="hover:bg-slate-50/60 transition-colors duration-150 group">
                       <td className="px-6 py-4 table-sticky-col-cell">
@@ -518,7 +538,18 @@ export default async function AdminCotacoesPage({
                       </td>
 
                       <td className="px-6 py-4 text-center border-b border-slate-100">
-                        <MatrixStatusBadge result={matrixStatus} variant="table-cell" />
+                        <div className="flex flex-col items-center justify-center gap-1.5">
+                          <MatrixStatusBadge result={matrixStatus} variant="table-cell" />
+                          {assinaturaInfo && (
+                            <span
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border shadow-2xs ${assinaturaInfo.badgeClass}`}
+                              title={`Status de Assinatura: ${assinaturaInfo.label}`}
+                            >
+                              <span>✍️</span>
+                              <span>{assinaturaInfo.label}</span>
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       <td className="px-6 py-4 text-right border-b border-slate-100">

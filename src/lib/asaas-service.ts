@@ -330,7 +330,7 @@ export async function generateAsaasPaymentForQuote(
     } else {
       const preco = await calcularPrecoServidor({
         tipoDePlano,
-        qtdParcelasSolicitada: Number(clientData.parcela) || 1,
+        qtdParcelasSolicitada: Number(options?.customValues?.qtdParcelas || clientData.parcelasPreferidas || clientData.parcela) || 1,
         cupomCodigo: clientData.cupomCodigo || null,
         descontoManualPercent: Number(clientData.descontoManualPercent ?? clientData.descontoPercentual) || 0,
         flowKey: String(clientData.flowKey || (cotacao as any).flow_key || '') || null,
@@ -339,13 +339,13 @@ export async function generateAsaasPaymentForQuote(
       });
 
       valorTotal = preco ? Math.round(preco.valorTotal * 100) / 100 : 0;
-      qtdParcelas = preco ? preco.qtdParcelas : (Number(clientData.parcela) || 1);
+      qtdParcelas = preco ? preco.qtdParcelas : (Number(options?.customValues?.qtdParcelas || clientData.parcelasPreferidas || clientData.parcela) || 1);
       valorParcela = preco ? Math.round(preco.valorParcela * 100) / 100 : 0;
 
       // Fallback de segurança para cotações com contrato já assinado no banco:
       if ((!valorTotal || valorTotal <= 0) && (cotacao.premio_final || cotacao.premio_calculado)) {
         valorTotal = Number(cotacao.premio_final || cotacao.premio_calculado);
-        qtdParcelas = Number(clientData.parcela) || 1;
+        qtdParcelas = Number(options?.customValues?.qtdParcelas || clientData.parcelasPreferidas || clientData.parcela) || 1;
         valorParcela = qtdParcelas > 1 ? Math.round((valorTotal / qtdParcelas) * 100) / 100 : valorTotal;
       }
     }
@@ -411,6 +411,7 @@ export async function generateAsaasPaymentForQuote(
 
     const rawBillingType =
       options?.customValues?.billingType ||
+      clientData.formaPagamentoPreferida ||
       clientData.billingType ||
       clientData.formaPagamento;
 

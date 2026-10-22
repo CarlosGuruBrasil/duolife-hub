@@ -27,6 +27,9 @@ export function PortalCotacoesFilterSection({
 
   const activeFiltersCount = [
     searchParams.get('status'),
+    searchParams.get('statusGeral'),
+    searchParams.get('statusPagamento'),
+    searchParams.get('statusAssinatura'),
     searchParams.get('productId'),
     searchParams.get('periodPreset') && searchParams.get('periodPreset') !== 'all',
   ].filter(Boolean).length;

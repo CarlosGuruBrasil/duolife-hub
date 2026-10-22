@@ -8,6 +8,7 @@ import {
   STATUS_GERAL_OPTIONS,
   STATUS_PAGAMENTO_OPTIONS,
 } from '@/lib/status-matrix';
+import { STATUS_ASSINATURA_FILTER_OPTIONS } from '@/lib/assinatura-status';
 
 interface Option {
   id: string;
@@ -33,6 +34,7 @@ export function PortalCotacoesAdvancedFilters({
   const [status, setStatus] = useState(searchParams.get('status') || '');
   const [statusGeral, setStatusGeral] = useState(searchParams.get('statusGeral') || '');
   const [statusPagamento, setStatusPagamento] = useState(searchParams.get('statusPagamento') || '');
+  const [statusAssinatura, setStatusAssinatura] = useState(searchParams.get('statusAssinatura') || '');
   const [productId, setProductId] = useState(searchParams.get('productId') || '');
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>(
     (searchParams.get('periodPreset') as PeriodPreset) || 'all'
@@ -44,6 +46,7 @@ export function PortalCotacoesAdvancedFilters({
     setStatus(searchParams.get('status') || '');
     setStatusGeral(searchParams.get('statusGeral') || '');
     setStatusPagamento(searchParams.get('statusPagamento') || '');
+    setStatusAssinatura(searchParams.get('statusAssinatura') || '');
     setProductId(searchParams.get('productId') || '');
     setPeriodPreset((searchParams.get('periodPreset') as PeriodPreset) || 'all');
     setStartDate(searchParams.get('startDate') || '');
@@ -110,6 +113,7 @@ export function PortalCotacoesAdvancedFilters({
     setStatus('');
     setStatusGeral('');
     setStatusPagamento('');
+    setStatusAssinatura('');
     setProductId('');
     setPeriodPreset('all');
     setStartDate('');
@@ -119,6 +123,7 @@ export function PortalCotacoesAdvancedFilters({
     params.delete('status');
     params.delete('statusGeral');
     params.delete('statusPagamento');
+    params.delete('statusAssinatura');
     params.delete('productId');
     params.delete('periodPreset');
     params.delete('startDate');
@@ -148,7 +153,7 @@ export function PortalCotacoesAdvancedFilters({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5">
         {/* 1. Status do Cliente / Cotação */}
         <div>
           <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
@@ -228,7 +233,29 @@ export function PortalCotacoesAdvancedFilters({
           </select>
         </div>
 
-        {/* 4. Produto */}
+        {/* 4. Status de Assinatura */}
+        <div>
+          <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
+            Status de Assinatura
+          </label>
+          <select
+            value={statusAssinatura}
+            onChange={(e) => {
+              setStatusAssinatura(e.target.value);
+              updateSingleFilter('statusAssinatura', e.target.value);
+            }}
+            className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-800 focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 focus:outline-none cursor-pointer"
+          >
+            <option value="">Todas as assinaturas</option>
+            {STATUS_ASSINATURA_FILTER_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* 5. Produto */}
         <div>
           <label className="block text-[11px] font-bold uppercase tracking-wider text-gray-600 mb-1.5">
             Produto

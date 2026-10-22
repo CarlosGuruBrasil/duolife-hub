@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { CopiarLinkAssinaturaButton } from '@/components/cotacao/CopiarLinkAssinaturaButton';
 import { notFound, redirect } from 'next/navigation';
-import { ArrowLeft, ExternalLink, FileText, CreditCard, ShieldCheck, FileCheck, Play, CheckCircle2, Clock, Download, Eye, AlertTriangle, AlertCircle } from 'lucide-react';
+import { ArrowLeft, ExternalLink, FileText, CreditCard, ShieldCheck, FileCheck, Play, CheckCircle2, Clock, Download, Eye, AlertTriangle, AlertCircle, UserCheck, Building2 } from 'lucide-react';
 import { verifyPartnerAuth, getPartnerAccessContext } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
@@ -422,6 +422,15 @@ export default async function PortalCotacaoDetailPage({
   const prazoLimiteFormatado = prazoLimiteMs > 0 ? new Date(prazoLimiteMs).toISOString() : null;
   const isMinutaOutdated = Boolean(clientData.minutaDesatualizada) ||
     (cotacao.status === 'contrato_gerado' && dataCriacaoMs > 0 && cotacaoUpdatedAtMs - dataCriacaoMs > 5000);
+
+  // Status detalhado de signatários e preferência de pagamento
+  const statusAssinatura = (clientData.statusAssinatura as string | undefined) || (isAssinado ? 'todas_assinadas' : 'faltam_ambas');
+  const rawSignUrlCorretora = (clientData.signUrlCorretora as string | undefined) || null;
+  const signUrlCorretora = rawSignUrlCorretora ? safeExternalUrl(rawSignUrlCorretora) : null;
+  const isProponenteAssinado = isAssinado || Boolean(clientData.clienteAssinou) || statusAssinatura === 'falta_corretora' || statusAssinatura === 'todas_assinadas';
+  const isCorretoraAssinada = isAssinado || Boolean(clientData.corretoraAssinou) || statusAssinatura === 'falta_cliente' || statusAssinatura === 'todas_assinadas';
+  const formaPagamentoPreferida = clientData.formaPagamentoPreferida as string | undefined;
+  const parcelasPreferidas = Number(clientData.parcelasPreferidas) || 1;
 
   // Determinação dos estados reais de pagamento
   const quoteStatusLower = String(cotacao.status || '').toLowerCase();
@@ -1370,7 +1379,7 @@ export default async function PortalCotacaoDetailPage({
                 <div className="bg-purple-50/70 border border-purple-200/80 rounded-xl px-3.5 py-2.5 flex items-center justify-between gap-2">
                   <span className="inline-flex items-center gap-1.5 text-xs font-bold text-purple-900 shrink-0">
                     <CheckCircle2 size={15} className="text-purple-700 shrink-0" />
-                    <span>Contrato Assinado</span>
+                    <span>Contrato Assinado (2 de 2 Assinados)</span>
                   </span>
                   {docToken && (
                     <span
@@ -1380,6 +1389,47 @@ export default async function PortalCotacaoDetailPage({
                       ID: {docToken.slice(0, 12)}...
                     </span>
                   )}
+                </div>
+
+                {/* Status dos Signatários */}
+                <div className="bg-purple-50/40 border border-purple-200/60 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">
+                      Signatários do Contrato
+                    </span>
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      2 de 2 Assinados
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    <div className="bg-white border border-emerald-200 rounded-lg p-2.5 flex items-center justify-between shadow-2xs">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <UserCheck size={14} className="text-emerald-700 shrink-0" />
+                        <div className="min-w-0">
+                          <span className="font-semibold text-slate-900 block truncate">
+                            {cotacao.client_name || String(clientData.nome || 'Proponente')}
+                          </span>
+                          <span className="text-[10px] text-slate-500 block truncate">Proponente / Segurado</span>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                        Assinado
+                      </span>
+                    </div>
+
+                    <div className="bg-white border border-emerald-200 rounded-lg p-2.5 flex items-center justify-between shadow-2xs">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Building2 size={14} className="text-emerald-700 shrink-0" />
+                        <div className="min-w-0">
+                          <span className="font-semibold text-slate-900 block truncate">Net4Life Corretora</span>
+                          <span className="text-[10px] text-slate-500 block truncate">Estipulante Coletiva</span>
+                        </div>
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                        Assinado
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
                 {/* Grid de Metadados em 2 colunas proporcionais */}
@@ -1444,11 +1494,19 @@ export default async function PortalCotacaoDetailPage({
                     ? 'bg-rose-50/90 border-rose-200'
                     : isMinutaOutdated
                     ? 'bg-amber-50/90 border-amber-300'
+                    : statusAssinatura === 'falta_corretora'
+                    ? 'bg-amber-50/90 border-amber-300'
                     : 'bg-amber-50/70 border-amber-200/80'
                 }`}>
                   <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-900 shrink-0">
                     <Clock size={15} className={isMinutaExpired ? 'text-rose-600' : 'text-amber-700'} />
-                    <span>{isMinutaExpired ? 'Minuta Expirada (Prazo de 7 dias)' : 'Aguardando Assinatura'}</span>
+                    <span>
+                      {isMinutaExpired
+                        ? 'Minuta Expirada (Prazo de 7 dias)'
+                        : statusAssinatura === 'falta_corretora'
+                        ? 'Assinatura Parcial: Proponente Assinou (Aguardando Corretora)'
+                        : 'Aguardando Assinatura (ZapSign)'}
+                    </span>
                   </span>
                   {docToken && (
                     <span
@@ -1457,6 +1515,109 @@ export default async function PortalCotacaoDetailPage({
                     >
                       ID: {docToken.slice(0, 12)}...
                     </span>
+                  )}
+                </div>
+
+                {/* Status Individual de Cada Signatário */}
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-3.5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                      Signatários do Contrato
+                    </span>
+                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
+                      isProponenteAssinado && isCorretoraAssinada
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : isProponenteAssinado || isCorretoraAssinada
+                        ? 'bg-amber-50 text-amber-800 border-amber-300'
+                        : 'bg-gray-100 text-gray-700 border-gray-200'
+                    }`}>
+                      {isProponenteAssinado && isCorretoraAssinada ? '2 de 2 assinados' : isProponenteAssinado || isCorretoraAssinada ? '1 de 2 assinados' : '0 de 2 assinados'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                    {/* Signatário 1: Proponente */}
+                    <div className={`p-2.5 rounded-lg border flex items-center justify-between gap-2 ${
+                      isProponenteAssinado ? 'bg-emerald-50/70 border-emerald-200' : 'bg-white border-gray-200'
+                    }`}>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <UserCheck size={15} className={isProponenteAssinado ? 'text-emerald-700 shrink-0' : 'text-gray-400 shrink-0'} />
+                        <div className="min-w-0">
+                          <span className="font-semibold text-gray-900 block truncate">
+                            {cotacao.client_name || String(clientData.nome || 'Proponente')}
+                          </span>
+                          <span className="text-[10px] text-gray-500 block truncate">
+                            {cotacao.client_email || String(clientData.email || 'Proponente / Segurado')}
+                          </span>
+                        </div>
+                      </div>
+                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0 border ${
+                        isProponenteAssinado ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-amber-100 text-amber-800 border-amber-300'
+                      }`}>
+                        {isProponenteAssinado ? 'Assinado' : 'Pendente'}
+                      </span>
+                    </div>
+
+                    {/* Signatário 2: Corretora */}
+                    <div className={`p-2.5 rounded-lg border flex items-center justify-between gap-2 ${
+                      isCorretoraAssinada ? 'bg-emerald-50/70 border-emerald-200' : 'bg-white border-gray-200'
+                    }`}>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Building2 size={15} className={isCorretoraAssinada ? 'text-emerald-700 shrink-0' : 'text-amber-600 shrink-0'} />
+                        <div className="min-w-0">
+                          <span className="font-semibold text-gray-900 block truncate">
+                            Net4Life Corretora
+                          </span>
+                          <span className="text-[10px] text-gray-500 block truncate">
+                            Estipulante Coletiva
+                          </span>
+                        </div>
+                      </div>
+                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0 border ${
+                        isCorretoraAssinada ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-amber-100 text-amber-800 border-amber-300'
+                      }`}>
+                        {isCorretoraAssinada ? 'Assinado' : 'Pendente'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Ação rápida para a Corretora assinar */}
+                  {!isCorretoraAssinada && signUrlCorretora && (
+                    <div className="pt-2 border-t border-gray-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <span className="text-[11px] text-amber-900 font-medium">
+                        A Corretora ainda precisa assinar para liberação da fatura oficial.
+                      </span>
+                      <a
+                        href={signUrlCorretora}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center justify-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg transition-colors shadow-2xs shrink-0 cursor-pointer"
+                      >
+                        <Building2 size={13} />
+                        <span>Assinar pela Corretora (ZapSign)</span>
+                        <ExternalLink size={11} />
+                      </a>
+                    </div>
+                  )}
+
+                  {/* Informação sobre preferência de cobrança registrada */}
+                  {formaPagamentoPreferida && (
+                    <div className="p-2.5 bg-emerald-50/80 border border-emerald-200 rounded-lg text-xs text-emerald-950 flex items-start gap-2">
+                      <CheckCircle2 size={15} className="text-emerald-700 shrink-0 mt-0.5" />
+                      <div>
+                        <strong className="block text-emerald-950 font-bold">Preferência de Pagamento Registrada:</strong>
+                        <span className="text-emerald-800">
+                          {formaPagamentoPreferida === 'BOLETO'
+                            ? 'Boleto / PIX'
+                            : formaPagamentoPreferida === 'PIX'
+                            ? 'PIX Instantâneo'
+                            : formaPagamentoPreferida === 'CREDIT_CARD'
+                            ? 'Cartão de Crédito'
+                            : 'Fatura por E-mail'}{' '}
+                          ({parcelasPreferidas}x). Cobrança será emitida automaticamente após a assinatura da Corretora.
+                        </span>
+                      </div>
+                    </div>
                   )}
                 </div>
 
@@ -1571,7 +1732,20 @@ export default async function PortalCotacaoDetailPage({
                       <span>Baixar Minuta (PDF)</span>
                     </a>
                   )}
-                  <VerificarZapSignButton id={cotacao.id} variant="card" label="Verificar se já Assinou" />
+                  {!isCorretoraAssinada && signUrlCorretora && !isMinutaExpired && (
+                    <a
+                      href={signUrlCorretora}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 px-3 py-2 rounded-xl transition-colors shrink-0 shadow-2xs cursor-pointer"
+                      title="Assinar pela Corretora (ZapSign) em nova aba"
+                    >
+                      <Building2 size={13} className="shrink-0" />
+                      <span>✍️ Assinar pela Corretora</span>
+                      <ExternalLink size={11} className="opacity-70 shrink-0" />
+                    </a>
+                  )}
+                  <VerificarZapSignButton id={cotacao.id} variant="card" label="Verificar Assinaturas no ZapSign" />
                   <EnviarPropostaEmailButton
                     cotacaoId={cotacao.id}
                     clientName={cotacao.client_name || String(clientData.nome || '')}

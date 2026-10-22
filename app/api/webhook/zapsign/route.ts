@@ -33,7 +33,8 @@ function normalizeStatus(payload: any, eventType?: string) {
     '';
 
   const s = String(raw || 'pending').toLowerCase();
-  if (['completed', 'signed', 'doc_signed', 'signer_signed', 'signature_signed'].includes(s)) return 'signed';
+  if (['completed', 'signed', 'doc_signed'].includes(s)) return 'signed';
+  if (['signer_signed', 'signature_signed'].includes(s)) return 'signer_signed';
   if (['expired', 'deadline_exceeded'].includes(s)) return 'expired';
   if (['refused', 'rejected', 'signature_request_refused', 'signature_refused'].includes(s)) return 'refused';
   if (['canceled', 'cancelled', 'doc_deleted'].includes(s)) return 'canceled';
@@ -179,169 +180,305 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, ignored: true });
     }
 
-    await sql`
-      UPDATE signature_documents
-      SET
-        status = ${normalizedStatus},
-        signed_file_url = COALESCE(${signedFileUrl}, signed_file_url),
-        signed_at = CASE
-          WHEN ${normalizedStatus} = 'signed' THEN COALESCE(signed_at, NOW())
-          ELSE signed_at
-        END,
-        last_event_type = ${eventType},
-        raw_payload = ${JSON.stringify(payload)}::jsonb,
-        updated_at = NOW()
-      WHERE id = ${document.id}
+    const [cotacao] = await sql<{ client_data: unknown; status: string; client_name: string; client_email: string }[]>`
+      SELECT client_data, status, client_name, client_email
+      FROM cotacoes
+      WHERE id = ${document.cotacao_id}
+      LIMIT 1
     `;
 
-    if (normalizedStatus === 'signed') {
-      const [cotacao] = await sql<{ client_data: unknown; status: string }[]>`
-        SELECT client_data, status
-        FROM cotacoes
-        WHERE id = ${document.cotacao_id}
-        LIMIT 1
+    if (!cotacao) {
+      await sql`
+        UPDATE webhook_events
+        SET processed = true,
+            error_message = 'Cotação vinculada ao documento não encontrada',
+            payload = ${JSON.stringify(payload)}::jsonb
+        WHERE id = ${eventRow.id}
+      `;
+      return NextResponse.json({ ok: true, ignored: true });
+    }
+
+    const clientData = parseJsonbField<Record<string, any>>(cotacao.client_data);
+    const clientEmail = (cotacao.client_email || clientData.email || '').toLowerCase().trim();
+    const clientName = (cotacao.client_name || clientData.nome || '').toLowerCase().trim();
+
+    const docObj = payload.doc || payload.document || payload;
+    const signersList: any[] = Array.isArray(docObj?.signers)
+      ? docObj.signers
+      : Array.isArray(payload.signers)
+      ? payload.signers
+      : [];
+
+    let clienteAssinou = Boolean(clientData.clienteAssinou);
+    let corretoraAssinou = Boolean(clientData.corretoraAssinou);
+
+    // Mapeamento dos signatários na lista retornada pela ZapSign
+    if (signersList.length > 0) {
+      let proponenteSigner = signersList.find((s: any) => {
+        const sEmail = (s.email || '').toLowerCase().trim();
+        const sName = (s.name || '').toLowerCase().trim();
+        return (clientEmail && sEmail === clientEmail) || (clientName && (sName.includes(clientName) || clientName.includes(sName)));
+      });
+
+      let corretoraSigner = signersList.find((s: any) => {
+        if (s === proponenteSigner) return false;
+        const sEmail = (s.email || '').toLowerCase().trim();
+        const sName = (s.name || '').toLowerCase().trim();
+        return (
+          sEmail.includes('net4life.com.br') ||
+          sEmail.includes('corretora') ||
+          sEmail.includes('duolife') ||
+          sName.includes('corretora') ||
+          sName.includes('net4life')
+        );
+      });
+
+      if (signersList.length >= 2) {
+        if (!proponenteSigner && corretoraSigner) {
+          proponenteSigner = signersList.find((s: any) => s !== corretoraSigner) || signersList[0];
+        } else if (proponenteSigner && !corretoraSigner) {
+          corretoraSigner = signersList.find((s: any) => s !== proponenteSigner) || signersList[1];
+        } else if (!proponenteSigner && !corretoraSigner) {
+          proponenteSigner = signersList[0];
+          corretoraSigner = signersList[1];
+        }
+      } else if (signersList.length === 1 && !proponenteSigner) {
+        proponenteSigner = signersList[0];
+      }
+
+      if (proponenteSigner?.status === 'signed') clienteAssinou = true;
+      if (corretoraSigner?.status === 'signed') corretoraAssinou = true;
+    }
+
+    // Se veio o signatário que acabou de assinar no evento signer_signed
+    const signerJustSigned = payload.signer || payload.signatario || null;
+    if (signerJustSigned) {
+      const sEmail = (signerJustSigned.email || '').toLowerCase().trim();
+      const sName = (signerJustSigned.name || '').toLowerCase().trim();
+      const isCorretora =
+        sEmail.includes('net4life.com.br') ||
+        sEmail.includes('corretora') ||
+        sEmail.includes('duolife') ||
+        sName.includes('corretora') ||
+        sName.includes('net4life');
+
+      if (isCorretora) {
+        corretoraAssinou = true;
+      } else {
+        clienteAssinou = true;
+      }
+    }
+
+    const eventTypeLower = eventType.toLowerCase();
+    const isDocSignedEvent =
+      eventTypeLower === 'doc_signed' ||
+      normalizedStatus === 'signed' ||
+      docObj?.status === 'signed' ||
+      docObj?.status === 'completed';
+
+    const todosSignersAssinaram =
+      signersList.length > 0 && signersList.every((s: any) => s.status === 'signed');
+
+    const todasAssinadas = isDocSignedEvent || todosSignersAssinaram || (clienteAssinou && corretoraAssinou);
+
+    if (todasAssinadas) {
+      clienteAssinou = true;
+      corretoraAssinou = true;
+      clientData.statusAssinatura = 'todas_assinadas';
+      clientData.clienteAssinou = true;
+      clientData.corretoraAssinou = true;
+      if (signedFileUrl) clientData.contratoPdf = signedFileUrl;
+      clientData.assinadoEm = clientData.assinadoEm || new Date().toISOString();
+
+      await sql`
+        UPDATE signature_documents
+        SET
+          status = 'signed',
+          signed_file_url = COALESCE(${signedFileUrl}, signed_file_url),
+          signed_at = COALESCE(signed_at, NOW()),
+          last_event_type = ${eventType},
+          raw_payload = ${JSON.stringify(payload)}::jsonb,
+          updated_at = NOW()
+        WHERE id = ${document.id}
       `;
 
-      if (cotacao) {
-        const clientData = parseJsonbField<Record<string, any>>(cotacao.client_data);
-        if (signedFileUrl) clientData.contratoPdf = signedFileUrl;
-        clientData.assinadoEm = clientData.assinadoEm || new Date().toISOString();
+      // Só avança para 'assinado' se a cotação ainda não progrediu para pagamento_gerado ou estado terminal
+      const canAdvanceToAssinado = ['contrato_gerado', 'enviada', 'rascunho'].includes(cotacao.status);
 
-        // Só avança para 'assinado' se a cotação ainda não progrediu para pagamento_gerado ou estado terminal
-        const canAdvanceToAssinado = ['contrato_gerado', 'enviada', 'rascunho'].includes(cotacao.status);
+      if (canAdvanceToAssinado) {
+        await sql`
+          UPDATE cotacoes
+          SET
+            status = 'assinado',
+            client_data = ${JSON.stringify(clientData)}::jsonb,
+            updated_at = NOW()
+          WHERE id = ${document.cotacao_id}
+        `;
+      } else {
+        await sql`
+          UPDATE cotacoes
+          SET
+            client_data = ${JSON.stringify(clientData)}::jsonb,
+            updated_at = NOW()
+          WHERE id = ${document.cotacao_id}
+        `;
+      }
 
-        if (canAdvanceToAssinado) {
-          await sql`
-            UPDATE cotacoes
-            SET
-              status = 'assinado',
-              client_data = ${JSON.stringify(clientData)}::jsonb,
-              updated_at = NOW()
-            WHERE id = ${document.cotacao_id}
-          `;
-        } else {
-          await sql`
-            UPDATE cotacoes
-            SET
-              client_data = ${JSON.stringify(clientData)}::jsonb,
-              updated_at = NOW()
-            WHERE id = ${document.cotacao_id}
-          `;
-        }
-
-        // Dispara gatilho de Contrato Assinado
-        try {
-          const [cotacaoCompleta] = await sql<{ client_id: string | null; partner_id: string; partner_user_id: string | null; client_name: string; premio_final: number | null; premio_calculado: number | null; importancia_segurada: number }[]>`
-            SELECT client_id, partner_id, partner_user_id, client_name, premio_final, premio_calculado, importancia_segurada
-            FROM cotacoes
-            WHERE id = ${document.cotacao_id}
-            LIMIT 1
-          `;
-
-          const [clientRow] = cotacaoCompleta?.client_id ? await sql<{ full_name: string; email: string; document_number: string; phone: string }[]>`
-            SELECT full_name, email, document_number, phone FROM insurance_clients WHERE id = ${cotacaoCompleta.client_id} LIMIT 1
-          ` : [];
-
-          // Busca vendedor responsável pela proposta (partner_users)
-          const [vendedorRow] = cotacaoCompleta?.partner_user_id ? await sql<{ id: string; nome: string; email: string }[]>`
-            SELECT id, name AS nome, email
-            FROM partner_users
-            WHERE id = ${cotacaoCompleta.partner_user_id}
-            LIMIT 1
-          ` : [];
-
-          const [partnerRow] = cotacaoCompleta?.partner_id ? await sql<{ nome: string; email: string; codigo_venda?: string }[]>`
-            SELECT
-              COALESCE(p.nome_fantasia, p.razao_social) AS nome,
-              COALESCE(NULLIF(p.email, ''), pu.email) AS email,
-              p.metadata->'whiteLabel'->>'wixCode' AS codigo_venda
-            FROM partners p
-            LEFT JOIN partner_users pu ON pu.partner_id = p.id AND pu.is_active = true
-            WHERE p.id = ${cotacaoCompleta.partner_id}
-            ORDER BY pu.created_at ASC
-            LIMIT 1
-          ` : [];
-
-          await dispatchDomainEvent('CONTRATO_ASSINADO', {
-            eventType: 'CONTRATO_ASSINADO',
-            contextId: document.cotacao_id,
-            cliente: {
-              nome: clientRow?.full_name || cotacaoCompleta?.client_name,
-              email: clientRow?.email || clientData.email,
-              documento: clientRow?.document_number || clientData.cpf || clientData.cnpj,
-              telefone: clientRow?.phone || clientData.telefone,
-            },
-            vendedor: vendedorRow
-              ? {
-                  id: vendedorRow.id,
-                  nome: vendedorRow.nome,
-                  email: vendedorRow.email,
-                }
-              : partnerRow
-              ? {
-                  id: cotacaoCompleta.partner_user_id || cotacaoCompleta.partner_id,
-                  nome: partnerRow.nome,
-                  email: partnerRow.email,
-                }
-              : undefined,
-            parceiro: partnerRow ? {
-              id: cotacaoCompleta.partner_id,
-              nome: partnerRow.nome,
-              email: partnerRow.email,
-              codigoVenda: partnerRow.codigo_venda,
-            } : undefined,
-            cotacao: {
-              id: document.cotacao_id,
-              status: 'assinado',
-              premio_final: Number(cotacaoCompleta?.premio_final || cotacaoCompleta?.premio_calculado) || 0,
-              cobertura: Number(cotacaoCompleta?.importancia_segurada) || 0,
-            },
-            dados: {
-              contratoPdf: signedFileUrl,
-              assinadoEm: clientData.assinadoEm,
-            },
-          });
-        } catch (dispatchErr) {
-          logger.error({ dispatchErr, cotacaoId: document.cotacao_id }, 'Falha ao despachar evento CONTRATO_ASSINADO');
-        }
-
-        // Verifica se já existe ordem de pagamento ativa ou paga para esta cotação
-        const [existingOrder] = await sql<{ id: string; status: string }[]>`
-          SELECT id, status FROM payment_orders
-          WHERE cotacao_id = ${document.cotacao_id}
-            AND status IN ('pending', 'partially_paid', 'paid')
+      // Dispara gatilho de Contrato Assinado
+      try {
+        const [cotacaoCompleta] = await sql<{ client_id: string | null; partner_id: string; partner_user_id: string | null; client_name: string; premio_final: number | null; premio_calculado: number | null; importancia_segurada: number }[]>`
+          SELECT client_id, partner_id, partner_user_id, client_name, premio_final, premio_calculado, importancia_segurada
+          FROM cotacoes
+          WHERE id = ${document.cotacao_id}
           LIMIT 1
         `;
 
-        if (existingOrder) {
-          logger.info(
-            { cotacaoId: document.cotacao_id, orderId: existingOrder.id, status: existingOrder.status },
-            'zapsign.webhook.asaas_payment_skipped_existing_order'
-          );
-        } else {
-          // Gera cobrança/boleto Asaas automaticamente em background se permitido pela regra de vigência
-          try {
-            const paymentResult = await generateAsaasPaymentForQuote(document.cotacao_id, { isManualAdmin: false });
-            if (paymentResult.ok) {
-              logger.info(
-                { cotacaoId: document.cotacao_id, checkoutId: paymentResult.checkoutId },
-                'zapsign.webhook.asaas_payment_generated'
-              );
-            } else {
-              logger.warn(
-                { cotacaoId: document.cotacao_id, reason: paymentResult.error },
-                'zapsign.webhook.asaas_payment_retained_or_failed'
-              );
-            }
-          } catch (paymentErr) {
-            logger.error(
-              { paymentErr, cotacaoId: document.cotacao_id },
-              'zapsign.webhook.asaas_payment_exception'
+        const [clientRow] = cotacaoCompleta?.client_id ? await sql<{ full_name: string; email: string; document_number: string; phone: string }[]>`
+          SELECT full_name, email, document_number, phone FROM insurance_clients WHERE id = ${cotacaoCompleta.client_id} LIMIT 1
+        ` : [];
+
+        const [vendedorRow] = cotacaoCompleta?.partner_user_id ? await sql<{ id: string; nome: string; email: string }[]>`
+          SELECT id, name AS nome, email
+          FROM partner_users
+          WHERE id = ${cotacaoCompleta.partner_user_id}
+          LIMIT 1
+        ` : [];
+
+        const [partnerRow] = cotacaoCompleta?.partner_id ? await sql<{ nome: string; email: string; codigo_venda?: string }[]>`
+          SELECT
+            COALESCE(p.nome_fantasia, p.razao_social) AS nome,
+            COALESCE(NULLIF(p.email, ''), pu.email) AS email,
+            p.metadata->'whiteLabel'->>'wixCode' AS codigo_venda
+          FROM partners p
+          LEFT JOIN partner_users pu ON pu.partner_id = p.id AND pu.is_active = true
+          WHERE p.id = ${cotacaoCompleta.partner_id}
+          ORDER BY pu.created_at ASC
+          LIMIT 1
+        ` : [];
+
+        await dispatchDomainEvent('CONTRATO_ASSINADO', {
+          eventType: 'CONTRATO_ASSINADO',
+          contextId: document.cotacao_id,
+          cliente: {
+            nome: clientRow?.full_name || cotacaoCompleta?.client_name,
+            email: clientRow?.email || clientData.email,
+            documento: clientRow?.document_number || clientData.cpf || clientData.cnpj,
+            telefone: clientRow?.phone || clientData.telefone,
+          },
+          vendedor: vendedorRow
+            ? {
+                id: vendedorRow.id,
+                nome: vendedorRow.nome,
+                email: vendedorRow.email,
+              }
+            : partnerRow
+            ? {
+                id: cotacaoCompleta.partner_user_id || cotacaoCompleta.partner_id,
+                nome: partnerRow.nome,
+                email: partnerRow.email,
+              }
+            : undefined,
+          parceiro: partnerRow ? {
+            id: cotacaoCompleta.partner_id,
+            nome: partnerRow.nome,
+            email: partnerRow.email,
+            codigoVenda: partnerRow.codigo_venda,
+          } : undefined,
+          cotacao: {
+            id: document.cotacao_id,
+            status: 'assinado',
+            premio_final: Number(cotacaoCompleta?.premio_final || cotacaoCompleta?.premio_calculado) || 0,
+            cobertura: Number(cotacaoCompleta?.importancia_segurada) || 0,
+          },
+          dados: {
+            contratoPdf: signedFileUrl,
+            assinadoEm: clientData.assinadoEm,
+          },
+        });
+      } catch (dispatchErr) {
+        logger.error({ dispatchErr, cotacaoId: document.cotacao_id }, 'Falha ao despachar evento CONTRATO_ASSINADO');
+      }
+
+      // Regra obrigatória: Se houver formaPagamentoPreferida em client_data, emite a cobrança Asaas automaticamente!
+      const [existingOrder] = await sql<{ id: string; status: string }[]>`
+        SELECT id, status FROM payment_orders
+        WHERE cotacao_id = ${document.cotacao_id}
+          AND status IN ('pending', 'partially_paid', 'paid')
+        LIMIT 1
+      `;
+
+      if (existingOrder) {
+        logger.info(
+          { cotacaoId: document.cotacao_id, orderId: existingOrder.id, status: existingOrder.status },
+          'zapsign.webhook.asaas_payment_skipped_existing_order'
+        );
+      } else if (clientData.formaPagamentoPreferida) {
+        try {
+          const paymentResult = await generateAsaasPaymentForQuote(document.cotacao_id, { isManualAdmin: false });
+          if (paymentResult.ok) {
+            logger.info(
+              { cotacaoId: document.cotacao_id, checkoutId: paymentResult.checkoutId },
+              'zapsign.webhook.asaas_payment_generated'
+            );
+          } else {
+            logger.warn(
+              { cotacaoId: document.cotacao_id, reason: paymentResult.error },
+              'zapsign.webhook.asaas_payment_retained_or_failed'
             );
           }
+        } catch (paymentErr) {
+          logger.error(
+            { paymentErr, cotacaoId: document.cotacao_id },
+            'zapsign.webhook.asaas_payment_exception'
+          );
         }
+      } else {
+        logger.info(
+          { cotacaoId: document.cotacao_id },
+          'zapsign.webhook.asaas_payment_waiting_preference'
+        );
       }
+    } else if (eventTypeLower === 'signer_signed' || normalizedStatus === 'signer_signed') {
+      // Evento de assinatura parcial: apenas 1 dos signatários assinou
+      let statusAssinatura: 'falta_corretora' | 'falta_cliente' | 'faltam_ambas' = 'faltam_ambas';
+      if (clienteAssinou && !corretoraAssinou) {
+        statusAssinatura = 'falta_corretora';
+      } else if (!clienteAssinou && corretoraAssinou) {
+        statusAssinatura = 'falta_cliente';
+      }
+
+      clientData.statusAssinatura = statusAssinatura;
+      clientData.clienteAssinou = clienteAssinou;
+      clientData.corretoraAssinou = corretoraAssinou;
+
+      await sql`
+        UPDATE cotacoes
+        SET
+          client_data = ${JSON.stringify(clientData)}::jsonb,
+          updated_at = NOW()
+        WHERE id = ${document.cotacao_id}
+      `;
+
+      await sql`
+        UPDATE signature_documents
+        SET
+          last_event_type = ${eventType},
+          raw_payload = ${JSON.stringify(payload)}::jsonb,
+          updated_at = NOW()
+        WHERE id = ${document.id}
+      `;
+
+      logger.info(
+        { cotacaoId: document.cotacao_id, statusAssinatura, clienteAssinou, corretoraAssinou },
+        'zapsign.webhook.partial_signature_recorded'
+      );
     } else if (normalizedStatus === 'expired') {
+      await sql`
+        UPDATE signature_documents
+        SET status = 'expired', updated_at = NOW(), raw_payload = ${JSON.stringify(payload)}::jsonb
+        WHERE id = ${document.id}
+      `;
+
       await sql`
         UPDATE cotacoes
         SET status = 'expirada', updated_at = NOW()
@@ -350,6 +487,12 @@ export async function POST(req: NextRequest) {
       `;
       logger.info({ cotacaoId: document.cotacao_id }, 'zapsign.webhook.quote_expired');
     } else if (normalizedStatus === 'refused') {
+      await sql`
+        UPDATE signature_documents
+        SET status = 'refused', updated_at = NOW(), raw_payload = ${JSON.stringify(payload)}::jsonb
+        WHERE id = ${document.id}
+      `;
+
       await sql`
         UPDATE cotacoes
         SET status = 'recusada', updated_at = NOW()

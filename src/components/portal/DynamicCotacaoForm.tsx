@@ -23,8 +23,10 @@ import {
   X,
   Building2,
   HelpCircle,
-  UserCheck
+  UserCheck,
+  Clock
 } from 'lucide-react';
+import { ModalAssinaturaParcial } from '@/components/portal/ModalAssinaturaParcial';
 import { parseAtuacaoList } from '@/lib/atuacao';
 import { sanitizePlanFinancials, calculatePolicyExpiryDate, formatDate } from '@/lib/format';
 import ClienteSearchSelector, { type ClienteBuscaResult, type RenewalData } from '@/components/portal/ClienteSearchSelector';
@@ -444,6 +446,17 @@ export default function DynamicCotacaoForm({
   const [paymentBlockedReason, setPaymentBlockedReason] = useState<string | null>(null);
   const [gerandoPagamento, setGerandoPagamento] = useState(false);
 
+  // Status de assinaturas parciais e preferência de cobrança
+  const [signUrlCorretora, setSignUrlCorretora] = useState<string | null>(null);
+  const [signUrlProponente, setSignUrlProponente] = useState<string | null>(null);
+  const [statusAssinatura, setStatusAssinatura] = useState<string | null>(null);
+  const [modalParcialAberto, setModalParcialAberto] = useState(false);
+  const [modoPreferenciaPagamento, setModoPreferenciaPagamento] = useState(false);
+  const [salvandoPreferencia, setSalvandoPreferencia] = useState(false);
+  const [preferenciaSalvaComSucesso, setPreferenciaSalvaComSucesso] = useState(false);
+  const [formaPagamentoPreferida, setFormaPagamentoPreferida] = useState<string | null>(null);
+  const [parcelasPreferidas, setParcelasPreferidas] = useState<number | null>(null);
+
   // Cliente pesquisado e renovação
   const [selectedCliente, setSelectedCliente] = useState<ClienteBuscaResult | null>(null);
   const [isRenovacaoAtiva, setIsRenovacaoAtiva] = useState(false);
@@ -761,6 +774,22 @@ export default function DynamicCotacaoForm({
           }
 
           if (cd.signUrl) setSignUrl(cd.signUrl);
+          if (cd.signUrlCorretora) setSignUrlCorretora(cd.signUrlCorretora);
+          if (cd.signUrlProponente) setSignUrlProponente(cd.signUrlProponente);
+          if (cd.statusAssinatura) {
+            setStatusAssinatura(cd.statusAssinatura);
+            if (cd.statusAssinatura === 'falta_corretora' && !['assinado', 'pagamento_gerado', 'aprovada'].includes(c.status)) {
+              setModoPreferenciaPagamento(true);
+            }
+          }
+          if (cd.formaPagamentoPreferida) {
+            setFormaPagamento(cd.formaPagamentoPreferida);
+            setFormaPagamentoPreferida(cd.formaPagamentoPreferida);
+            setPreferenciaSalvaComSucesso(true);
+          }
+          if (cd.parcelasPreferidas) {
+            setParcelasPreferidas(Number(cd.parcelasPreferidas));
+          }
           if (cd.contratoToken) setDocToken(cd.contratoToken);
           if (['assinado', 'pagamento_gerado', 'aprovada'].includes(c.status)) {
             setContratoAssinado(true);
@@ -1353,6 +1382,9 @@ export default function DynamicCotacaoForm({
 
       if (zapRes.ok && zapData.ok) {
         setSignUrl(zapData.signUrl);
+        if (zapData.signUrlCorretora) setSignUrlCorretora(zapData.signUrlCorretora);
+        if (zapData.signUrlProponente) setSignUrlProponente(zapData.signUrlProponente);
+        if (zapData.statusAssinatura) setStatusAssinatura(zapData.statusAssinatura);
         setDocToken(zapData.docToken);
         setStep(6);
         scrollToFormTop(formTopRef.current);
@@ -1404,27 +1436,92 @@ export default function DynamicCotacaoForm({
       });
       const data = await res.json();
 
-      if (data.ok && data.assinado) {
-        setContratoAssinado(true);
-        setSuccess('Contrato assinado com sucesso!');
+      if (data.ok) {
+        if (data.signUrlCorretora) setSignUrlCorretora(data.signUrlCorretora);
+        if (data.signUrlProponente) setSignUrlProponente(data.signUrlProponente);
+        if (data.statusAssinatura) setStatusAssinatura(data.statusAssinatura);
 
-        if (data.linkBoleto) {
-          setLinkPagamento(data.linkBoleto);
-          setCheckoutId(data.checkoutId || '');
-          setPaymentDueDate(data.dueDate || '');
-          setPaymentBlockedReason(null);
-        } else if (data.paymentError) {
-          setPaymentBlockedReason(data.paymentError);
-        } else {
-          await handleGerarPagamento();
+        // Cenário 1: 100% concluído (2 de 2 assinaram)
+        if (data.assinado) {
+          setContratoAssinado(true);
+          setModoPreferenciaPagamento(false);
+          setModalParcialAberto(false);
+          setSuccess('Contrato assinado com sucesso por ambas as partes!');
+
+          if (data.linkBoleto) {
+            setLinkPagamento(data.linkBoleto);
+            setCheckoutId(data.checkoutId || '');
+            setPaymentDueDate(data.dueDate || '');
+            setPaymentBlockedReason(null);
+          } else if (data.paymentError) {
+            setPaymentBlockedReason(data.paymentError);
+          } else {
+            await handleGerarPagamento();
+          }
+        }
+        // Cenário 2: Falta Corretora assinar (Proponente já assinou)
+        else if (data.statusAssinatura === 'falta_corretora' || (data.podeSalvarPreferencia && !data.assinado)) {
+          setStatusAssinatura('falta_corretora');
+          setModalParcialAberto(true);
+          setModoPreferenciaPagamento(true);
+        }
+        // Cenário 3: Pendente do proponente ou expirado
+        else {
+          if (data.expirado) {
+            setError(data.message || 'O prazo de 7 dias para assinatura expirou. É necessário regerar a minuta.');
+          } else {
+            setError(data.message || data.error || 'O contrato ainda não consta como assinado no ZapSign. Finalize a assinatura no painel.');
+          }
         }
       } else {
-        setError(data.message || data.error || 'O contrato ainda não consta como assinado no ZapSign. Finalize a assinatura no painel.');
+        setError(data.message || data.error || 'Erro ao verificar assinatura no ZapSign.');
       }
     } catch {
       setError('Erro ao verificar assinatura.');
     } finally {
       setVerificandoAssinatura(false);
+    }
+  }
+
+  async function handleSalvarPreferenciaPagamento() {
+    if (!cotacaoId) return;
+
+    setSalvandoPreferencia(true);
+    setError('');
+
+    try {
+      const res = await fetch(`/api/portal/cotacoes/${cotacaoId}/salvar-preferencia-pagamento`, {
+        method: 'POST',
+        headers: getHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({
+          billingType: formaPagamento,
+          parcelas: parcelaSel?.qtd || 1,
+        }),
+      });
+      const data = await res.json();
+
+      if (res.ok && data.ok) {
+        setPreferenciaSalvaComSucesso(true);
+        setFormaPagamentoPreferida(data.formaPagamentoPreferida || formaPagamento);
+        setParcelasPreferidas(data.parcelasPreferidas || parcelaSel?.qtd || 1);
+        setSuccess('Preferência registrada com sucesso! Assim que a Corretora assinar o contrato, a sua fatura será gerada automaticamente e enviada para o seu e-mail.');
+
+        // Se o backend tiver retornado fatura (caso ambas assinaturas tenham sido concluídas no ínterim):
+        if (data.linkBoleto) {
+          setContratoAssinado(true);
+          setModoPreferenciaPagamento(false);
+          setLinkPagamento(data.linkBoleto);
+          setCheckoutId(data.checkoutId || '');
+          setPaymentDueDate(data.dueDate || '');
+          setPaymentBlockedReason(null);
+        }
+      } else {
+        setError(data.error || 'Falha ao salvar preferência de pagamento.');
+      }
+    } catch {
+      setError('Erro ao salvar preferência de pagamento.');
+    } finally {
+      setSalvandoPreferencia(false);
     }
   }
 
@@ -3284,93 +3381,420 @@ export default function DynamicCotacaoForm({
           <h3 className="text-lg font-bold text-primary">6. Assinatura Digital & Emissão da Fatura</h3>
 
           {!contratoAssinado ? (
-            <div className="space-y-4">
-              <p className="text-sm text-gray-700">
-                A proposta foi gerada via <strong>ZapSign</strong>. Realize a assinatura digital pelo quadro abaixo ou envie o link diretamente para o cliente:
-              </p>
+            modoPreferenciaPagamento || statusAssinatura === 'falta_corretora' ? (
+              /* ESTADO: ASSINATURA PARCIAL CONCLUÍDA — ESCOLHA DE PREFERÊNCIA DE COBRANÇA */
+              <div className="space-y-6">
+                {/* Header de Assinatura Parcial */}
+                <div className="bg-amber-50/70 border border-amber-200 rounded-2xl p-5 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
+                        <Clock size={20} />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-gray-900 text-base">
+                          Assinatura do Proponente Concluída!
+                        </h4>
+                        <p className="text-xs text-amber-800 mt-0.5">
+                          Aguardando assinatura da <strong>Corretora</strong> para formalizar a emissão da cobrança no Asaas.
+                        </p>
+                      </div>
+                    </div>
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300 w-fit">
+                      <span>1 de 2 Assinaturas Concluídas</span>
+                    </span>
+                  </div>
 
-              {signUrl ? (
-                <>
-                  {/* Card com Link Copiável do ZapSign para Envio ao Cliente */}
-                  <div className="bg-emerald-50/50 border border-emerald-200 rounded-xl p-4 space-y-2.5">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                      <span className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
-                        <FileText size={14} className="text-primary" />
-                        Link de Assinatura do Cliente (ZapSign)
+                  {/* Detalhe dos Signatários */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
+                    <div className="bg-white border border-emerald-200 rounded-xl p-3 flex items-center justify-between shadow-2xs">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <UserCheck size={16} className="text-emerald-600 shrink-0" />
+                        <div className="min-w-0">
+                          <span className="font-bold text-xs text-gray-900 block truncate">
+                            {form.nome || 'Proponente / Segurado'}
+                          </span>
+                          <span className="text-[10px] text-gray-500 block truncate">
+                            {form.email || 'Proponente'}
+                          </span>
+                        </div>
+                      </div>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                        <Check size={11} /> Assinado
+                      </span>
+                    </div>
+
+                    <div className="bg-white border border-amber-200 rounded-xl p-3 flex items-center justify-between shadow-2xs">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Building2 size={16} className="text-amber-600 shrink-0" />
+                        <div className="min-w-0">
+                          <span className="font-bold text-xs text-gray-900 block truncate">
+                            Net4Life Corretora
+                          </span>
+                          <span className="text-[10px] text-gray-500 block truncate">
+                            Estipulante Coletiva
+                          </span>
+                        </div>
+                      </div>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 shrink-0">
+                        <Clock size={11} /> Pendente
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Botão de Assinatura Direta para Corretora se houver link */}
+                  {signUrlCorretora && (
+                    <div className="pt-2 border-t border-amber-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <span className="text-xs text-amber-900">
+                        É o corretor responsável ou administrador? Você pode assinar diretamente agora:
                       </span>
                       <a
-                        href={signUrl}
+                        href={signUrlCorretora}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-xs text-primary hover:underline inline-flex items-center gap-1 font-semibold"
+                        className="btn btn-secondary text-xs py-2 px-3.5 flex items-center justify-center gap-1.5 font-bold cursor-pointer shrink-0"
                       >
-                        Abrir em nova aba <ExternalLink size={12} />
+                        <Building2 size={14} className="text-primary" />
+                        <span>Assinar pela Corretora (ZapSign)</span>
+                        <ExternalLink size={12} />
                       </a>
                     </div>
-                    <p className="text-xs text-gray-600">
-                      Copie o link abaixo para enviar ao segurado por WhatsApp ou e-mail, ou conclua a assinatura no quadro interativo a seguir:
+                  )}
+                </div>
+
+                {/* Banner de Feedback de Preferência Salva */}
+                {(preferenciaSalvaComSucesso || formaPagamentoPreferida) && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 flex items-start gap-3 text-xs text-emerald-950">
+                    <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="font-bold text-emerald-950 text-sm">
+                        Preferência registrada com sucesso!
+                      </p>
+                      <p className="text-emerald-800 leading-relaxed">
+                        Assim que a Corretora assinar o contrato, a sua fatura será gerada automaticamente e enviada para o seu e-mail.
+                        {formaPagamentoPreferida && (
+                          <span className="block mt-1 font-semibold text-emerald-900">
+                            Condição registrada: {formaPagamentoPreferida === 'BOLETO'
+                              ? 'Boleto / PIX'
+                              : formaPagamentoPreferida === 'PIX'
+                              ? 'PIX Instantâneo'
+                              : formaPagamentoPreferida === 'CREDIT_CARD'
+                              ? 'Cartão de Crédito'
+                              : 'Fatura por E-mail'} &bull; {parcelasPreferidas || parcelaSel?.qtd || 1}x
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Seletores de Pagamento para Registro de Preferência */}
+                <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-xs space-y-6">
+                  <div>
+                    <h4 className="text-base font-bold text-gray-900">
+                      Registro de Preferência de Pagamento
+                    </h4>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Escolha a quantidade de parcelas e a forma de cobrança desejada para que o sistema emita a fatura no momento da segunda assinatura.
                     </p>
-                    <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                      <div className="flex items-center gap-2 flex-1">
-                        <input
-                          type="text"
-                          readOnly
-                          value={signUrl}
-                          onClick={(e) => (e.target as HTMLInputElement).select()}
-                          className="form-input text-xs font-mono bg-white text-gray-800 py-2 px-3 select-all flex-1 border border-gray-300 rounded-lg focus:outline-none"
-                        />
-                        <button
-                          type="button"
-                          onClick={handleCopySignUrl}
-                          className="btn btn-primary py-2 px-3.5 text-xs flex items-center gap-1.5 whitespace-nowrap cursor-pointer shadow-xs font-semibold"
-                        >
-                          {copiedSignUrl ? <Check size={14} className="text-emerald-300" /> : <Copy size={14} />}
-                          <span>{copiedSignUrl ? 'Copiado!' : 'Copiar Link'}</span>
-                        </button>
+                  </div>
+
+                  {/* Parcelamento */}
+                  {planoSel && (
+                    <div className="space-y-3">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
+                        Opção de Parcelamento
+                      </label>
+                      <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                        {getOpcoesParcelamento(planoSel).map((op) => {
+                          const isParcSelected = parcelaSel?.qtd === op.qtd;
+                          const valorExibe = formatCurrencyBRL(op.valor);
+                          const valorTotalExibe = formatCurrencyBRL(op.valor * op.qtd);
+
+                          return (
+                            <div
+                              key={op.qtd}
+                              onClick={() => setParcelaSel({ qtd: op.qtd, valor: op.valor })}
+                              className={`border-2 rounded-xl p-4 cursor-pointer transition-all ${
+                                isParcSelected
+                                  ? 'border-emerald-500 bg-emerald-50/50 shadow-sm ring-2 ring-emerald-500/20'
+                                  : 'border-gray-200 bg-white hover:border-gray-300'
+                              }`}
+                            >
+                              <div className="font-bold text-sm text-gray-900">
+                                {op.qtd}x de {valorExibe}{' '}
+                                {op.qtd === 6 && resolvedRamoConfig.ramoId !== 'rc-medicos' && (
+                                  <span className="text-xs text-amber-600 font-normal">(Juros de 2% a.m.)</span>
+                                )}
+                              </div>
+                              <div className="text-xs text-gray-500 mt-1">
+                                Total: {valorTotalExibe}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                      {cotacaoId && (
-                        <EnviarPropostaEmailButton
-                          cotacaoId={cotacaoId}
-                          clientName={form.nome}
-                          clientEmail={form.email}
-                          valor={planoSel?.parcela}
-                          cobertura={planoSel?.cobertura}
-                          label="Enviar por E-mail"
-                        />
-                      )}
+                    </div>
+                  )}
+
+                  {/* Forma de Pagamento */}
+                  <div className="space-y-3 pt-3 border-t border-gray-100">
+                    <label className="block text-xs font-bold uppercase tracking-wider text-gray-700">
+                      Forma de Cobrança Preferencial
+                    </label>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      {/* Fatura por E-mail */}
+                      <div
+                        onClick={() => setFormaPagamento('UNDEFINED')}
+                        className={`border-2 rounded-xl p-4 cursor-pointer transition-all min-h-[44px] flex flex-col justify-between ${
+                          formaPagamento === 'UNDEFINED'
+                            ? 'border-emerald-500 bg-emerald-50/50 shadow-xs ring-2 ring-emerald-500/20'
+                            : 'border-gray-200 bg-white hover:border-gray-300'
+                        }`}
+                      >
+                        <div>
+                          <div className="flex items-center justify-between mb-1.5">
+                            <div className="w-8 h-8 rounded-lg bg-emerald-100/80 text-emerald-800 flex items-center justify-center">
+                              <FileText size={16} />
+                            </div>
+                            <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                              Padrão
+                            </span>
+                          </div>
+                          <div className="font-bold text-sm text-gray-900">Fatura por E-mail</div>
+                          <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                            Cliente escolhe no checkout ao abrir o link da fatura.
+                          </p>
+                        </div>
+                        {formaPagamento === 'UNDEFINED' && (
+                          <div className="mt-3 flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+                            <Check size={13} />
+                            <span>Selecionado</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Boleto / PIX */}
+                      <div
+                        onClick={() => setFormaPagamento('BOLETO')}
+                        className={`border-2 rounded-xl p-4 cursor-pointer transition-all min-h-[44px] flex flex-col justify-between ${
+                          formaPagamento === 'BOLETO'
+                            ? 'border-emerald-500 bg-emerald-50/50 shadow-xs ring-2 ring-emerald-500/20'
+                            : 'border-gray-200 bg-white hover:border-gray-300'
+                        }`}
+                      >
+                        <div>
+                          <div className="w-8 h-8 rounded-lg bg-blue-100/80 text-blue-800 flex items-center justify-center mb-1.5">
+                            <FileText size={16} />
+                          </div>
+                          <div className="font-bold text-sm text-gray-900">Boleto / PIX</div>
+                          <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                            Boleto bancário registrado com QR Code PIX.
+                          </p>
+                        </div>
+                        {formaPagamento === 'BOLETO' && (
+                          <div className="mt-3 flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+                            <Check size={13} />
+                            <span>Selecionado</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* PIX Direto */}
+                      <div
+                        onClick={() => setFormaPagamento('PIX')}
+                        className={`border-2 rounded-xl p-4 cursor-pointer transition-all min-h-[44px] flex flex-col justify-between ${
+                          formaPagamento === 'PIX'
+                            ? 'border-emerald-500 bg-emerald-50/50 shadow-xs ring-2 ring-emerald-500/20'
+                            : 'border-gray-200 bg-white hover:border-gray-300'
+                        }`}
+                      >
+                        <div>
+                          <div className="w-8 h-8 rounded-lg bg-emerald-100/80 text-emerald-800 flex items-center justify-center mb-1.5">
+                            <CheckCircle2 size={16} />
+                          </div>
+                          <div className="font-bold text-sm text-gray-900">PIX Direto</div>
+                          <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                            Geração direta de QR Code PIX e Copia e Cola.
+                          </p>
+                        </div>
+                        {formaPagamento === 'PIX' && (
+                          <div className="mt-3 flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+                            <Check size={13} />
+                            <span>Selecionado</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Cartão de Crédito */}
+                      <div
+                        onClick={() => setFormaPagamento('CREDIT_CARD')}
+                        className={`border-2 rounded-xl p-4 cursor-pointer transition-all min-h-[44px] flex flex-col justify-between ${
+                          formaPagamento === 'CREDIT_CARD'
+                            ? 'border-emerald-500 bg-emerald-50/50 shadow-xs ring-2 ring-emerald-500/20'
+                            : 'border-gray-200 bg-white hover:border-gray-300'
+                        }`}
+                      >
+                        <div>
+                          <div className="w-8 h-8 rounded-lg bg-purple-100/80 text-purple-800 flex items-center justify-center mb-1.5">
+                            <CreditCard size={16} />
+                          </div>
+                          <div className="font-bold text-sm text-gray-900">Cartão de Crédito</div>
+                          <p className="text-[11px] text-gray-500 mt-1 leading-relaxed">
+                            Pagamento parcelado no cartão de crédito via checkout seguro.
+                          </p>
+                        </div>
+                        {formaPagamento === 'CREDIT_CARD' && (
+                          <div className="mt-3 flex items-center gap-1 text-[11px] font-semibold text-emerald-700">
+                            <Check size={13} />
+                            <span>Selecionado</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  <div className="border border-gray-200 rounded-xl overflow-hidden bg-white h-[520px]">
-                    <iframe
-                      src={signUrl}
-                      className="w-full h-full border-0"
-                      allow="geolocation; camera"
-                      title="ZapSign Assinatura Digital"
-                    />
-                  </div>
-                </>
-              ) : (
-                <div className="py-12 text-center text-gray-500">
-                  <Loader2 className="w-8 h-8 animate-spin text-emerald-600 mx-auto mb-2" />
-                  <p className="text-sm">Carregando painel de assinatura...</p>
-                </div>
-              )}
+                  {/* Ações da Preferência */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-gray-100">
+                    <button
+                      type="button"
+                      onClick={() => setModoPreferenciaPagamento(false)}
+                      className="btn btn-secondary text-xs py-2.5 px-4 flex items-center justify-center gap-1.5 cursor-pointer min-h-[44px]"
+                    >
+                      <span>Ver Minuta / Painel ZapSign</span>
+                    </button>
 
-              <div className="flex flex-col md:flex-row md:justify-between items-center gap-4 bg-gray-50 border border-gray-200 p-4 rounded-xl">
-                <span className="text-xs text-gray-500">
-                  Após concluir a assinatura acima, clique em &quot;Verificar Assinatura&quot; para liberar a fatura de pagamento.
-                </span>
-                <button
-                  onClick={handleVerificarAssinatura}
-                  disabled={verificandoAssinatura}
-                  className="btn btn-primary text-sm whitespace-nowrap flex items-center space-x-2 cursor-pointer"
-                >
-                  {verificandoAssinatura && <Loader2 className="w-4 h-4 animate-spin" />}
-                  <span>{verificandoAssinatura ? 'Verificando...' : 'Verificar Assinatura'}</span>
-                </button>
+                    <div className="flex flex-col sm:flex-row items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleVerificarAssinatura}
+                        disabled={verificandoAssinatura}
+                        className="btn btn-secondary text-xs py-2.5 px-4 flex items-center justify-center gap-2 cursor-pointer w-full sm:w-auto min-h-[44px]"
+                        title="Verificar se a Corretora já assinou no ZapSign"
+                      >
+                        {verificandoAssinatura ? (
+                          <Loader2 size={13} className="animate-spin text-primary" />
+                        ) : (
+                          <Clock size={13} className="text-amber-600" />
+                        )}
+                        <span>{verificandoAssinatura ? 'Verificando...' : 'Verificar se Corretora Assinou'}</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleSalvarPreferenciaPagamento}
+                        disabled={salvandoPreferencia}
+                        className="btn btn-primary text-xs py-2.5 px-5 flex items-center justify-center gap-2 cursor-pointer w-full sm:w-auto shadow-sm font-bold min-h-[44px]"
+                      >
+                        {salvandoPreferencia && <Loader2 size={14} className="animate-spin" />}
+                        <span>{preferenciaSalvaComSucesso ? 'Atualizar Preferência' : 'Salvar Preferência de Pagamento'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </div>
+            ) : (
+              /* ESTADO: AGUARDANDO ASSINATURA INICIAL (IFRAME ZAPSIGN) */
+              <div className="space-y-4">
+                <p className="text-sm text-gray-700">
+                  A proposta foi gerada via <strong>ZapSign</strong>. Realize a assinatura digital pelo quadro abaixo ou envie o link diretamente para o cliente:
+                </p>
+
+                {signUrl ? (
+                  <>
+                    {/* Card com Link Copiável do ZapSign para Envio ao Cliente */}
+                    <div className="bg-emerald-50/50 border border-emerald-200 rounded-xl p-4 space-y-2.5">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <span className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                          <FileText size={14} className="text-primary" />
+                          Link de Assinatura do Cliente (ZapSign)
+                        </span>
+                        <a
+                          href={signUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-primary hover:underline inline-flex items-center gap-1 font-semibold"
+                        >
+                          Abrir em nova aba <ExternalLink size={12} />
+                        </a>
+                      </div>
+                      <p className="text-xs text-gray-600">
+                        Copie o link abaixo para enviar ao segurado por WhatsApp ou e-mail, ou conclua a assinatura no quadro interativo a seguir:
+                      </p>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <div className="flex items-center gap-2 flex-1">
+                          <input
+                            type="text"
+                            readOnly
+                            value={signUrl}
+                            onClick={(e) => (e.target as HTMLInputElement).select()}
+                            className="form-input text-xs font-mono bg-white text-gray-800 py-2 px-3 select-all flex-1 border border-gray-300 rounded-lg focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleCopySignUrl}
+                            className="btn btn-primary py-2 px-3.5 text-xs flex items-center gap-1.5 whitespace-nowrap cursor-pointer shadow-xs font-semibold"
+                          >
+                            {copiedSignUrl ? <Check size={14} className="text-emerald-300" /> : <Copy size={14} />}
+                            <span>{copiedSignUrl ? 'Copiado!' : 'Copiar Link'}</span>
+                          </button>
+                        </div>
+                        {cotacaoId && (
+                          <EnviarPropostaEmailButton
+                            cotacaoId={cotacaoId}
+                            clientName={form.nome}
+                            clientEmail={form.email}
+                            valor={planoSel?.parcela}
+                            cobertura={planoSel?.cobertura}
+                            label="Enviar por E-mail"
+                          />
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="border border-gray-200 rounded-xl overflow-hidden bg-white h-[520px]">
+                      <iframe
+                        src={signUrl}
+                        className="w-full h-full border-0"
+                        allow="geolocation; camera"
+                        title="ZapSign Assinatura Digital"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <div className="py-12 text-center text-gray-500">
+                    <Loader2 className="w-8 h-8 animate-spin text-emerald-600 mx-auto mb-2" />
+                    <p className="text-sm">Carregando painel de assinatura...</p>
+                  </div>
+                )}
+
+                <div className="flex flex-col md:flex-row md:justify-between items-center gap-4 bg-gray-50 border border-gray-200 p-4 rounded-xl">
+                  <span className="text-xs text-gray-500">
+                    Após concluir a assinatura acima, clique em &quot;Verificar Assinatura&quot; para liberar a fatura de pagamento.
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {statusAssinatura === 'falta_corretora' && (
+                      <button
+                        type="button"
+                        onClick={() => setModoPreferenciaPagamento(true)}
+                        className="btn btn-secondary text-xs py-2 px-3 flex items-center space-x-1.5 cursor-pointer min-h-[44px]"
+                      >
+                        <CreditCard size={14} className="text-primary" />
+                        <span>Registrar Preferência de Pagamento</span>
+                      </button>
+                    )}
+                    <button
+                      onClick={handleVerificarAssinatura}
+                      disabled={verificandoAssinatura}
+                      className="btn btn-primary text-sm whitespace-nowrap flex items-center space-x-2 cursor-pointer min-h-[44px]"
+                    >
+                      {verificandoAssinatura && <Loader2 className="w-4 h-4 animate-spin" />}
+                      <span>{verificandoAssinatura ? 'Verificando...' : 'Verificar Assinatura'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
           ) : (
             <div className="space-y-6">
               <div className="bg-emerald-50 border border-emerald-200 p-5 rounded-xl flex items-start space-x-4">
@@ -3567,6 +3991,19 @@ export default function DynamicCotacaoForm({
           commissionRate={commissionRate}
         />
       )}
+
+      {/* Modal de Assinatura Parcial (Proponente assinou, falta Corretora) */}
+      <ModalAssinaturaParcial
+        isOpen={modalParcialAberto}
+        onClose={() => setModalParcialAberto(false)}
+        onRegistrarPreferencia={() => {
+          setModalParcialAberto(false);
+          setModoPreferenciaPagamento(true);
+        }}
+        proponenteNome={form.nome}
+        proponenteEmail={form.email}
+        signUrlCorretora={signUrlCorretora}
+      />
     </div>
   );
 }
