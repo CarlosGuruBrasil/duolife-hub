@@ -2,6 +2,7 @@ import { sql } from './pg';
 import { logger } from './logger';
 import { getZapSignConfig, sanitizeApiToken } from './system-settings';
 import { parseJsonbField } from './json-safe';
+import { identificarRequisitosAssinatura } from './assinatura-status';
 
 export interface ZapSignReconcileOptions {
   onlyPending?: boolean;
@@ -204,12 +205,17 @@ export async function reconcileZapSignDocuments(
 
         const zapDoc = await response.json();
         const zapStatus = String(zapDoc.status || '').toLowerCase();
+        const clientData = parseJsonbField<Record<string, any>>(doc.client_data);
+        const requisitos = identificarRequisitosAssinatura(clientData, doc);
+
+        const signersArr: any[] = Array.isArray(zapDoc.signers) ? zapDoc.signers : [];
+        const proponenteSigned = signersArr.length > 0 && signersArr[0]?.status === 'signed';
+        const allSignersSigned = signersArr.length > 0 && signersArr.every((s: { status?: string }) => s.status === 'signed');
+
         const isSigned =
           zapStatus === 'completed' ||
           zapStatus === 'signed' ||
-          (Array.isArray(zapDoc.signers) &&
-            zapDoc.signers.length > 0 &&
-            zapDoc.signers.every((s: { status?: string }) => s.status === 'signed'));
+          (requisitos.total === 1 ? (proponenteSigned || allSignersSigned) : allSignersSigned);
 
         // A API da ZapSign retorna `signed_file` / `original_file` (não `*_url`).
         const signedUrl: string | null =
@@ -281,13 +287,18 @@ export async function reconcileZapSignDocuments(
           }
 
           // Atualiza cotação
-          const clientData = parseJsonbField<Record<string, unknown>>(doc.client_data);
           clientData.contratoToken = docToken;
           if (signedUrl) {
             clientData.contratoPdf = signedUrl;
             clientData.urlAssinado = signedUrl;
           }
           clientData.assinadoEm = clientData.assinadoEm || signedAtStr;
+          clientData.statusAssinatura = 'todas_assinadas';
+          clientData.clienteAssinou = true;
+          clientData.corretoraAssinou = true;
+          clientData.totalAssinaturas = requisitos.total;
+          clientData.assinaturasNecessarias = requisitos.papeis;
+          clientData.contratoModo = requisitos.modo;
 
           // Se a cotação estava antes de assinado, avança
           let nextQuoteStatus = doc.quote_status;

@@ -114,15 +114,23 @@ export async function POST(
 
     // Se NÃO for solicitação explícita de regeração (forceRecreate) e o contrato anterior existir e não estiver expirado:
     if (!forceRecreate && clientData.contratoToken && !signUrlExpirado) {
+      const isDynamic = clientData.contratoModo === 'dynamic_pdf' || isMedico;
+      const totalAssinaturas = Number(clientData.totalAssinaturas) || (isDynamic ? 2 : 1);
+      const assinaturasNecessarias = clientData.assinaturasNecessarias || (totalAssinaturas === 1 ? ['cliente'] : ['cliente', 'corretora']);
+      const statusPadrao = totalAssinaturas === 1 ? 'falta_cliente' : 'faltam_ambas';
+
       return Response.json({
         ok: true,
         docToken: clientData.contratoToken,
         signUrl: clientData.signUrl,
-        signUrlCorretora: clientData.signUrlCorretora || null,
+        signUrlCorretora: isDynamic ? (clientData.signUrlCorretora || null) : null,
         signUrlProponente: clientData.signUrlProponente || clientData.signUrl || null,
-        statusAssinatura: clientData.statusAssinatura || 'faltam_ambas',
+        statusAssinatura: clientData.statusAssinatura || statusPadrao,
+        totalAssinaturas,
+        assinaturasNecessarias,
+        contratoModo: clientData.contratoModo || (isDynamic ? 'dynamic_pdf' : 'template'),
         clienteAssinou: Boolean(clientData.clienteAssinou),
-        corretoraAssinou: Boolean(clientData.corretoraAssinou),
+        corretoraAssinou: totalAssinaturas === 1 ? true : Boolean(clientData.corretoraAssinou),
         alreadyExisted: true,
       });
     }
@@ -596,14 +604,25 @@ export async function POST(
       signUrl = signUrlProponente;
     }
 
-    // 7. Atualiza a cotação no Banco
+    // 7. Atualiza a cotação no Banco com identificação dinâmica de assinaturas
+    const totalAssinaturas = isDynamicPdf ? 2 : 1;
+    const assinaturasNecessarias = isDynamicPdf ? ['cliente', 'corretora'] : ['cliente'];
+    const statusInicialAssinatura = isDynamicPdf ? 'faltam_ambas' : 'falta_cliente';
+
     clientData.contratoToken = docToken;
     clientData.signUrl = signUrl;
     clientData.signUrlProponente = signUrlProponente || signUrl;
-    if (signUrlCorretora) clientData.signUrlCorretora = signUrlCorretora;
-    clientData.statusAssinatura = 'faltam_ambas';
+    if (isDynamicPdf && signUrlCorretora) {
+      clientData.signUrlCorretora = signUrlCorretora;
+    } else {
+      delete clientData.signUrlCorretora;
+    }
+    clientData.statusAssinatura = statusInicialAssinatura;
+    clientData.totalAssinaturas = totalAssinaturas;
+    clientData.assinaturasNecessarias = assinaturasNecessarias;
     clientData.clienteAssinou = false;
-    clientData.corretoraAssinou = false;
+    // Para contratos de 1 assinatura (template), a corretora não assina (já atendido)
+    clientData.corretoraAssinou = isDynamicPdf ? false : true;
     clientData.contratoGeradoEm = new Date().toISOString();
     clientData.contratoPrazoLimite = deadlineIso;
     clientData.contratoModo = isDynamicPdf ? 'dynamic_pdf' : 'template';
@@ -760,11 +779,14 @@ export async function POST(
       ok: true,
       docToken,
       signUrl,
-      signUrlCorretora: signUrlCorretora || clientData.signUrlCorretora || null,
+      signUrlCorretora: isDynamicPdf ? (signUrlCorretora || clientData.signUrlCorretora || null) : null,
       signUrlProponente: signUrlProponente || signUrl,
-      statusAssinatura: 'faltam_ambas',
+      statusAssinatura: statusInicialAssinatura,
+      totalAssinaturas,
+      assinaturasNecessarias,
+      contratoModo: isDynamicPdf ? 'dynamic_pdf' : 'template',
       clienteAssinou: false,
-      corretoraAssinou: false,
+      corretoraAssinou: isDynamicPdf ? false : true,
     });
 
   } catch (err: unknown) {

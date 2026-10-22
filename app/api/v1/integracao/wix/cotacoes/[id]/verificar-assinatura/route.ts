@@ -5,6 +5,7 @@ import { parseJsonbField } from '@/lib/json-safe';
 import { getZapSignConfig, sanitizeApiToken, getAsaasConfig } from '@/lib/system-settings';
 import { generateAsaasPaymentForQuote } from '@/lib/asaas-service';
 import { logger } from '@/lib/logger';
+import { identificarRequisitosAssinatura } from '@/lib/assinatura-status';
 
 export async function POST(
   req: NextRequest,
@@ -84,13 +85,16 @@ export async function POST(
           if (zapRes.ok) {
             const zapDoc = await zapRes.json();
             const zapStatus = String(zapDoc.status || '').toLowerCase();
+            const requisitos = identificarRequisitosAssinatura(clientData, cotacao);
+
+            const signersArr: any[] = Array.isArray(zapDoc.signers) ? zapDoc.signers : [];
+            const proponenteSigned = signersArr.length > 0 && signersArr[0]?.status === 'signed';
+            const allSignersSigned = signersArr.length > 0 && signersArr.every((s: { status?: string }) => s.status === 'signed');
 
             isSigned =
               zapStatus === 'completed' ||
               zapStatus === 'signed' ||
-              (Array.isArray(zapDoc.signers) &&
-                zapDoc.signers.length > 0 &&
-                zapDoc.signers.every((s: { status?: string }) => s.status === 'signed'));
+              (requisitos.total === 1 ? (proponenteSigned || allSignersSigned) : allSignersSigned);
 
             if (isSigned) {
               const signedFile =
@@ -102,6 +106,12 @@ export async function POST(
 
               clientData.contratoPdf = signedFile || clientData.contratoPdf;
               clientData.assinadoEm = clientData.assinadoEm || new Date().toISOString();
+              clientData.statusAssinatura = 'todas_assinadas';
+              clientData.clienteAssinou = true;
+              clientData.corretoraAssinou = true;
+              clientData.totalAssinaturas = requisitos.total;
+              clientData.assinaturasNecessarias = requisitos.papeis;
+              clientData.contratoModo = requisitos.modo;
 
               await sql`
                 UPDATE signature_documents

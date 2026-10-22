@@ -7,6 +7,7 @@ import { parseJsonbField } from '@/lib/json-safe';
 import { getZapSignConfig, sanitizeApiToken } from '@/lib/system-settings';
 import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
 import { generateAsaasPaymentForQuote } from '@/lib/asaas-service';
+import { identificarRequisitosAssinatura } from '@/lib/assinatura-status';
 
 export async function POST(
   req: NextRequest,
@@ -72,24 +73,29 @@ export async function POST(
       }
     }
 
+    const requisitos = identificarRequisitosAssinatura(clientData, cotacao);
+
     if (!docToken) {
+      const isConcluida = ['aprovada', 'emitida', 'ativa'].includes(cotacao.status);
       return Response.json({
         ok: true,
         status: cotacao.status,
-        assinado: ['aprovada', 'emitida', 'ativa'].includes(cotacao.status),
-        statusAssinatura: ['aprovada', 'emitida', 'ativa'].includes(cotacao.status)
+        assinado: isConcluida,
+        statusAssinatura: isConcluida
           ? 'todas_assinadas'
-          : 'faltam_ambas',
-        assinaturasConcluidas: ['aprovada', 'emitida', 'ativa'].includes(cotacao.status) ? 2 : 0,
-        totalAssinaturas: 2,
+          : (requisitos.total === 1 ? 'falta_cliente' : 'faltam_ambas'),
+        assinaturasConcluidas: isConcluida ? requisitos.total : 0,
+        totalAssinaturas: requisitos.total,
+        assinaturasNecessarias: requisitos.papeis,
+        contratoModo: requisitos.modo,
         podeSalvarPreferencia: false,
         signUrlCorretora: null,
         signatarios: [],
         contratoPdf: existingPdf || '',
-        message: ['aprovada', 'emitida', 'ativa'].includes(cotacao.status)
+        message: isConcluida
           ? 'Contrato assinado.'
           : 'Nenhum contrato gerado para esta cotação',
-        error: ['aprovada', 'emitida', 'ativa'].includes(cotacao.status)
+        error: isConcluida
           ? undefined
           : 'Nenhum contrato gerado para esta cotação'
       });
@@ -168,82 +174,129 @@ export async function POST(
     // Determina o status dos signatários estritamente pela resposta atual da ZapSign
     let clienteAssinou = false;
     let corretoraAssinou = false;
+    let statusAssinatura: 'todas_assinadas' | 'falta_corretora' | 'falta_cliente' | 'faltam_ambas';
+    let totalAssinaturas = requisitos.total;
+    let assinaturasConcluidas = 0;
+    let todasAssinadas = false;
+    let podeSalvarPreferencia = false;
+    let signatarios: Array<{ nome: string; papel: 'cliente' | 'corretora'; assinado: boolean; email: string }> = [];
+    let message = '';
 
-    if (docStatusFinalizado) {
-      clienteAssinou = true;
-      corretoraAssinou = true;
-    } else {
-      const proponenteSigned = Boolean(proponenteSigner && proponenteSigner.status === 'signed');
-      const corretoraSigned = Boolean(corretoraSigner && corretoraSigner.status === 'signed');
-      const signedCount = signersList.filter((s: any) => s.status === 'signed').length;
+    const proponenteSigned = Boolean(proponenteSigner && proponenteSigner.status === 'signed');
+    const corretoraSigned = Boolean(corretoraSigner && corretoraSigner.status === 'signed');
+    const signedCount = signersList.filter((s: any) => s.status === 'signed').length;
 
-      if (proponenteSigned && corretoraSigned) {
+    // ==========================================
+    // CASO 1: CONTRATO COM 1 ASSINATURA (CLIENTE)
+    // ==========================================
+    if (totalAssinaturas === 1) {
+      if (docStatusFinalizado || proponenteSigned || signedCount >= 1) {
         clienteAssinou = true;
-        corretoraAssinou = true;
-      } else if (proponenteSigned && !corretoraSigned) {
-        clienteAssinou = true;
-        corretoraAssinou = false;
-      } else if (!proponenteSigned && corretoraSigned) {
-        clienteAssinou = false;
-        corretoraAssinou = true;
-      } else if (signedCount === 1) {
-        // Se 1 signatário assinou na plataforma web, foi o proponente
-        clienteAssinou = true;
-        corretoraAssinou = false;
+        corretoraAssinou = true; // Não exigida
+        statusAssinatura = 'todas_assinadas';
+        assinaturasConcluidas = 1;
+        todasAssinadas = true;
+        podeSalvarPreferencia = true;
+        message = 'A assinatura do cliente foi concluída com sucesso!';
       } else {
         clienteAssinou = false;
-        corretoraAssinou = false;
+        corretoraAssinou = true; // Não exigida
+        statusAssinatura = 'falta_cliente';
+        assinaturasConcluidas = 0;
+        todasAssinadas = false;
+        podeSalvarPreferencia = false;
+        message = 'Aguardando assinatura do Proponente no ZapSign.';
+      }
+
+      signatarios = [
+        {
+          nome: proponenteSigner?.name || cotacao.client_name || 'Proponente',
+          papel: 'cliente' as const,
+          assinado: clienteAssinou,
+          email: proponenteSigner?.email || cotacao.client_email || '',
+        },
+      ];
+    } else {
+      // ==========================================
+      // CASO 2: CONTRATO COM 2 ASSINATURAS (CLIENTE + CORRETORA)
+      // ==========================================
+      if (docStatusFinalizado) {
+        clienteAssinou = true;
+        corretoraAssinou = true;
+      } else {
+        if (proponenteSigned && corretoraSigned) {
+          clienteAssinou = true;
+          corretoraAssinou = true;
+        } else if (proponenteSigned && !corretoraSigned) {
+          clienteAssinou = true;
+          corretoraAssinou = false;
+        } else if (!proponenteSigned && corretoraSigned) {
+          clienteAssinou = false;
+          corretoraAssinou = true;
+        } else if (signedCount === 1) {
+          clienteAssinou = true;
+          corretoraAssinou = false;
+        } else {
+          clienteAssinou = false;
+          corretoraAssinou = false;
+        }
+      }
+
+      if (clienteAssinou && corretoraAssinou) {
+        statusAssinatura = 'todas_assinadas';
+      } else if (clienteAssinou && !corretoraAssinou) {
+        statusAssinatura = 'falta_corretora';
+      } else if (!clienteAssinou && corretoraAssinou) {
+        statusAssinatura = 'falta_cliente';
+      } else {
+        statusAssinatura = 'faltam_ambas';
+      }
+
+      assinaturasConcluidas = (clienteAssinou ? 1 : 0) + (corretoraAssinou ? 1 : 0);
+      todasAssinadas = statusAssinatura === 'todas_assinadas';
+      podeSalvarPreferencia = statusAssinatura === 'falta_corretora' || clienteAssinou;
+
+      signatarios = [
+        {
+          nome: proponenteSigner?.name || cotacao.client_name || 'Proponente',
+          papel: 'cliente' as const,
+          assinado: clienteAssinou,
+          email: proponenteSigner?.email || cotacao.client_email || '',
+        },
+        {
+          nome: corretoraSigner?.name || 'Corretora',
+          papel: 'corretora' as const,
+          assinado: corretoraAssinou,
+          email: corretoraSigner?.email || 'contato@net4life.com.br',
+        },
+      ];
+
+      if (statusAssinatura === 'todas_assinadas') {
+        message = 'Todas as assinaturas foram concluídas com sucesso!';
+      } else if (statusAssinatura === 'falta_corretora') {
+        message = 'O Proponente já assinou. Aguardando assinatura da Corretora para emissão da fatura.';
+      } else if (statusAssinatura === 'falta_cliente') {
+        message = 'A Corretora já assinou. Aguardando assinatura do Proponente.';
+      } else {
+        message = 'Aguardando assinaturas do Proponente e da Corretora.';
       }
     }
-
-    let statusAssinatura: 'todas_assinadas' | 'falta_corretora' | 'falta_cliente' | 'faltam_ambas';
-    if (clienteAssinou && corretoraAssinou) {
-      statusAssinatura = 'todas_assinadas';
-    } else if (clienteAssinou && !corretoraAssinou) {
-      statusAssinatura = 'falta_corretora';
-    } else if (!clienteAssinou && corretoraAssinou) {
-      statusAssinatura = 'falta_cliente';
-    } else {
-      statusAssinatura = 'faltam_ambas';
-    }
-
-    const totalAssinaturas = 2;
-    const assinaturasConcluidas = (clienteAssinou ? 1 : 0) + (corretoraAssinou ? 1 : 0);
-    const todasAssinadas = statusAssinatura === 'todas_assinadas';
-    const podeSalvarPreferencia = statusAssinatura === 'falta_corretora' || clienteAssinou;
 
     const signUrlProponente = proponenteSigner?.sign_url || clientData.signUrlProponente || clientData.signUrl || null;
-    const signUrlCorretora = corretoraSigner?.sign_url || clientData.signUrlCorretora || null;
-
-    const signatarios = [
-      {
-        nome: proponenteSigner?.name || cotacao.client_name || 'Proponente',
-        papel: 'cliente' as const,
-        assinado: clienteAssinou,
-        email: proponenteSigner?.email || cotacao.client_email || ''
-      },
-      {
-        nome: corretoraSigner?.name || 'Corretora',
-        papel: 'corretora' as const,
-        assinado: corretoraAssinou,
-        email: corretoraSigner?.email || 'contato@net4life.com.br'
-      }
-    ];
-
-    let message = 'Aguardando assinaturas do Proponente e da Corretora.';
-    if (statusAssinatura === 'todas_assinadas') {
-      message = 'Todas as assinaturas foram concluídas com sucesso!';
-    } else if (statusAssinatura === 'falta_corretora') {
-      message = 'O Proponente já assinou. Aguardando assinatura da Corretora para emissão da fatura.';
-    } else if (statusAssinatura === 'falta_cliente') {
-      message = 'A Corretora já assinou. Aguardando assinatura do Proponente.';
-    }
+    const signUrlCorretora = totalAssinaturas === 2 ? (corretoraSigner?.sign_url || clientData.signUrlCorretora || null) : null;
 
     // Atualiza dados no client_data da cotação
     clientData.statusAssinatura = statusAssinatura;
     clientData.clienteAssinou = clienteAssinou;
     clientData.corretoraAssinou = corretoraAssinou;
-    if (signUrlCorretora) clientData.signUrlCorretora = signUrlCorretora;
+    clientData.totalAssinaturas = totalAssinaturas;
+    clientData.assinaturasNecessarias = requisitos.papeis;
+    clientData.contratoModo = requisitos.modo;
+    if (totalAssinaturas === 2 && signUrlCorretora) {
+      clientData.signUrlCorretora = signUrlCorretora;
+    } else {
+      delete clientData.signUrlCorretora;
+    }
     if (signUrlProponente) clientData.signUrlProponente = signUrlProponente;
 
     const pdfLink =

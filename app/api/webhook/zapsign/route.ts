@@ -8,6 +8,7 @@ import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
 import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
 import { getZapSignConfig } from '@/lib/system-settings';
 import { generateAsaasPaymentForQuote } from '@/lib/asaas-service';
+import { identificarRequisitosAssinatura } from '@/lib/assinatura-status';
 
 async function isAuthorized(req: NextRequest) {
   const zapConfig = await getZapSignConfig();
@@ -180,8 +181,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, ignored: true });
     }
 
-    const [cotacao] = await sql<{ client_data: unknown; status: string; client_name: string; client_email: string }[]>`
-      SELECT client_data, status, client_name, client_email
+    const [cotacao] = await sql<{ client_data: unknown; status: string; client_name: string; client_email: string; flow_key?: string | null; product_id?: string | null }[]>`
+      SELECT client_data, status, client_name, client_email, flow_key, product_id
       FROM cotacoes
       WHERE id = ${document.cotacao_id}
       LIMIT 1
@@ -269,6 +270,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const requisitos = identificarRequisitosAssinatura(clientData, cotacao);
+
     const eventTypeLower = eventType.toLowerCase();
     const isDocSignedEvent =
       eventTypeLower === 'doc_signed' ||
@@ -279,7 +282,10 @@ export async function POST(req: NextRequest) {
     const todosSignersAssinaram =
       signersList.length > 0 && signersList.every((s: any) => s.status === 'signed');
 
-    const todasAssinadas = isDocSignedEvent || todosSignersAssinaram || (clienteAssinou && corretoraAssinou);
+    const todasAssinadas =
+      isDocSignedEvent ||
+      todosSignersAssinaram ||
+      (requisitos.total === 1 ? clienteAssinou : (clienteAssinou && corretoraAssinou));
 
     if (todasAssinadas) {
       clienteAssinou = true;
@@ -287,6 +293,9 @@ export async function POST(req: NextRequest) {
       clientData.statusAssinatura = 'todas_assinadas';
       clientData.clienteAssinou = true;
       clientData.corretoraAssinou = true;
+      clientData.totalAssinaturas = requisitos.total;
+      clientData.assinaturasNecessarias = requisitos.papeis;
+      clientData.contratoModo = requisitos.modo;
       if (signedFileUrl) clientData.contratoPdf = signedFileUrl;
       clientData.assinadoEm = clientData.assinadoEm || new Date().toISOString();
 
@@ -440,16 +449,25 @@ export async function POST(req: NextRequest) {
       }
     } else if (eventTypeLower === 'signer_signed' || normalizedStatus === 'signer_signed') {
       // Evento de assinatura parcial: apenas 1 dos signatários assinou
-      let statusAssinatura: 'falta_corretora' | 'falta_cliente' | 'faltam_ambas' = 'faltam_ambas';
-      if (clienteAssinou && !corretoraAssinou) {
-        statusAssinatura = 'falta_corretora';
-      } else if (!clienteAssinou && corretoraAssinou) {
-        statusAssinatura = 'falta_cliente';
+      let statusAssinatura: 'todas_assinadas' | 'falta_corretora' | 'falta_cliente' | 'faltam_ambas' =
+        requisitos.total === 1 ? 'falta_cliente' : 'faltam_ambas';
+
+      if (requisitos.total === 1) {
+        statusAssinatura = clienteAssinou ? 'todas_assinadas' : 'falta_cliente';
+      } else {
+        if (clienteAssinou && !corretoraAssinou) {
+          statusAssinatura = 'falta_corretora';
+        } else if (!clienteAssinou && corretoraAssinou) {
+          statusAssinatura = 'falta_cliente';
+        }
       }
 
       clientData.statusAssinatura = statusAssinatura;
       clientData.clienteAssinou = clienteAssinou;
-      clientData.corretoraAssinou = corretoraAssinou;
+      clientData.corretoraAssinou = requisitos.total === 1 ? true : corretoraAssinou;
+      clientData.totalAssinaturas = requisitos.total;
+      clientData.assinaturasNecessarias = requisitos.papeis;
+      clientData.contratoModo = requisitos.modo;
 
       await sql`
         UPDATE cotacoes

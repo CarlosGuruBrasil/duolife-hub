@@ -485,7 +485,7 @@ export default async function CotacoesPage({
                       paymentStatus: cotacao.payment_order_status || (cotacao.is_fully_paid ? 'paid' : undefined),
                     });
 
-                    const assinaturaInfo = getCotacaoAssinaturaInfo(cotacao.status, clientData);
+                    const assinaturaInfo = getCotacaoAssinaturaInfo(cotacao.status, clientData, cotacao);
 
                     return (
                       <tr key={cotacao.id} className="group hover:bg-gray-50/75 transition-colors">

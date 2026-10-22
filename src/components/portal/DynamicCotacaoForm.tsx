@@ -1441,12 +1441,12 @@ export default function DynamicCotacaoForm({
         if (data.signUrlProponente) setSignUrlProponente(data.signUrlProponente);
         if (data.statusAssinatura) setStatusAssinatura(data.statusAssinatura);
 
-        // Cenário 1: 100% concluído (2 de 2 assinaram)
+        // Cenário 1: 100% concluído
         if (data.assinado) {
           setContratoAssinado(true);
           setModoPreferenciaPagamento(false);
           setModalParcialAberto(false);
-          setSuccess('Contrato assinado com sucesso por ambas as partes!');
+          setSuccess(data.totalAssinaturas === 1 ? 'Contrato assinado com sucesso pelo cliente!' : 'Contrato assinado com sucesso por ambas as partes!');
 
           if (data.linkBoleto) {
             setLinkPagamento(data.linkBoleto);

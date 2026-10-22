@@ -22,6 +22,7 @@ import { DesvincularCobrancaButton } from '@/components/admin/DesvincularCobranc
 import type { CobrancaAsaasInitialData } from '@/components/admin/GerenciarCobrancaAsaasModal';
 import { MatrixStatusBadge } from '@/components/common/MatrixStatusBadge';
 import { calculateMatrixStatus } from '@/lib/status-matrix';
+import { identificarRequisitosAssinatura } from '@/lib/assinatura-status';
 
 const statusLabel: Record<string, string> = {
   rascunho: 'Rascunho',
@@ -217,6 +218,7 @@ export default async function AdminCotacaoDetailPage({
   const [signatureDoc] = await sql<Array<{
     id: string;
     external_document_id: string | null;
+    template_id?: string | null;
     sign_url: string | null;
     signed_file_url: string | null;
     status: string;
@@ -224,7 +226,7 @@ export default async function AdminCotacaoDetailPage({
     deadline_at: string | null;
     created_at: string;
   }>>`
-    SELECT id, external_document_id, sign_url, signed_file_url, status, signed_at, deadline_at, created_at
+    SELECT id, external_document_id, template_id, sign_url, signed_file_url, status, signed_at, deadline_at, created_at
     FROM signature_documents
     WHERE cotacao_id = ${id} AND provider = 'zapsign'
     ORDER BY created_at DESC
@@ -322,6 +324,13 @@ export default async function AdminCotacaoDetailPage({
   const linkBoleto = safeExternalUrl(clientData.linkBoleto as string | undefined);
   const checkoutId = String(clientData.checkoutId || '');
 
+  // Identificação dinâmica de quantas e quais assinaturas são necessárias
+  const requisitosAssinatura = identificarRequisitosAssinatura(clientData, {
+    flowKey: cotacao.flow_key,
+    productId: cotacao.product_id,
+    template_id: signatureDoc?.template_id,
+  });
+
   // Dados unificados do Contrato ZapSign
   const rawStatusAssinatura = (clientData.statusAssinatura as string | undefined) || null;
   const isAprovadaOuEmitida = ['aprovada', 'emitida', 'ativa', 'active'].includes(String(cotacao.status || '').toLowerCase());
@@ -333,27 +342,34 @@ export default async function AdminCotacaoDetailPage({
     (isAprovadaOuEmitida && rawStatusAssinatura !== 'falta_cliente' && rawStatusAssinatura !== 'faltam_ambas');
 
   // Corretora só consta como assinada se ela de fato assinou (NUNCA se falta_corretora!):
-  const isCorretoraAssinada = rawStatusAssinatura === 'falta_corretora'
-    ? false
-    : (Boolean(clientData.corretoraAssinou) ||
-       rawStatusAssinatura === 'falta_cliente' ||
-       rawStatusAssinatura === 'todas_assinadas' ||
-       (isAprovadaOuEmitida && rawStatusAssinatura !== 'falta_corretora' && rawStatusAssinatura !== 'faltam_ambas'));
+  // Se o contrato precisa apenas de 1 assinatura (cliente), corretora não é exigida e é considerada atendida
+  const isCorretoraAssinada = requisitosAssinatura.total === 1
+    ? true
+    : (rawStatusAssinatura === 'falta_corretora'
+      ? false
+      : (Boolean(clientData.corretoraAssinou) ||
+         rawStatusAssinatura === 'falta_cliente' ||
+         rawStatusAssinatura === 'todas_assinadas' ||
+         (isAprovadaOuEmitida && rawStatusAssinatura !== 'falta_corretora' && rawStatusAssinatura !== 'faltam_ambas')));
 
   const statusAssinatura = rawStatusAssinatura || (
-    isProponenteAssinado && isCorretoraAssinada
-      ? 'todas_assinadas'
-      : isProponenteAssinado
-      ? 'falta_corretora'
-      : isCorretoraAssinada
-      ? 'falta_cliente'
-      : 'faltam_ambas'
+    requisitosAssinatura.total === 1
+      ? (isProponenteAssinado ? 'todas_assinadas' : 'falta_cliente')
+      : (isProponenteAssinado && isCorretoraAssinada
+          ? 'todas_assinadas'
+          : isProponenteAssinado
+          ? 'falta_corretora'
+          : isCorretoraAssinada
+          ? 'falta_cliente'
+          : 'faltam_ambas')
   );
 
-  // O contrato SÓ é considerado totalmente assinado se as DUAS partes assinaram
-  const isTotalmenteAssinado = (isProponenteAssinado && isCorretoraAssinada) || statusAssinatura === 'todas_assinadas';
+  // O contrato é considerado totalmente assinado conforme a regra do tipo de contrato:
+  const isTotalmenteAssinado = requisitosAssinatura.total === 1
+    ? (isProponenteAssinado || statusAssinatura === 'todas_assinadas')
+    : ((isProponenteAssinado && isCorretoraAssinada) || statusAssinatura === 'todas_assinadas');
 
-  // isAssinado para fluxos gerais do sistema (exige que ambas as partes tenham formalizado)
+  // isAssinado para fluxos gerais do sistema
   const isAssinado = isTotalmenteAssinado || isAprovadaOuEmitida;
 
   const docToken = String(
@@ -1634,18 +1650,22 @@ export default async function AdminCotacaoDetailPage({
                     ? 'bg-rose-50/90 border-rose-200'
                     : isMinutaOutdated
                     ? 'bg-amber-50/90 border-amber-300'
+                    : isTotalmenteAssinado
+                    ? 'bg-emerald-50/80 border-emerald-200'
                     : statusAssinatura === 'falta_corretora'
                     ? 'bg-amber-50/90 border-amber-300'
                     : 'bg-amber-50/70 border-amber-200/80'
                 }`}>
                   <span className="inline-flex items-center gap-1.5 text-xs font-bold text-amber-900 shrink-0">
-                    <Clock size={15} className={isMinutaExpired ? 'text-rose-600' : 'text-amber-700'} />
+                    <Clock size={15} className={isMinutaExpired ? 'text-rose-600' : isTotalmenteAssinado ? 'text-emerald-700' : 'text-amber-700'} />
                     <span>
                       {isMinutaExpired
                         ? 'Minuta Expirada (Prazo de 7 dias)'
+                        : isTotalmenteAssinado
+                        ? (requisitosAssinatura.total === 1 ? 'Contrato Assinado pelo Cliente (100%)' : 'Contrato 100% Assinado (Cliente e Corretora)')
                         : statusAssinatura === 'falta_corretora'
                         ? 'Assinatura Parcial: Proponente Assinou (Aguardando Corretora)'
-                        : 'Aguardando Assinatura (ZapSign)'}
+                        : (requisitosAssinatura.total === 1 ? 'Aguardando Assinatura do Cliente (ZapSign)' : 'Aguardando Assinatura (ZapSign)')}
                     </span>
                   </span>
                   {docToken && (
@@ -1661,21 +1681,28 @@ export default async function AdminCotacaoDetailPage({
                 {/* Status Individual de Cada Signatário */}
                 <div className="bg-gray-50 border border-gray-200 rounded-xl p-3.5 space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">
-                      Signatários do Contrato
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-gray-700 uppercase tracking-wider">
+                        Signatários do Contrato
+                      </span>
+                      <span className="text-[10px] font-medium text-gray-500 bg-gray-200/70 px-2 py-0.5 rounded-full">
+                        {requisitosAssinatura.labelDescricao}
+                      </span>
+                    </div>
                     <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${
-                      isProponenteAssinado && isCorretoraAssinada
+                      isTotalmenteAssinado
                         ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                        : isProponenteAssinado || isCorretoraAssinada
+                        : (requisitosAssinatura.total === 2 && (isProponenteAssinado || isCorretoraAssinada))
                         ? 'bg-amber-50 text-amber-800 border-amber-300'
                         : 'bg-gray-100 text-gray-700 border-gray-200'
                     }`}>
-                      {isProponenteAssinado && isCorretoraAssinada ? '2 de 2 assinados' : isProponenteAssinado || isCorretoraAssinada ? '1 de 2 assinados' : '0 de 2 assinados'}
+                      {requisitosAssinatura.total === 1
+                        ? (isProponenteAssinado ? '1 de 1 assinado' : '0 de 1 assinado')
+                        : (isProponenteAssinado && isCorretoraAssinada ? '2 de 2 assinados' : (isProponenteAssinado || isCorretoraAssinada) ? '1 de 2 assinados' : '0 de 2 assinados')}
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div className={`grid ${requisitosAssinatura.total === 1 ? 'grid-cols-1' : 'grid-cols-1 sm:grid-cols-2'} gap-2 text-xs`}>
                     {/* Signatário 1: Proponente */}
                     <div className={`p-2.5 rounded-lg border flex items-center justify-between gap-2 ${
                       isProponenteAssinado ? 'bg-emerald-50/70 border-emerald-200' : 'bg-white border-gray-200'
@@ -1698,31 +1725,33 @@ export default async function AdminCotacaoDetailPage({
                       </span>
                     </div>
 
-                    {/* Signatário 2: Corretora */}
-                    <div className={`p-2.5 rounded-lg border flex items-center justify-between gap-2 ${
-                      isCorretoraAssinada ? 'bg-emerald-50/70 border-emerald-200' : 'bg-white border-gray-200'
-                    }`}>
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Building2 size={15} className={isCorretoraAssinada ? 'text-emerald-700 shrink-0' : 'text-amber-600 shrink-0'} />
-                        <div className="min-w-0">
-                          <span className="font-semibold text-gray-900 block truncate">
-                            Net4Life Corretora
-                          </span>
-                          <span className="text-[10px] text-gray-500 block truncate">
-                            Estipulante Coletiva
-                          </span>
-                        </div>
-                      </div>
-                      <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0 border ${
-                        isCorretoraAssinada ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-amber-100 text-amber-800 border-amber-300'
+                    {/* Signatário 2: Corretora (Apenas quando o contrato exige 2 assinaturas) */}
+                    {requisitosAssinatura.total === 2 && (
+                      <div className={`p-2.5 rounded-lg border flex items-center justify-between gap-2 ${
+                        isCorretoraAssinada ? 'bg-emerald-50/70 border-emerald-200' : 'bg-white border-gray-200'
                       }`}>
-                        {isCorretoraAssinada ? 'Assinado' : 'Pendente'}
-                      </span>
-                    </div>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <Building2 size={15} className={isCorretoraAssinada ? 'text-emerald-700 shrink-0' : 'text-amber-600 shrink-0'} />
+                          <div className="min-w-0">
+                            <span className="font-semibold text-gray-900 block truncate">
+                              Net4Life Corretora
+                            </span>
+                            <span className="text-[10px] text-gray-500 block truncate">
+                              Estipulante Coletiva
+                            </span>
+                          </div>
+                        </div>
+                        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full shrink-0 border ${
+                          isCorretoraAssinada ? 'bg-emerald-100 text-emerald-800 border-emerald-300' : 'bg-amber-100 text-amber-800 border-amber-300'
+                        }`}>
+                          {isCorretoraAssinada ? 'Assinado' : 'Pendente'}
+                        </span>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Ação rápida para a Corretora assinar */}
-                  {!isCorretoraAssinada && signUrlCorretora && (
+                  {/* Ação rápida para a Corretora assinar (Apenas se o contrato exigir e a corretora ainda não assinou) */}
+                  {requisitosAssinatura.total === 2 && !isCorretoraAssinada && signUrlCorretora && (
                     <div className="pt-2 border-t border-gray-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <span className="text-[11px] text-amber-900 font-medium">
                         A Corretora ainda precisa assinar para liberação da fatura oficial.
