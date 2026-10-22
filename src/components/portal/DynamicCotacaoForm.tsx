@@ -232,6 +232,25 @@ const initialFormState: DynamicFormState = {
   fatoDetalhe: '',
   pagouReclamacao: 'Não',
   pagouDetalhe: '',
+  // Campos Oficiais do Termo de Adesão da Saúde
+  website: '',
+  assinamConsentimento: 'Sim',
+  prestacaoDomicilio: 'Não',
+  auditoriaRisco: 'Sim',
+  atendimentosMensais: '80',
+  arquivamentoProntuarios: 'Digital / Sistema de Prontuário Eletrônico em Nuvem',
+  houveReclamacao: 'Não',
+  dataOcorrenciaReclamacao: '',
+  dataReclamacao: '',
+  detalhesReclamacao: '',
+  valorIndenizado: '',
+  statusReclamacao: 'Regular / Arquivado',
+  conhecimentoFato: 'Não',
+  dataOcorrenciaFato: '',
+  dataReclamacaoFato: '',
+  detalhesFato: '',
+  valorEstimadoFato: '',
+  statusFato: 'Regular',
 };
 
 function formatMoneyInput(raw: string): string {
@@ -1131,6 +1150,18 @@ export default function DynamicCotacaoForm({
 
       // Validação do questionário dinâmico do ramo
       if (!isPlano100k && resolvedRamoConfig.requiresUnderwriting !== false) {
+        const isMed = resolvedRamoConfig.ramoId === 'rc-medicos' || (resolvedRamoConfig as any).key === 'rc-medicos';
+        if (isMed) {
+          if (form.houveReclamacao === 'Sim' && (!form.detalhesReclamacao || !form.detalhesReclamacao.trim())) {
+            setError('Justificativa obrigatória: forneça os detalhes da reclamação informada no histórico.');
+            return;
+          }
+          if (form.conhecimentoFato === 'Sim' && (!form.detalhesFato || !form.detalhesFato.trim())) {
+            setError('Justificativa obrigatória: forneça os detalhes do fato gerador informado no histórico.');
+            return;
+          }
+        }
+
         for (const item of resolvedRamoConfig.questionarioRisco) {
           const resp = form[item.id] || 'Não';
           if (resp === 'Sim') {
@@ -1899,6 +1930,16 @@ export default function DynamicCotacaoForm({
               />
             </label>
 
+            <label className="block">
+              <span className="field-label">Website / Perfil Profissional (Opcional)</span>
+              <input
+                value={form.website || ''}
+                onChange={(e) => updateField('website', e.target.value)}
+                className="form-input"
+                placeholder="Ex: www.clinica.med.br ou @perfil"
+              />
+            </label>
+
             {/* Conselho de Classe Dinâmico Contextualizado ao Ramo e Grupo */}
             {resolvedRamoConfig.registroProfissional && (() => {
               const grupoAtivo = resolvedRamoConfig.gruposTarifarios?.find((g) => g.id === form.grupoTarifario);
@@ -2572,6 +2613,297 @@ export default function DynamicCotacaoForm({
                     className="form-input"
                   />
                 </label>
+              </div>
+            </div>
+          )}
+
+          {/* Seção Exclusiva da Área da Saúde: Processos Internos e Histórico do Termo de Adesão */}
+          {resolvedRamoConfig.ramoId === 'rc-medicos' && (
+            <div className="space-y-6">
+              {/* 1. Processos Internos e Atendimento */}
+              <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4 shadow-2xs">
+                <div className="border-b border-gray-100 pb-3">
+                  <h3 className="text-base font-bold text-primary flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-emerald-600" />
+                    Processos Internos e Atendimento (Termo de Adesão)
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Estas informações são obrigatórias para composição do Termo de Adesão oficial da KEV Seguros.
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Pergunta 1: Consentimento */}
+                  <div className="p-3.5 bg-gray-50 border border-gray-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <p className="text-sm text-gray-800 font-medium">
+                      1. Pacientes assinam termo de consentimento em procedimentos invasivos? *
+                    </p>
+                    <div className="inline-flex items-center gap-1.5 shrink-0 bg-gray-200/80 p-1 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => updateField('assinamConsentimento', 'Não')}
+                        className={`min-w-[60px] min-h-[38px] px-3 text-xs font-semibold rounded-lg cursor-pointer ${
+                          form.assinamConsentimento === 'Não' ? 'bg-white text-gray-900 shadow-xs font-bold' : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        Não
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateField('assinamConsentimento', 'Sim')}
+                        className={`min-w-[60px] min-h-[38px] px-3 text-xs font-semibold rounded-lg cursor-pointer ${
+                          form.assinamConsentimento !== 'Não' ? 'bg-emerald-600 text-white shadow-xs font-bold' : 'text-gray-600 hover:text-emerald-700'
+                        }`}
+                      >
+                        Sim
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Pergunta 2: Domicílio */}
+                  <div className="p-3.5 bg-gray-50 border border-gray-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <p className="text-sm text-gray-800 font-medium">
+                      2. Há prestação de serviço em domicílio (home care)? *
+                    </p>
+                    <div className="inline-flex items-center gap-1.5 shrink-0 bg-gray-200/80 p-1 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => updateField('prestacaoDomicilio', 'Não')}
+                        className={`min-w-[60px] min-h-[38px] px-3 text-xs font-semibold rounded-lg cursor-pointer ${
+                          form.prestacaoDomicilio !== 'Sim' ? 'bg-white text-gray-900 shadow-xs font-bold' : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        Não
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateField('prestacaoDomicilio', 'Sim')}
+                        className={`min-w-[60px] min-h-[38px] px-3 text-xs font-semibold rounded-lg cursor-pointer ${
+                          form.prestacaoDomicilio === 'Sim' ? 'bg-emerald-600 text-white shadow-xs font-bold' : 'text-gray-600 hover:text-emerald-700'
+                        }`}
+                      >
+                        Sim
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Pergunta 3: Gestão de Risco */}
+                  <div className="p-3.5 bg-gray-50 border border-gray-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <p className="text-sm text-gray-800 font-medium">
+                      3. Realiza auditorias e possui procedimentos para gerenciamento do próprio risco? *
+                    </p>
+                    <div className="inline-flex items-center gap-1.5 shrink-0 bg-gray-200/80 p-1 rounded-xl">
+                      <button
+                        type="button"
+                        onClick={() => updateField('auditoriaRisco', 'Não')}
+                        className={`min-w-[60px] min-h-[38px] px-3 text-xs font-semibold rounded-lg cursor-pointer ${
+                          form.auditoriaRisco === 'Não' ? 'bg-white text-gray-900 shadow-xs font-bold' : 'text-gray-600 hover:text-gray-900'
+                        }`}
+                      >
+                        Não
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateField('auditoriaRisco', 'Sim')}
+                        className={`min-w-[60px] min-h-[38px] px-3 text-xs font-semibold rounded-lg cursor-pointer ${
+                          form.auditoriaRisco !== 'Não' ? 'bg-emerald-600 text-white shadow-xs font-bold' : 'text-gray-600 hover:text-emerald-700'
+                        }`}
+                      >
+                        Sim
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Perguntas 4 e 5: Volume de atendimentos e Prontuários */}
+                  <div className="grid gap-4 md:grid-cols-2 pt-1">
+                    <label className="block">
+                      <span className="field-label">4. Número médio de atendimentos mensais *</span>
+                      <input
+                        required
+                        value={form.atendimentosMensais || ''}
+                        onChange={(e) => updateField('atendimentosMensais', e.target.value)}
+                        className="form-input"
+                        placeholder="Ex: 80 atendimentos/mês"
+                      />
+                    </label>
+
+                    <label className="block">
+                      <span className="field-label">5. Como são arquivadas as fichas e prontuários? *</span>
+                      <select
+                        value={form.arquivamentoProntuarios || 'Digital / Sistema de Prontuário Eletrônico em Nuvem'}
+                        onChange={(e) => updateField('arquivamentoProntuarios', e.target.value)}
+                        className="form-input"
+                      >
+                        <option value="Digital / Sistema de Prontuário Eletrônico em Nuvem">Digital / Sistema de Prontuário Eletrônico em Nuvem</option>
+                        <option value="Físico em Arquivo Próprio e Seguro">Físico em Arquivo Próprio e Seguro</option>
+                        <option value="Misto (Arquivo Físico e Prontuário Digital)">Misto (Arquivo Físico e Prontuário Digital)</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Histórico de Reclamações e Fatos Conhecidos */}
+              <div className="bg-white border border-gray-200 rounded-2xl p-5 space-y-4 shadow-2xs">
+                <div className="border-b border-gray-100 pb-3">
+                  <h3 className="text-base font-bold text-primary flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-amber-600" />
+                    Histórico de Reclamações e Fatos Conhecidos
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Declarações mandatórias do Termo de Adesão sobre sinistros passados e circunstâncias conhecidas.
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Reclamação Passada */}
+                  <div className={`p-4 rounded-xl border transition-all ${
+                    form.houveReclamacao === 'Sim' ? 'bg-rose-50/50 border-rose-200 shadow-xs' : 'bg-gray-50 border-gray-200'
+                  } space-y-3`}>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <p className="text-sm text-gray-800 font-medium">
+                        Tem conhecimento de alguma reclamação, falha na prestação dos serviços profissionais ou processo administrativo? *
+                      </p>
+                      <div className="inline-flex items-center gap-1.5 shrink-0 bg-gray-200/80 p-1 rounded-xl">
+                        <button
+                          type="button"
+                          onClick={() => updateField('houveReclamacao', 'Não')}
+                          className={`min-w-[60px] min-h-[38px] px-3 text-xs font-semibold rounded-lg cursor-pointer ${
+                            form.houveReclamacao !== 'Sim' ? 'bg-white text-gray-900 shadow-xs font-bold' : 'text-gray-600 hover:text-gray-900'
+                          }`}
+                        >
+                          Não
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateField('houveReclamacao', 'Sim')}
+                          className={`min-w-[60px] min-h-[38px] px-3 text-xs font-semibold rounded-lg cursor-pointer ${
+                            form.houveReclamacao === 'Sim' ? 'bg-rose-600 text-white shadow-xs font-bold' : 'text-gray-600 hover:text-rose-600'
+                          }`}
+                        >
+                          Sim
+                        </button>
+                      </div>
+                    </div>
+
+                    {form.houveReclamacao === 'Sim' && (
+                      <div className="pt-3 border-t border-rose-200 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 animate-fadeIn">
+                        <label className="block">
+                          <span className="field-label text-rose-800">Data Ocorrência</span>
+                          <input
+                            type="date"
+                            value={form.dataOcorrenciaReclamacao || ''}
+                            onChange={(e) => updateField('dataOcorrenciaReclamacao', e.target.value)}
+                            className="form-input text-xs"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="field-label text-rose-800">Data Reclamação</span>
+                          <input
+                            type="date"
+                            value={form.dataReclamacao || ''}
+                            onChange={(e) => updateField('dataReclamacao', e.target.value)}
+                            className="form-input text-xs"
+                          />
+                        </label>
+                        <label className="block sm:col-span-2">
+                          <span className="field-label text-rose-800">Valor Indenizado / Estimado</span>
+                          <input
+                            value={form.valorIndenizado || ''}
+                            onChange={(e) => updateField('valorIndenizado', formatMoneyInput(e.target.value))}
+                            className="form-input text-xs"
+                            placeholder="R$ 0,00"
+                          />
+                        </label>
+                        <label className="block sm:col-span-2 lg:col-span-4">
+                          <span className="field-label text-rose-800">Detalhes da Reclamação *</span>
+                          <textarea
+                            rows={2}
+                            required
+                            value={form.detalhesReclamacao || ''}
+                            onChange={(e) => updateField('detalhesReclamacao', e.target.value)}
+                            className="form-input text-xs"
+                            placeholder="Descreva o procedimento, paciente, alegação e tribunal/conselho..."
+                          />
+                        </label>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Fato Futuro */}
+                  <div className={`p-4 rounded-xl border transition-all ${
+                    form.conhecimentoFato === 'Sim' ? 'bg-rose-50/50 border-rose-200 shadow-xs' : 'bg-gray-50 border-gray-200'
+                  } space-y-3`}>
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <p className="text-sm text-gray-800 font-medium">
+                        Tem conhecimento de algum fato, situação ou circunstância que possa resultar em uma reclamação futura sob a apólice? *
+                      </p>
+                      <div className="inline-flex items-center gap-1.5 shrink-0 bg-gray-200/80 p-1 rounded-xl">
+                        <button
+                          type="button"
+                          onClick={() => updateField('conhecimentoFato', 'Não')}
+                          className={`min-w-[60px] min-h-[38px] px-3 text-xs font-semibold rounded-lg cursor-pointer ${
+                            form.conhecimentoFato !== 'Sim' ? 'bg-white text-gray-900 shadow-xs font-bold' : 'text-gray-600 hover:text-gray-900'
+                          }`}
+                        >
+                          Não
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateField('conhecimentoFato', 'Sim')}
+                          className={`min-w-[60px] min-h-[38px] px-3 text-xs font-semibold rounded-lg cursor-pointer ${
+                            form.conhecimentoFato === 'Sim' ? 'bg-rose-600 text-white shadow-xs font-bold' : 'text-gray-600 hover:text-rose-600'
+                          }`}
+                        >
+                          Sim
+                        </button>
+                      </div>
+                    </div>
+
+                    {form.conhecimentoFato === 'Sim' && (
+                      <div className="pt-3 border-t border-rose-200 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 animate-fadeIn">
+                        <label className="block">
+                          <span className="field-label text-rose-800">Data Ocorrência / Conhecimento</span>
+                          <input
+                            type="date"
+                            value={form.dataOcorrenciaFato || ''}
+                            onChange={(e) => updateField('dataOcorrenciaFato', e.target.value)}
+                            className="form-input text-xs"
+                          />
+                        </label>
+                        <label className="block">
+                          <span className="field-label text-rose-800">Data Notificação</span>
+                          <input
+                            type="date"
+                            value={form.dataReclamacaoFato || ''}
+                            onChange={(e) => updateField('dataReclamacaoFato', e.target.value)}
+                            className="form-input text-xs"
+                          />
+                        </label>
+                        <label className="block sm:col-span-2">
+                          <span className="field-label text-rose-800">Valor Estimado / Expectativa</span>
+                          <input
+                            value={form.valorEstimadoFato || ''}
+                            onChange={(e) => updateField('valorEstimadoFato', formatMoneyInput(e.target.value))}
+                            className="form-input text-xs"
+                            placeholder="R$ 0,00"
+                          />
+                        </label>
+                        <label className="block sm:col-span-2 lg:col-span-4">
+                          <span className="field-label text-rose-800">Detalhes de Fato Gerador *</span>
+                          <textarea
+                            rows={2}
+                            required
+                            value={form.detalhesFato || ''}
+                            onChange={(e) => updateField('detalhesFato', e.target.value)}
+                            className="form-input text-xs"
+                            placeholder="Descreva as circunstâncias, manifestação do paciente ou clínica..."
+                          />
+                        </label>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           )}

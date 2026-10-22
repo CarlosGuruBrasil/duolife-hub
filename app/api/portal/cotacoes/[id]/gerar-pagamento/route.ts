@@ -30,17 +30,36 @@ export async function POST(
   const { id } = await params;
 
   try {
-    // Validação de acesso à cotação
+    // Validação de acesso à cotação com dados de status e assinatura
     const cotacao = publicToken
-      ? (await sql`SELECT id FROM cotacoes WHERE id = ${id} AND source_token = ${publicToken} AND partner_id = ${targetPartnerId}`)[0]
+      ? (await sql`SELECT id, status, client_data, contrato_assinado, flow_key, product_id FROM cotacoes WHERE id = ${id} AND source_token = ${publicToken} AND partner_id = ${targetPartnerId}`)[0]
       : await getAccessibleQuoteById(id, user!);
 
     if (!cotacao) {
       return Response.json({ error: 'Cotação não encontrada' }, { status: 404 });
     }
 
-    const body = (await req.json().catch(() => ({}))) as { billingType?: string };
     const clientData = (cotacao.client_data as Record<string, any>) || {};
+
+    // Trava de obrigatoriedade: o termo deve estar assinado antes da emissão do boleto/pagamento
+    const isSigned =
+      cotacao.status === 'assinado' ||
+      cotacao.status === 'assinada' ||
+      cotacao.status === 'pagamento_gerado' ||
+      cotacao.status === 'aprovada' ||
+      cotacao.status === 'emitida' ||
+      cotacao.status === 'ativa' ||
+      Boolean(clientData.contratoAssinado) ||
+      Boolean(cotacao.contrato_assinado);
+
+    if (!isSigned) {
+      return Response.json(
+        { error: 'É obrigatório assinar o Termo de Adesão antes da geração do boleto de pagamento.' },
+        { status: 422 }
+      );
+    }
+
+    const body = (await req.json().catch(() => ({}))) as { billingType?: string };
     const rawBillingType = body.billingType || clientData.billingType || clientData.formaPagamento;
 
     let billingType = 'UNDEFINED';

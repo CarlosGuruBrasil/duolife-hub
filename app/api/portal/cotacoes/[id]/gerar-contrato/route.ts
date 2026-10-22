@@ -10,6 +10,8 @@ import { getZapSignConfig, sanitizeApiToken } from '@/lib/system-settings';
 import { parseAtuacaoList } from '@/lib/atuacao';
 import { rateLimit, rateLimitResponse } from '@/lib/rate-limit';
 import { gerarContratoPdfBuffer, determinarTipoContrato } from '@/lib/pdf-contract-generator';
+import { getCorretoraParaContrato } from '@/lib/corretora-resolver';
+import { GRUPOS_TARIFARIOS_SAUDE } from '@/lib/product-schemas';
 import { criarDocumentoZapSignDireto, cancelarDocumentoZapSign } from '@/lib/zapsign-direct-docs';
 import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
 
@@ -306,6 +308,44 @@ export async function POST(
     const fatoTerceiros = resolveSimNao(clientData.fatoTerceiros, questionarioRisco.fatoTerceiros);
     const pagouReclamacao = resolveSimNao(clientData.pagouReclamacao, questionarioRisco.pagouReclamacao);
 
+    const corretoraInfo = await getCorretoraParaContrato(cotacao.id);
+
+    const formatCpf = (raw?: string | null): string => {
+      if (!raw) return '';
+      const digits = String(raw).replace(/\D/g, '');
+      if (digits.length === 11) {
+        return digits.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, '$1.$2.$3-$4');
+      }
+      if (digits.length === 14) {
+        return digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5');
+      }
+      return raw;
+    };
+
+    // Especialidade Saúde
+    const grupoCodigoSaude = String(clientData.grupoTarifario || clientData.grupo || '').toUpperCase();
+    const grupoDefSaude = GRUPOS_TARIFARIOS_SAUDE.find((g) => g.id === grupoCodigoSaude || g.codigo === grupoCodigoSaude.toLowerCase());
+    const espSaudeSel = clientData.especialidadeMedica || clientData.especialidade || '';
+    const especialidadeSaudeTexto = grupoDefSaude
+      ? `${grupoDefSaude.label}${espSaudeSel ? ` — ${espSaudeSel}` : ''}`
+      : espSaudeSel || 'Profissional da Saúde / Especialidades Clínicas e Cirúrgicas';
+
+    const houveReclamacaoSaude = resolveSimNao(
+      clientData.houveReclamacao,
+      clientData.reclamacaoErroMedico,
+      clientData.reclamacaoProfissional,
+      questionarioRisco.reclamacaoErroMedico,
+      questionarioRisco.reclamacaoProfissional
+    );
+
+    const conhecimentoFatoSaude = resolveSimNao(
+      clientData.conhecimentoFato,
+      clientData.fatoPotencial,
+      clientData.fatoTerceiros,
+      questionarioRisco.fatoPotencial,
+      questionarioRisco.fatoTerceiros
+    );
+
     // 5. Monta o dicionário de variáveis para o template do ZapSign
     const variaveis: Record<string, string> = {
       // Dados Pessoais
@@ -375,6 +415,52 @@ export async function POST(
       "fatoDetalhe": resolveDetalhe(fatoTerceiros, clientData.fatoDetalhe, questionarioRisco.fatoDetalhe),
       "pagouReclamacao": pagouReclamacao,
       "pagouDetalhe": resolveDetalhe(pagouReclamacao, clientData.pagouDetalhe, questionarioRisco.pagouDetalhe),
+
+      // Termo de Adesão da Saúde (Tags Oficiais do Documento do Usuário)
+      "website": clientData.website || clientData.site || 'Não informado',
+      "cpf-cnpj": formatCpf(cotacao.client_cpf_cnpj),
+      "endereco_completo": `${clientData.logradouro || ''}, ${clientData.numero || 'S/N'}${clientData.complemento ? ` - ${clientData.complemento}` : ''} - ${clientData.bairro || ''}, ${clientData.cidade || ''} - ${clientData.uf || ''}, CEP: ${clientData.cep || ''}`,
+      "data_atividades": formatData(clientData.dataAtividade),
+      "registro_profissional": clientData.crm || clientData.cro || clientData.registroProfissionalNumero || clientData.oab || 'Não informado',
+
+      // Processos Internos e Atendimento
+      "assinam": clientData.assinamConsentimento === 'Não' ? ' ' : 'X',
+      "nao_assinam": clientData.assinamConsentimento === 'Não' ? 'X' : ' ',
+      "domicilio": clientData.prestacaoDomicilio === 'Sim' ? 'X' : ' ',
+      "nao_domicilio": clientData.prestacaoDomicilio === 'Sim' ? ' ' : 'X',
+      "proprio_risco": clientData.auditoriaRisco === 'Não' ? ' ' : 'X',
+      "nao_proprio_risco": clientData.auditoriaRisco === 'Não' ? 'X' : ' ',
+      "atendimentos_mensais": String(clientData.atendimentosMensais || clientData.volumeAtendimentos || '80 atendimentos/mês'),
+      "arquivos_prontuarios": String(clientData.arquivamentoProntuarios || 'Digital / Prontuário Eletrônico em Nuvem'),
+
+      // Especialidades
+      "especialidade": especialidadeSaudeTexto,
+
+      // Renovação do Seguro
+      "renovacao": clientData.isRenovacao === 'Sim' ? 'X' : ' ',
+      "nao_renovacao": clientData.isRenovacao === 'Sim' ? ' ' : 'X',
+
+      // Histórico de Reclamações (Página 1)
+      "houve_reclamacao": houveReclamacaoSaude === 'Sim' ? 'X' : ' ',
+      "nao_houve_reclamacao": houveReclamacaoSaude === 'Sim' ? ' ' : 'X',
+      "data_ocorrencia": houveReclamacaoSaude === 'Sim' ? (clientData.dataOcorrenciaReclamacao || formatData(clientData.dataOcorrencia) || 'Não informada') : 'Não se aplica',
+      "data_reclamacao": houveReclamacaoSaude === 'Sim' ? (clientData.dataReclamacao || 'Não informada') : 'Não se aplica',
+      "detalhes_reclamacao": houveReclamacaoSaude === 'Sim' ? (clientData.detalhesReclamacao || clientData.reclamacaoErroMedicoDetalhe || clientData.reclamacaoDetalhe || 'Não informado') : 'Sem histórico de reclamações',
+      "valor_indenizado": houveReclamacaoSaude === 'Sim' ? (clientData.valorIndenizado ? (String(clientData.valorIndenizado).startsWith('R$') ? clientData.valorIndenizado : formatMoeda(clientData.valorIndenizado)) : 'R$ 0,00') : 'R$ 0,00',
+      "status_atual": houveReclamacaoSaude === 'Sim' ? (clientData.statusReclamacao || 'Regular') : 'Regular',
+
+      // Histórico de Fatos Conhecidos (Página 2)
+      "conhecimento_fato": conhecimentoFatoSaude === 'Sim' ? 'X' : ' ',
+      "sem_conhecimento_fato": conhecimentoFatoSaude === 'Sim' ? ' ' : 'X',
+      "data_ocorrencia_conhecimento": conhecimentoFatoSaude === 'Sim' ? (clientData.dataOcorrenciaFato || 'Não informada') : 'Não se aplica',
+      "data_reclamacao_conhecimento": conhecimentoFatoSaude === 'Sim' ? (clientData.dataReclamacaoFato || 'Não informada') : 'Não se aplica',
+      "detalhes_reclamacao_conhecimento": conhecimentoFatoSaude === 'Sim' ? (clientData.detalhesFato || clientData.fatoPotencialDetalhe || clientData.fatoDetalhe || 'Não informado') : 'Sem fatos conhecidos',
+      "valor_indenizado_conhecimento": conhecimentoFatoSaude === 'Sim' ? (clientData.valorEstimadoFato ? (String(clientData.valorEstimadoFato).startsWith('R$') ? clientData.valorEstimadoFato : formatMoeda(clientData.valorEstimadoFato)) : 'R$ 0,00') : 'R$ 0,00',
+      "status_atual_conhecimento": conhecimentoFatoSaude === 'Sim' ? (clientData.statusFato || 'Regular') : 'Regular',
+
+      // Corretora e Cidade
+      "cidadeCorretora": corretoraInfo.cidade || 'São Paulo',
+      "corretora": corretoraInfo.nomeFantasia || corretoraInfo.razaoSocial,
 
       // Variáveis do Plano / Parcelamento
       // "valor" é o prêmio à vista; "valorTotalParcelado" é o total efetivamente cobrado quando parcelado

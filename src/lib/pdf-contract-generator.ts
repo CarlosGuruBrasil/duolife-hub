@@ -7,7 +7,7 @@ import { calcularPrecoServidor } from './pricing';
 import { getCorretoraParaContrato, CorretoraContratoInfo } from './corretora-resolver';
 import { parseAtuacaoList } from './atuacao';
 import { logger } from './logger';
-import { getRamoConfig, rcAdvogadosConfig, rcMedicosConfig, type RamoConfig } from './product-schemas';
+import { getRamoConfig, rcAdvogadosConfig, rcMedicosConfig, GRUPOS_TARIFARIOS_SAUDE, type RamoConfig } from './product-schemas';
 
 export interface ContratoPdfResult {
   buffer: Buffer;
@@ -33,7 +33,7 @@ export interface ContratoPdfResult {
   };
 }
 
-export type TipoContratoPdf = '100k' | '100k_renovacao' | 'oficial';
+export type TipoContratoPdf = '100k' | '100k_renovacao' | 'oficial' | 'termo_saude';
 
 export interface RenderContratoPdfParams {
   cotacao: {
@@ -187,10 +187,11 @@ export function determinarTipoContrato(
     clientData.flowKey === 'rc-medicos' ||
     (cotacao as any)?.flow_key === 'rc_medicos_v1' ||
     (cotacao as any)?.flow_key === 'rc-medicos' ||
-    (cotacao as any)?.product_id === 'prod-rc-med-001';
+    (cotacao as any)?.product_id === 'prod-rc-med-001' ||
+    Boolean(clientData.grupoTarifario);
 
   if (isMedico) {
-    return 'oficial';
+    return 'termo_saude';
   }
 
   const is100k =
@@ -1022,6 +1023,389 @@ function renderProposta100kRenovacao(
     y,
     params.condicoes.corretora,
     params.proponenteData.nome,
+    params.cidadeDataStr,
+    fontRegular,
+    fontBold
+  );
+}
+
+// =========================================================================
+// RENDERIZADOR: SEGURO RC PROFISSIONAIS DE SAÚDE - TERMO DE ADESÃO (2 PÁGINAS)
+// Modelo Oficial KEV / DuoLife para Médicos e Profissionais da Saúde
+// =========================================================================
+function renderTermoSaude(
+  pdfDoc: PDFDocument,
+  pageWidth: number,
+  pageHeight: number,
+  assets: LoadedAssets,
+  params: {
+    cotacao: any;
+    clientData: any;
+    corretora: CorretoraContratoInfo;
+    condicoes: any;
+    cidadeDataStr: string;
+    proponenteData: any;
+    seguroAnterior: any;
+    ramoConfig?: RamoConfig | null;
+  },
+  fontRegular: PDFFont,
+  fontBold: PDFFont,
+  colorGrayHeader: Color,
+  colorWhite: Color,
+  colorBorder: Color
+) {
+  const contentX = 40.0;
+  const contentW = pageWidth - 80.0; // 515.28 pt
+
+  const { clientData, cotacao, corretora, condicoes, proponenteData, seguroAnterior } = params;
+
+  // Resolução de campos de Processos Internos
+  const assinam = clientData.assinamConsentimento === 'Não' ? 'Não' : 'Sim';
+  const domicilio = clientData.prestacaoDomicilio === 'Sim' ? 'Sim' : 'Não';
+  const proprioRisco = clientData.auditoriaRisco === 'Não' ? 'Não' : 'Sim';
+  const atendimentosMensais = String(clientData.atendimentosMensais || clientData.volumeAtendimentos || '80 atendimentos/mês');
+  const arquivosProntuarios = String(clientData.arquivamentoProntuarios || 'Digital / Prontuário Eletrônico em Nuvem');
+
+  // Especialidade e Categoria
+  const grupoCodigo = String(clientData.grupoTarifario || clientData.grupo || '').toUpperCase();
+  const grupoDef = GRUPOS_TARIFARIOS_SAUDE.find((g) => g.id === grupoCodigo || g.codigo === grupoCodigo.toLowerCase());
+  const espSelecionada = clientData.especialidadeMedica || clientData.especialidade || '';
+  const especialidadeTexto = grupoDef
+    ? `${grupoDef.label}${espSelecionada ? ` — ${espSelecionada}` : ''}`
+    : espSelecionada || 'Profissional da Saúde / Especialidades Clínicas e Cirúrgicas';
+
+  // Informações de Renovação
+  const isRenovacao =
+    clientData.isRenovacao === 'Sim' ||
+    clientData.renovacao === true ||
+    clientData.renovacao === 'true' ||
+    clientData.renovacao === 'Sim' ||
+    Boolean(cotacao.is_renewal);
+
+  // Histórico de Reclamações (Página 1)
+  const questionarioRisco = (clientData.questionarioRisco && typeof clientData.questionarioRisco === 'object'
+    ? clientData.questionarioRisco
+    : {}) as Record<string, any>;
+
+  const resolveSimNao = (...candidates: any[]): 'Sim' | 'Não' => {
+    for (const raw of candidates) {
+      if (raw === undefined || raw === null || raw === '') continue;
+      if (raw === true || raw === 1) return 'Sim';
+      if (raw === false || raw === 0) return 'Não';
+      const norm = String(raw).trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      if (!norm) continue;
+      if (['sim', 's', 'true', '1', 'yes', 'y'].includes(norm)) return 'Sim';
+      if (['nao', 'n', 'false', '0', 'no'].includes(norm)) return 'Não';
+    }
+    return 'Não';
+  };
+
+  const houveReclamacao = resolveSimNao(
+    clientData.houveReclamacao,
+    clientData.reclamacaoErroMedico,
+    clientData.reclamacaoProfissional,
+    questionarioRisco.reclamacaoErroMedico,
+    questionarioRisco.reclamacaoProfissional
+  );
+
+  const dataOcorrencia = houveReclamacao === 'Sim'
+    ? (clientData.dataOcorrenciaReclamacao || formatData(clientData.dataOcorrencia) || 'Não informada')
+    : 'Não se aplica';
+  const dataReclamacao = houveReclamacao === 'Sim'
+    ? (clientData.dataReclamacao || 'Não informada')
+    : 'Não se aplica';
+  const detalhesReclamacao = houveReclamacao === 'Sim'
+    ? (clientData.detalhesReclamacao || clientData.reclamacaoErroMedicoDetalhe || clientData.reclamacaoDetalhe || 'Não informado')
+    : 'Sem histórico de reclamações';
+  const valorIndenizado = houveReclamacao === 'Sim'
+    ? (clientData.valorIndenizado ? (String(clientData.valorIndenizado).startsWith('R$') ? clientData.valorIndenizado : formatMoeda(clientData.valorIndenizado)) : 'R$ 0,00')
+    : 'R$ 0,00';
+  const statusAtualReclamacao = houveReclamacao === 'Sim'
+    ? (clientData.statusReclamacao || 'Regular')
+    : 'Regular';
+
+  // Histórico de Fatos Conhecidos (Página 2)
+  const conhecimentoFato = resolveSimNao(
+    clientData.conhecimentoFato,
+    clientData.fatoPotencial,
+    clientData.fatoTerceiros,
+    questionarioRisco.fatoPotencial,
+    questionarioRisco.fatoTerceiros
+  );
+
+  const dataFato = conhecimentoFato === 'Sim'
+    ? (clientData.dataOcorrenciaFato || 'Não informada')
+    : 'Não se aplica';
+  const dataReclamacaoFato = conhecimentoFato === 'Sim'
+    ? (clientData.dataReclamacaoFato || 'Não informada')
+    : 'Não se aplica';
+  const detalhesFato = conhecimentoFato === 'Sim'
+    ? (clientData.detalhesFato || clientData.fatoPotencialDetalhe || clientData.fatoDetalhe || 'Não informado')
+    : 'Sem fatos conhecidos';
+  const valorEstimadoFato = conhecimentoFato === 'Sim'
+    ? (clientData.valorEstimadoFato ? (String(clientData.valorEstimadoFato).startsWith('R$') ? clientData.valorEstimadoFato : formatMoeda(clientData.valorEstimadoFato)) : 'R$ 0,00')
+    : 'R$ 0,00';
+  const statusAtualFato = conhecimentoFato === 'Sim'
+    ? (clientData.statusFato || 'Regular')
+    : 'Regular';
+
+  // =======================================================================
+  // --- PÁGINA 1: CABEÇALHO, PROPONENTE, PROCESSOS, ESPECIALIDADE, RENOVAÇÃO, RECLAMAÇÃO ---
+  // =======================================================================
+  const page1 = pdfDoc.addPage([pageWidth, pageHeight]);
+  renderTimbradoHeaderAndFooter(page1, pageWidth, pageHeight, assets, corretora, fontRegular, fontBold);
+
+  let y1 = 78.0;
+
+  // Títulos Oficiais do Termo de Adesão da Saúde
+  const t1 = 'Seguro de Responsabilidade Civil para Profissionais de Saúde';
+  const t1W = fontBold.widthOfTextAtSize(t1, 11.5);
+  page1.drawText(t1, {
+    x: (pageWidth - t1W) / 2,
+    y: pageHeight - y1 - 11.5,
+    size: 11.5,
+    font: fontBold,
+    color: rgb(0.08, 0.08, 0.08),
+  });
+
+  const t2 = 'Termo de Adesão por parte do Profissional de Saúde';
+  const t2W = fontRegular.widthOfTextAtSize(t2, 10.0);
+  page1.drawText(t2, {
+    x: (pageWidth - t2W) / 2,
+    y: pageHeight - y1 - 27.0,
+    size: 10.0,
+    font: fontRegular,
+    color: rgb(0.25, 0.25, 0.25),
+  });
+  y1 += 38.0;
+
+  // 1. PROPONENTE
+  y1 = drawSectionHeader(page1, pageHeight, contentX, y1, contentW, 'PROPONENTE', fontBold, colorGrayHeader, colorBorder);
+
+  const rowH = 16.0;
+  // Linha 1: Nome, Website, CNPJ/CPF
+  const wNomeLbl = 45.0;
+  const wNomeVal = 185.0;
+  const wWebLbl = 55.0;
+  const wWebVal = 105.0;
+  const wCpfLbl = 60.0;
+  const wCpfVal = contentW - (wNomeLbl + wNomeVal + wWebLbl + wWebVal + wCpfLbl);
+
+  drawCell(page1, pageHeight, { x: contentX, y: y1, w: wNomeLbl, h: rowH, text: 'Nome:', font: fontBold, fontSize: 7.7, bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + wNomeLbl, y: y1, w: wNomeVal, h: rowH, text: proponenteData.nome, font: fontBold, fontSize: 7.5, bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + wNomeLbl + wNomeVal, y: y1, w: wWebLbl, h: rowH, text: 'Website:', font: fontBold, fontSize: 7.7, bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + wNomeLbl + wNomeVal + wWebLbl, y: y1, w: wWebVal, h: rowH, text: clientData.website || clientData.site || 'Não informado', font: fontRegular, fontSize: 7.5, bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + wNomeLbl + wNomeVal + wWebLbl + wWebVal, y: y1, w: wCpfLbl, h: rowH, text: 'CNPJ/CPF:', font: fontBold, fontSize: 7.7, bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + wNomeLbl + wNomeVal + wWebLbl + wWebVal + wCpfLbl, y: y1, w: wCpfVal, h: rowH, text: proponenteData.cpf, font: fontRegular, fontSize: 7.5, bgColor: colorWhite, borderColor: colorBorder });
+  y1 += rowH;
+
+  // Linha 2: Endereço Completo
+  const wEndLbl = 60.0;
+  const wEndVal = contentW - wEndLbl;
+  drawCell(page1, pageHeight, { x: contentX, y: y1, w: wEndLbl, h: rowH, text: 'Endereço:', font: fontBold, fontSize: 7.7, bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + wEndLbl, y: y1, w: wEndVal, h: rowH, text: proponenteData.enderecoCompleto, font: fontRegular, fontSize: 7.5, bgColor: colorWhite, borderColor: colorBorder });
+  y1 += rowH;
+
+  // Linha 3: Início das atividades e Reg. Profissional
+  const wAtivLbl = 110.0;
+  const wAtivVal = 145.0;
+  const wRegLbl = 100.0;
+  const wRegVal = contentW - (wAtivLbl + wAtivVal + wRegLbl);
+  const regProfissionalTexto = proponenteData.registroValor || clientData.crm || clientData.cro || clientData.registroProfissionalNumero || 'Não informado';
+
+  drawCell(page1, pageHeight, { x: contentX, y: y1, w: wAtivLbl, h: rowH, text: 'Início das atividades:', font: fontBold, fontSize: 7.7, bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + wAtivLbl, y: y1, w: wAtivVal, h: rowH, text: proponenteData.inicioProfissional, font: fontRegular, fontSize: 7.5, bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + wAtivLbl + wAtivVal, y: y1, w: wRegLbl, h: rowH, text: 'Reg. Profissional:', font: fontBold, fontSize: 7.7, bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + wAtivLbl + wAtivVal + wRegLbl, y: y1, w: wRegVal, h: rowH, text: regProfissionalTexto, font: fontRegular, fontSize: 7.5, bgColor: colorWhite, borderColor: colorBorder });
+  y1 += rowH + 6.0;
+
+  // 2. PROCESSOS INTERNOS E ATENDIMENTO
+  y1 = drawSectionHeader(page1, pageHeight, contentX, y1, contentW, 'PROCESSOS INTERNOS E ATENDIMENTO', fontBold, colorGrayHeader, colorBorder);
+
+  const procLblW = 390.0;
+  const procValW = contentW - procLblW; // 125.28
+
+  // Pergunta 1: Consentimento
+  drawCell(page1, pageHeight, { x: contentX, y: y1, w: procLblW, h: rowH, text: 'Pacientes assinam termo de consentimento em procedimentos invasivos?', font: fontBold, fontSize: 7.3, bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + procLblW, y: y1, w: procValW, h: rowH, text: `Sim ( ${assinam === 'Sim' ? 'X' : ' '} )   |   Não ( ${assinam === 'Não' ? 'X' : ' '} )`, font: fontBold, fontSize: 7.4, align: 'center', bgColor: colorWhite, borderColor: colorBorder });
+  y1 += rowH;
+
+  // Pergunta 2: Domicílio
+  drawCell(page1, pageHeight, { x: contentX, y: y1, w: procLblW, h: rowH, text: 'Há prestação de serviço em domicílio?', font: fontBold, fontSize: 7.3, bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + procLblW, y: y1, w: procValW, h: rowH, text: `Sim ( ${domicilio === 'Sim' ? 'X' : ' '} )   |   Não ( ${domicilio === 'Não' ? 'X' : ' '} )`, font: fontBold, fontSize: 7.4, align: 'center', bgColor: colorWhite, borderColor: colorBorder });
+  y1 += rowH;
+
+  // Pergunta 3: Gestão de risco
+  drawCell(page1, pageHeight, { x: contentX, y: y1, w: procLblW, h: rowH, text: 'Realiza auditorias e possui procedimentos para gerenciamento do próprio risco?', font: fontBold, fontSize: 7.3, bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + procLblW, y: y1, w: procValW, h: rowH, text: `Sim ( ${proprioRisco === 'Sim' ? 'X' : ' '} )   |   Não ( ${proprioRisco === 'Não' ? 'X' : ' '} )`, font: fontBold, fontSize: 7.4, align: 'center', bgColor: colorWhite, borderColor: colorBorder });
+  y1 += rowH;
+
+  // Pergunta 4: Média atendimentos
+  drawCell(page1, pageHeight, { x: contentX, y: y1, w: procLblW, h: rowH, text: 'Qual o número médio de atendimentos mensais?', font: fontBold, fontSize: 7.3, bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + procLblW, y: y1, w: procValW, h: rowH, text: atendimentosMensais, font: fontRegular, fontSize: 7.4, align: 'center', bgColor: colorWhite, borderColor: colorBorder });
+  y1 += rowH;
+
+  // Pergunta 5: Arquivamento prontuários
+  const prontLblW = 240.0;
+  const prontValW = contentW - prontLblW;
+  drawCell(page1, pageHeight, { x: contentX, y: y1, w: prontLblW, h: rowH, text: 'Como são arquivadas as fichas e prontuários dos pacientes?', font: fontBold, fontSize: 7.3, bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + prontLblW, y: y1, w: prontValW, h: rowH, text: arquivosProntuarios, font: fontRegular, fontSize: 7.3, bgColor: colorWhite, borderColor: colorBorder });
+  y1 += rowH + 6.0;
+
+  // 3. ESPECIALIDADES EXERCIDAS OBJETO DE COBERTA
+  y1 = drawSectionHeader(page1, pageHeight, contentX, y1, contentW, 'ESPECIALIDADES EXERCIDAS OBJETO DE COBERTA', fontBold, colorGrayHeader, colorBorder);
+  drawCell(page1, pageHeight, { x: contentX, y: y1, w: contentW, h: 18.0, text: especialidadeTexto, font: fontBold, fontSize: 7.6, bgColor: colorWhite, borderColor: colorBorder, paddingX: 8 });
+  y1 += 24.0;
+
+  // 4. INFORMAÇÕES DE RENOVAÇÃO DO SEGURO
+  y1 = drawSectionHeader(page1, pageHeight, contentX, y1, contentW, 'INFORMAÇÕES DE RENOVAÇÃO DO SEGURO', fontBold, colorGrayHeader, colorBorder);
+
+  // Linha 1 Renovação: Sim / Não
+  const renLblW = 85.0;
+  const renValW = contentW - renLblW;
+  drawCell(page1, pageHeight, { x: contentX, y: y1, w: renLblW, h: rowH, text: 'É renovação:', font: fontBold, fontSize: 7.7, bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + renLblW, y: y1, w: renValW, h: rowH, text: `SIM ( ${isRenovacao ? 'X' : ' '} )   |   NÃO ( ${!isRenovacao ? 'X' : ' '} )`, font: fontBold, fontSize: 7.5, bgColor: colorWhite, borderColor: colorBorder });
+  y1 += rowH;
+
+  // Linha 2 Renovação: Seguradora, Prêmio, Vigência, Retroatividade
+  const wSegLbl = 65.0;
+  const wSegVal = 85.0;
+  const wPremLbl = 45.0;
+  const wPremVal = 65.0;
+  const wVigLbl = 50.0;
+  const wVigVal = 70.0;
+  const wRetLbl = 70.0;
+  const wRetVal = contentW - (wSegLbl + wSegVal + wPremLbl + wPremVal + wVigLbl + wVigVal + wRetLbl); // 65.28
+
+  const premioRenovacaoStr = clientData.premioAnterior || clientData.premio
+    ? (String(clientData.premioAnterior || clientData.premio).startsWith('R$') ? String(clientData.premioAnterior || clientData.premio) : formatMoeda(clientData.premioAnterior || clientData.premio))
+    : (isRenovacao ? seguroAnterior.limite : 'Não informado');
+
+  drawCell(page1, pageHeight, { x: contentX, y: y1, w: wSegLbl, h: rowH, text: 'Seguradora:', font: fontBold, fontSize: 7.5, bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + wSegLbl, y: y1, w: wSegVal, h: rowH, text: isRenovacao ? seguroAnterior.seguradora : 'Não se aplica', font: fontRegular, fontSize: 7.3, bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + wSegLbl + wSegVal, y: y1, w: wPremLbl, h: rowH, text: 'Prêmio:', font: fontBold, fontSize: 7.5, bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + wSegLbl + wSegVal + wPremLbl, y: y1, w: wPremVal, h: rowH, text: isRenovacao ? premioRenovacaoStr : 'Não se aplica', font: fontRegular, fontSize: 7.3, bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + wSegLbl + wSegVal + wPremLbl + wPremVal, y: y1, w: wVigLbl, h: rowH, text: 'Vigência:', font: fontBold, fontSize: 7.5, bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + wSegLbl + wSegVal + wPremLbl + wPremVal + wVigLbl, y: y1, w: wVigVal, h: rowH, text: isRenovacao ? seguroAnterior.vigencia : 'Não se aplica', font: fontRegular, fontSize: 7.3, bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + wSegLbl + wSegVal + wPremLbl + wPremVal + wVigLbl + wVigVal, y: y1, w: wRetLbl, h: rowH, text: 'Retroatividade:', font: fontBold, fontSize: 7.5, bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + wSegLbl + wSegVal + wPremLbl + wPremVal + wVigLbl + wVigVal + wRetLbl, y: y1, w: wRetVal, h: rowH, text: isRenovacao ? seguroAnterior.dataRetroativa : 'Não se aplica', font: fontRegular, fontSize: 7.3, bgColor: colorWhite, borderColor: colorBorder });
+  y1 += rowH + 6.0;
+
+  // 5. HISTÓRICO DE RECLAMAÇÕES E FATOS CONHECIDOS (PÁGINA 1)
+  y1 = drawSectionHeader(page1, pageHeight, contentX, y1, contentW, 'HISTÓRICO DE RECLAMAÇÕES E FATOS CONHECIDOS', fontBold, colorGrayHeader, colorBorder);
+
+  // Pergunta 1: Reclamação
+  const recLblW = 390.0;
+  const recValW = contentW - recLblW;
+  drawCell(page1, pageHeight, { x: contentX, y: y1, w: recLblW, h: rowH, text: 'Conhecimento de reclamação, falha na prestação dos serviços ou processo administrativo?', font: fontBold, fontSize: 7.1, bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + recLblW, y: y1, w: recValW, h: rowH, text: `SIM ( ${houveReclamacao === 'Sim' ? 'X' : ' '} )   |   NÃO ( ${houveReclamacao === 'Não' ? 'X' : ' '} )`, font: fontBold, fontSize: 7.4, align: 'center', bgColor: colorWhite, borderColor: colorBorder });
+  y1 += rowH;
+
+  // Subtítulo da Tabela
+  drawCell(page1, pageHeight, { x: contentX, y: y1, w: contentW, h: 14.0, text: 'Detalhes da Reclamação:', font: fontBold, fontSize: 7.2, bgColor: rgb(0.97, 0.97, 0.97), borderColor: colorBorder });
+  y1 += 14.0;
+
+  // Header da Tabela (5 Colunas)
+  const colRec1 = 75.0;  // Data Ocorrência
+  const colRec2 = 75.0;  // Data Reclamação
+  const colRec3 = 215.28; // Detalhes
+  const colRec4 = 80.0;  // Valor Indenizado
+  const colRec5 = 70.0;  // Status Atual
+  const tblHeaderH = 15.0;
+
+  drawCell(page1, pageHeight, { x: contentX, y: y1, w: colRec1, h: tblHeaderH, text: 'Data Ocorrência', font: fontBold, fontSize: 6.9, align: 'center', bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + colRec1, y: y1, w: colRec2, h: tblHeaderH, text: 'Data Reclamação', font: fontBold, fontSize: 6.9, align: 'center', bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + colRec1 + colRec2, y: y1, w: colRec3, h: tblHeaderH, text: 'Detalhes da Reclamação', font: fontBold, fontSize: 6.9, bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + colRec1 + colRec2 + colRec3, y: y1, w: colRec4, h: tblHeaderH, text: 'Valor Indenizado', font: fontBold, fontSize: 6.9, align: 'center', bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + colRec1 + colRec2 + colRec3 + colRec4, y: y1, w: colRec5, h: tblHeaderH, text: 'Status Atual', font: fontBold, fontSize: 6.9, align: 'center', bgColor: colorGrayHeader, borderColor: colorBorder });
+  y1 += tblHeaderH;
+
+  // Dados da Tabela
+  const tblRowH = 18.0;
+  drawCell(page1, pageHeight, { x: contentX, y: y1, w: colRec1, h: tblRowH, text: dataOcorrencia, font: fontRegular, fontSize: 7.0, align: 'center', bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + colRec1, y: y1, w: colRec2, h: tblRowH, text: dataReclamacao, font: fontRegular, fontSize: 7.0, align: 'center', bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + colRec1 + colRec2, y: y1, w: colRec3, h: tblRowH, text: detalhesReclamacao, font: fontRegular, fontSize: 7.0, bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + colRec1 + colRec2 + colRec3, y: y1, w: colRec4, h: tblRowH, text: valorIndenizado, font: fontRegular, fontSize: 7.0, align: 'center', bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page1, pageHeight, { x: contentX + colRec1 + colRec2 + colRec3 + colRec4, y: y1, w: colRec5, h: tblRowH, text: statusAtualReclamacao, font: fontRegular, fontSize: 7.0, align: 'center', bgColor: colorWhite, borderColor: colorBorder });
+
+  // =======================================================================
+  // --- PÁGINA 2: FATOS CONHECIDOS, DECLARAÇÃO, CONDIÇÕES E ASSINATURAS ---
+  // =======================================================================
+  const page2 = pdfDoc.addPage([pageWidth, pageHeight]);
+  renderTimbradoHeaderAndFooter(page2, pageWidth, pageHeight, assets, corretora, fontRegular, fontBold);
+
+  let y2 = 78.0;
+
+  // 1. HISTÓRICO DE RECLAMAÇÕES E FATOS CONHECIDOS (CONTINUAÇÃO)
+  y2 = drawSectionHeader(page2, pageHeight, contentX, y2, contentW, 'HISTÓRICO DE RECLAMAÇÕES E FATOS CONHECIDOS', fontBold, colorGrayHeader, colorBorder);
+
+  // Pergunta 2: Fato gerador futuro
+  drawCell(page2, pageHeight, { x: contentX, y: y2, w: recLblW, h: rowH, text: 'Conhecimento de fato que possa gerar reclamação futura?', font: fontBold, fontSize: 7.3, bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page2, pageHeight, { x: contentX + recLblW, y: y2, w: recValW, h: rowH, text: `SIM ( ${conhecimentoFato === 'Sim' ? 'X' : ' '} )   |   NÃO ( ${conhecimentoFato === 'Não' ? 'X' : ' '} )`, font: fontBold, fontSize: 7.4, align: 'center', bgColor: colorWhite, borderColor: colorBorder });
+  y2 += rowH;
+
+  // Subtítulo da Tabela
+  drawCell(page2, pageHeight, { x: contentX, y: y2, w: contentW, h: 14.0, text: 'Detalhes de Fato Gerador:', font: fontBold, fontSize: 7.2, bgColor: rgb(0.97, 0.97, 0.97), borderColor: colorBorder });
+  y2 += 14.0;
+
+  // Header da Tabela (5 Colunas)
+  const colFat1 = 85.0;  // Data Ocorrência / Conhecimento
+  const colFat2 = 75.0;  // Data Reclamação
+  const colFat3 = 205.28; // Detalhes do Fato
+  const colFat4 = 80.0;  // Valor Estimado
+  const colFat5 = 70.0;  // Status Atual
+
+  drawCell(page2, pageHeight, { x: contentX, y: y2, w: colFat1, h: tblHeaderH, text: 'Data Ocorrência / Conhecimento', font: fontBold, fontSize: 6.7, align: 'center', bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page2, pageHeight, { x: contentX + colFat1, y: y2, w: colFat2, h: tblHeaderH, text: 'Data Reclamação', font: fontBold, fontSize: 6.9, align: 'center', bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page2, pageHeight, { x: contentX + colFat1 + colFat2, y: y2, w: colFat3, h: tblHeaderH, text: 'Detalhes de Fato Gerador', font: fontBold, fontSize: 6.9, bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page2, pageHeight, { x: contentX + colFat1 + colFat2 + colFat3, y: y2, w: colFat4, h: tblHeaderH, text: 'Valor Estimado', font: fontBold, fontSize: 6.9, align: 'center', bgColor: colorGrayHeader, borderColor: colorBorder });
+  drawCell(page2, pageHeight, { x: contentX + colFat1 + colFat2 + colFat3 + colFat4, y: y2, w: colFat5, h: tblHeaderH, text: 'Status Atual', font: fontBold, fontSize: 6.9, align: 'center', bgColor: colorGrayHeader, borderColor: colorBorder });
+  y2 += tblHeaderH;
+
+  // Dados da Tabela
+  drawCell(page2, pageHeight, { x: contentX, y: y2, w: colFat1, h: tblRowH, text: dataFato, font: fontRegular, fontSize: 7.0, align: 'center', bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page2, pageHeight, { x: contentX + colFat1, y: y2, w: colFat2, h: tblRowH, text: dataReclamacaoFato, font: fontRegular, fontSize: 7.0, align: 'center', bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page2, pageHeight, { x: contentX + colFat1 + colFat2, y: y2, w: colFat3, h: tblRowH, text: detalhesFato, font: fontRegular, fontSize: 7.0, bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page2, pageHeight, { x: contentX + colFat1 + colFat2 + colFat3, y: y2, w: colFat4, h: tblRowH, text: valorEstimadoFato, font: fontRegular, fontSize: 7.0, align: 'center', bgColor: colorWhite, borderColor: colorBorder });
+  drawCell(page2, pageHeight, { x: contentX + colFat1 + colFat2 + colFat3 + colFat4, y: y2, w: colFat5, h: tblRowH, text: statusAtualFato, font: fontRegular, fontSize: 7.0, align: 'center', bgColor: colorWhite, borderColor: colorBorder });
+  y2 += tblRowH + 8.0;
+
+  // 2. DECLARAÇÃO DO PROPONENTE
+  y2 = drawSectionHeader(page2, pageHeight, contentX, y2, contentW, 'DECLARAÇÃO DO PROPONENTE', fontBold, colorGrayHeader, colorBorder);
+
+  const textoDeclaracaoSaude =
+    'O Proponente, ao optar pelo pagamento do prêmio do seguro especificado na presente proposta, declara estar ciente das condições gerais do produto, do limite de indenização representado pela "importância segurada" e do valor da franquia aplicável por evento reclamado. Declara, ainda, estar ciente que a Cobertura da Apólice é à base de Reclamações com Notificação. Declara, por fim, sua concordância que o seu Certificado de participação na apólice estipulada pela DUOLIFE PLATAFORMA DE NEGÓCIOS seja emitido unicamente na forma digital que será disponibilizado para acesso após a sua emissão.';
+
+  y2 = drawTextCard(
+    page2,
+    pageHeight,
+    contentX,
+    y2,
+    contentW,
+    64.0,
+    textoDeclaracaoSaude,
+    fontRegular,
+    7.6,
+    11.2,
+    colorWhite,
+    colorBorder,
+    rgb(0.12, 0.12, 0.12)
+  );
+  y2 += 6.0;
+
+  // 3. CONDIÇÕES DE COMERCIALIZAÇÃO
+  y2 = drawSectionHeader(page2, pageHeight, contentX, y2, contentW, 'CONDIÇÕES DE COMERCIALIZAÇÃO', fontBold, colorGrayHeader, colorBorder);
+  y2 = drawCondicoesComercializacao(page2, pageHeight, contentX, y2, contentW, condicoes, fontRegular, fontBold, colorGrayHeader, colorWhite, colorBorder);
+  y2 += 22.0;
+
+  // 4. ASSINATURAS COM ÂNCORAS ZAPSIGN
+  drawAssinaturas(
+    page2,
+    pageWidth,
+    pageHeight,
+    y2,
+    condicoes.corretora,
+    proponenteData.nome,
     params.cidadeDataStr,
     fontRegular,
     fontBold
@@ -1954,7 +2338,29 @@ export async function renderContratoPdf(params: RenderContratoPdfParams): Promis
   // --- SELEÇÃO DO MODELO DE CONTRATO ---
   const tipoContrato = determinarTipoContrato(clientData, cotacao);
 
-  if (tipoContrato === '100k') {
+  if (tipoContrato === 'termo_saude') {
+    renderTermoSaude(
+      pdfDoc,
+      pageWidth,
+      pageHeight,
+      assets,
+      {
+        cotacao,
+        clientData,
+        corretora,
+        condicoes,
+        cidadeDataStr,
+        proponenteData,
+        seguroAnterior,
+        ramoConfig,
+      },
+      fontRegular,
+      fontBold,
+      colorGrayHeader,
+      colorWhite,
+      colorBorder
+    );
+  } else if (tipoContrato === '100k') {
     renderProposta100kNovo(
       pdfDoc,
       pageWidth,
@@ -2118,13 +2524,15 @@ export async function renderContratoPdf(params: RenderContratoPdfParams): Promis
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-zA-Z0-9]/g, '_');
   const idCurto = cotacao.id.slice(0, 8).toUpperCase();
-  const tipoDocSufixo = isMedico
-    ? 'Medico_Oficial'
-    : tipoContrato === '100k'
-      ? '100k'
-      : tipoContrato === '100k_renovacao'
-        ? '100k_Renovacao'
-        : 'Oficial';
+  const tipoDocSufixo = tipoContrato === 'termo_saude'
+    ? 'Saude_TermoAdesao'
+    : isMedico
+      ? 'Medico_Oficial'
+      : tipoContrato === '100k'
+        ? '100k'
+        : tipoContrato === '100k_renovacao'
+          ? '100k_Renovacao'
+          : 'Oficial';
 
   const docName = `Proposta_RC_${tipoDocSufixo}_${corretora.nomeFantasia.replace(/[^a-zA-Z0-9]/g, '')}_${cleanClientName}_${idCurto}.pdf`;
 
