@@ -494,21 +494,21 @@ export async function POST(
       // 6a. Geração de contrato dinâmico em PDF com marca e dados da corretora (2 signatários: Corretora e Proponente)
       const pdfData = await gerarContratoPdfBuffer(cotacao.id);
 
-      const signatarioCorretora = {
-        nome: pdfData.signatarioCorretora?.nome || 'Corretora',
-        email: pdfData.signatarioCorretora?.email || 'contato@net4life.com.br',
-        phone: pdfData.signatarioCorretora?.phone || null,
-        order: 1,
-        signaturePattern: '{{assinatura_corretora}}',
-        sendAutomaticEmail: true,
-      };
-
       const signatarioProponente = {
         nome: pdfData.signatarioProponente?.nome || cotacao.client_name,
         email: pdfData.signatarioProponente?.email || cotacao.client_email || 'suporte@duolife.net.br',
         phone: pdfData.signatarioProponente?.phone || cotacao.client_phone || null,
-        order: 2,
+        order: undefined, // Sem restrição sequencial: proponente assina imediatamente no checkout/portal
         signaturePattern: '{{assinatura_proponente}}',
+        sendAutomaticEmail: false, // Cliente já está na tela assinando
+      };
+
+      const signatarioCorretora = {
+        nome: pdfData.signatarioCorretora?.nome || 'Corretora',
+        email: pdfData.signatarioCorretora?.email || 'contato@net4life.com.br',
+        phone: pdfData.signatarioCorretora?.phone || null,
+        order: undefined, // Sem restrição sequencial: a corretora assina de forma independente
+        signaturePattern: '{{assinatura_corretora}}',
         sendAutomaticEmail: true,
       };
 
@@ -517,12 +517,23 @@ export async function POST(
         docName: pdfData.docName,
         externalId: cotacao.id,
         deadlineAt: deadlineZapSign,
-        signatarios: [signatarioCorretora, signatarioProponente],
+        signatarios: [signatarioProponente, signatarioCorretora],
       });
       docToken = directDoc.docToken;
-      signUrl = directDoc.signUrl;
-      signUrlCorretora = directDoc.signers?.[0]?.signUrl || '';
-      signUrlProponente = directDoc.signers?.[1]?.signUrl || directDoc.signUrl || signUrl;
+
+      const proponenteSigner =
+        directDoc.signers?.find(
+          (s) =>
+            (signatarioProponente.email && s.email?.toLowerCase() === signatarioProponente.email.toLowerCase()) ||
+            (signatarioProponente.nome && s.name?.toLowerCase().includes(signatarioProponente.nome.toLowerCase()))
+        ) || directDoc.signers?.[0];
+
+      const corretoraSigner =
+        directDoc.signers?.find((s) => s !== proponenteSigner) || directDoc.signers?.[1];
+
+      signUrlProponente = proponenteSigner?.signUrl || directDoc.signUrl || '';
+      signUrlCorretora = corretoraSigner?.signUrl || '';
+      signUrl = signUrlProponente;
       resJson = directDoc.rawPayload;
     } else {
       // 6b. POST para o ZapSign via modelo pré-configurado (fluxo padrão existente mantido 100% inalterado)

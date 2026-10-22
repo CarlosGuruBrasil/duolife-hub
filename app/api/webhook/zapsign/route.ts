@@ -33,7 +33,7 @@ function normalizeStatus(payload: any, eventType?: string) {
     '';
 
   const s = String(raw || 'pending').toLowerCase();
-  if (['completed', 'signed', 'doc_signed'].includes(s)) return 'signed';
+  if (['completed', 'signed', 'doc_signed', 'signer_signed', 'signature_signed'].includes(s)) return 'signed';
   if (['expired', 'deadline_exceeded'].includes(s)) return 'expired';
   if (['refused', 'rejected', 'signature_request_refused', 'signature_refused'].includes(s)) return 'refused';
   if (['canceled', 'cancelled', 'doc_deleted'].includes(s)) return 'canceled';

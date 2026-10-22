@@ -1419,7 +1419,7 @@ export default function DynamicCotacaoForm({
           await handleGerarPagamento();
         }
       } else {
-        setError('O contrato ainda não consta como assinado no ZapSign. Finalize a assinatura no painel.');
+        setError(data.message || data.error || 'O contrato ainda não consta como assinado no ZapSign. Finalize a assinatura no painel.');
       }
     } catch {
       setError('Erro ao verificar assinatura.');

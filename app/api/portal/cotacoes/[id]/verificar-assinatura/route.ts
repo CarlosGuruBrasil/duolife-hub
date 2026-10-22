@@ -123,12 +123,47 @@ export async function POST(
 
     const resJson = await response.json();
     
-    // ZapSign considera o documento finalizado/assinado se status for "completed"
-    const isSigned = resJson.status === 'signed' || resJson.status === 'completed' || (Array.isArray(resJson.signers) && resJson.signers.length > 0 && resJson.signers.every((s: any) => s.status === 'signed'));
+    // ZapSign considera o documento finalizado se status for "signed" ou "completed",
+    // ou se todos os signatários assinaram.
+    const todosAssinaram =
+      resJson.status === 'signed' ||
+      resJson.status === 'completed' ||
+      (Array.isArray(resJson.signers) &&
+        resJson.signers.length > 0 &&
+        resJson.signers.every((s: any) => s.status === 'signed'));
+
+    // Localiza o signatário do Proponente / Cliente
+    const signersList = Array.isArray(resJson.signers) ? resJson.signers : [];
+    const clientEmail = (cotacao.client_email || clientData.email || '').toLowerCase().trim();
+    const clientName = (cotacao.client_name || clientData.nome || '').toLowerCase().trim();
+
+    const proponenteSigner = signersList.find((s: any) => {
+      const sEmail = (s.email || '').toLowerCase().trim();
+      const sName = (s.name || '').toLowerCase().trim();
+      const isClientEmail = Boolean(clientEmail && sEmail === clientEmail);
+      const isClientName = Boolean(clientName && (sName.includes(clientName) || clientName.includes(sName)));
+      const isNotCorretora =
+        !sEmail.includes('net4life.com.br') &&
+        !sEmail.includes('corretora') &&
+        !sName.includes('corretora');
+      return isClientEmail || isClientName || isNotCorretora;
+    }) || signersList[0] || null;
+
+    const proponenteAssinou = proponenteSigner?.status === 'signed';
+    const peloMenosUmAssinou = signersList.some((s: any) => s.status === 'signed');
+
+    // O proponente assinou seu termo no portal (ou todos assinaram, ou 1/2 foi concluído pelo proponente)
+    const isSigned = todosAssinaram || proponenteAssinou || peloMenosUmAssinou;
 
     if (isSigned) {
-      const pdfLink = resJson.signed_file || resJson.signed_file_url || null;
-      const signerSignUrl = resJson.signers?.[0]?.sign_url || null;
+      const pdfLink =
+        resJson.signed_file ||
+        resJson.signed_file_url ||
+        resJson.original_file ||
+        clientData.contratoPdf ||
+        existingPdf ||
+        null;
+      const signerSignUrl = proponenteSigner?.sign_url || signersList[0]?.sign_url || null;
       
       if (pdfLink) {
         clientData.contratoPdf = pdfLink;

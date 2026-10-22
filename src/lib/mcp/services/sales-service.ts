@@ -985,19 +985,19 @@ export async function createContract(saleSessionId: string) {
         deadlineAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
         signatarios: [
           {
-            nome: pdfData.signatarioCorretora?.nome || 'Corretora',
-            email: pdfData.signatarioCorretora?.email || 'contato@net4life.com.br',
-            phone: pdfData.signatarioCorretora?.phone || null,
-            order: 1,
-            signaturePattern: '{{assinatura_corretora}}',
-            sendAutomaticEmail: true,
-          },
-          {
             nome: pdfData.signatarioProponente?.nome || cotacao.client_name,
             email: pdfData.signatarioProponente?.email || cotacao.client_email || 'suporte@duolife.net.br',
             phone: pdfData.signatarioProponente?.phone || cotacao.client_phone || null,
-            order: 2,
+            order: undefined,
             signaturePattern: '{{assinatura_proponente}}',
+            sendAutomaticEmail: false,
+          },
+          {
+            nome: pdfData.signatarioCorretora?.nome || 'Corretora',
+            email: pdfData.signatarioCorretora?.email || 'contato@net4life.com.br',
+            phone: pdfData.signatarioCorretora?.phone || null,
+            order: undefined,
+            signaturePattern: '{{assinatura_corretora}}',
             sendAutomaticEmail: true,
           },
         ],
@@ -1005,8 +1005,14 @@ export async function createContract(saleSessionId: string) {
 
       if (directDoc.docToken) {
         externalDocId = directDoc.docToken;
+        const proponenteSigner =
+          directDoc.signers?.find(
+            (s) =>
+              (cotacao.client_email && s.email?.toLowerCase() === cotacao.client_email.toLowerCase()) ||
+              (cotacao.client_name && s.name?.toLowerCase().includes(cotacao.client_name.toLowerCase()))
+          ) || directDoc.signers?.[0];
         signUrl =
-          directDoc.signers?.[1]?.signUrl ||
+          proponenteSigner?.signUrl ||
           directDoc.signUrl ||
           `https://app.zapsign.com.br/verificar/${externalDocId}`;
       }
