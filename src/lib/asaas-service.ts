@@ -333,6 +333,9 @@ export async function generateAsaasPaymentForQuote(
         qtdParcelasSolicitada: Number(clientData.parcela) || 1,
         cupomCodigo: clientData.cupomCodigo || null,
         descontoManualPercent: Number(clientData.descontoManualPercent ?? clientData.descontoPercentual) || 0,
+        flowKey: String(clientData.flowKey || (cotacao as any).flow_key || '') || null,
+        productId: cotacao.product_id || null,
+        grupoTarifario: String(clientData.grupoTarifario || clientData.grupo || '') || null,
       });
 
       valorTotal = preco ? Math.round(preco.valorTotal * 100) / 100 : 0;
@@ -421,7 +424,14 @@ export async function generateAsaasPaymentForQuote(
       }
     }
 
-    const descricao = options?.customValues?.description?.trim() || `Seguro RC Advogado - Plano ${tipoDePlano || ''}`;
+    const isMedProduct = cotacao.product_id === 'prod-rc-med-001'
+      || clientData.flowKey === 'rc-medicos'
+      || (cotacao as any).flow_key === 'rc-medicos'
+      || Boolean(clientData.grupoTarifario);
+    const defaultDescricao = isMedProduct
+      ? `Seguro RC Profissional Saúde - Plano ${tipoDePlano || ''}`.trim()
+      : `Seguro RC Advogado - Plano ${tipoDePlano || ''}`.trim();
+    const descricao = options?.customValues?.description?.trim() || defaultDescricao;
 
     // 6. Cria a cobrança ou parcelamento no Asaas
     let paymentPayload: Record<string, any> = {

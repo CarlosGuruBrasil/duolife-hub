@@ -172,7 +172,7 @@ export function sanitizePlanFinancials(options: {
     expectedLmi = 300000;
   } else if (planoLower.includes('500k') || planoLower.includes('500 mil') || planoLower.includes('500.000')) {
     expectedLmi = 500000;
-  } else if (planoLower.includes('1m') || planoLower.includes('1 milhão') || planoLower.includes('1.000.000')) {
+  } else if (planoLower.includes('1m') || planoLower.includes('1 milhão') || planoLower.includes('1.000.000') || planoLower.includes('1000k')) {
     expectedLmi = 1000000;
   } else if (planoLower.includes('2m') || planoLower.includes('2 milhões') || planoLower.includes('2.000.000')) {
     expectedLmi = 2000000;
@@ -188,7 +188,9 @@ export function sanitizePlanFinancials(options: {
   }
 
   // Se o prêmio tiver sido multiplicado por 100 (ex: 36167 quando era 361.67)
-  if (premio >= 10000 && (expectedLmi === null || expectedLmi <= 500000)) {
+  // Prêmios legítimos de RC Médico (como G8 1M) chegam a R$ 12.571,23.
+  // Somente dividimos se for uma anomalia nítida (ex: prêmio >= 25000 para planos <= 500k, ou >= 50000 quando expectedLmi === null)
+  if (premio >= 25000 && (expectedLmi === null || expectedLmi <= 500000)) {
     const divided = Math.round(premio) / 100;
     if (divided >= 100 && divided <= 6000) {
       premio = divided;
@@ -235,9 +237,11 @@ export function formatPlanLabel(
   for (const raw of rawCandidates) {
     const clean = raw.trim().toLowerCase();
 
-    // Casos diretos como '100k', '200k', '300k', '400k', '500k', etc.
+    // Casos diretos como '100k', '200k', '300k', '400k', '500k', '1000k', etc.
     const kMatch = clean.match(/^(\d+)\s*k$/i);
     if (kMatch) {
+      const kVal = parseInt(kMatch[1], 10);
+      if (kVal === 1000) return '1mi';
       return `${kMatch[1]}k`;
     }
 

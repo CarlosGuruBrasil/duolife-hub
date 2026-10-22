@@ -17,6 +17,7 @@ export interface PlanData {
   parcela2X: string;
   parcela3X: string;
   parcela4X: string;
+  parcela5X?: string;
   parcela6X: string;
   quantidadeDeParcelas: string;
   valorPagoKovr: number | null;
@@ -88,6 +89,7 @@ export async function GET(req: NextRequest) {
         parcela2X: p.parcela2X || '',
         parcela3X: p.parcela3X || '',
         parcela4X: p.parcela4X || '',
+        parcela5X: p.parcela5X || '',
         parcela6X: p.parcela6X || '',
         quantidadeDeParcelas: 'em até 6 parcelas',
         valorPagoKovr: p.valorPagoKovr ?? null,

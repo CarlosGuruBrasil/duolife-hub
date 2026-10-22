@@ -86,9 +86,9 @@ export default async function PortalCotacaoDetailPage({
     ? await sql`
         SELECT
           c.id, c.client_id, c.client_name, c.client_cpf_cnpj, c.client_email, c.client_phone,
-          c.status, c.importancia_segurada, c.premio_final, c.premio_calculado, c.client_data, c.created_at,
-          c.notes, c.product_id,
-          p.name AS product_name,
+          c.status, c.importancia_segurada, c.premio_final, c.premio_calculado, c.client_data, c.created_at, c.updated_at,
+          c.notes, c.product_id, c.partner_id,
+          p.name AS product_name, p.flow_key AS product_flow_key, p.code AS product_code, p.insurer_name AS product_insurer_name,
           part.nome_fantasia AS partner_name
         FROM cotacoes c
         JOIN products p ON p.id = c.product_id
@@ -101,9 +101,9 @@ export default async function PortalCotacaoDetailPage({
     ? await sql`
         SELECT
           c.id, c.client_id, c.client_name, c.client_cpf_cnpj, c.client_email, c.client_phone,
-          c.status, c.importancia_segurada, c.premio_final, c.premio_calculado, c.client_data, c.created_at,
+          c.status, c.importancia_segurada, c.premio_final, c.premio_calculado, c.client_data, c.created_at, c.updated_at,
           c.notes, c.product_id, c.partner_id,
-          p.name AS product_name, p.flow_key AS product_flow_key,
+          p.name AS product_name, p.flow_key AS product_flow_key, p.code AS product_code, p.insurer_name AS product_insurer_name,
           part.nome_fantasia AS partner_name
         FROM cotacoes c
         JOIN products p ON p.id = c.product_id
@@ -116,9 +116,9 @@ export default async function PortalCotacaoDetailPage({
     ? await sql`
         SELECT
           c.id, c.client_id, c.client_name, c.client_cpf_cnpj, c.client_email, c.client_phone,
-          c.status, c.importancia_segurada, c.premio_final, c.premio_calculado, c.client_data, c.created_at,
+          c.status, c.importancia_segurada, c.premio_final, c.premio_calculado, c.client_data, c.created_at, c.updated_at,
           c.notes, c.product_id, c.partner_id,
-          p.name AS product_name, p.flow_key AS product_flow_key,
+          p.name AS product_name, p.flow_key AS product_flow_key, p.code AS product_code, p.insurer_name AS product_insurer_name,
           part.nome_fantasia AS partner_name
         FROM cotacoes c
         JOIN products p ON p.id = c.product_id
@@ -131,9 +131,9 @@ export default async function PortalCotacaoDetailPage({
     : await sql`
         SELECT
           c.id, c.client_id, c.client_name, c.client_cpf_cnpj, c.client_email, c.client_phone,
-          c.status, c.importancia_segurada, c.premio_final, c.premio_calculado, c.client_data, c.created_at,
+          c.status, c.importancia_segurada, c.premio_final, c.premio_calculado, c.client_data, c.created_at, c.updated_at,
           c.notes, c.product_id, c.partner_id,
-          p.name AS product_name, p.flow_key AS product_flow_key,
+          p.name AS product_name, p.flow_key AS product_flow_key, p.code AS product_code, p.insurer_name AS product_insurer_name,
           part.nome_fantasia AS partner_name
         FROM cotacoes c
         JOIN products p ON p.id = c.product_id
@@ -157,8 +157,9 @@ export default async function PortalCotacaoDetailPage({
     commission_amount: number;
     commission_rate: number | null;
     created_at: string;
+    metadata?: any;
   }>>`
-    SELECT id, policy_number, premio_total, status, issue_date, expiry_date, commission_amount, commission_rate, created_at
+    SELECT id, policy_number, premio_total, status, issue_date, expiry_date, commission_amount, commission_rate, created_at, metadata
     FROM sales
     WHERE cotacao_id = ${id}
     LIMIT 1
@@ -276,7 +277,39 @@ export default async function PortalCotacaoDetailPage({
 
   const clientData = parseClientData(cotacao.client_data);
 
-  const planoNome = String(clientData.nomePlano || clientData.tipoDePlano || 'RC Advogados');
+  const isMedicoQuote = cotacao.product_flow_key === 'rc-medicos'
+    || cotacao.product_id === 'prod-rc-med-001'
+    || cotacao.product_code === 'RC-MED-001'
+    || clientData.flowKey === 'rc-medicos'
+    || Boolean(clientData.grupoTarifario);
+
+  const seguradoraNome = cotacao.product_insurer_name || (isMedicoQuote ? 'Kovr Seguradora' : 'KEV Seguros');
+  const planoNome = String(clientData.nomePlano || clientData.tipoDePlano || (isMedicoQuote ? 'RC Médicos & Saúde' : 'RC Advogados'));
+
+  const isDentistaQuote = String(clientData.grupoTarifario || '').toUpperCase() === 'G2' || Boolean(clientData.cro);
+  const isOutroSaudeQuote = String(clientData.grupoTarifario || '').toUpperCase() === 'G1';
+  let registroProfissionalLabel = 'OAB / UF';
+  let registroProfissionalValor = clientData.oab ? `OAB ${clientData.oab}` : 'Não informada';
+
+  if (isMedicoQuote) {
+    if (isDentistaQuote) {
+      registroProfissionalLabel = 'CRO / UF';
+      const uf = clientData.croUf || clientData.registroProfissionalUf || clientData.crmUf || '';
+      const num = clientData.cro || clientData.registroProfissionalNumero || '';
+      registroProfissionalValor = num ? `CRO ${num}${uf ? `/${uf}` : ''}` : 'Não informado';
+    } else if (isOutroSaudeQuote) {
+      registroProfissionalLabel = 'Conselho / UF';
+      const uf = clientData.registroProfissionalUf || clientData.crmUf || '';
+      const num = clientData.registroProfissionalNumero || '';
+      registroProfissionalValor = num ? `${num}${uf ? `/${uf}` : ''}` : 'Não informado';
+    } else {
+      registroProfissionalLabel = 'CRM / UF';
+      const uf = clientData.crmUf || clientData.registroProfissionalUf || '';
+      const num = clientData.crm || clientData.registroProfissionalNumero || '';
+      const rqe = clientData.rqe ? ` (RQE: ${clientData.rqe})` : '';
+      registroProfissionalValor = num ? `CRM ${num}${uf ? `/${uf}` : ''}${rqe}` : 'Não informado';
+    }
+  }
 
   const isQuoteMutable = ['rascunho', 'enviada'].includes(String(cotacao.status || '').toLowerCase());
 
@@ -299,7 +332,7 @@ export default async function PortalCotacaoDetailPage({
   const cobertura = sanitizedCobNum > 0
     ? formatCurrency(sanitizedCobNum)
     : String(clientData.valorCobertura || (cotacao.importancia_segurada ? formatCurrency(cotacao.importancia_segurada) : ''));
-  const franquia = String(clientData.planoFranquia || 'R$ 1.000,00');
+  const franquia = String(clientData.planoFranquia || clientData.franquia || (isMedicoQuote ? 'R$ 2.500,00' : 'R$ 1.000,00'));
 
   const totalAmountNum = (sanitizedPremNum > 0 && rawTotalAmountNum >= 10000) ? sanitizedPremNum : rawTotalAmountNum;
 
@@ -613,7 +646,7 @@ export default async function PortalCotacaoDetailPage({
               </div>
               <div>
                 <div className="text-xs font-bold uppercase tracking-wider text-emerald-900">
-                  Apólice Emitida &bull; KEV Seguros
+                  Apólice Emitida &bull; {seguradoraNome}
                 </div>
                 <div className="text-lg font-black text-emerald-950 font-mono">
                   {sale.policy_number}
@@ -703,14 +736,34 @@ export default async function PortalCotacaoDetailPage({
               </div>
             </div>
 
-            {/* Dados Profissionais do Advogado */}
+            {/* Dados Profissionais */}
             <div className="pt-3 border-t border-slate-100 space-y-2 text-xs">
-              <span className="text-slate-400 font-semibold uppercase tracking-wider block text-[11px]">Dados do Proponente / Advogado</span>
+              <span className="text-slate-400 font-semibold uppercase tracking-wider block text-[11px]">
+                {isMedicoQuote ? 'Dados do Proponente / Profissional da Saúde' : 'Dados do Proponente / Advogado'}
+              </span>
               <div className="grid grid-cols-2 gap-3">
-                <div><span className="text-slate-400">OAB / UF:</span> <strong className="text-slate-900">{clientData.oab ? `OAB ${clientData.oab}` : 'Não informada'}</strong></div>
-                <div><span className="text-slate-400">Atuação:</span> <strong className="text-slate-900">{formatAtuacao(clientData.atuacao)}</strong></div>
-                <div><span className="text-slate-400">Titularidade:</span> <strong className="text-slate-900">{String(clientData.titularidade || 'Individual')}</strong></div>
-                <div><span className="text-slate-400">Escritório:</span> <strong className="text-slate-900">{String(clientData.escritorioAssociado || 'N/A')}</strong></div>
+                <div>
+                  <span className="text-slate-400">{registroProfissionalLabel}:</span>{' '}
+                  <strong className="text-slate-900">{registroProfissionalValor}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-400">{isMedicoQuote ? 'Especialidades / Atuação:' : 'Atuação:'}</span>{' '}
+                  <strong className="text-slate-900">{formatAtuacao(clientData.atuacao || clientData.especialidades)}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-400">{isMedicoQuote ? 'Categoria / Titularidade:' : 'Titularidade:'}</span>{' '}
+                  <strong className="text-slate-900">{String(clientData.grupoTarifarioLabel || clientData.titularidade || 'Individual')}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-400">{isMedicoQuote ? 'Clínica / Hospital:' : 'Escritório:'}</span>{' '}
+                  <strong className="text-slate-900">
+                    {String(
+                      clientData.associadoClinica === 'Sim' || clientData.associadoEscritorio === 'Sim'
+                        ? (clientData.nomeClinica || clientData.nomeHospital || clientData.nomeEscritorio || 'Sim')
+                        : 'Atuação Individual'
+                    )}
+                  </strong>
+                </div>
               </div>
             </div>
 

@@ -281,8 +281,8 @@ export default async function CotacoesPage({
           SELECT CASE
             WHEN LOWER(COALESCE(po.status, '')) IN ('paid', 'received', 'confirmed', 'received_in_cash') THEN 0
             WHEN LOWER(COALESCE(po.status, '')) = 'partially_paid' THEN 0
-            WHEN s.status = 'ativa' THEN 0
             WHEN LOWER(COALESCE(po.status, '')) IN ('pending', 'overdue') AND po.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - po.due_date)::int)
+            WHEN s.status = 'ativa' THEN 0
             ELSE 0
           END
           FROM payment_orders po

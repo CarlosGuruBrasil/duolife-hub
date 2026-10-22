@@ -471,12 +471,24 @@ function drawTitleBlock(
   yTop: number,
   fontRegular: PDFFont,
   fontBold: PDFFont,
-  ramoConfig?: RamoConfig | null
+  ramoConfig?: RamoConfig | null,
+  subtipo?: string | null
 ): number {
   const isMed = ramoConfig?.ramoId === 'rc-medicos';
-  const t1 = isMed
-    ? 'Seguro de Responsabilidade Civil para Médicos'
-    : 'Seguro de Responsabilidade Civil para Advogado';
+  let t1 = 'Seguro de Responsabilidade Civil para Advogado';
+  let t2 = 'Termo de Adesão por parte do Advogado';
+  if (isMed) {
+    if (subtipo === 'G2') {
+      t1 = 'Seguro de Responsabilidade Civil para Dentistas';
+      t2 = 'Termo de Adesão por parte do Dentista';
+    } else if (subtipo === 'G1') {
+      t1 = 'Seguro de Responsabilidade Civil — Área da Saúde';
+      t2 = 'Termo de Adesão por parte do Profissional da Saúde';
+    } else {
+      t1 = 'Seguro de Responsabilidade Civil para Médicos';
+      t2 = 'Termo de Adesão por parte do Médico';
+    }
+  }
   const t1W = fontBold.widthOfTextAtSize(t1, 11.5);
   page.drawText(t1, {
     x: (pageWidth - t1W) / 2,
@@ -486,9 +498,6 @@ function drawTitleBlock(
     color: rgb(0.08, 0.08, 0.08),
   });
 
-  const t2 = isMed
-    ? 'Termo de Adesão por parte do Médico'
-    : 'Termo de Adesão por parte do Advogado';
   const t2W = fontRegular.widthOfTextAtSize(t2, 10.0);
   page.drawText(t2, {
     x: (pageWidth - t2W) / 2,
@@ -1093,8 +1102,13 @@ function renderPropostaOficial(
   const page1 = pdfDoc.addPage([pageWidth, pageHeight]);
   renderTimbradoHeaderAndFooter(page1, pageWidth, pageHeight, assets, params.corretora, fontRegular, fontBold);
 
+  const grupoTarifarioStr = String(params.clientData?.grupoTarifario || params.clientData?.grupo || '').toUpperCase();
+  const isDentistaProf = grupoTarifarioStr === 'G2' || Boolean(params.clientData?.cro);
+  const isOutroSaudeProf = grupoTarifarioStr === 'G1';
+  const grupoTarifarioLabel = String(params.clientData?.grupoTarifarioLabel || '');
+
   let y1 = 86.0;
-  y1 = drawTitleBlock(page1, pageWidth, pageHeight, y1, fontRegular, fontBold, params.ramoConfig);
+  y1 = drawTitleBlock(page1, pageWidth, pageHeight, y1, fontRegular, fontBold, params.ramoConfig, grupoTarifarioStr);
   y1 = drawSectionHeader(page1, pageHeight, contentX, y1, contentW, 'PROPONENTE', fontBold, colorGrayHeader, colorBorder);
   y1 = drawProponenteBlock(page1, pageHeight, contentX, y1, contentW, params.proponenteData, fontRegular, fontBold, colorGrayHeader, colorWhite, colorBorder);
 
@@ -1107,7 +1121,11 @@ function renderPropostaOficial(
   const profRowH = 15.5;
 
   const perguntaAssociacao = isMedico
-    ? 'O médico atua em clínica, consultório ou hospital associado?'
+    ? (isDentistaProf
+        ? 'O dentista atua em clínica ou consultório associado?'
+        : isOutroSaudeProf
+          ? 'O profissional atua em clínica, consultório ou hospital associado?'
+          : 'O médico atua em clínica, consultório ou hospital associado?')
     : 'O profissional é associado a algum escritório?';
 
   drawCell(page1, pageHeight, {
@@ -1141,7 +1159,9 @@ function renderPropostaOficial(
     w: profLabelW,
     h: profRowH,
     text: isMedico
-      ? 'Faturamento Bruto de honorários médicos nos últimos 12 meses:'
+      ? (isDentistaProf || isOutroSaudeProf
+          ? 'Faturamento Bruto de honorários profissionais nos últimos 12 meses:'
+          : 'Faturamento Bruto de honorários médicos nos últimos 12 meses:')
       : 'Faturamento Bruto referente aos últimos 12 meses:',
     font: fontBold,
     fontSize: 7.3,
@@ -1168,7 +1188,9 @@ function renderPropostaOficial(
     w: profLabelW,
     h: profRowH,
     text: isMedico
-      ? 'Faturamento Bruto estimado para os próximos 12 meses:'
+      ? (isDentistaProf || isOutroSaudeProf
+          ? 'Faturamento Bruto estimado para os próximos 12 meses:'
+          : 'Faturamento Bruto estimado para os próximos 12 meses:')
       : 'Faturamento Bruto Estimado nos próximos 12 meses:',
     font: fontBold,
     fontSize: 7.3,
@@ -1186,7 +1208,36 @@ function renderPropostaOficial(
     bgColor: colorWhite,
     borderColor: colorBorder,
   });
-  y1 += profRowH + 6.0;
+  y1 += profRowH;
+
+  // Linha Categoria / Titularidade
+  if (params.infoProfissional.titularidade || grupoTarifarioLabel) {
+    const infoCat = [grupoTarifarioLabel, params.infoProfissional.titularidade].filter(Boolean).join(' • ');
+    drawCell(page1, pageHeight, {
+      x: contentX,
+      y: y1,
+      w: profLabelW,
+      h: profRowH,
+      text: isMedico ? 'Categoria / Titulação:' : 'Titularidade / Cargo:',
+      font: fontBold,
+      fontSize: 7.3,
+      bgColor: colorGrayHeader,
+      borderColor: colorBorder,
+    });
+    drawCell(page1, pageHeight, {
+      x: contentX + profLabelW,
+      y: y1,
+      w: profValW,
+      h: profRowH,
+      text: infoCat,
+      font: fontRegular,
+      fontSize: 7.7,
+      bgColor: colorWhite,
+      borderColor: colorBorder,
+    });
+    y1 += profRowH;
+  }
+  y1 += 6.0;
 
   // Áreas de Atuação / Especialidades Médicas
   const secTitle = isMedico ? 'ESPECIALIDADES MÉDICAS' : 'ATUAÇÕES PROFISSIONAIS';
@@ -1453,12 +1504,12 @@ function renderPropostaOficial(
 
     const perguntasMedicas = [
       {
-        pergunta: 'Já foi intimado, respondeu ou responde a sindicância ou Processo Ético (PEP) no CRM/CFM?',
+        pergunta: 'Já foi intimado, respondeu ou responde a sindicância ou Processo Ético (PEP) no CRM, CRO ou Conselho Profissional?',
         resp: params.questionario.processoConselho || 'Não',
         detalhe: params.questionario.processoConselhoDetalhe,
       },
       {
-        pergunta: 'Sofreu reclamação formal, processo cível de indenização ou inquérito por suposto erro médico (5 anos)?',
+        pergunta: 'Sofreu reclamação formal, processo cível de indenização ou inquérito por alegado erro profissional (5 anos)?',
         resp: params.questionario.reclamacaoErroMedico || 'Não',
         detalhe: params.questionario.reclamacaoErroMedicoDetalhe,
       },
@@ -1473,7 +1524,7 @@ function renderPropostaOficial(
         detalhe: params.questionario.fatoPotencialDetalhe,
       },
       {
-        pergunta: 'Já realizou algum pagamento particular de indenização ou acordo direto com paciente por alegado erro médico?',
+        pergunta: 'Já realizou algum pagamento particular de indenização ou acordo direto com paciente por alegado erro profissional?',
         resp: params.questionario.pagamentoIndenizacao || 'Não',
         detalhe: params.questionario.pagamentoIndenizacaoDetalhe,
       },
@@ -1811,24 +1862,32 @@ export async function renderContratoPdf(params: RenderContratoPdfParams): Promis
     flowKey === 'rc-medicos' ||
     flowKey === 'rc_medicos_v1';
 
-  const isDentista = clientData.grupoTarifario === 'G2' || Boolean(clientData.cro);
-  const isOutrosSaude = clientData.grupoTarifario === 'G1';
+  const grupoTarifario = String(clientData.grupoTarifario || clientData.grupo || '').toUpperCase();
+  const isDentista = grupoTarifario === 'G2' || (!grupoTarifario && Boolean(clientData.cro));
+  const isOutrosSaude = grupoTarifario === 'G1';
   let registroLabel = 'OAB:';
   let registroValor = String(clientData.oab || clientData.registroProfissionalNumero || 'Não informado');
 
   if (isMedico) {
     if (isDentista) {
-      const croUf = clientData.croUf ? `/${clientData.croUf}` : '';
+      const croUfVal = clientData.croUf || clientData.registroProfissionalUf || clientData.crmUf || 'SP';
       registroLabel = 'CRO:';
-      registroValor = clientData.cro ? `${clientData.cro}${croUf}` : String(clientData.registroProfissionalNumero || 'Não informado');
+      const num = clientData.cro || clientData.registroProfissionalNumero || '';
+      registroValor = num ? `${num}/${croUfVal}` : 'Não informado';
     } else if (isOutrosSaude) {
+      const ufVal = clientData.registroProfissionalUf || clientData.crmUf || '';
+      const ufStr = ufVal ? `/${ufVal}` : '';
       registroLabel = 'Conselho:';
-      registroValor = String(clientData.registroProfissionalNumero || 'Não informado');
+      const num = clientData.registroProfissionalNumero || '';
+      registroValor = num ? `${num}${ufStr}` : 'Não informado';
     } else {
       const crmUf = clientData.crmUf ? `/${clientData.crmUf}` : '';
       const crmStr = clientData.crm ? `${clientData.crm}${crmUf}` : '';
+      const rqeStr = clientData.rqe ? ` (RQE: ${clientData.rqe})` : '';
       registroLabel = 'CRM:';
-      registroValor = crmStr || String(clientData.registroProfissionalNumero || 'Não informado');
+      registroValor = crmStr
+        ? `${crmStr}${rqeStr}`
+        : (clientData.registroProfissionalNumero ? `${clientData.registroProfissionalNumero}${rqeStr}` : 'Não informado');
     }
   }
 
@@ -2114,6 +2173,8 @@ export async function gerarContratoPdfBuffer(cotacaoId: string): Promise<Contrat
   const flowKey = clientData.flowKey || cotacao.flow_key || null;
   const productId = clientData.productId || cotacao.product_id || null;
 
+  const grupoTarifario = String(clientData.grupoTarifario || clientData.grupo || '') || null;
+
   const preco = await calcularPrecoServidor({
     tipoDePlano: clientData.tipo || clientData.tipoDePlano || null,
     qtdParcelasSolicitada: Number(clientData.parcela) || 1,
@@ -2121,6 +2182,7 @@ export async function gerarContratoPdfBuffer(cotacaoId: string): Promise<Contrat
     descontoManualPercent: Number(clientData.descontoManualPercent ?? clientData.descontoPercentual) || 0,
     flowKey,
     productId,
+    grupoTarifario,
   });
 
   const valorTotal = preco?.valorTotal ?? Number(cotacao.premio_final || cotacao.premio_calculado || 0);

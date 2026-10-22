@@ -7,6 +7,7 @@
  */
 
 export const AREAS_ATUACAO_MAP: Record<string, string> = {
+  // Áreas Jurídicas (RC Advogados)
   civil: 'Civil',
   propriedadeIndustrial: 'Propriedade Industrial',
   bancarioFinanceiro: 'Bancário/Financeiro',
@@ -19,6 +20,28 @@ export const AREAS_ATUACAO_MAP: Record<string, string> = {
   trabalhista: 'Trabalhista',
   societario: 'Societário',
   outros: 'Outros',
+
+  // Especialidades Médicas e de Saúde (RC Médicos & Saúde)
+  clinicaMedica: 'Clínica Médica / Medicina Interna',
+  cirurgiaGeral: 'Cirurgia Geral & Aparelho Digestivo',
+  pediatria: 'Pediatria & Puericultura',
+  ginecologiaObstetricia: 'Ginecologia e Obstetrícia',
+  anestesiologia: 'Anestesiologia',
+  dermatologia: 'Dermatologia & Procedimentos',
+  ortopediaTraumatologia: 'Ortopedia e Traumatologia',
+  oftalmologia: 'Oftalmologia',
+  cardiologia: 'Cardiologia & Hemodinâmica',
+  cirurgiaPlastica: 'Cirurgia Plástica (Reparadora e Estética)',
+  neurologiaNeurocirurgia: 'Neurologia e Neurocirurgia',
+  psiquiatria: 'Psiquiatria & Saúde Mental',
+  radiologiaDiagnostico: 'Radiologia e Diagnóstico por Imagem',
+  urologia: 'Urologia',
+  otorrinolaringologia: 'Otorrinolaringologia',
+  oncologia: 'Oncologia Clínica e Cirúrgica',
+  medicinaIntensiva: 'Medicina Intensiva (UTI)',
+  endocrinologia: 'Endocrinologia e Metabologia',
+  gastroenterologia: 'Gastroenterologia & Endoscopia',
+  outrosMed: 'Outras Especialidades Médicas',
 };
 
 const CANONICAL_ALIASES: Record<string, string> = {
@@ -83,6 +106,6 @@ export function parseAtuacaoList(val: unknown): string[] {
  */
 export function formatAtuacao(val: unknown): string {
   const list = parseAtuacaoList(val);
-  if (list.length === 0) return 'Civil';
+  if (list.length === 0) return 'Não informada';
   return list.map((k) => AREAS_ATUACAO_MAP[k] || k).join(', ');
 }

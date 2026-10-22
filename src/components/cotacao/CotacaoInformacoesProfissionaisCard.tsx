@@ -48,6 +48,11 @@ export default function CotacaoInformacoesProfissionaisCard({
     getRamoConfig(cotacao.product_flow_key || cotacao.product_id || cd.ramoId) ||
     rcAdvogadosConfig;
 
+  const isMedico =
+    ramoConfig.ramoId === 'rc-medicos' ||
+    (cotacao as any).product_flow_key === 'rc-medicos' ||
+    Boolean(cd.grupoTarifario);
+
   // Associação a Escritório
   const isAssociado =
     cd.associadoEscritorio === 'Sim' ||
@@ -293,7 +298,7 @@ export default function CotacaoInformacoesProfissionaisCard({
               </strong>
               <span className="text-emerald-800 leading-relaxed block mt-0.5">
                 O proponente respondeu &quot;Não&quot; a todas as perguntas de sinistros anteriores,
-                recusas de seguro, processos éticos (OAB/TED) e litígios com terceiros.
+                recusas de seguro, processos éticos {isMedico ? '(CRM/CRO/Conselho)' : '(OAB/TED)'} e litígios com terceiros.
               </span>
             </div>
           </div>

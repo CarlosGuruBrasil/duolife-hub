@@ -616,9 +616,9 @@ export async function POST(
           id: cotacao.id,
           status: 'contrato_gerado',
           premio_final: valorTotal,
-          cobertura: Number(cotacao.importancia_segurada) || 100000,
-          produto_codigo: 'RC-001',
-          produto_nome: 'Seguro RC Profissional',
+          cobertura: Number(cotacao.importancia_segurada) || (isMedico ? 250000 : 100000),
+          produto_codigo: isMedico ? 'RC-MED-001' : 'RC-ADV-001',
+          produto_nome: isMedico ? 'RC Profissional — Médicos & Saúde' : 'RC Profissional — Advogados & Escritórios',
         },
         dados: {
           docToken,

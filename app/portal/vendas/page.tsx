@@ -260,10 +260,10 @@ export default async function PortalVendasPage({
             WHEN LOWER(COALESCE(po.status, '')) IN ('paid', 'received', 'confirmed', 'received_in_cash') THEN 0
             -- Se a ordem é partially_paid (1ª parcela paga e as demais a vencer): 0 atraso da ordem mãe
             WHEN LOWER(COALESCE(po.status, '')) = 'partially_paid' THEN 0
+            -- Ordem vencida: calcula atraso a partir do vencimento
+            WHEN LOWER(COALESCE(po.status, '')) IN ('pending', 'overdue') AND po.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - po.due_date)::int)
             -- Se a apólice já foi emitida e está ativa na tabela sales, a parcela inicial já foi quitada
             WHEN s.status = 'ativa' THEN 0
-            -- Cotação não emitida e não paga: calcula atraso a partir do vencimento da proposta
-            WHEN LOWER(COALESCE(po.status, '')) IN ('pending', 'overdue') AND po.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - po.due_date)::int)
             ELSE 0
           END
           FROM payment_orders po

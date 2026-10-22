@@ -619,6 +619,10 @@ export function calculateMatrixStatus(input: MatrixStatusInput): MatrixStatusRes
   }
 
   // 7. Regra de Em Negociação (Proposta/Cotação em andamento)
+  if (cotacaoStatusClean === 'expirada') {
+    return buildResult(getRule('CADASTRADO_INATIVO'));
+  }
+
   const hasCotacao = Boolean(
     input.hasCotacao !== false &&
     (input.hasCotacao === true ||
@@ -744,8 +748,8 @@ export function buildMaxOverdueSql(cotacaoIdExpr: string, saleAlias: string = 's
       SELECT CASE
         WHEN LOWER(COALESCE(po_o.status, '')) IN ('paid', 'received', 'confirmed', 'received_in_cash') THEN 0
         WHEN LOWER(COALESCE(po_o.status, '')) = 'partially_paid' THEN 0
-        WHEN ${saleAlias}.status = 'ativa' THEN 0
         WHEN LOWER(COALESCE(po_o.status, '')) IN ('pending', 'overdue') AND po_o.due_date < CURRENT_DATE THEN GREATEST(0, (CURRENT_DATE - po_o.due_date)::int)
+        WHEN ${saleAlias}.status = 'ativa' THEN 0
         ELSE 0
       END
       FROM payment_orders po_o

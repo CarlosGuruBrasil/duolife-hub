@@ -231,8 +231,8 @@ export async function POST(req: NextRequest) {
 
         // Dispara gatilho de Contrato Assinado
         try {
-          const [cotacaoCompleta] = await sql<{ client_id: string | null; partner_id: string; partner_user_id: string | null; client_name: string; premio_final: number; importancia_segurada: number }[]>`
-            SELECT client_id, partner_id, partner_user_id, client_name, premio_final, importancia_segurada
+          const [cotacaoCompleta] = await sql<{ client_id: string | null; partner_id: string; partner_user_id: string | null; client_name: string; premio_final: number | null; premio_calculado: number | null; importancia_segurada: number }[]>`
+            SELECT client_id, partner_id, partner_user_id, client_name, premio_final, premio_calculado, importancia_segurada
             FROM cotacoes
             WHERE id = ${document.cotacao_id}
             LIMIT 1
@@ -293,7 +293,7 @@ export async function POST(req: NextRequest) {
             cotacao: {
               id: document.cotacao_id,
               status: 'assinado',
-              premio_final: Number(cotacaoCompleta?.premio_final) || 0,
+              premio_final: Number(cotacaoCompleta?.premio_final || cotacaoCompleta?.premio_calculado) || 0,
               cobertura: Number(cotacaoCompleta?.importancia_segurada) || 0,
             },
             dados: {

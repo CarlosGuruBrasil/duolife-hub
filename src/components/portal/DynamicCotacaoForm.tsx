@@ -565,11 +565,14 @@ export default function DynamicCotacaoForm({
     }
   }, [getHeaders, resolvedRamoConfig.hasPpe]);
 
+  const loadedCotacaoIdRef = useRef<string | null>(null);
+
   // ------------------------------------------------------------------
   // 2. Continuidade de Cotação (Carrega rascunho anterior)
   // ------------------------------------------------------------------
   useEffect(() => {
     if (!initialCotacaoId) return;
+    if (loadedCotacaoIdRef.current === initialCotacaoId) return;
 
     async function loadCotacao() {
       try {
@@ -694,8 +697,15 @@ export default function DynamicCotacaoForm({
             setDescontoPercentual(Math.min(40, Math.max(0, desc)));
           }
 
+          const activePlansList = (cd.grupoTarifario && resolvedRamoConfig.planosPorGrupo?.[cd.grupoTarifario])
+            ? resolvedRamoConfig.planosPorGrupo[cd.grupoTarifario]
+            : planos;
+          if (cd.grupoTarifario && resolvedRamoConfig.planosPorGrupo?.[cd.grupoTarifario]) {
+            setPlanos(resolvedRamoConfig.planosPorGrupo[cd.grupoTarifario]);
+          }
+
           if (cd.tipo) {
-            const planoEncontrado = planos.find((p) => p.tipoDePlano === cd.tipo);
+            const planoEncontrado = activePlansList.find((p) => p.tipoDePlano === cd.tipo);
             if (planoEncontrado) {
               setPlanoSel(planoEncontrado);
             } else {
@@ -759,6 +769,8 @@ export default function DynamicCotacaoForm({
           } else {
             setStep(2);
           }
+
+          loadedCotacaoIdRef.current = initialCotacaoId || null;
         }
       } catch (err) {
         console.error('Erro ao carregar continuidade da cotação:', err);
@@ -769,7 +781,7 @@ export default function DynamicCotacaoForm({
     }
 
     loadCotacao();
-  }, [initialCotacaoId, getHeaders, planos, ramoConfigOverride, resolvedRamoConfig.registroProfissional]);
+  }, [initialCotacaoId, getHeaders, ramoConfigOverride, resolvedRamoConfig]);
 
   // Atualizador de campo genérico
   function updateField(field: keyof DynamicFormState | string, value: any) {
@@ -980,6 +992,7 @@ export default function DynamicCotacaoForm({
         { qtd: 2, valor: parseParcela(plano.parcela2X) || Math.round((valorComDesconto / 2) * 100) / 100 },
         { qtd: 3, valor: parseParcela(plano.parcela3X) || Math.round((valorComDesconto / 3) * 100) / 100 },
         { qtd: 4, valor: parseParcela(plano.parcela4X) || Math.round((valorComDesconto / 4) * 100) / 100 },
+        { qtd: 5, valor: parseParcela(plano.parcela5X) || Math.round((valorComDesconto / 5) * 100) / 100 },
         { qtd: 6, valor: parseParcela(plano.parcela6X) || Math.round((valorComDesconto / 6) * 100) / 100 },
       ];
 
@@ -988,7 +1001,7 @@ export default function DynamicCotacaoForm({
         return [opcoes[0]];
       }
 
-      const validKeys: (keyof Plano)[] = ['parcela', 'parcela2X', 'parcela3X', 'parcela4X', 'parcela6X'];
+      const validKeys: (keyof Plano)[] = ['parcela', 'parcela2X', 'parcela3X', 'parcela4X', 'parcela5X', 'parcela6X'];
       return opcoes.filter((op, i) => {
         const key = validKeys[i];
         return plano[key] && plano[key] !== '' && plano[key] !== 'R$ 0,00';
@@ -1180,7 +1193,7 @@ export default function DynamicCotacaoForm({
       const valorTotal = Math.round(parseMoneyToFloat(planoSel.parcela) * (1 - maiorDesconto / 100) * 100) / 100;
       const valorParcela = parcelaSel.qtd === 1 
         ? valorTotal 
-        : Math.round((valorTotal / parcelaSel.qtd) * 100) / 100;
+        : (parcelaSel.valor > 0 ? parcelaSel.valor : Math.round((valorTotal / parcelaSel.qtd) * 100) / 100);
 
       const formatDateForIso = (dateStr: string) => {
         if (!dateStr) return null;
@@ -1196,7 +1209,7 @@ export default function DynamicCotacaoForm({
       const regKey = resolvedRamoConfig.registroProfissional?.key || 'oab';
       const regUfKey = resolvedRamoConfig.registroProfissional?.ufKey || 'crmUf';
       const regNumero = form.registroProfissionalNumero || (form as any)[regKey] || form.oab || '';
-      const regUf = form.registroProfissionalUf || (form as any)[regUfKey] || form.crmUf || 'SP';
+      const regUf = form.registroProfissionalUf || (form as any)[regUfKey] || form.croUf || form.crmUf || 'SP';
 
       const payloadClientData: Record<string, any> = {
         ...form,
@@ -1229,6 +1242,7 @@ export default function DynamicCotacaoForm({
         tipo: planoSel.tipoDePlano,
         nomePlano: planoSel.nomeExibido,
         planoFranquia: planoSel.franquia,
+        franquia: planoSel.franquia,
         valor: valorTotal,
         valorParcela: valorParcela,
         parcela: parcelaSel.qtd,
@@ -1250,6 +1264,14 @@ export default function DynamicCotacaoForm({
         rqe: form.rqe || null,
         lgpd: 1,
       };
+
+      if (form.grupoTarifario === 'G2') {
+        payloadClientData.cro = regNumero;
+        payloadClientData.croUf = regUf;
+      } else if (form.grupoTarifario && form.grupoTarifario !== 'G2') {
+        delete payloadClientData.cro;
+        delete payloadClientData.croUf;
+      }
 
       delete payloadClientData.cpfCnpj;
       delete payloadClientData.isRenovacao;
@@ -1908,11 +1930,12 @@ export default function DynamicCotacaoForm({
                       <label className="block">
                         <span className="field-label">UF</span>
                         <select
-                          value={form.registroProfissionalUf || (form as any)[resolvedRamoConfig.registroProfissional.ufKey] || 'SP'}
+                          value={form.registroProfissionalUf || (form as any)[resolvedRamoConfig.registroProfissional.ufKey] || (isDentista ? form.croUf : '') || 'SP'}
                           onChange={(e) => {
                             const val = e.target.value;
                             updateField('registroProfissionalUf', val);
                             updateField(resolvedRamoConfig.registroProfissional!.ufKey!, val);
+                            if (isDentista) updateField('croUf', val);
                           }}
                           className="form-input"
                         >
@@ -2719,7 +2742,7 @@ export default function DynamicCotacaoForm({
                     >
                       <div className="font-bold text-sm text-gray-900">
                         {op.qtd}x de {valorExibe}{' '}
-                        {op.qtd === 6 && (
+                        {op.qtd === 6 && resolvedRamoConfig.ramoId !== 'rc-medicos' && (
                           <span className="text-xs text-amber-600 font-normal">(Juros de 2% a.m.)</span>
                         )}
                       </div>

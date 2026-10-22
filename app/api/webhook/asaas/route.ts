@@ -178,8 +178,8 @@ export async function POST(req: NextRequest) {
       }[]>`
         SELECT
           COUNT(*)::int AS total_count,
-          COUNT(*) FILTER (WHERE status IN ('received', 'confirmed'))::int AS paid_count,
-          COALESCE(SUM(amount) FILTER (WHERE status IN ('received', 'confirmed')), 0)::numeric AS paid_amount,
+          COUNT(*) FILTER (WHERE LOWER(status) IN ('received', 'confirmed', 'received_in_cash', 'paid'))::int AS paid_count,
+          COALESCE(SUM(amount) FILTER (WHERE LOWER(status) IN ('received', 'confirmed', 'received_in_cash', 'paid')), 0)::numeric AS paid_amount,
           MAX(due_date)::text AS latest_due_date
         FROM payment_installments
         WHERE payment_order_id = ${installment.payment_order_id}
@@ -237,8 +237,9 @@ export async function POST(req: NextRequest) {
           status: string;
           premio_final: number | null;
           premio_calculado: number | null;
+          created_at: string | Date;
         }[]>`
-          SELECT id, client_id, partner_id, product_id, importancia_segurada, status, premio_final, premio_calculado 
+          SELECT id, client_id, partner_id, product_id, importancia_segurada, status, premio_final, premio_calculado, created_at 
           FROM cotacoes 
           WHERE id = ${installment.cotacao_id}
           LIMIT 1
@@ -390,8 +391,8 @@ export async function POST(req: NextRequest) {
         SELECT
           po.id,
           COALESCE(po.installment_count, 1)::int AS installment_count,
-          COUNT(pi.id) FILTER (WHERE pi.status IN ('received', 'confirmed'))::int AS paid_count,
-          COALESCE(SUM(pi.amount) FILTER (WHERE pi.status IN ('received', 'confirmed')), 0)::numeric AS paid_amount,
+          COUNT(pi.id) FILTER (WHERE LOWER(pi.status) IN ('received', 'confirmed', 'received_in_cash', 'paid'))::int AS paid_count,
+          COALESCE(SUM(pi.amount) FILTER (WHERE LOWER(pi.status) IN ('received', 'confirmed', 'received_in_cash', 'paid')), 0)::numeric AS paid_amount,
           COALESCE(po.amount_total, 0)::numeric AS amount_total
         FROM payment_orders po
         LEFT JOIN payment_installments pi ON pi.payment_order_id = po.id
