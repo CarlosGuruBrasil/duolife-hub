@@ -172,15 +172,17 @@ export function determinarTipoContrato(
     clientData.renovacao === true ||
     clientData.renovacao === 'true' ||
     clientData.renovacao === 'Sim' ||
+    Boolean(clientData.isRenewal) ||
     Boolean(cotacao?.is_renewal);
 
   const tipoRaw = String(
     clientData.tipo || clientData.tipoDePlano || clientData.plano || clientData.nomePlano || ''
   ).toLowerCase().trim();
 
-  const coberturaDigits = String(
+  const coberturaStr = String(
     clientData.cobertura || clientData.lmi || clientData.valorCobertura || cotacao?.importancia_segurada || ''
-  ).replace(/\D/g, '');
+  );
+  const coberturaDigits = coberturaStr.replace(/\D/g, '');
 
   const isMedico =
     clientData.flowKey === 'rc_medicos_v1' ||
@@ -198,8 +200,10 @@ export function determinarTipoContrato(
     tipoRaw.includes('100k') ||
     tipoRaw.includes('100 mil') ||
     tipoRaw === '100' ||
+    coberturaStr.includes('100.000') ||
     coberturaDigits === '100000' ||
-    coberturaDigits === '10000000';
+    coberturaDigits === '10000000' ||
+    coberturaDigits === '1000000';
 
   if (is100k) {
     return isRenovacao ? '100k_renovacao' : '100k';

@@ -166,6 +166,20 @@ export async function POST(
         ? zapConfig.template100k
         : zapConfig.templateOficial;
 
+    logger.info(
+      {
+        cotacaoId: cotacao.id,
+        isDynamicPdf,
+        docGenerationMode: zapConfig.docGenerationMode,
+        tipoContrato,
+        templateId,
+        isRenovacao: Boolean(cotacao.is_renewal || clientData.isRenovacao === 'Sim' || clientData.renovacao === true),
+        tipoPlano: clientData.tipo || clientData.tipoDePlano,
+        cobertura: clientData.cobertura || clientData.valorCobertura || cotacao.importancia_segurada,
+      },
+      'api.portal.gerar-contrato.template_resolvido'
+    );
+
     if (!isDynamicPdf && !templateId) {
       return Response.json({ error: 'Template do ZapSign não configurado' }, { status: 422 });
     }

@@ -447,6 +447,7 @@ export default function DynamicCotacaoForm({
   const [gerandoPagamento, setGerandoPagamento] = useState(false);
 
   // Status de assinaturas parciais e preferência de cobrança
+  const [totalAssinaturas, setTotalAssinaturas] = useState<number>(1);
   const [signUrlCorretora, setSignUrlCorretora] = useState<string | null>(null);
   const [signUrlProponente, setSignUrlProponente] = useState<string | null>(null);
   const [statusAssinatura, setStatusAssinatura] = useState<string | null>(null);
@@ -776,6 +777,13 @@ export default function DynamicCotacaoForm({
           if (cd.signUrl) setSignUrl(cd.signUrl);
           if (cd.signUrlCorretora) setSignUrlCorretora(cd.signUrlCorretora);
           if (cd.signUrlProponente) setSignUrlProponente(cd.signUrlProponente);
+          if (cd.totalAssinaturas) {
+            setTotalAssinaturas(Number(cd.totalAssinaturas));
+          } else if (cd.signUrlCorretora || cd.contratoModo === 'dynamic_pdf' || resolvedRamoConfig.ramoId === 'rc-medicos') {
+            setTotalAssinaturas(2);
+          } else {
+            setTotalAssinaturas(1);
+          }
           if (cd.statusAssinatura) {
             setStatusAssinatura(cd.statusAssinatura);
             if (cd.statusAssinatura === 'falta_corretora' && !['assinado', 'pagamento_gerado', 'aprovada'].includes(c.status)) {
@@ -1334,7 +1342,6 @@ export default function DynamicCotacaoForm({
       }
 
       delete payloadClientData.cpfCnpj;
-      delete payloadClientData.isRenovacao;
 
       const { cobertura: cleanCob } = sanitizePlanFinancials({
         planoNome: planoSel.nomeExibido || planoSel.tipoDePlano,
@@ -1385,6 +1392,13 @@ export default function DynamicCotacaoForm({
         if (zapData.signUrlCorretora) setSignUrlCorretora(zapData.signUrlCorretora);
         if (zapData.signUrlProponente) setSignUrlProponente(zapData.signUrlProponente);
         if (zapData.statusAssinatura) setStatusAssinatura(zapData.statusAssinatura);
+        if (zapData.totalAssinaturas) {
+          setTotalAssinaturas(Number(zapData.totalAssinaturas));
+        } else if (zapData.signUrlCorretora || zapData.contratoModo === 'dynamic_pdf' || resolvedRamoConfig.ramoId === 'rc-medicos') {
+          setTotalAssinaturas(2);
+        } else {
+          setTotalAssinaturas(1);
+        }
         setDocToken(zapData.docToken);
         setStep(6);
         scrollToFormTop(formTopRef.current);
@@ -1402,9 +1416,10 @@ export default function DynamicCotacaoForm({
   // 7. Passo 6: Assinatura e Fatura Asaas
   // ------------------------------------------------------------------
   async function handleCopySignUrl() {
-    if (!signUrl) return;
+    const targetUrl = signUrlProponente || signUrl;
+    if (!targetUrl) return;
     try {
-      await navigator.clipboard.writeText(signUrl);
+      await navigator.clipboard.writeText(targetUrl);
       setCopiedSignUrl(true);
       setTimeout(() => setCopiedSignUrl(false), 2500);
     } catch (err) {
@@ -1440,6 +1455,7 @@ export default function DynamicCotacaoForm({
         if (data.signUrlCorretora) setSignUrlCorretora(data.signUrlCorretora);
         if (data.signUrlProponente) setSignUrlProponente(data.signUrlProponente);
         if (data.statusAssinatura) setStatusAssinatura(data.statusAssinatura);
+        if (data.totalAssinaturas) setTotalAssinaturas(Number(data.totalAssinaturas));
 
         // Cenário 1: 100% concluído
         if (data.assinado) {
@@ -3694,79 +3710,196 @@ export default function DynamicCotacaoForm({
                 </div>
               </div>
             ) : (
-              /* ESTADO: AGUARDANDO ASSINATURA INICIAL (IFRAME ZAPSIGN) */
+              /* ESTADO: AGUARDANDO ASSINATURA INICIAL */
               <div className="space-y-4">
-                <p className="text-sm text-gray-700">
-                  A proposta foi gerada via <strong>ZapSign</strong>. Realize a assinatura digital pelo quadro abaixo ou envie o link diretamente para o cliente:
-                </p>
+                {(() => {
+                  const isDuplaAssinatura = totalAssinaturas === 2 || Boolean(signUrlCorretora) || resolvedRamoConfig.ramoId === 'rc-medicos';
+                  const urlProponente = signUrlProponente || signUrl || '';
 
-                {signUrl ? (
-                  <>
-                    {/* Card com Link Copiável do ZapSign para Envio ao Cliente */}
-                    <div className="bg-emerald-50/50 border border-emerald-200 rounded-xl p-4 space-y-2.5">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <span className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
-                          <FileText size={14} className="text-primary" />
-                          Link de Assinatura do Cliente (ZapSign)
-                        </span>
-                        <a
-                          href={signUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-primary hover:underline inline-flex items-center gap-1 font-semibold"
-                        >
-                          Abrir em nova aba <ExternalLink size={12} />
-                        </a>
-                      </div>
-                      <p className="text-xs text-gray-600">
-                        Copie o link abaixo para enviar ao segurado por WhatsApp ou e-mail, ou conclua a assinatura no quadro interativo a seguir:
+                  return (
+                    <>
+                      <p className="text-sm text-gray-700">
+                        {isDuplaAssinatura
+                          ? 'A proposta foi gerada via ZapSign e necessita de 2 assinaturas (Proponente e Corretora). Utilize os links abaixo para assinar ou compartilhar:'
+                          : 'A proposta foi gerada via ZapSign. Realize a assinatura digital pelo quadro abaixo ou envie o link diretamente para o cliente:'}
                       </p>
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                        <div className="flex items-center gap-2 flex-1">
-                          <input
-                            type="text"
-                            readOnly
-                            value={signUrl}
-                            onClick={(e) => (e.target as HTMLInputElement).select()}
-                            className="form-input text-xs font-mono bg-white text-gray-800 py-2 px-3 select-all flex-1 border border-gray-300 rounded-lg focus:outline-none"
-                          />
-                          <button
-                            type="button"
-                            onClick={handleCopySignUrl}
-                            className="btn btn-primary py-2 px-3.5 text-xs flex items-center gap-1.5 whitespace-nowrap cursor-pointer shadow-xs font-semibold"
-                          >
-                            {copiedSignUrl ? <Check size={14} className="text-emerald-300" /> : <Copy size={14} />}
-                            <span>{copiedSignUrl ? 'Copiado!' : 'Copiar Link'}</span>
-                          </button>
-                        </div>
-                        {cotacaoId && (
-                          <EnviarPropostaEmailButton
-                            cotacaoId={cotacaoId}
-                            clientName={form.nome}
-                            clientEmail={form.email}
-                            valor={planoSel?.parcela}
-                            cobertura={planoSel?.cobertura}
-                            label="Enviar por E-mail"
-                          />
-                        )}
-                      </div>
-                    </div>
 
-                    <div className="border border-gray-200 rounded-xl overflow-hidden bg-white h-[520px]">
-                      <iframe
-                        src={signUrl}
-                        className="w-full h-full border-0"
-                        allow="geolocation; camera"
-                        title="ZapSign Assinatura Digital"
-                      />
-                    </div>
-                  </>
-                ) : (
-                  <div className="py-12 text-center text-gray-500">
-                    <Loader2 className="w-8 h-8 animate-spin text-emerald-600 mx-auto mb-2" />
-                    <p className="text-sm">Carregando painel de assinatura...</p>
-                  </div>
-                )}
+                      {signUrl ? (
+                        isDuplaAssinatura ? (
+                          /* CONTRATOS COM 2 ASSINATURAS: MOSTRA OS 2 LINKS, BOTÃO COPIAR APENAS DO PROPONENTE (SEM IFRAME) */
+                          <div className="space-y-4">
+                            {/* 1. Link de Assinatura do Proponente (Cliente) com Botão Copiar */}
+                            <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-4 sm:p-5 space-y-3">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-9 h-9 rounded-lg bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
+                                    <UserCheck size={18} />
+                                  </div>
+                                  <div>
+                                    <span className="text-xs font-bold uppercase tracking-wider text-emerald-950 block">
+                                      1. Assinatura do Proponente (Cliente / Segurado)
+                                    </span>
+                                    <span className="text-[11px] text-emerald-800 block">
+                                      {form.nome || 'Proponente'} {form.email ? `· ${form.email}` : ''}
+                                    </span>
+                                  </div>
+                                </div>
+                                {urlProponente && (
+                                  <a
+                                    href={urlProponente}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="btn btn-primary text-xs py-2 px-3.5 inline-flex items-center justify-center gap-1.5 font-semibold shrink-0 cursor-pointer shadow-xs min-h-[44px]"
+                                  >
+                                    <span>Assinar como Proponente</span>
+                                    <ExternalLink size={13} />
+                                  </a>
+                                )}
+                              </div>
+
+                              <p className="text-xs text-gray-600">
+                                Copie o link abaixo para enviar ao segurado por WhatsApp ou e-mail, ou abra em nova aba para assinar agora:
+                              </p>
+
+                              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                                <div className="flex items-center gap-2 flex-1">
+                                  <input
+                                    type="text"
+                                    readOnly
+                                    value={urlProponente}
+                                    onClick={(e) => (e.target as HTMLInputElement).select()}
+                                    className="form-input text-xs font-mono bg-white text-gray-800 py-2.5 px-3 select-all flex-1 border border-gray-300 rounded-lg focus:outline-none"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={handleCopySignUrl}
+                                    className="btn btn-primary py-2.5 px-4 text-xs flex items-center gap-1.5 whitespace-nowrap cursor-pointer shadow-xs font-semibold min-h-[44px]"
+                                    title="Copiar link de assinatura do Proponente"
+                                  >
+                                    {copiedSignUrl ? <Check size={14} className="text-emerald-300" /> : <Copy size={14} />}
+                                    <span>{copiedSignUrl ? 'Copiado!' : 'Copiar Link'}</span>
+                                  </button>
+                                </div>
+                                {cotacaoId && (
+                                  <EnviarPropostaEmailButton
+                                    cotacaoId={cotacaoId}
+                                    clientName={form.nome}
+                                    clientEmail={form.email}
+                                    valor={planoSel?.parcela}
+                                    cobertura={planoSel?.cobertura}
+                                    label="Enviar por E-mail"
+                                  />
+                                )}
+                              </div>
+                            </div>
+
+                            {/* 2. Link de Assinatura da Corretora (SEM botão de copiar) */}
+                            <div className="bg-amber-50/70 border border-amber-200 rounded-xl p-4 sm:p-5 space-y-3">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-9 h-9 rounded-lg bg-amber-100 text-amber-900 flex items-center justify-center shrink-0">
+                                    <Building2 size={18} />
+                                  </div>
+                                  <div>
+                                    <span className="text-xs font-bold uppercase tracking-wider text-amber-950 block">
+                                      2. Assinatura da Corretora
+                                    </span>
+                                    <span className="text-[11px] text-amber-800 block">
+                                      Estipulante Coletiva / Corretora Responsável
+                                    </span>
+                                  </div>
+                                </div>
+                                {signUrlCorretora && (
+                                  <a
+                                    href={signUrlCorretora}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="btn btn-secondary text-xs py-2 px-3.5 inline-flex items-center justify-center gap-1.5 font-bold shrink-0 cursor-pointer shadow-2xs border border-amber-300 min-h-[44px]"
+                                  >
+                                    <Building2 size={14} className="text-primary" />
+                                    <span>Assinar pela Corretora (ZapSign)</span>
+                                    <ExternalLink size={13} />
+                                  </a>
+                                )}
+                              </div>
+
+                              <p className="text-xs text-amber-900">
+                                A Corretora recebeu notificação automática por e-mail para assinar. O corretor responsável ou administrador também pode formalizar a assinatura clicando no botão acima.
+                              </p>
+                            </div>
+                          </div>
+                        ) : (
+                          /* CONTRATOS COM 1 ASSINATURA: MANTÉM O CARD + IFRAME */
+                          <>
+                            {/* Card com Link Copiável do ZapSign para Envio ao Cliente */}
+                            <div className="bg-emerald-50/50 border border-emerald-200 rounded-xl p-4 space-y-2.5">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <span className="text-xs font-bold uppercase tracking-wider text-primary flex items-center gap-1.5">
+                                  <FileText size={14} className="text-primary" />
+                                  Link de Assinatura do Cliente (ZapSign)
+                                </span>
+                                <a
+                                  href={signUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-primary hover:underline inline-flex items-center gap-1 font-semibold"
+                                >
+                                  Abrir em nova aba <ExternalLink size={12} />
+                                </a>
+                              </div>
+                              <p className="text-xs text-gray-600">
+                                Copie o link abaixo para enviar ao segurado por WhatsApp ou e-mail, ou conclua a assinatura no quadro interativo a seguir:
+                              </p>
+                              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                                <div className="flex items-center gap-2 flex-1">
+                                  <input
+                                    type="text"
+                                    readOnly
+                                    value={signUrl}
+                                    onClick={(e) => (e.target as HTMLInputElement).select()}
+                                    className="form-input text-xs font-mono bg-white text-gray-800 py-2 px-3 select-all flex-1 border border-gray-300 rounded-lg focus:outline-none"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={handleCopySignUrl}
+                                    className="btn btn-primary py-2 px-3.5 text-xs flex items-center gap-1.5 whitespace-nowrap cursor-pointer shadow-xs font-semibold"
+                                  >
+                                    {copiedSignUrl ? <Check size={14} className="text-emerald-300" /> : <Copy size={14} />}
+                                    <span>{copiedSignUrl ? 'Copiado!' : 'Copiar Link'}</span>
+                                  </button>
+                                </div>
+                                {cotacaoId && (
+                                  <EnviarPropostaEmailButton
+                                    cotacaoId={cotacaoId}
+                                    clientName={form.nome}
+                                    clientEmail={form.email}
+                                    valor={planoSel?.parcela}
+                                    cobertura={planoSel?.cobertura}
+                                    label="Enviar por E-mail"
+                                  />
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="border border-gray-200 rounded-xl overflow-hidden bg-white h-[520px]">
+                              <iframe
+                                src={signUrl}
+                                className="w-full h-full border-0"
+                                allow="geolocation; camera"
+                                title="ZapSign Assinatura Digital"
+                              />
+                            </div>
+                          </>
+                        )
+                      ) : (
+                        <div className="py-12 text-center text-gray-500">
+                          <Loader2 className="w-8 h-8 animate-spin text-emerald-600 mx-auto mb-2" />
+                          <p className="text-sm">Carregando painel de assinatura...</p>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
 
                 <div className="flex flex-col md:flex-row md:justify-between items-center gap-4 bg-gray-50 border border-gray-200 p-4 rounded-xl">
                   <span className="text-xs text-gray-500">
