@@ -517,7 +517,11 @@ export async function POST(
     });
 
   } catch (err: unknown) {
-    logger.error({ err, cotacaoId: id }, 'api.portal.verificar-assinatura.failed');
-    return Response.json({ error: 'Erro interno ao verificar assinatura' }, { status: 500 });
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    logger.error({ err, errorMsg, cotacaoId: id }, 'api.portal.verificar-assinatura.failed');
+    return Response.json({
+      error: `Erro interno ao verificar assinatura: ${errorMsg}`,
+      details: errorMsg,
+    }, { status: 500 });
   }
 }
