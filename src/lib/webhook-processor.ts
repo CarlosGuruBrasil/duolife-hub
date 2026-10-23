@@ -5,6 +5,8 @@ import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
 import { generateAsaasPaymentForQuote } from '@/lib/asaas-service';
 import { findPartnerByWixCode, logSyncEvent, normalizeWixRecord } from '@/lib/wix-sync';
 import { parseJsonbField } from '@/lib/json-safe';
+import { identificarRequisitosAssinatura } from '@/lib/assinatura-status';
+import { getZapSignConfig, sanitizeApiToken } from '@/lib/system-settings';
 
 // ==========================================
 // Helpers Asaas
@@ -694,206 +696,441 @@ export async function processZapSignPayload(rawPayload: any): Promise<{ success:
     const normalizedStatus = normalizeZapSignStatus(payload, eventType);
     const signedFileUrl = extractZapSignSignedFileUrl(payload);
 
-    const documents = externalDocumentId
-      ? await sql<{ id: string; cotacao_id: string }[]>`
-          SELECT id, cotacao_id
-          FROM signature_documents
-          WHERE provider = 'zapsign'
-            AND external_document_id = ${externalDocumentId}
-          LIMIT 1
-        `
-      : externalId
-        ? await sql<{ id: string; cotacao_id: string }[]>`
-            SELECT id, cotacao_id
-            FROM signature_documents
-            WHERE provider = 'zapsign'
-              AND cotacao_id = ${externalId}
-            LIMIT 1
-          `
-        : [];
+    const docObj = payload.doc || payload.document || payload;
+    const rawSignersList: any[] = Array.isArray(docObj?.signers)
+      ? docObj.signers
+      : Array.isArray(payload.signers)
+      ? payload.signers
+      : [];
 
-    const document = documents[0];
-    if (!document) {
+    // Localização em cascata do Documento e da Cotação correspondente
+    let documentRow: { id: string; cotacao_id: string } | null = null;
+
+    if (externalDocumentId) {
+      const docs = await sql<{ id: string; cotacao_id: string }[]>`
+        SELECT id, cotacao_id
+        FROM signature_documents
+        WHERE provider = 'zapsign'
+          AND external_document_id = ${externalDocumentId}
+        LIMIT 1
+      `;
+      if (docs.length > 0) documentRow = docs[0];
+    }
+
+    if (!documentRow && externalId) {
+      const docs = await sql<{ id: string; cotacao_id: string }[]>`
+        SELECT id, cotacao_id
+        FROM signature_documents
+        WHERE provider = 'zapsign'
+          AND cotacao_id = ${externalId}
+        ORDER BY created_at DESC
+        LIMIT 1
+      `;
+      if (docs.length > 0) documentRow = docs[0];
+    }
+
+    let cotacaoId = documentRow?.cotacao_id || null;
+
+    // Fallback: se não localizado na signature_documents, busca direto em cotacoes
+    if (!cotacaoId) {
+      const cotacoesEncontradas = await sql<{ id: string }[]>`
+        SELECT id
+        FROM cotacoes
+        WHERE id = ${externalId || null}
+           OR client_data->>'contratoToken' = ${externalDocumentId || null}
+           OR client_data->>'tokenZapsign' = ${externalDocumentId || null}
+        LIMIT 1
+      `;
+
+      if (cotacoesEncontradas.length > 0) {
+        cotacaoId = cotacoesEncontradas[0].id;
+        const [newDoc] = await sql<{ id: string; cotacao_id: string }[]>`
+          INSERT INTO signature_documents (
+            cotacao_id,
+            provider,
+            external_document_id,
+            status,
+            created_at,
+            updated_at
+          )
+          VALUES (
+            ${cotacaoId},
+            'zapsign',
+            ${externalDocumentId || 'ZAP-' + cotacaoId},
+            'pending',
+            NOW(),
+            NOW()
+          )
+          ON CONFLICT (provider, external_document_id)
+          DO UPDATE SET updated_at = NOW()
+          RETURNING id, cotacao_id
+        `;
+        documentRow = newDoc;
+      }
+    }
+
+    if (!documentRow || !cotacaoId) {
       logger.info({ externalDocumentId, externalId, eventType }, 'processZapSignPayload: Documento de assinatura não encontrado');
       return { success: true, message: 'Documento não encontrado na base de dados (ignorado)' };
     }
 
-    await sql`
-      UPDATE signature_documents
-      SET
-        status = ${normalizedStatus},
-        signed_file_url = COALESCE(${signedFileUrl}, signed_file_url),
-        signed_at = CASE
-          WHEN ${normalizedStatus} = 'signed' THEN COALESCE(signed_at, NOW())
-          ELSE signed_at
-        END,
-        last_event_type = ${eventType},
-        raw_payload = ${JSON.stringify(payload)}::jsonb,
-        updated_at = NOW()
-      WHERE id = ${document.id}
+    const [cotacao] = await sql<{ client_data: unknown; status: string; client_name: string; client_email: string; flow_key?: string | null; product_id?: string | null }[]>`
+      SELECT client_data, status, client_name, client_email, flow_key, product_id
+      FROM cotacoes
+      WHERE id = ${cotacaoId}
+      LIMIT 1
     `;
 
-    if (normalizedStatus === 'signed') {
-      const [cotacao] = await sql<{ client_data: unknown; status: string }[]>`
-        SELECT client_data, status
-        FROM cotacoes
-        WHERE id = ${document.cotacao_id}
-        LIMIT 1
+    if (!cotacao) {
+      return { success: true, message: 'Cotação vinculada não encontrada (ignorado)' };
+    }
+
+    const clientData = parseJsonbField<Record<string, any>>(cotacao.client_data);
+    const clientEmail = (cotacao.client_email || clientData.email || '').toLowerCase().trim();
+    const clientName = (cotacao.client_name || clientData.nome || '').toLowerCase().trim();
+
+    let signersList: any[] = rawSignersList;
+    let canonicalStatus = String(docObj?.status || payload?.status || '').toLowerCase();
+    let canonicalSignedFile = signedFileUrl;
+
+    const docToken = externalDocumentId || clientData.contratoToken || clientData.tokenZapsign;
+
+    // Enriquecimento via API da ZapSign se payload resumido
+    if ((signersList.length === 0 || !canonicalSignedFile) && docToken) {
+      try {
+        const zapConfig = await getZapSignConfig();
+        const apiToken = sanitizeApiToken(zapConfig.apiToken);
+        if (apiToken) {
+          const apiRes = await fetch(`${zapConfig.baseUrl}/docs/${docToken}/`, {
+            method: 'GET',
+            headers: { Authorization: `Bearer ${apiToken}` },
+            signal: AbortSignal.timeout(8000),
+          });
+          if (apiRes.ok) {
+            const zapDocFromApi = await apiRes.json();
+            if (Array.isArray(zapDocFromApi.signers) && zapDocFromApi.signers.length > 0) {
+              signersList = zapDocFromApi.signers;
+            }
+            if (zapDocFromApi.status) {
+              canonicalStatus = String(zapDocFromApi.status).toLowerCase();
+            }
+            canonicalSignedFile =
+              zapDocFromApi.signed_file ||
+              zapDocFromApi.signed_file_url ||
+              zapDocFromApi.original_file ||
+              canonicalSignedFile;
+          }
+        }
+      } catch (apiErr) {
+        logger.warn({ apiErr, docToken }, 'processZapSignPayload: API fallback warn');
+      }
+    }
+
+    let proponenteSigner = signersList.find((s: any) => {
+      const sEmail = (s.email || '').toLowerCase().trim();
+      const sName = (s.name || '').toLowerCase().trim();
+      return (clientEmail && sEmail === clientEmail) || (clientName && (sName.includes(clientName) || clientName.includes(sName)));
+    });
+
+    let corretoraSigner = signersList.find((s: any) => {
+      if (s === proponenteSigner) return false;
+      const sEmail = (s.email || '').toLowerCase().trim();
+      const sName = (s.name || '').toLowerCase().trim();
+      return (
+        sEmail.includes('net4life.com.br') ||
+        sEmail.includes('corretora') ||
+        sEmail.includes('duolife') ||
+        sName.includes('corretora') ||
+        sName.includes('net4life')
+      );
+    });
+
+    if (signersList.length >= 2) {
+      if (!proponenteSigner && corretoraSigner) {
+        proponenteSigner = signersList.find((s: any) => s !== corretoraSigner) || signersList[0];
+      } else if (proponenteSigner && !corretoraSigner) {
+        corretoraSigner = signersList.find((s: any) => s !== proponenteSigner) || signersList[1];
+      } else if (!proponenteSigner && !corretoraSigner) {
+        proponenteSigner = signersList[0];
+        corretoraSigner = signersList[1];
+      }
+    } else if (signersList.length === 1 && !proponenteSigner) {
+      proponenteSigner = signersList[0];
+    }
+
+    let proponenteSigned = Boolean(proponenteSigner && proponenteSigner.status === 'signed');
+    let corretoraSigned = Boolean(corretoraSigner && corretoraSigner.status === 'signed');
+    const signedCount = signersList.filter((s: any) => s.status === 'signed').length;
+
+    const signerJustSigned = payload.signer || payload.signatario || null;
+    if (signerJustSigned) {
+      const sEmail = (signerJustSigned.email || '').toLowerCase().trim();
+      const sName = (signerJustSigned.name || '').toLowerCase().trim();
+      const isCorretora =
+        sEmail.includes('net4life.com.br') ||
+        sEmail.includes('corretora') ||
+        sEmail.includes('duolife') ||
+        sName.includes('corretora') ||
+        sName.includes('net4life');
+
+      if (isCorretora) {
+        corretoraSigned = true;
+      } else {
+        proponenteSigned = true;
+      }
+    }
+
+    if (clientData.clienteAssinou) proponenteSigned = true;
+    if (clientData.corretoraAssinou) corretoraSigned = true;
+
+    const requisitos = identificarRequisitosAssinatura(clientData, cotacao);
+    const docStatusFinalizado =
+      canonicalStatus === 'signed' ||
+      canonicalStatus === 'completed' ||
+      normalizedStatus === 'signed';
+
+    let todasAssinadas = false;
+    let statusAssinatura: 'todas_assinadas' | 'falta_corretora' | 'falta_cliente' | 'faltam_ambas';
+
+    if (requisitos.total === 1) {
+      if (docStatusFinalizado || proponenteSigned || signedCount >= 1) {
+        todasAssinadas = true;
+        proponenteSigned = true;
+        corretoraSigned = true;
+        statusAssinatura = 'todas_assinadas';
+      } else {
+        todasAssinadas = false;
+        corretoraSigned = true;
+        statusAssinatura = 'falta_cliente';
+      }
+    } else {
+      if (docStatusFinalizado || (proponenteSigned && corretoraSigned)) {
+        todasAssinadas = true;
+        proponenteSigned = true;
+        corretoraSigned = true;
+        statusAssinatura = 'todas_assinadas';
+      } else if (proponenteSigned && !corretoraSigned) {
+        statusAssinatura = 'falta_corretora';
+      } else if (!proponenteSigned && corretoraSigned) {
+        statusAssinatura = 'falta_cliente';
+      } else {
+        statusAssinatura = 'faltam_ambas';
+      }
+    }
+
+    if (todasAssinadas) {
+      clientData.statusAssinatura = 'todas_assinadas';
+      clientData.clienteAssinou = true;
+      clientData.corretoraAssinou = true;
+      clientData.totalAssinaturas = requisitos.total;
+      clientData.assinaturasNecessarias = requisitos.papeis;
+      clientData.contratoModo = requisitos.modo;
+      if (canonicalSignedFile) {
+        clientData.contratoPdf = canonicalSignedFile;
+        clientData.urlAssinado = canonicalSignedFile;
+      }
+      clientData.assinadoEm = clientData.assinadoEm || new Date().toISOString();
+
+      await sql`
+        UPDATE signature_documents
+        SET
+          status = 'signed',
+          signed_file_url = COALESCE(${canonicalSignedFile}, signed_file_url),
+          signed_at = COALESCE(signed_at, NOW()),
+          last_event_type = ${eventType},
+          raw_payload = ${JSON.stringify(payload)}::jsonb,
+          updated_at = NOW()
+        WHERE id = ${documentRow.id}
       `;
 
-      if (cotacao) {
-        const clientData = parseJsonbField<Record<string, any>>(cotacao.client_data);
-        if (signedFileUrl) clientData.contratoPdf = signedFileUrl;
-        clientData.assinadoEm = clientData.assinadoEm || new Date().toISOString();
+      const canAdvanceToAssinado = ['contrato_gerado', 'enviada', 'rascunho'].includes(cotacao.status);
 
-        const canAdvanceToAssinado = ['contrato_gerado', 'enviada', 'rascunho'].includes(cotacao.status);
+      if (canAdvanceToAssinado) {
+        await sql`
+          UPDATE cotacoes
+          SET
+            status = 'assinado',
+            client_data = ${JSON.stringify(clientData)}::jsonb,
+            updated_at = NOW()
+          WHERE id = ${cotacaoId}
+        `;
+      } else {
+        await sql`
+          UPDATE cotacoes
+          SET
+            client_data = ${JSON.stringify(clientData)}::jsonb,
+            updated_at = NOW()
+          WHERE id = ${cotacaoId}
+        `;
+      }
 
-        if (canAdvanceToAssinado) {
-          await sql`
-            UPDATE cotacoes
-            SET
-              status = 'assinado',
-              client_data = ${JSON.stringify(clientData)}::jsonb,
-              updated_at = NOW()
-            WHERE id = ${document.cotacao_id}
-          `;
-        } else {
-          await sql`
-            UPDATE cotacoes
-            SET
-              client_data = ${JSON.stringify(clientData)}::jsonb,
-              updated_at = NOW()
-            WHERE id = ${document.cotacao_id}
-          `;
-        }
-
-        try {
-          const [cotacaoCompleta] = await sql<{ client_id: string | null; partner_id: string; partner_user_id: string | null; client_name: string; premio_final: number; importancia_segurada: number }[]>`
-            SELECT client_id, partner_id, partner_user_id, client_name, premio_final, importancia_segurada
-            FROM cotacoes
-            WHERE id = ${document.cotacao_id}
-            LIMIT 1
-          `;
-
-          const [clientRow] = cotacaoCompleta?.client_id ? await sql<{ full_name: string; email: string; document_number: string; phone: string }[]>`
-            SELECT full_name, email, document_number, phone FROM insurance_clients WHERE id = ${cotacaoCompleta.client_id} LIMIT 1
-          ` : [];
-
-          const [vendedorRow] = cotacaoCompleta?.partner_user_id ? await sql<{ id: string; nome: string; email: string }[]>`
-            SELECT id, name AS nome, email
-            FROM partner_users
-            WHERE id = ${cotacaoCompleta.partner_user_id}
-            LIMIT 1
-          ` : [];
-
-          const [partnerRow] = cotacaoCompleta?.partner_id ? await sql<{ nome: string; email: string; codigo_venda?: string }[]>`
-            SELECT
-              COALESCE(p.nome_fantasia, p.razao_social) AS nome,
-              COALESCE(NULLIF(p.email, ''), pu.email) AS email,
-              p.metadata->'whiteLabel'->>'wixCode' AS codigo_venda
-            FROM partners p
-            LEFT JOIN partner_users pu ON pu.partner_id = p.id AND pu.is_active = true
-            WHERE p.id = ${cotacaoCompleta.partner_id}
-            ORDER BY pu.created_at ASC
-            LIMIT 1
-          ` : [];
-
-          await dispatchDomainEvent('CONTRATO_ASSINADO', {
-            eventType: 'CONTRATO_ASSINADO',
-            contextId: document.cotacao_id,
-            cliente: {
-              nome: clientRow?.full_name || cotacaoCompleta?.client_name,
-              email: clientRow?.email || clientData.email,
-              documento: clientRow?.document_number || clientData.cpf || clientData.cnpj,
-              telefone: clientRow?.phone || clientData.telefone,
-            },
-            vendedor: vendedorRow
-              ? {
-                  id: vendedorRow.id,
-                  nome: vendedorRow.nome,
-                  email: vendedorRow.email,
-                }
-              : partnerRow
-              ? {
-                  id: cotacaoCompleta.partner_user_id || cotacaoCompleta.partner_id,
-                  nome: partnerRow.nome,
-                  email: partnerRow.email,
-                }
-              : undefined,
-            parceiro: partnerRow ? {
-              id: cotacaoCompleta.partner_id,
-              nome: partnerRow.nome,
-              email: partnerRow.email,
-              codigoVenda: partnerRow.codigo_venda,
-            } : undefined,
-            cotacao: {
-              id: document.cotacao_id,
-              status: 'assinado',
-              premio_final: Number(cotacaoCompleta?.premio_final) || 0,
-              cobertura: Number(cotacaoCompleta?.importancia_segurada) || 0,
-            },
-            dados: {
-              contratoPdf: signedFileUrl,
-              assinadoEm: clientData.assinadoEm,
-            },
-          });
-        } catch (dispatchErr) {
-          logger.error({ dispatchErr, cotacaoId: document.cotacao_id }, 'processZapSignPayload: Falha ao despachar CONTRATO_ASSINADO');
-        }
-
-        const [existingOrder] = await sql<{ id: string; status: string }[]>`
-          SELECT id, status FROM payment_orders
-          WHERE cotacao_id = ${document.cotacao_id}
-            AND status IN ('pending', 'partially_paid', 'paid')
+      try {
+        const [cotacaoCompleta] = await sql<{ client_id: string | null; partner_id: string; partner_user_id: string | null; client_name: string; premio_final: number | null; premio_calculado: number | null; importancia_segurada: number }[]>`
+          SELECT client_id, partner_id, partner_user_id, client_name, premio_final, premio_calculado, importancia_segurada
+          FROM cotacoes
+          WHERE id = ${cotacaoId}
           LIMIT 1
         `;
 
-        if (existingOrder) {
-          logger.info(
-            { cotacaoId: document.cotacao_id, orderId: existingOrder.id, status: existingOrder.status },
-            'processZapSignPayload: Ordem de pagamento Asaas existente mantida'
-          );
-        } else {
-          try {
-            const paymentResult = await generateAsaasPaymentForQuote(document.cotacao_id, { isManualAdmin: false });
-            if (paymentResult.ok) {
-              logger.info(
-                { cotacaoId: document.cotacao_id, checkoutId: paymentResult.checkoutId },
-                'processZapSignPayload: Cobrança Asaas gerada com sucesso'
-              );
-            } else {
-              logger.warn(
-                { cotacaoId: document.cotacao_id, reason: paymentResult.error },
-                'processZapSignPayload: Cobrança Asaas retida ou rejeitada'
-              );
-            }
-          } catch (paymentErr) {
-            logger.error(
-              { paymentErr, cotacaoId: document.cotacao_id },
-              'processZapSignPayload: Erro na geração automática de cobrança Asaas'
+        const [clientRow] = cotacaoCompleta?.client_id ? await sql<{ full_name: string; email: string; document_number: string; phone: string }[]>`
+          SELECT full_name, email, document_number, phone FROM insurance_clients WHERE id = ${cotacaoCompleta.client_id} LIMIT 1
+        ` : [];
+
+        const [vendedorRow] = cotacaoCompleta?.partner_user_id ? await sql<{ id: string; nome: string; email: string }[]>`
+          SELECT id, name AS nome, email
+          FROM partner_users
+          WHERE id = ${cotacaoCompleta.partner_user_id}
+          LIMIT 1
+        ` : [];
+
+        const [partnerRow] = cotacaoCompleta?.partner_id ? await sql<{ nome: string; email: string; codigo_venda?: string }[]>`
+          SELECT
+            COALESCE(p.nome_fantasia, p.razao_social) AS nome,
+            COALESCE(NULLIF(p.email, ''), pu.email) AS email,
+            p.metadata->'whiteLabel'->>'wixCode' AS codigo_venda
+          FROM partners p
+          LEFT JOIN partner_users pu ON pu.partner_id = p.id AND pu.is_active = true
+          WHERE p.id = ${cotacaoCompleta.partner_id}
+          ORDER BY pu.created_at ASC
+          LIMIT 1
+        ` : [];
+
+        await dispatchDomainEvent('CONTRATO_ASSINADO', {
+          eventType: 'CONTRATO_ASSINADO',
+          contextId: cotacaoId,
+          cliente: {
+            nome: clientRow?.full_name || cotacaoCompleta?.client_name,
+            email: clientRow?.email || clientData.email,
+            documento: clientRow?.document_number || clientData.cpf || clientData.cnpj,
+            telefone: clientRow?.phone || clientData.telefone,
+          },
+          vendedor: vendedorRow
+            ? {
+                id: vendedorRow.id,
+                nome: vendedorRow.nome,
+                email: vendedorRow.email,
+              }
+            : partnerRow
+            ? {
+                id: cotacaoCompleta.partner_user_id || cotacaoCompleta.partner_id,
+                nome: partnerRow.nome,
+                email: partnerRow.email,
+              }
+            : undefined,
+          parceiro: partnerRow ? {
+            id: cotacaoCompleta.partner_id,
+            nome: partnerRow.nome,
+            email: partnerRow.email,
+            codigoVenda: partnerRow.codigo_venda,
+          } : undefined,
+          cotacao: {
+            id: cotacaoId,
+            status: 'assinado',
+            premio_final: Number(cotacaoCompleta?.premio_final || cotacaoCompleta?.premio_calculado) || 0,
+            cobertura: Number(cotacaoCompleta?.importancia_segurada) || 0,
+          },
+          dados: {
+            contratoPdf: canonicalSignedFile,
+            assinadoEm: clientData.assinadoEm,
+          },
+        });
+      } catch (dispatchErr) {
+        logger.error({ dispatchErr, cotacaoId }, 'processZapSignPayload: Falha ao despachar CONTRATO_ASSINADO');
+      }
+
+      const [existingOrder] = await sql<{ id: string; status: string }[]>`
+        SELECT id, status FROM payment_orders
+        WHERE cotacao_id = ${cotacaoId}
+          AND status IN ('pending', 'partially_paid', 'paid')
+        LIMIT 1
+      `;
+
+      if (existingOrder) {
+        logger.info(
+          { cotacaoId, orderId: existingOrder.id, status: existingOrder.status },
+          'processZapSignPayload: Ordem de pagamento Asaas existente mantida'
+        );
+      } else if (clientData.formaPagamentoPreferida) {
+        try {
+          const paymentResult = await generateAsaasPaymentForQuote(cotacaoId, { isManualAdmin: false });
+          if (paymentResult.ok) {
+            logger.info(
+              { cotacaoId, checkoutId: paymentResult.checkoutId },
+              'processZapSignPayload: Cobrança Asaas gerada com sucesso'
+            );
+          } else {
+            logger.warn(
+              { cotacaoId, reason: paymentResult.error },
+              'processZapSignPayload: Cobrança Asaas retida ou rejeitada'
             );
           }
+        } catch (paymentErr) {
+          logger.error(
+            { paymentErr, cotacaoId },
+            'processZapSignPayload: Erro na geração automática de cobrança Asaas'
+          );
         }
       }
+    } else if (statusAssinatura === 'falta_corretora' || statusAssinatura === 'falta_cliente') {
+      clientData.statusAssinatura = statusAssinatura;
+      clientData.clienteAssinou = proponenteSigned;
+      clientData.corretoraAssinou = corretoraSigned;
+      clientData.totalAssinaturas = requisitos.total;
+      clientData.assinaturasNecessarias = requisitos.papeis;
+      clientData.contratoModo = requisitos.modo;
+
+      await sql`
+        UPDATE cotacoes
+        SET
+          client_data = ${JSON.stringify(clientData)}::jsonb,
+          updated_at = NOW()
+        WHERE id = ${cotacaoId}
+      `;
+
+      await sql`
+        UPDATE signature_documents
+        SET
+          last_event_type = ${eventType},
+          raw_payload = ${JSON.stringify(payload)}::jsonb,
+          updated_at = NOW()
+        WHERE id = ${documentRow.id}
+      `;
+
+      logger.info(
+        { cotacaoId, statusAssinatura, clienteAssinou: proponenteSigned, corretoraAssinou: corretoraSigned },
+        'processZapSignPayload: Assinatura parcial gravada'
+      );
     } else if (normalizedStatus === 'expired') {
+      await sql`
+        UPDATE signature_documents
+        SET status = 'expired', updated_at = NOW(), raw_payload = ${JSON.stringify(payload)}::jsonb
+        WHERE id = ${documentRow.id}
+      `;
+
       await sql`
         UPDATE cotacoes
         SET status = 'expirada', updated_at = NOW()
-        WHERE id = ${document.cotacao_id}
+        WHERE id = ${cotacaoId}
           AND status IN ('contrato_gerado', 'enviada', 'rascunho')
       `;
-      logger.info({ cotacaoId: document.cotacao_id }, 'processZapSignPayload: Cotação expirada');
+      logger.info({ cotacaoId }, 'processZapSignPayload: Cotação expirada');
     } else if (normalizedStatus === 'refused') {
+      await sql`
+        UPDATE signature_documents
+        SET status = 'refused', updated_at = NOW(), raw_payload = ${JSON.stringify(payload)}::jsonb
+        WHERE id = ${documentRow.id}
+      `;
+
       await sql`
         UPDATE cotacoes
         SET status = 'recusada', updated_at = NOW()
-        WHERE id = ${document.cotacao_id}
+        WHERE id = ${cotacaoId}
           AND status IN ('contrato_gerado', 'enviada', 'rascunho')
       `;
-      logger.info({ cotacaoId: document.cotacao_id }, 'processZapSignPayload: Cotação recusada');
+      logger.info({ cotacaoId }, 'processZapSignPayload: Cotação recusada');
     }
 
-    return { success: true, message: 'Payload ZapSign processado com sucesso' };
+    return { success: true, message: `Payload ZapSign processado com sucesso (${statusAssinatura})` };
   } catch (err: any) {
     logger.error({ err }, 'webhook.processor.zapsign.error');
     return {

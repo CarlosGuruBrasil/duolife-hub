@@ -1219,36 +1219,43 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
             </div>
 
             {/* Box de Webhook Info */}
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
-                  <ShieldCheck className="h-4 w-4 text-emerald-600" /> URL do Webhook DuoLife para Cadastrar na ZapSign
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleCopy('https://duolife.com.br/api/webhook/zapsign', 'webhook-zapsign')}
-                  className="text-xs font-bold text-[#0e4a5a] hover:underline flex items-center gap-1 cursor-pointer"
-                >
-                  {copiedKey === 'webhook-zapsign' ? (
-                    <>
-                      <Check className="h-3.5 w-3.5 text-emerald-600" />
-                      <span className="text-emerald-700">Copiado!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="h-3.5 w-3.5" />
-                      <span>Copiar URL</span>
-                    </>
-                  )}
-                </button>
-              </div>
-              <code className="block bg-white p-2 rounded-lg border border-gray-200 text-xs font-mono text-gray-800 break-all">
-                https://duolife.com.br/api/webhook/zapsign
-              </code>
-              <p className="text-[11px] text-gray-500">
-                Gatilho automático: assim que o proponente assina, o status da cotação muda para <code>assinado</code> e gera a fatura Asaas.
-              </p>
-            </div>
+            {(() => {
+              const zapSignWebhookUrl = settings.ZAPSIGN_WEBHOOK_SECRET
+                ? `https://duolife.com.br/api/webhook/zapsign?secret=${encodeURIComponent(settings.ZAPSIGN_WEBHOOK_SECRET)}`
+                : 'https://duolife.com.br/api/webhook/zapsign';
+              return (
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                      <ShieldCheck className="h-4 w-4 text-emerald-600" /> URL do Webhook DuoLife para Cadastrar na ZapSign
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(zapSignWebhookUrl, 'webhook-zapsign')}
+                      className="text-xs font-bold text-[#0e4a5a] hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      {copiedKey === 'webhook-zapsign' ? (
+                        <>
+                          <Check className="h-3.5 w-3.5 text-emerald-600" />
+                          <span className="text-emerald-700">Copiado!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3.5 w-3.5" />
+                          <span>Copiar URL</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <code className="block bg-white p-2 rounded-lg border border-gray-200 text-xs font-mono text-gray-800 break-all">
+                    {zapSignWebhookUrl}
+                  </code>
+                  <p className="text-[11px] text-gray-500">
+                    Cadastre esta URL na ZapSign (<strong>Configurações &gt; Integrações &gt; API ZapSign &gt; Webhooks</strong>) marcando os eventos de documento. O DuoLife identifica automaticamente contratos de 1 assinatura (modelos) e 2 assinaturas (PDF dinâmico), avançando o status para <code>assinado</code> e gerando a fatura no Asaas.
+                  </p>
+                </div>
+              );
+            })()}
           </div>
         )}
 

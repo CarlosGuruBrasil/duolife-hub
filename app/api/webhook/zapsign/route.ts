@@ -6,22 +6,59 @@ import { verifyWebhookToken } from '@/lib/webhook-auth';
 import { parseJsonbField } from '@/lib/json-safe';
 import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
 import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
-import { getZapSignConfig } from '@/lib/system-settings';
+import { getZapSignConfig, sanitizeApiToken } from '@/lib/system-settings';
 import { generateAsaasPaymentForQuote } from '@/lib/asaas-service';
 import { identificarRequisitosAssinatura } from '@/lib/assinatura-status';
 
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 204,
+    headers: {
+      'Allow': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, x-zapsign-webhook-secret, x-webhook-secret, Authorization',
+    },
+  });
+}
+
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    service: 'DuoLife Hub - ZapSign Webhook Service',
+    status: 'active',
+    methodAllowed: ['POST'],
+    message: 'Endpoint ativo e pronto para receber notificações de webhook da ZapSign.',
+    timestamp: new Date().toISOString(),
+  });
+}
+
 async function isAuthorized(req: NextRequest) {
   const zapConfig = await getZapSignConfig();
-  const secret = zapConfig.webhookSecret || process.env.ZAPSIGN_WEBHOOK_SECRET;
+  const secret = (zapConfig.webhookSecret || process.env.ZAPSIGN_WEBHOOK_SECRET || '').trim();
 
+  // Se nenhum segredo foi configurado no sistema ou no ambiente, o endpoint opera
+  // no modo público padrão do painel da ZapSign
+  if (!secret) return true;
+
+  // 1. Cabeçalho HTTP customizado
   const headerSecret =
     req.headers.get('x-zapsign-webhook-secret') ||
     req.headers.get('x-webhook-secret');
-  if (verifyWebhookToken(headerSecret, secret)) return true;
+  if (headerSecret && verifyWebhookToken(headerSecret, secret)) return true;
 
+  // 2. Cabeçalho de autorização Bearer
   const auth = req.headers.get('authorization');
   const bearer = auth?.startsWith('Bearer ') ? auth.slice(7) : auth;
-  return verifyWebhookToken(bearer ?? null, secret);
+  if (bearer && verifyWebhookToken(bearer, secret)) return true;
+
+  // 3. Query string (ex: /api/webhook/zapsign?secret=... ou ?token=... ou ?key=...)
+  const querySecret =
+    req.nextUrl.searchParams.get('secret') ||
+    req.nextUrl.searchParams.get('token') ||
+    req.nextUrl.searchParams.get('key');
+  if (querySecret && verifyWebhookToken(querySecret, secret)) return true;
+
+  return false;
 }
 
 function normalizeStatus(payload: any, eventType?: string) {
@@ -36,8 +73,8 @@ function normalizeStatus(payload: any, eventType?: string) {
   const s = String(raw || 'pending').toLowerCase();
   if (['completed', 'signed', 'doc_signed'].includes(s)) return 'signed';
   if (['signer_signed', 'signature_signed'].includes(s)) return 'signer_signed';
-  if (['expired', 'deadline_exceeded'].includes(s)) return 'expired';
-  if (['refused', 'rejected', 'signature_request_refused', 'signature_refused'].includes(s)) return 'refused';
+  if (['expired', 'deadline_exceeded', 'doc_expired'].includes(s)) return 'expired';
+  if (['refused', 'rejected', 'signature_request_refused', 'signature_refused', 'doc_refused'].includes(s)) return 'refused';
   if (['canceled', 'cancelled', 'doc_deleted'].includes(s)) return 'canceled';
   return s;
 }
@@ -76,6 +113,7 @@ function extractSignedFileUrl(payload: any) {
 
 export async function POST(req: NextRequest) {
   if (!(await isAuthorized(req))) {
+    logger.warn({ ip: req.headers.get('x-forwarded-for') }, 'zapsign.webhook.unauthorized');
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -105,12 +143,26 @@ export async function POST(req: NextRequest) {
   const normalizedStatus = normalizeStatus(payload, eventType);
   const signedFileUrl = extractSignedFileUrl(payload);
 
-  const eventUniqueKey = payload?.event_id || payload?.id
-    ? String(payload.event_id || payload.id)
-    : `${eventType}:${externalDocumentId || externalId || ''}:${normalizedStatus}`;
+  const docObj = payload.doc || payload.document || payload;
+  const rawSignersList: any[] = Array.isArray(docObj?.signers)
+    ? docObj.signers
+    : Array.isArray(payload.signers)
+    ? payload.signers
+    : [];
 
-  // Proteção Anti-Replay / Idempotência:
-  // Se o evento exato já foi gravado e processado com sucesso, descarta reprocessamento duplicado
+  // Idempotência / Anti-Replay segura:
+  // IMPORTANTE: Nunca usar payload.id isolado porque no ZapSign payload.id é o ID numérico do documento
+  // e todas as notificações subsequentes (criação, assinaturas parciais, conclusão) compartilham o mesmo ID!
+  const signersSummary = rawSignersList
+    .map((s: any) => `${s.token || s.email || s.name || ''}:${s.status || ''}`)
+    .sort()
+    .join(';');
+  const lastUpdate = payload?.last_update_at || payload?.signed_at || docObj?.last_update_at || '';
+
+  const eventUniqueKey = payload?.event_id || payload?.webhook_id
+    ? String(payload.event_id || payload.webhook_id)
+    : `${eventType}:${externalDocumentId || externalId || ''}:${normalizedStatus}:${signersSummary}:${lastUpdate}`;
+
   const [existingProcessed] = await sql<{ id: string }[]>`
     SELECT id FROM webhook_events
     WHERE provider = 'zapsign' AND external_id = ${eventUniqueKey} AND processed = true
@@ -151,40 +203,88 @@ export async function POST(req: NextRequest) {
   `;
 
   try {
-    const documents = externalDocumentId
-      ? await sql`
-          SELECT id, cotacao_id
-          FROM signature_documents
-          WHERE provider = 'zapsign'
-            AND external_document_id = ${externalDocumentId}
-          LIMIT 1
-        `
-      : externalId
-        ? await sql`
-            SELECT id, cotacao_id
-            FROM signature_documents
-            WHERE provider = 'zapsign'
-              AND cotacao_id = ${externalId}
-            LIMIT 1
-          `
-        : [];
+    // 1. Localização em cascata do Documento e da Cotação correspondente
+    let documentRow: { id: string; cotacao_id: string } | null = null;
 
-    const document = documents[0];
-    if (!document) {
+    if (externalDocumentId) {
+      const docs = await sql<{ id: string; cotacao_id: string }[]>`
+        SELECT id, cotacao_id
+        FROM signature_documents
+        WHERE provider = 'zapsign'
+          AND external_document_id = ${externalDocumentId}
+        LIMIT 1
+      `;
+      if (docs.length > 0) documentRow = docs[0];
+    }
+
+    if (!documentRow && externalId) {
+      const docs = await sql<{ id: string; cotacao_id: string }[]>`
+        SELECT id, cotacao_id
+        FROM signature_documents
+        WHERE provider = 'zapsign'
+          AND cotacao_id = ${externalId}
+        ORDER BY created_at DESC
+        LIMIT 1
+      `;
+      if (docs.length > 0) documentRow = docs[0];
+    }
+
+    let cotacaoId = documentRow?.cotacao_id || null;
+
+    // Fallback: se não localizado na signature_documents, busca diretamente na tabela cotacoes
+    if (!cotacaoId) {
+      const cotacoesEncontradas = await sql<{ id: string }[]>`
+        SELECT id
+        FROM cotacoes
+        WHERE id = ${externalId || null}
+           OR client_data->>'contratoToken' = ${externalDocumentId || null}
+           OR client_data->>'tokenZapsign' = ${externalDocumentId || null}
+        LIMIT 1
+      `;
+
+      if (cotacoesEncontradas.length > 0) {
+        cotacaoId = cotacoesEncontradas[0].id;
+        const [newDoc] = await sql<{ id: string; cotacao_id: string }[]>`
+          INSERT INTO signature_documents (
+            cotacao_id,
+            provider,
+            external_document_id,
+            status,
+            created_at,
+            updated_at
+          )
+          VALUES (
+            ${cotacaoId},
+            'zapsign',
+            ${externalDocumentId || 'ZAP-' + cotacaoId},
+            'pending',
+            NOW(),
+            NOW()
+          )
+          ON CONFLICT (provider, external_document_id)
+          DO UPDATE SET updated_at = NOW()
+          RETURNING id, cotacao_id
+        `;
+        documentRow = newDoc;
+      }
+    }
+
+    if (!documentRow || !cotacaoId) {
       await sql`
         UPDATE webhook_events
         SET processed = true,
-            error_message = 'Documento não encontrado',
+            error_message = 'Documento ou cotação não encontrados',
             payload = ${JSON.stringify(payload)}::jsonb
         WHERE id = ${eventRow.id}
       `;
-      return NextResponse.json({ ok: true, ignored: true });
+      logger.warn({ externalDocumentId, externalId, eventType }, 'zapsign.webhook.document_not_found');
+      return NextResponse.json({ ok: true, ignored: true, message: 'Documento não localizado' });
     }
 
     const [cotacao] = await sql<{ client_data: unknown; status: string; client_name: string; client_email: string; flow_key?: string | null; product_id?: string | null }[]>`
       SELECT client_data, status, client_name, client_email, flow_key, product_id
       FROM cotacoes
-      WHERE id = ${document.cotacao_id}
+      WHERE id = ${cotacaoId}
       LIMIT 1
     `;
 
@@ -203,55 +303,81 @@ export async function POST(req: NextRequest) {
     const clientEmail = (cotacao.client_email || clientData.email || '').toLowerCase().trim();
     const clientName = (cotacao.client_name || clientData.nome || '').toLowerCase().trim();
 
-    const docObj = payload.doc || payload.document || payload;
-    const signersList: any[] = Array.isArray(docObj?.signers)
-      ? docObj.signers
-      : Array.isArray(payload.signers)
-      ? payload.signers
-      : [];
+    // 2. Consulta à API ZapSign para enriquecer o payload caso venha resumido ou sem signatários
+    let signersList: any[] = rawSignersList;
+    let canonicalStatus = String(docObj?.status || payload?.status || '').toLowerCase();
+    let canonicalSignedFile = signedFileUrl;
 
-    let clienteAssinou = Boolean(clientData.clienteAssinou);
-    let corretoraAssinou = Boolean(clientData.corretoraAssinou);
+    const docToken = externalDocumentId || clientData.contratoToken || clientData.tokenZapsign;
 
-    // Mapeamento dos signatários na lista retornada pela ZapSign
-    if (signersList.length > 0) {
-      let proponenteSigner = signersList.find((s: any) => {
-        const sEmail = (s.email || '').toLowerCase().trim();
-        const sName = (s.name || '').toLowerCase().trim();
-        return (clientEmail && sEmail === clientEmail) || (clientName && (sName.includes(clientName) || clientName.includes(sName)));
-      });
-
-      let corretoraSigner = signersList.find((s: any) => {
-        if (s === proponenteSigner) return false;
-        const sEmail = (s.email || '').toLowerCase().trim();
-        const sName = (s.name || '').toLowerCase().trim();
-        return (
-          sEmail.includes('net4life.com.br') ||
-          sEmail.includes('corretora') ||
-          sEmail.includes('duolife') ||
-          sName.includes('corretora') ||
-          sName.includes('net4life')
-        );
-      });
-
-      if (signersList.length >= 2) {
-        if (!proponenteSigner && corretoraSigner) {
-          proponenteSigner = signersList.find((s: any) => s !== corretoraSigner) || signersList[0];
-        } else if (proponenteSigner && !corretoraSigner) {
-          corretoraSigner = signersList.find((s: any) => s !== proponenteSigner) || signersList[1];
-        } else if (!proponenteSigner && !corretoraSigner) {
-          proponenteSigner = signersList[0];
-          corretoraSigner = signersList[1];
+    if ((signersList.length === 0 || !canonicalSignedFile) && docToken) {
+      try {
+        const zapConfig = await getZapSignConfig();
+        const apiToken = sanitizeApiToken(zapConfig.apiToken);
+        if (apiToken) {
+          const apiRes = await fetch(`${zapConfig.baseUrl}/docs/${docToken}/`, {
+            method: 'GET',
+            headers: { Authorization: `Bearer ${apiToken}` },
+            signal: AbortSignal.timeout(8000),
+          });
+          if (apiRes.ok) {
+            const zapDocFromApi = await apiRes.json();
+            if (Array.isArray(zapDocFromApi.signers) && zapDocFromApi.signers.length > 0) {
+              signersList = zapDocFromApi.signers;
+            }
+            if (zapDocFromApi.status) {
+              canonicalStatus = String(zapDocFromApi.status).toLowerCase();
+            }
+            canonicalSignedFile =
+              zapDocFromApi.signed_file ||
+              zapDocFromApi.signed_file_url ||
+              zapDocFromApi.original_file ||
+              canonicalSignedFile;
+          }
         }
-      } else if (signersList.length === 1 && !proponenteSigner) {
-        proponenteSigner = signersList[0];
+      } catch (apiErr) {
+        logger.warn({ apiErr, docToken }, 'zapsign.webhook.api_fallback_warn');
       }
-
-      if (proponenteSigner?.status === 'signed') clienteAssinou = true;
-      if (corretoraSigner?.status === 'signed') corretoraAssinou = true;
     }
 
-    // Se veio o signatário que acabou de assinar no evento signer_signed
+    // 3. Mapeamento preciso dos signatários
+    let proponenteSigner = signersList.find((s: any) => {
+      const sEmail = (s.email || '').toLowerCase().trim();
+      const sName = (s.name || '').toLowerCase().trim();
+      return (clientEmail && sEmail === clientEmail) || (clientName && (sName.includes(clientName) || clientName.includes(sName)));
+    });
+
+    let corretoraSigner = signersList.find((s: any) => {
+      if (s === proponenteSigner) return false;
+      const sEmail = (s.email || '').toLowerCase().trim();
+      const sName = (s.name || '').toLowerCase().trim();
+      return (
+        sEmail.includes('net4life.com.br') ||
+        sEmail.includes('corretora') ||
+        sEmail.includes('duolife') ||
+        sName.includes('corretora') ||
+        sName.includes('net4life')
+      );
+    });
+
+    if (signersList.length >= 2) {
+      if (!proponenteSigner && corretoraSigner) {
+        proponenteSigner = signersList.find((s: any) => s !== corretoraSigner) || signersList[0];
+      } else if (proponenteSigner && !corretoraSigner) {
+        corretoraSigner = signersList.find((s: any) => s !== proponenteSigner) || signersList[1];
+      } else if (!proponenteSigner && !corretoraSigner) {
+        proponenteSigner = signersList[0];
+        corretoraSigner = signersList[1];
+      }
+    } else if (signersList.length === 1 && !proponenteSigner) {
+      proponenteSigner = signersList[0];
+    }
+
+    let proponenteSigned = Boolean(proponenteSigner && proponenteSigner.status === 'signed');
+    let corretoraSigned = Boolean(corretoraSigner && corretoraSigner.status === 'signed');
+    const signedCount = signersList.filter((s: any) => s.status === 'signed').length;
+
+    // Se o evento trouxe o signatário que acabou de assinar (signer / signatario)
     const signerJustSigned = payload.signer || payload.signatario || null;
     if (signerJustSigned) {
       const sEmail = (signerJustSigned.email || '').toLowerCase().trim();
@@ -264,51 +390,77 @@ export async function POST(req: NextRequest) {
         sName.includes('net4life');
 
       if (isCorretora) {
-        corretoraAssinou = true;
+        corretoraSigned = true;
       } else {
-        clienteAssinou = true;
+        proponenteSigned = true;
       }
     }
 
+    // Preserva confirmações prévias já salvas em client_data
+    if (clientData.clienteAssinou) proponenteSigned = true;
+    if (clientData.corretoraAssinou) corretoraSigned = true;
+
     const requisitos = identificarRequisitosAssinatura(clientData, cotacao);
+    const docStatusFinalizado =
+      canonicalStatus === 'signed' ||
+      canonicalStatus === 'completed' ||
+      normalizedStatus === 'signed';
 
-    const eventTypeLower = eventType.toLowerCase();
-    const isDocSignedEvent =
-      eventTypeLower === 'doc_signed' ||
-      normalizedStatus === 'signed' ||
-      docObj?.status === 'signed' ||
-      docObj?.status === 'completed';
+    let todasAssinadas = false;
+    let statusAssinatura: 'todas_assinadas' | 'falta_corretora' | 'falta_cliente' | 'faltam_ambas';
 
-    const todosSignersAssinaram =
-      signersList.length > 0 && signersList.every((s: any) => s.status === 'signed');
+    // 4. Identificação dinâmica do status da assinatura (1 vs 2 assinaturas)
+    if (requisitos.total === 1) {
+      if (docStatusFinalizado || proponenteSigned || signedCount >= 1) {
+        todasAssinadas = true;
+        proponenteSigned = true;
+        corretoraSigned = true; // Não exigida para 1 assinatura
+        statusAssinatura = 'todas_assinadas';
+      } else {
+        todasAssinadas = false;
+        corretoraSigned = true;
+        statusAssinatura = 'falta_cliente';
+      }
+    } else {
+      // Contratos com 2 assinaturas obrigatórias (Cliente + Corretora)
+      if (docStatusFinalizado || (proponenteSigned && corretoraSigned)) {
+        todasAssinadas = true;
+        proponenteSigned = true;
+        corretoraSigned = true;
+        statusAssinatura = 'todas_assinadas';
+      } else if (proponenteSigned && !corretoraSigned) {
+        statusAssinatura = 'falta_corretora';
+      } else if (!proponenteSigned && corretoraSigned) {
+        statusAssinatura = 'falta_cliente';
+      } else {
+        statusAssinatura = 'faltam_ambas';
+      }
+    }
 
-    const todasAssinadas =
-      isDocSignedEvent ||
-      todosSignersAssinaram ||
-      (requisitos.total === 1 ? clienteAssinou : (clienteAssinou && corretoraAssinou));
-
+    // 5. Aplicação das transições no Banco de Dados
     if (todasAssinadas) {
-      clienteAssinou = true;
-      corretoraAssinou = true;
       clientData.statusAssinatura = 'todas_assinadas';
       clientData.clienteAssinou = true;
       clientData.corretoraAssinou = true;
       clientData.totalAssinaturas = requisitos.total;
       clientData.assinaturasNecessarias = requisitos.papeis;
       clientData.contratoModo = requisitos.modo;
-      if (signedFileUrl) clientData.contratoPdf = signedFileUrl;
+      if (canonicalSignedFile) {
+        clientData.contratoPdf = canonicalSignedFile;
+        clientData.urlAssinado = canonicalSignedFile;
+      }
       clientData.assinadoEm = clientData.assinadoEm || new Date().toISOString();
 
       await sql`
         UPDATE signature_documents
         SET
           status = 'signed',
-          signed_file_url = COALESCE(${signedFileUrl}, signed_file_url),
+          signed_file_url = COALESCE(${canonicalSignedFile}, signed_file_url),
           signed_at = COALESCE(signed_at, NOW()),
           last_event_type = ${eventType},
           raw_payload = ${JSON.stringify(payload)}::jsonb,
           updated_at = NOW()
-        WHERE id = ${document.id}
+        WHERE id = ${documentRow.id}
       `;
 
       // Só avança para 'assinado' se a cotação ainda não progrediu para pagamento_gerado ou estado terminal
@@ -321,7 +473,7 @@ export async function POST(req: NextRequest) {
             status = 'assinado',
             client_data = ${JSON.stringify(clientData)}::jsonb,
             updated_at = NOW()
-          WHERE id = ${document.cotacao_id}
+          WHERE id = ${cotacaoId}
         `;
       } else {
         await sql`
@@ -329,7 +481,7 @@ export async function POST(req: NextRequest) {
           SET
             client_data = ${JSON.stringify(clientData)}::jsonb,
             updated_at = NOW()
-          WHERE id = ${document.cotacao_id}
+          WHERE id = ${cotacaoId}
         `;
       }
 
@@ -338,7 +490,7 @@ export async function POST(req: NextRequest) {
         const [cotacaoCompleta] = await sql<{ client_id: string | null; partner_id: string; partner_user_id: string | null; client_name: string; premio_final: number | null; premio_calculado: number | null; importancia_segurada: number }[]>`
           SELECT client_id, partner_id, partner_user_id, client_name, premio_final, premio_calculado, importancia_segurada
           FROM cotacoes
-          WHERE id = ${document.cotacao_id}
+          WHERE id = ${cotacaoId}
           LIMIT 1
         `;
 
@@ -367,7 +519,7 @@ export async function POST(req: NextRequest) {
 
         await dispatchDomainEvent('CONTRATO_ASSINADO', {
           eventType: 'CONTRATO_ASSINADO',
-          contextId: document.cotacao_id,
+          contextId: cotacaoId,
           cliente: {
             nome: clientRow?.full_name || cotacaoCompleta?.client_name,
             email: clientRow?.email || clientData.email,
@@ -394,77 +546,64 @@ export async function POST(req: NextRequest) {
             codigoVenda: partnerRow.codigo_venda,
           } : undefined,
           cotacao: {
-            id: document.cotacao_id,
+            id: cotacaoId,
             status: 'assinado',
             premio_final: Number(cotacaoCompleta?.premio_final || cotacaoCompleta?.premio_calculado) || 0,
             cobertura: Number(cotacaoCompleta?.importancia_segurada) || 0,
           },
           dados: {
-            contratoPdf: signedFileUrl,
+            contratoPdf: canonicalSignedFile,
             assinadoEm: clientData.assinadoEm,
           },
         });
       } catch (dispatchErr) {
-        logger.error({ dispatchErr, cotacaoId: document.cotacao_id }, 'Falha ao despachar evento CONTRATO_ASSINADO');
+        logger.error({ dispatchErr, cotacaoId }, 'Falha ao despachar evento CONTRATO_ASSINADO');
       }
 
-      // Regra obrigatória: Se houver formaPagamentoPreferida em client_data, emite a cobrança Asaas automaticamente!
+      // Regra: Se houver formaPagamentoPreferida pré-registrada, gera a fatura no Asaas automaticamente!
       const [existingOrder] = await sql<{ id: string; status: string }[]>`
         SELECT id, status FROM payment_orders
-        WHERE cotacao_id = ${document.cotacao_id}
+        WHERE cotacao_id = ${cotacaoId}
           AND status IN ('pending', 'partially_paid', 'paid')
         LIMIT 1
       `;
 
       if (existingOrder) {
         logger.info(
-          { cotacaoId: document.cotacao_id, orderId: existingOrder.id, status: existingOrder.status },
+          { cotacaoId, orderId: existingOrder.id, status: existingOrder.status },
           'zapsign.webhook.asaas_payment_skipped_existing_order'
         );
       } else if (clientData.formaPagamentoPreferida) {
         try {
-          const paymentResult = await generateAsaasPaymentForQuote(document.cotacao_id, { isManualAdmin: false });
+          const paymentResult = await generateAsaasPaymentForQuote(cotacaoId, { isManualAdmin: false });
           if (paymentResult.ok) {
             logger.info(
-              { cotacaoId: document.cotacao_id, checkoutId: paymentResult.checkoutId },
+              { cotacaoId, checkoutId: paymentResult.checkoutId },
               'zapsign.webhook.asaas_payment_generated'
             );
           } else {
             logger.warn(
-              { cotacaoId: document.cotacao_id, reason: paymentResult.error },
+              { cotacaoId, reason: paymentResult.error },
               'zapsign.webhook.asaas_payment_retained_or_failed'
             );
           }
         } catch (paymentErr) {
           logger.error(
-            { paymentErr, cotacaoId: document.cotacao_id },
+            { paymentErr, cotacaoId },
             'zapsign.webhook.asaas_payment_exception'
           );
         }
       } else {
         logger.info(
-          { cotacaoId: document.cotacao_id },
+          { cotacaoId },
           'zapsign.webhook.asaas_payment_waiting_preference'
         );
       }
-    } else if (eventTypeLower === 'signer_signed' || normalizedStatus === 'signer_signed') {
-      // Evento de assinatura parcial: apenas 1 dos signatários assinou
-      let statusAssinatura: 'todas_assinadas' | 'falta_corretora' | 'falta_cliente' | 'faltam_ambas' =
-        requisitos.total === 1 ? 'falta_cliente' : 'faltam_ambas';
-
-      if (requisitos.total === 1) {
-        statusAssinatura = clienteAssinou ? 'todas_assinadas' : 'falta_cliente';
-      } else {
-        if (clienteAssinou && !corretoraAssinou) {
-          statusAssinatura = 'falta_corretora';
-        } else if (!clienteAssinou && corretoraAssinou) {
-          statusAssinatura = 'falta_cliente';
-        }
-      }
-
+    } else if (statusAssinatura === 'falta_corretora' || statusAssinatura === 'falta_cliente') {
+      // Evento de assinatura parcial (1 das partes assinou)
       clientData.statusAssinatura = statusAssinatura;
-      clientData.clienteAssinou = clienteAssinou;
-      clientData.corretoraAssinou = requisitos.total === 1 ? true : corretoraAssinou;
+      clientData.clienteAssinou = proponenteSigned;
+      clientData.corretoraAssinou = corretoraSigned;
       clientData.totalAssinaturas = requisitos.total;
       clientData.assinaturasNecessarias = requisitos.papeis;
       clientData.contratoModo = requisitos.modo;
@@ -474,7 +613,7 @@ export async function POST(req: NextRequest) {
         SET
           client_data = ${JSON.stringify(clientData)}::jsonb,
           updated_at = NOW()
-        WHERE id = ${document.cotacao_id}
+        WHERE id = ${cotacaoId}
       `;
 
       await sql`
@@ -483,41 +622,41 @@ export async function POST(req: NextRequest) {
           last_event_type = ${eventType},
           raw_payload = ${JSON.stringify(payload)}::jsonb,
           updated_at = NOW()
-        WHERE id = ${document.id}
+        WHERE id = ${documentRow.id}
       `;
 
       logger.info(
-        { cotacaoId: document.cotacao_id, statusAssinatura, clienteAssinou, corretoraAssinou },
+        { cotacaoId, statusAssinatura, clienteAssinou: proponenteSigned, corretoraAssinou: corretoraSigned },
         'zapsign.webhook.partial_signature_recorded'
       );
     } else if (normalizedStatus === 'expired') {
       await sql`
         UPDATE signature_documents
         SET status = 'expired', updated_at = NOW(), raw_payload = ${JSON.stringify(payload)}::jsonb
-        WHERE id = ${document.id}
+        WHERE id = ${documentRow.id}
       `;
 
       await sql`
         UPDATE cotacoes
         SET status = 'expirada', updated_at = NOW()
-        WHERE id = ${document.cotacao_id}
+        WHERE id = ${cotacaoId}
           AND status IN ('contrato_gerado', 'enviada', 'rascunho')
       `;
-      logger.info({ cotacaoId: document.cotacao_id }, 'zapsign.webhook.quote_expired');
+      logger.info({ cotacaoId }, 'zapsign.webhook.quote_expired');
     } else if (normalizedStatus === 'refused') {
       await sql`
         UPDATE signature_documents
         SET status = 'refused', updated_at = NOW(), raw_payload = ${JSON.stringify(payload)}::jsonb
-        WHERE id = ${document.id}
+        WHERE id = ${documentRow.id}
       `;
 
       await sql`
         UPDATE cotacoes
         SET status = 'recusada', updated_at = NOW()
-        WHERE id = ${document.cotacao_id}
+        WHERE id = ${cotacaoId}
           AND status IN ('contrato_gerado', 'enviada', 'rascunho')
       `;
-      logger.info({ cotacaoId: document.cotacao_id }, 'zapsign.webhook.quote_refused');
+      logger.info({ cotacaoId }, 'zapsign.webhook.quote_refused');
     }
 
     await sql`
@@ -526,8 +665,11 @@ export async function POST(req: NextRequest) {
       WHERE id = ${eventRow.id}
     `;
 
-    logger.info({ eventType, externalDocumentId, externalId, status: normalizedStatus }, 'zapsign.webhook.processed');
-    return NextResponse.json({ ok: true });
+    logger.info(
+      { eventType, externalDocumentId, cotacaoId, statusAssinatura, todasAssinadas },
+      'zapsign.webhook.processed'
+    );
+    return NextResponse.json({ ok: true, statusAssinatura, todasAssinadas });
   } catch (err) {
     await sql`
       UPDATE webhook_events
