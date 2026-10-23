@@ -202,7 +202,7 @@ const initialFormState: DynamicFormState = {
   bairro: '',
   cidade: '',
   uf: 'SP',
-  grupoTarifario: 'G5',
+  grupoTarifario: '',
   associadoEscritorio: 'Não',
   nomeEscritorio: '',
   escritorioAssociado: 'Não associado',
@@ -375,6 +375,7 @@ export default function DynamicCotacaoForm({
 
   const [form, setForm] = useState<DynamicFormState>(() => ({
     ...initialFormState,
+    grupoTarifario: resolvedRamoConfig.gruposTarifarios ? 'G5' : '',
     dataInicioVigencia: initialFormState.dataInicioVigencia || getTodayIsoDate(),
   }));
 
@@ -1341,6 +1342,10 @@ export default function DynamicCotacaoForm({
         delete payloadClientData.croUf;
       }
 
+      if (!resolvedRamoConfig.gruposTarifarios) {
+        delete payloadClientData.grupoTarifario;
+      }
+
       delete payloadClientData.cpfCnpj;
 
       const { cobertura: cleanCob } = sanitizePlanFinancials({
@@ -1383,7 +1388,8 @@ export default function DynamicCotacaoForm({
       // 2. Dispara geração de contrato no ZapSign
       const zapRes = await fetch(`/api/portal/cotacoes/${id}/gerar-contrato`, {
         method: 'POST',
-        headers: getHeaders(),
+        headers: getHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ forceRecreate: true }),
       });
       const zapData = await zapRes.json();
 

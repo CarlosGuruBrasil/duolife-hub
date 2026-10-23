@@ -112,46 +112,6 @@ export async function POST(
       ? (Date.now() - contratoGeradoEm.getTime()) > PRAZO_DIAS_ASSINATURA * 24 * 60 * 60 * 1000
       : false;
 
-    // Se NÃO for solicitação explícita de regeração (forceRecreate) e o contrato anterior existir e não estiver expirado:
-    if (!forceRecreate && clientData.contratoToken && !signUrlExpirado) {
-      const isDynamic = clientData.contratoModo === 'dynamic_pdf' || isMedico;
-      const totalAssinaturas = Number(clientData.totalAssinaturas) || (isDynamic ? 2 : 1);
-      const assinaturasNecessarias = clientData.assinaturasNecessarias || (totalAssinaturas === 1 ? ['cliente'] : ['cliente', 'corretora']);
-      const statusPadrao = totalAssinaturas === 1 ? 'falta_cliente' : 'faltam_ambas';
-
-      return Response.json({
-        ok: true,
-        docToken: clientData.contratoToken,
-        signUrl: clientData.signUrl,
-        signUrlCorretora: isDynamic ? (clientData.signUrlCorretora || null) : null,
-        signUrlProponente: clientData.signUrlProponente || clientData.signUrl || null,
-        statusAssinatura: clientData.statusAssinatura || statusPadrao,
-        totalAssinaturas,
-        assinaturasNecessarias,
-        contratoModo: clientData.contratoModo || (isDynamic ? 'dynamic_pdf' : 'template'),
-        clienteAssinou: Boolean(clientData.clienteAssinou),
-        corretoraAssinou: totalAssinaturas === 1 ? true : Boolean(clientData.corretoraAssinou),
-        alreadyExisted: true,
-      });
-    }
-
-    // Se for regeração (forceRecreate) ou expiração, e houver um token anterior na ZapSign:
-    // 1. Cancela o documento anterior na ZapSign para invalidar o link antigo imediatamente
-    // 2. Marca o documento anterior em signature_documents como 'cancelled' ou 'expired'
-    if (clientData.contratoToken) {
-      try {
-        await cancelarDocumentoZapSign(clientData.contratoToken);
-      } catch (cancelErr) {
-        logger.warn({ cancelErr, docToken: clientData.contratoToken }, 'api.portal.gerar-contrato.cancel_old_warn');
-      }
-
-      await sql`
-        UPDATE signature_documents
-        SET status = ${signUrlExpirado ? 'expired' : 'cancelled'}, updated_at = NOW()
-        WHERE cotacao_id = ${cotacao.id} AND status NOT IN ('cancelled', 'refused', 'expired')
-      `;
-    }
-
     // 2. Determina modo e template do ZapSign
     const zapConfig = await getZapSignConfig();
     const isDynamicPdf =
@@ -182,6 +142,60 @@ export async function POST(
 
     if (!isDynamicPdf && !templateId) {
       return Response.json({ error: 'Template do ZapSign não configurado' }, { status: 422 });
+    }
+
+    const desiredContratoModo = isDynamicPdf ? 'dynamic_pdf' : 'template';
+    const isMinutaOutdated = Boolean(clientData.minutaDesatualizada);
+    const isTemplateMismatch = !isDynamicPdf && Boolean(clientData.contratoTemplateId) && clientData.contratoTemplateId !== templateId;
+    const isTipoMismatch = Boolean(clientData.contratoTipo) && clientData.contratoTipo !== tipoContrato;
+    const isModoMismatch = Boolean(clientData.contratoModo) && clientData.contratoModo !== desiredContratoModo;
+
+    const needsRecreation =
+      forceRecreate ||
+      signUrlExpirado ||
+      isMinutaOutdated ||
+      isTemplateMismatch ||
+      isTipoMismatch ||
+      isModoMismatch;
+
+    // Se NÃO for solicitação explícita de regeração nem houver divergência de modelo/dados, e o contrato anterior existir e não estiver expirado:
+    if (!needsRecreation && clientData.contratoToken) {
+      const isDynamic = clientData.contratoModo === 'dynamic_pdf' || isMedico;
+      const totalAssinaturas = Number(clientData.totalAssinaturas) || (isDynamic ? 2 : 1);
+      const assinaturasNecessarias = clientData.assinaturasNecessarias || (totalAssinaturas === 1 ? ['cliente'] : ['cliente', 'corretora']);
+      const statusPadrao = totalAssinaturas === 1 ? 'falta_cliente' : 'faltam_ambas';
+
+      return Response.json({
+        ok: true,
+        docToken: clientData.contratoToken,
+        signUrl: clientData.signUrl,
+        signUrlCorretora: isDynamic ? (clientData.signUrlCorretora || null) : null,
+        signUrlProponente: clientData.signUrlProponente || clientData.signUrl || null,
+        statusAssinatura: clientData.statusAssinatura || statusPadrao,
+        totalAssinaturas,
+        assinaturasNecessarias,
+        contratoModo: clientData.contratoModo || (isDynamic ? 'dynamic_pdf' : 'template'),
+        clienteAssinou: Boolean(clientData.clienteAssinou),
+        corretoraAssinou: totalAssinaturas === 1 ? true : Boolean(clientData.corretoraAssinou),
+        alreadyExisted: true,
+      });
+    }
+
+    // Se for regeração (forceRecreate, expiração ou divergência de modelo), e houver um token anterior na ZapSign:
+    // 1. Cancela o documento anterior na ZapSign para invalidar o link antigo imediatamente
+    // 2. Marca o documento anterior em signature_documents como 'cancelled' ou 'expired'
+    if (clientData.contratoToken) {
+      try {
+        await cancelarDocumentoZapSign(clientData.contratoToken);
+      } catch (cancelErr) {
+        logger.warn({ cancelErr, docToken: clientData.contratoToken }, 'api.portal.gerar-contrato.cancel_old_warn');
+      }
+
+      await sql`
+        UPDATE signature_documents
+        SET status = ${signUrlExpirado ? 'expired' : 'cancelled'}, updated_at = NOW()
+        WHERE cotacao_id = ${cotacao.id} AND status NOT IN ('cancelled', 'refused', 'expired')
+      `;
     }
 
     // 2b. Consome o uso do cupom promocional (se houver) de forma atômica e idempotente por cotação.
@@ -640,6 +654,8 @@ export async function POST(
     clientData.contratoGeradoEm = new Date().toISOString();
     clientData.contratoPrazoLimite = deadlineIso;
     clientData.contratoModo = isDynamicPdf ? 'dynamic_pdf' : 'template';
+    clientData.contratoTemplateId = isDynamicPdf ? 'dynamic_pdf' : templateId;
+    clientData.contratoTipo = tipoContrato;
     // Limpa estado de desatualização da minuta
     clientData.minutaDesatualizada = false;
     delete clientData.minutaDesatualizadaMotivo;

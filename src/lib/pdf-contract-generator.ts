@@ -165,45 +165,80 @@ function wrapText(text: string, font: PDFFont, fontSize: number, maxWidth: numbe
  */
 export function determinarTipoContrato(
   clientData: Record<string, any>,
-  cotacao?: { is_renewal?: boolean | null; importancia_segurada?: number | string | null }
+  cotacao?: {
+    is_renewal?: boolean | null;
+    importancia_segurada?: number | string | null;
+    flow_key?: string | null;
+    product_id?: string | null;
+  }
 ): TipoContratoPdf {
+  const resolveIsRenovacao = (val: any): boolean => {
+    if (val === true || val === 1) return true;
+    if (typeof val === 'string') {
+      const norm = val.trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+      return norm === 'sim' || norm === 's' || norm === 'true' || norm === '1';
+    }
+    return false;
+  };
+
   const isRenovacao =
-    clientData.isRenovacao === 'Sim' ||
-    clientData.renovacao === true ||
-    clientData.renovacao === 'true' ||
-    clientData.renovacao === 'Sim' ||
-    Boolean(clientData.isRenewal) ||
+    resolveIsRenovacao(clientData.isRenovacao) ||
+    resolveIsRenovacao(clientData.renovacao) ||
+    resolveIsRenovacao(clientData.isRenewal) ||
     Boolean(cotacao?.is_renewal);
 
-  const tipoRaw = String(
-    clientData.tipo || clientData.tipoDePlano || clientData.plano || clientData.nomePlano || ''
-  ).toLowerCase().trim();
+  const flowKey = String(clientData.flowKey || (cotacao as any)?.flow_key || '').toLowerCase();
+  const productId = String(clientData.productId || (cotacao as any)?.product_id || '').toLowerCase();
+  const ramoId = String(clientData.ramoId || '').toLowerCase();
 
-  const coberturaStr = String(
-    clientData.cobertura || clientData.lmi || clientData.valorCobertura || cotacao?.importancia_segurada || ''
-  );
-  const coberturaDigits = coberturaStr.replace(/\D/g, '');
+  // RC Advogados nunca deve ser identificado como termo_saude, mesmo se houver resíduo de grupoTarifario
+  const isAdvogado =
+    flowKey === 'rc_advogados_v1' ||
+    flowKey === 'rc-advogados' ||
+    flowKey === 'rc_professional_v1' ||
+    productId === 'prod-rc-001' ||
+    ramoId === 'rc-advogados' ||
+    Boolean(clientData.oab);
 
   const isMedico =
-    clientData.flowKey === 'rc_medicos_v1' ||
-    clientData.flowKey === 'rc-medicos' ||
-    (cotacao as any)?.flow_key === 'rc_medicos_v1' ||
-    (cotacao as any)?.flow_key === 'rc-medicos' ||
-    (cotacao as any)?.product_id === 'prod-rc-med-001' ||
-    Boolean(clientData.grupoTarifario);
+    !isAdvogado && (
+      flowKey === 'rc_medicos_v1' ||
+      flowKey === 'rc-medicos' ||
+      productId === 'prod-rc-med-001' ||
+      ramoId === 'rc-medicos' ||
+      Boolean(clientData.grupoTarifario)
+    );
 
   if (isMedico) {
     return 'termo_saude';
   }
 
+  const tipoNorm = String(
+    clientData.tipo || clientData.tipoDePlano || clientData.plano || clientData.nomePlano || ''
+  ).toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  const coberturaStr = String(
+    clientData.cobertura || clientData.lmi || clientData.valorCobertura || cotacao?.importancia_segurada || ''
+  ).toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+  const coberturaDigits = coberturaStr.replace(/\D/g, '');
+
+  // Converte valor monetário com segurança (ex: "R$ 100.000,00" -> 100000, "100.000" -> 100000, 100000 -> 100000)
+  const cleanNumber = Number(coberturaStr.replace(/[^\d.,]/g, '').replace(/\.(?=\d{3}(,|$))/g, '').replace(',', '.'));
+
   const is100k =
-    tipoRaw.includes('100k') ||
-    tipoRaw.includes('100 mil') ||
-    tipoRaw === '100' ||
+    tipoNorm.includes('100k') ||
+    tipoNorm.includes('100 mil') ||
+    tipoNorm.includes('100mil') ||
+    tipoNorm.includes('100.000') ||
+    tipoNorm === '100' ||
+    tipoNorm.includes('plano 100') ||
     coberturaStr.includes('100.000') ||
+    coberturaStr.includes('100 mil') ||
+    coberturaStr.includes('100mil') ||
+    cleanNumber === 100000 ||
     coberturaDigits === '100000' ||
-    coberturaDigits === '10000000' ||
-    coberturaDigits === '1000000';
+    coberturaDigits === '10000000';
 
   if (is100k) {
     return isRenovacao ? '100k_renovacao' : '100k';
