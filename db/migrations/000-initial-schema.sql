@@ -432,46 +432,50 @@ INSERT INTO products (
   insurer_name,
   is_active
 )
-VALUES (
+SELECT
   'prod-rc-001',
   'RC Profissional — Advogados & Escritórios',
   'RC-001',
   'Responsabilidade Civil',
   'KEV Seguros',
   true
-)
-ON CONFLICT (code) DO NOTHING;
+WHERE NOT EXISTS (
+  SELECT 1 FROM products WHERE id = 'prod-rc-001' OR code = 'RC-001' OR code = 'RC-ADV-001'
+);
 
 -- Usuários Administradores Iniciais
 INSERT INTO admin_users (id, name, email, password_hash, role, is_active)
-VALUES (
+SELECT
   'user_admin_duolife_master',
   'Admin DuoLife',
   'carlos@guru.dev.br',
   '$2a$10$6mCsz4rD1bQpLqXQx6VjOe7kY0U7d4gK6H1Z5K7X0K4w8v2Q4s8Ye',
   'duolife_admin',
   true
-)
-ON CONFLICT (email) DO NOTHING;
+WHERE NOT EXISTS (
+  SELECT 1 FROM admin_users WHERE id = 'user_admin_duolife_master' OR email = 'carlos@guru.dev.br'
+);
 
 INSERT INTO admin_users (id, name, email, password_hash, role, is_active)
-VALUES (
+SELECT
   'user_admin_carlosad',
   'Carlos Eduardo',
   'carlosad1981@gmail.com',
   '$2a$10$6mCsz4rD1bQpLqXQx6VjOe7kY0U7d4gK6H1Z5K7X0K4w8v2Q4s8Ye',
   'duolife_dev',
   true
-)
-ON CONFLICT (email) DO NOTHING;
+WHERE NOT EXISTS (
+  SELECT 1 FROM admin_users WHERE id = 'user_admin_carlosad' OR email = 'carlosad1981@gmail.com'
+);
 
 -- Parceiro Master Inicial
 INSERT INTO partners (id, razao_social, nome_fantasia, email, status)
-VALUES (
+SELECT
   'partner_duolife_master',
   'DuoLife Hub Seguros',
   'DuoLife',
   'contato@duolife.com.br',
   'active'
-)
-ON CONFLICT (id) DO NOTHING;
+WHERE NOT EXISTS (
+  SELECT 1 FROM partners WHERE id = 'partner_duolife_master' OR email = 'contato@duolife.com.br'
+);
