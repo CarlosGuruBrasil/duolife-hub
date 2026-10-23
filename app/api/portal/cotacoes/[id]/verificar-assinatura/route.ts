@@ -428,12 +428,35 @@ export async function POST(
         logger.error({ dispatchErr, cotacaoId: cotacao.id }, 'api.portal.verificar-assinatura.dispatch_event_failed');
       }
 
-      // Regra obrigatória: A cobrança Asaas só é emitida automaticamente se já houver formaPagamentoPreferida salva em client_data
+      // Emissão automática da fatura Asaas assim que o contrato estiver formalizado
       let paymentInfo: any = null;
-      if (clientData.formaPagamentoPreferida) {
+      const [existingOrder] = await sql<{ id: string }[]>`
+        SELECT id FROM payment_orders
+        WHERE cotacao_id = ${cotacao.id}
+          AND status IN ('pending', 'partially_paid', 'paid')
+        LIMIT 1
+      `;
+
+      if (!existingOrder) {
         try {
-          const isManualAdmin = user ? isInternalUser(user) : false;
-          paymentInfo = await generateAsaasPaymentForQuote(cotacao.id, { isManualAdmin });
+          const rawBillingType =
+            clientData.formaPagamentoPreferida ||
+            clientData.formaPagamento ||
+            clientData.billingType;
+
+          let billingType = 'UNDEFINED';
+          if (rawBillingType) {
+            const upper = String(rawBillingType).toUpperCase();
+            if (['BOLETO', 'PIX', 'CREDIT_CARD', 'UNDEFINED'].includes(upper)) {
+              billingType = upper;
+            }
+          }
+
+          const isManualAdmin = user ? isInternalUser(user) : true;
+          paymentInfo = await generateAsaasPaymentForQuote(cotacao.id, {
+            isManualAdmin,
+            customValues: { billingType },
+          });
         } catch (paymentErr) {
           logger.error({ paymentErr, cotacaoId: cotacao.id }, 'api.portal.verificar-assinatura.asaas_payment_failed');
         }

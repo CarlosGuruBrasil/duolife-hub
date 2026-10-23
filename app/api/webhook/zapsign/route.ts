@@ -577,7 +577,7 @@ export async function POST(req: NextRequest) {
         logger.error({ dispatchErr, cotacaoId }, 'Falha ao despachar evento CONTRATO_ASSINADO');
       }
 
-      // Regra: Se houver formaPagamentoPreferida pré-registrada, gera a fatura no Asaas automaticamente!
+      // Geração automática e imediata da fatura/cobrança no Asaas ao concluir a assinatura
       const [existingOrder] = await sql<{ id: string; status: string }[]>`
         SELECT id, status FROM payment_orders
         WHERE cotacao_id = ${cotacaoId}
@@ -590,12 +590,30 @@ export async function POST(req: NextRequest) {
           { cotacaoId, orderId: existingOrder.id, status: existingOrder.status },
           'zapsign.webhook.asaas_payment_skipped_existing_order'
         );
-      } else if (clientData.formaPagamentoPreferida) {
+      } else {
         try {
-          const paymentResult = await generateAsaasPaymentForQuote(cotacaoId, { isManualAdmin: false });
+          const rawBillingType =
+            clientData.formaPagamentoPreferida ||
+            clientData.formaPagamento ||
+            clientData.billingType ||
+            (cotacao as any).payment_method;
+
+          let billingType = 'UNDEFINED';
+          if (rawBillingType) {
+            const upper = String(rawBillingType).toUpperCase();
+            if (['BOLETO', 'PIX', 'CREDIT_CARD', 'UNDEFINED'].includes(upper)) {
+              billingType = upper;
+            }
+          }
+
+          const paymentResult = await generateAsaasPaymentForQuote(cotacaoId, {
+            isManualAdmin: true,
+            customValues: { billingType },
+          });
+
           if (paymentResult.ok) {
             logger.info(
-              { cotacaoId, checkoutId: paymentResult.checkoutId },
+              { cotacaoId, checkoutId: paymentResult.checkoutId, linkBoleto: paymentResult.linkBoleto },
               'zapsign.webhook.asaas_payment_generated'
             );
           } else {
@@ -610,11 +628,6 @@ export async function POST(req: NextRequest) {
             'zapsign.webhook.asaas_payment_exception'
           );
         }
-      } else {
-        logger.info(
-          { cotacaoId },
-          'zapsign.webhook.asaas_payment_waiting_preference'
-        );
       }
     } else if (statusAssinatura === 'falta_corretora' || statusAssinatura === 'falta_cliente') {
       // Evento de assinatura parcial (1 das partes assinou)

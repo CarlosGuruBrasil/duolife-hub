@@ -1067,12 +1067,30 @@ export async function processZapSignPayload(rawPayload: any): Promise<{ success:
           { cotacaoId, orderId: existingOrder.id, status: existingOrder.status },
           'processZapSignPayload: Ordem de pagamento Asaas existente mantida'
         );
-      } else if (clientData.formaPagamentoPreferida) {
+      } else {
         try {
-          const paymentResult = await generateAsaasPaymentForQuote(cotacaoId, { isManualAdmin: false });
+          const rawBillingType =
+            clientData.formaPagamentoPreferida ||
+            clientData.formaPagamento ||
+            clientData.billingType ||
+            (cotacao as any).payment_method;
+
+          let billingType = 'UNDEFINED';
+          if (rawBillingType) {
+            const upper = String(rawBillingType).toUpperCase();
+            if (['BOLETO', 'PIX', 'CREDIT_CARD', 'UNDEFINED'].includes(upper)) {
+              billingType = upper;
+            }
+          }
+
+          const paymentResult = await generateAsaasPaymentForQuote(cotacaoId, {
+            isManualAdmin: true,
+            customValues: { billingType },
+          });
+
           if (paymentResult.ok) {
             logger.info(
-              { cotacaoId, checkoutId: paymentResult.checkoutId },
+              { cotacaoId, checkoutId: paymentResult.checkoutId, linkBoleto: paymentResult.linkBoleto },
               'processZapSignPayload: Cobrança Asaas gerada com sucesso'
             );
           } else {

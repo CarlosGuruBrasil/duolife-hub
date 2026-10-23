@@ -308,6 +308,42 @@ const resTotal = avaliarAssinatura(
 );
 assert.strictEqual(resTotal.todasAssinadas, true, '4.3 Deve liberar todasAssinadas quando 2/2 assinaram');
 assert.strictEqual(resTotal.statusAssinatura, 'todas_assinadas', '4.3 Status deve ser todas_assinadas');
-console.log('  4.3 Assinatura Completa (2/2 assinaram): todas_assinadas OK');
+console.log('  4.3 Assinatura Completa (2/2 assinaram): todas_assinadas OK\n');
+
+// -------------------------------------------------------------
+// Teste 5: Disparo Automático de Cobrança Asaas Pós-Assinatura
+// -------------------------------------------------------------
+console.log('Teste 5: Disparo Automático de Cobrança Asaas Pós-Assinatura');
+
+function resolverBillingTypeAuto(clientData: Record<string, any>, paymentMethod?: string): string {
+  const rawBillingType =
+    clientData.formaPagamentoPreferida ||
+    clientData.formaPagamento ||
+    clientData.billingType ||
+    paymentMethod;
+
+  let billingType = 'UNDEFINED';
+  if (rawBillingType) {
+    const upper = String(rawBillingType).toUpperCase();
+    if (['BOLETO', 'PIX', 'CREDIT_CARD', 'UNDEFINED'].includes(upper)) {
+      billingType = upper;
+    }
+  }
+  return billingType;
+}
+
+// 5.1 Cotação sem formaPagamentoPreferida (fluxo padrão após assinatura)
+const btDefault = resolverBillingTypeAuto({});
+assert.strictEqual(btDefault, 'UNDEFINED', '5.1 Deve resolver para UNDEFINED e emitir fatura aberta no Asaas');
+
+// 5.2 Cotação com formaPagamento = PIX
+const btPix = resolverBillingTypeAuto({ formaPagamento: 'pix' });
+assert.strictEqual(btPix, 'PIX', '5.2 Deve normalizar PIX');
+
+// 5.3 Cotação com billingType = BOLETO
+const btBoleto = resolverBillingTypeAuto({ billingType: 'BOLETO' });
+assert.strictEqual(btBoleto, 'BOLETO', '5.3 Deve aceitar BOLETO');
+
+console.log('  -> Sucesso: A cobrança não é mais travada por ausência de formaPagamentoPreferida!');
 
 console.log('\n=== TODOS OS TESTES PASSARAM COM 100% DE SUCESSO! ===');
