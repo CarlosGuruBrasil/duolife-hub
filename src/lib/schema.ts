@@ -6,20 +6,45 @@ let ready = false;
 let readyPromise: Promise<void> | null = null;
 
 const REQUIRED_TABLES = [
+  'system_settings',
   'admin_users',
   'corretoras',
   'corretora_users',
   'partners',
   'partner_users',
   'products',
+  'partner_product_availability',
+  'partner_commission_rates',
   'leads',
+  'insurance_clients',
+  'cotacoes',
+  'sales',
+  'commissions',
   'wix_collections',
   'wix_items',
   'sync_log',
+  'public_sale_links',
+  'signature_documents',
+  'cupom_usos',
+  'cupom_uso_eventos',
+  'payment_orders',
+  'payment_installments',
+  'webhook_events',
+  'email_templates',
+  'email_dispatch_logs',
+  'automation_triggers',
+  'automation_trigger_logs',
+  'policy_renewal_notifications',
+  'delinquency_notifications',
+  'lifecycle_cron_logs',
+  'mcp_api_keys',
+  'ai_sales_sessions',
+  'mcp_audit_logs',
+  'action_audit_logs',
 ] as const;
 
 function shouldRunRuntimeSchemaSetup(): boolean {
-  return process.env.ALLOW_RUNTIME_SCHEMA === 'true' || process.env.NODE_ENV !== 'production';
+  return process.env.ALLOW_RUNTIME_SCHEMA === 'true';
 }
 
 export async function ensureSchema(): Promise<void> {
@@ -52,8 +77,8 @@ async function verifyRequiredSchema(): Promise<void> {
 
   if (missingTables.length > 0) {
     throw new Error(
-      `Schema da DuoLife incompleto em produção. Tabelas ausentes: ${missingTables.join(', ')}. ` +
-      'Habilite ALLOW_RUNTIME_SCHEMA temporariamente ou execute a trilha controlada de migração.'
+      `Schema da DuoLife incompleto. Tabelas ausentes: ${missingTables.join(', ')}. ` +
+      'Execute "node scripts/migrate.mjs" para aplicar as migrações controladas ou defina ALLOW_RUNTIME_SCHEMA=true para auto-recuperação.'
     );
   }
 }

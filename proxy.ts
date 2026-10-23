@@ -5,6 +5,31 @@ import { redirectToPath } from '@/lib/redirect';
 
 const JWT_SECRET = getEncodedJwtSecret();
 
+/**
+ * Validação restrita de endpoints de API permitidos para uso com token público (x-public-token).
+ * Limita o bypass de autenticação estritamente às etapas do fluxo de auto-contratação,
+ * impedindo acesso não autenticado a rotas internas como equipe, links e relatórios.
+ */
+function isPublicTokenAllowedRoute(pathname: string): boolean {
+  if (pathname.startsWith('/api/cotacoes')) {
+    return true;
+  }
+
+  if (
+    pathname === '/api/portal/planos' ||
+    pathname === '/api/portal/ppe-cargos' ||
+    pathname === '/api/portal/validar-cupom'
+  ) {
+    return true;
+  }
+
+  // Ações de contratação e assinatura da cotação no portal público
+  const publicPortalCotacaoAction =
+    /^\/api\/portal\/cotacoes\/[^/]+\/(gerar-contrato|gerar-pagamento|pagamentos|salvar-preferencia-pagamento|verificar-assinatura|preview-contrato-pdf|contrato-pdf)$/;
+
+  return publicPortalCotacaoAction.test(pathname);
+}
+
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const isApi = pathname.startsWith('/api/');
@@ -24,8 +49,7 @@ export async function proxy(req: NextRequest) {
   if (isBusinessProtected) {
     // Requisições com token público de contratação (ex.: /contratar/[token] para cotações)
     const publicToken = req.headers.get('x-public-token');
-    const isPublicTokenRoute = pathname.startsWith('/api/cotacoes') || pathname.startsWith('/api/portal');
-    if (publicToken && isApi && isPublicTokenRoute) {
+    if (publicToken && isApi && isPublicTokenAllowedRoute(pathname)) {
       return NextResponse.next();
     }
 

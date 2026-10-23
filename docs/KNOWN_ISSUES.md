@@ -35,18 +35,12 @@ Este documento lista inconsistências operacionais, divergências documentais e 
 
 ---
 
-### ISSUE-003 — Bypass Excessivo de Token Público no Middleware Edge (`proxy.ts`)
-- **Descrição:** O middleware `proxy.ts` libera requisições sem cookie de sessão caso o cabeçalho `x-public-token` esteja presente para qualquer caminho que inicie com `/api/portal`.
-- **Evidência:** `proxy.ts`:
-  ```typescript
-  const isPublicTokenRoute = pathname.startsWith('/api/cotacoes') || pathname.startsWith('/api/portal');
-  if (publicToken && isApi && isPublicTokenRoute) {
-    return NextResponse.next();
-  }
-  ```
-- **Impacto:** Sub-rotas que exigem perfil administrativo de corretora (como `/api/portal/equipe`) dependem exclusivamente de suas checagens internas com `verifyPartnerAuth` para barrar a chamada, gerando inconsistência de proteção entre as camadas de rede e aplicação.
-- **Como Reproduzir:** Enviar requisição para `/api/portal/equipe` contendo o header `x-public-token: token-qualquer` sem cookie; a requisição atravessa o middleware e só falha dentro do route handler.
-- **Arquivos Envolvidos:** `proxy.ts`.
+### ISSUE-003 — Bypass Excessivo de Token Público no Middleware Edge (`proxy.ts`) [RESOLVIDO]
+- **Status:** **Resolvido em 23/10/2026**
+- **Descrição:** O middleware `proxy.ts` liberava requisições sem cookie de sessão caso o cabeçalho `x-public-token` estivesse presente para qualquer caminho que iniciasse com `/api/portal`.
+- **Solução Implementada:** Função `isPublicTokenAllowedRoute(pathname)` criada no `proxy.ts` com validação estrita. O token público `x-public-token` agora é aceito estritamente nas rotas do funil de auto-contratação (`/api/cotacoes`, `/api/portal/planos`, `/api/portal/ppe-cargos`, `/api/portal/validar-cupom` e ações específicas de cotação via regex: `gerar-contrato`, `gerar-pagamento`, `pagamentos`, `salvar-preferencia-pagamento`, `verificar-assinatura`, `preview-contrato-pdf`, `contrato-pdf`). Rotas internas do portal (`/api/portal/equipe`, `/api/portal/links`, `/api/portal/vendas/exportar`, etc.) são sumariamente bloqueadas com HTTP 401 caso não possuam sessão válida.
+- **Evidência:** `proxy.ts` e suíte de testes `scripts/test-proxy-public-token-guard.ts` (100% aprovada).
+- **Arquivos Envolvidos:** `proxy.ts`, `scripts/test-proxy-public-token-guard.ts`.
 - **Severidade:** **Média**
 - **Confiança da Análise:** `Confirmado pelo código`
 

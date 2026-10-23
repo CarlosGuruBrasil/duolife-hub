@@ -71,11 +71,12 @@ Transformar a DuoLife em um portal/admin operacional estável, com banco isolado
 - Apontar produção para banco novo
 - Validar login e health
 
-### Fase 2 — próxima
-- Remover segredos hardcoded do código
-- Revisar bootstrap admin
-- Revisar `ensureSchema()` espalhado em runtime
-- Definir trilha de migração controlada
+### Fase 2 — em andamento avançado
+- [x] Criar trilha de migração base autônoma (db/migrations/000-initial-schema.sql - TD-001)
+- [x] Desacoplar criação de schema DDL em runtime (ensureSchema() com erifyRequiredSchema() estático - TD-002)
+- [x] Blindagem do Middleware Edge para x-public-token (ISSUE-003 / SEC-05)
+- [ ] Criptografia de segredos e chaves mestras em system_settings (TD-005)
+- [ ] Remover segredos hardcoded do código e revisar bootstrap admin
 
 ### Fase 3
 - Auditar integrações Wix ponta a ponta

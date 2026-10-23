@@ -1,4 +1,4 @@
-﻿import { execSync, spawn } from 'node:child_process';
+import { execSync, spawn } from 'node:child_process';
 import process from 'node:process';
 
 const port = process.env.PORT || '3000';
@@ -58,6 +58,14 @@ function killZombieProcesses(targetPort) {
 }
 
 killZombieProcesses(port);
+
+// Executa migrações pendentes de forma segura antes de iniciar o Next.js
+console.log('🔄 Sincronizando migrações de banco de dados (scripts/migrate.mjs)...');
+try {
+  execSync('node scripts/migrate.mjs', { stdio: 'inherit' });
+} catch (e) {
+  console.warn('⚠️ Não foi possível rodar scripts/migrate.mjs automaticamente no dev-clean (banco local offline ou inacessível). Continuando...');
+}
 
 console.log(`🚀 Iniciando servidor de desenvolvimento Next.js na porta ${port}...`);
 const nextProcess = spawn('npx', ['next', 'dev', '-p', port], {

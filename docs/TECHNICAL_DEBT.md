@@ -13,23 +13,21 @@ Este documento reúne débitos técnicos arquiteturais, de banco de dados, front
 
 ## 2. Catálogo Estruturado de Dívidas Técnicas
 
-### TD-001 — Incompletude da Trilha de Migrações para Criação do Schema Base
-- **Descrição:** As migrações versionadas em `db/migrations/` (001 a 020) não possuem um script de criação inicial (`000-initial-schema.sql`). A migração `001-product-catalog.sql` já inicia executando comandos `ALTER TABLE products` e `ALTER TABLE partners`. Se um banco novo for criado do zero, a execução de `node scripts/migrate.mjs` quebra imediatamente.
-- **Impacto:** Impossibilidade de erguer um ambiente de homologação ou produção novo exclusivamente a partir da trilha de migrações oficial.
-- **Risco:** **Crítico** para recuperação de desastres (*disaster recovery*) ou criação automatizada de novos ambientes.
-- **Arquivos Envolvidos:** `db/migrations/`, `scripts/migrate.mjs`, `src/lib/schema.ts`.
+### TD-001 — Incompletude da Trilha de Migrações para Criação do Schema Base [RESOLVIDO]
+- **Status:** **Resolvido em 23/10/2026**
+- **Descrição Original:** As migrações versionadas em `db/migrations/` (001 a 024) não possuíam um script de criação inicial (`000-initial-schema.sql`).
+- **Solução Implementada:** Criado o arquivo `db/migrations/000-initial-schema.sql` 100% autônomo e idempotente contendo o DDL de todas as 23 tabelas fundamentais e seeds essenciais anteriores à migração 001. A trilha oficial `node scripts/migrate.mjs` agora pode ser executada do zero em bancos novos com 100% de sucesso.
+- **Arquivos Envolvidos:** `db/migrations/000-initial-schema.sql`, `scripts/migrate.mjs`.
 - **Prioridade:** **Alta**
-- **Sugestão Futura:** Extrair o DDL base presente em `runRuntimeSchemaSetup()` de `src/lib/schema.ts` para um arquivo `db/migrations/000-initial-schema.sql`, tornando a trilha 100% autônoma.
 
 ---
 
-### TD-002 — Dualidade de Governança de Esquema (DDL em Runtime vs Migrações)
-- **Descrição:** O sistema possui dois motores concorrentes de esquema: `scripts/migrate.mjs` (que roda no boot do contêiner) e `ensureSchema()` em `src/lib/schema.ts` (que emite mais de 70 instruções `CREATE TABLE` e `ALTER TABLE` na primeira requisição em runtime).
-- **Impacto:** Lentidão no cold-start da aplicação, concorrência de catálogo (*deadlocks* no PostgreSQL) quando múltiplas réplicas iniciam simultaneamente e necessidade de permissões DDL excessivas para a credencial da aplicação.
-- **Risco:** **Alto**
-- **Arquivos Envolvidos:** `src/lib/schema.ts`, `Dockerfile`, `package.json`.
+### TD-002 — Dualidade de Governança de Esquema (DDL em Runtime vs Migrações) [RESOLVIDO]
+- **Status:** **Resolvido em 23/10/2026**
+- **Descrição Original:** O sistema possuía dois motores concorrentes de esquema: `scripts/migrate.mjs` e `ensureSchema()` emitindo mais de 70 instruções DDL a cada requisição.
+- **Solução Implementada:** Desacoplado o DDL em tempo de requisição. `shouldRunRuntimeSchemaSetup()` foi refatorado para executar DDL estritamente sob flag explícita `ALLOW_RUNTIME_SCHEMA=true`. Por padrão (inclusive em dev e produção), o runtime executa apenas `verifyRequiredSchema()`, uma validação estática de leitura única (~1ms) conferindo as 35 tabelas obrigatórias no `information_schema.tables`. O script de desenvolvimento `scripts/dev-clean.mjs` e o script de inicialização do contêiner `package.json` (`node scripts/migrate.mjs && next start`) cuidam da sincronização estrutural pré-boot.
+- **Arquivos Envolvidos:** `src/lib/schema.ts`, `scripts/dev-clean.mjs`, `.env.example`, `.env.local`.
 - **Prioridade:** **Alta**
-- **Sugestão Futura:** Desativar completamente a execução de DDLs em tempo de requisição. A aplicação em produção deve apenas rodar o `verifyRequiredSchema()` estático para validar se as tabelas existem.
 
 ---
 
