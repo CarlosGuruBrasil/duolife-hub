@@ -114,6 +114,7 @@ CREATE TABLE IF NOT EXISTS products (
   is_active            BOOLEAN NOT NULL DEFAULT true,
   created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+ALTER TABLE products ADD COLUMN IF NOT EXISTS flow_key TEXT NOT NULL DEFAULT 'rc_professional_v1';
 
 -- 9. Réplicas e Cache do Wix
 CREATE TABLE IF NOT EXISTS wix_collections (
@@ -236,6 +237,8 @@ CREATE INDEX IF NOT EXISTS cotacoes_partner_id   ON cotacoes (partner_id);
 CREATE INDEX IF NOT EXISTS cotacoes_status       ON cotacoes (status);
 CREATE INDEX IF NOT EXISTS cotacoes_source_token ON cotacoes (source_token);
 CREATE INDEX IF NOT EXISTS cotacoes_client_id    ON cotacoes (client_id);
+ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS flow_key TEXT;
+CREATE INDEX IF NOT EXISTS idx_cotacoes_flow_key ON cotacoes (flow_key);
 
 -- 14. Vendas / Apólices Emitidas
 CREATE TABLE IF NOT EXISTS sales (

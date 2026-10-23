@@ -32,7 +32,7 @@ export async function POST(
   try {
     // Validação de acesso à cotação com dados de status e assinatura
     const cotacao = publicToken
-      ? (await sql`SELECT id, status, client_data, contrato_assinado, flow_key, product_id FROM cotacoes WHERE id = ${id} AND source_token = ${publicToken} AND partner_id = ${targetPartnerId}`)[0]
+      ? (await sql`SELECT * FROM cotacoes WHERE id = ${id} AND source_token = ${publicToken} AND partner_id = ${targetPartnerId}`)[0]
       : await getAccessibleQuoteById(id, user!);
 
     if (!cotacao) {

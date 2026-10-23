@@ -612,12 +612,14 @@ async function runRuntimeSchemaSetup(): Promise<void> {
   await sql`ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS is_renewal BOOLEAN NOT NULL DEFAULT false`;
   await sql`ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS renewed_from_cotacao_id TEXT REFERENCES cotacoes(id)`;
   await sql`ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS corretora_id TEXT REFERENCES corretoras(id)`;
+  await sql`ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS flow_key TEXT`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_partner_id ON cotacoes (partner_id)`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_status     ON cotacoes (status)`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_source_token ON cotacoes (source_token)`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_client_id ON cotacoes (client_id)`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_is_renewal ON cotacoes (is_renewal)`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_renewed_from ON cotacoes (renewed_from_cotacao_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_cotacoes_flow_key ON cotacoes (flow_key)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_cotacoes_corretora_id ON cotacoes (corretora_id)`;
   await sql`UPDATE cotacoes SET corretora_id = 'corretora_net4life_001' WHERE corretora_id IS NULL`;
   // Vincula cotações sem partner_user_id ao usuário correspondente do parceiro

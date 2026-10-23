@@ -281,10 +281,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, ignored: true, message: 'Documento não localizado' });
     }
 
-    const [cotacao] = await sql<{ client_data: unknown; status: string; client_name: string; client_email: string; flow_key?: string | null; product_id?: string | null }[]>`
-      SELECT client_data, status, client_name, client_email, flow_key, product_id
-      FROM cotacoes
-      WHERE id = ${cotacaoId}
+    const [cotacao] = await sql<{
+      client_data: unknown;
+      status: string;
+      client_name: string;
+      client_email: string;
+      product_id?: string | null;
+      product_flow_key?: string | null;
+    }[]>`
+      SELECT
+        c.client_data,
+        c.status,
+        c.client_name,
+        c.client_email,
+        c.product_id,
+        p.flow_key AS product_flow_key
+      FROM cotacoes c
+      LEFT JOIN products p ON p.id = c.product_id
+      WHERE c.id = ${cotacaoId}
       LIMIT 1
     `;
 
@@ -400,7 +414,10 @@ export async function POST(req: NextRequest) {
     if (clientData.clienteAssinou) proponenteSigned = true;
     if (clientData.corretoraAssinou) corretoraSigned = true;
 
-    const requisitos = identificarRequisitosAssinatura(clientData, cotacao);
+    const requisitos = identificarRequisitosAssinatura(clientData, {
+      ...cotacao,
+      flowKey: cotacao.product_flow_key || (cotacao as any).flow_key || clientData.flowKey,
+    });
     const docStatusFinalizado =
       canonicalStatus === 'signed' ||
       canonicalStatus === 'completed' ||

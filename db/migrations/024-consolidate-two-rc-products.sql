@@ -4,6 +4,9 @@
 -- 2. RC Profissional — Médicos & Profissionais da Saúde (id: prod-rc-med-001, code: RC-MED-001)
 -- ============================================================================
 
+-- Garante existência da coluna flow_key na tabela products
+ALTER TABLE products ADD COLUMN IF NOT EXISTS flow_key TEXT NOT NULL DEFAULT 'rc-advogados';
+
 -- 1. Caso exista algum produto de RC Médicos com ID diferente de 'prod-rc-med-001',
 -- renomeia temporariamente seu código para liberar 'RC-MED-001' e migrar referências.
 UPDATE products

@@ -326,7 +326,7 @@ export default async function AdminCotacaoDetailPage({
 
   // Identificação dinâmica de quantas e quais assinaturas são necessárias
   const requisitosAssinatura = identificarRequisitosAssinatura(clientData, {
-    flowKey: cotacao.flow_key,
+    flowKey: cotacao.product_flow_key || cotacao.flow_key,
     productId: cotacao.product_id,
     template_id: signatureDoc?.template_id,
   });
