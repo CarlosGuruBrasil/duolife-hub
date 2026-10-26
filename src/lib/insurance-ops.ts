@@ -212,11 +212,11 @@ export async function ensureSaleForPaidQuote(input: {
     `;
 
     // Verifica se há parcelas na ordem de pagamento
-    const [orderRow] = await tx<{ installments_count: number | null }[]>`
-      SELECT installments_count FROM payment_orders WHERE cotacao_id = ${input.cotacaoId} ORDER BY created_at DESC LIMIT 1
+    const [orderRow] = await tx<{ installment_count: number | null }[]>`
+      SELECT installment_count FROM payment_orders WHERE cotacao_id = ${input.cotacaoId} ORDER BY created_at DESC LIMIT 1
     `;
 
-    const installmentsCount = Number(orderRow?.installments_count || clientData.parcela || 1);
+    const installmentsCount = Number(orderRow?.installment_count || clientData.parcela || 1);
     const discountPct = Number(clientData.descontoManualPercent ?? clientData.descontoPercentual) || 0;
     const customBrokerRate = rateRow?.rate !== null && rateRow?.rate !== undefined ? Number(rateRow.rate) : null;
 
