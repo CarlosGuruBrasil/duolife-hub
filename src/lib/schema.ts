@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import { sql } from './pg';
 import { getBootstrapAdminConfig } from './secrets';
+import { ensureDefaultContractTemplates } from './contract-templates-service';
 
 let ready = false;
 let readyPromise: Promise<void> | null = null;
@@ -41,6 +42,7 @@ const REQUIRED_TABLES = [
   'ai_sales_sessions',
   'mcp_audit_logs',
   'action_audit_logs',
+  'contract_templates',
 ] as const;
 
 function shouldRunRuntimeSchemaSetup(): boolean {
@@ -933,6 +935,30 @@ async function runRuntimeSchemaSetup(): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS idx_email_dispatch_logs_template ON email_dispatch_logs (template_code)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_email_dispatch_logs_created ON email_dispatch_logs (created_at DESC)`;
 
+  // Templates de Contrato e Termos de Adesão
+  await sql`
+    CREATE TABLE IF NOT EXISTS contract_templates (
+      id                TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      slug              TEXT UNIQUE NOT NULL,
+      ramo_id           TEXT NOT NULL,
+      nome              TEXT NOT NULL,
+      descricao         TEXT,
+      versao            INT NOT NULL DEFAULT 1,
+      ativo             BOOLEAN NOT NULL DEFAULT true,
+      titulo            TEXT NOT NULL,
+      subtitulo         TEXT,
+      declaracao_texto  TEXT NOT NULL,
+      tabela_proponente JSONB NOT NULL DEFAULT '[]'::jsonb,
+      tabela_condicoes  JSONB NOT NULL DEFAULT '[]'::jsonb,
+      configuracoes     JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_contract_templates_slug ON contract_templates (slug)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_contract_templates_ramo_id ON contract_templates (ramo_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_contract_templates_ativo ON contract_templates (ativo)`;
+
   // Gatilhos e Árvores de Decisão
   await sql`
     CREATE TABLE IF NOT EXISTS automation_triggers (
@@ -1507,4 +1533,9 @@ async function runSeedInitialData(): Promise<void> {
     WHERE (product_id = 'prod-rc-001' OR product_id IN (SELECT id FROM products WHERE flow_key IN ('rc-advogados', 'rc_advogados_v1', 'rc_professional_v1') OR code IN ('RC-ADV-001', 'RC-001')))
       AND (client_data ? 'grupoTarifario' OR client_data ? 'grupoTarifarioLabel' OR client_data ? 'grupo')
   `;
+
+  // 9. Garante que os templates de contrato padrão existam
+  try {
+    await ensureDefaultContractTemplates();
+  } catch {}
 }

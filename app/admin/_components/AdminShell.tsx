@@ -31,6 +31,7 @@ import {
   MailCheck,
   Webhook,
   Activity,
+  FileCheck2,
 } from 'lucide-react';
 import type { AuthUser } from '@/lib/auth';
 import { roleIsDev, roleIsPlatformAdmin } from '@/lib/roles';
@@ -60,6 +61,7 @@ const navSections: Array<{ title: string; items: NavItem[] }> = [
       { href: '/admin/produtos', label: 'Produtos', icon: Package, description: 'Catálogo e fluxos.' },
       { href: '/admin/emails', label: 'E-mails', icon: Mail, description: 'Modelos e templates.' },
       { href: '/admin/gatilhos', label: 'Gatilhos & Fluxos', icon: GitFork, description: 'Árvores de decisão e regras.' },
+      { href: '/admin/contratos', label: 'Contratos & Minutas', icon: FileCheck2, description: 'Modelos, editor e preview A4.' },
     ],
   },
   {

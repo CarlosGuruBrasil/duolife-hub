@@ -12,5 +12,15 @@ services:
     volumes:
       - duolife_pgdata:/var/lib/postgresql/data
 
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    container_name: duolife-local-gotenberg
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - CHROMIUM_DISABLE_JAVASCRIPT=false
+      - LOG_LEVEL=info
+
 volumes:
   duolife_pgdata:
