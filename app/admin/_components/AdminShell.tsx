@@ -61,7 +61,6 @@ const navSections: Array<{ title: string; items: NavItem[] }> = [
       { href: '/admin/produtos', label: 'Produtos', icon: Package, description: 'Catálogo e fluxos.' },
       { href: '/admin/emails', label: 'E-mails', icon: Mail, description: 'Modelos e templates.' },
       { href: '/admin/gatilhos', label: 'Gatilhos & Fluxos', icon: GitFork, description: 'Árvores de decisão e regras.' },
-      { href: '/admin/contratos', label: 'Contratos & Minutas', icon: FileCheck2, description: 'Modelos, editor e preview A4.' },
     ],
   },
   {
@@ -116,6 +115,12 @@ export default function AdminShell({ children, user }: AdminShellProps) {
           {
             title: 'Desenvolvimento',
             items: [
+              {
+                href: '/admin/contratos',
+                label: 'Contratos & Minutas',
+                icon: FileCheck2,
+                description: 'Modelos, editor e preview A4.',
+              },
               {
                 href: '/admin/chaves-api',
                 label: 'Configurações',
