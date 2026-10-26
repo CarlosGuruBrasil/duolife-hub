@@ -14,6 +14,7 @@ import {
   calculateBillingDueDate,
 } from './business-days';
 import { deleteAsaasPayment, deleteAsaasInstallment } from './asaas-charges';
+import { isHealthQuote } from './product-schemas';
 
 export type BillingTypeOption = 'BOLETO' | 'PIX' | 'CREDIT_CARD' | 'UNDEFINED' | string;
 
@@ -335,7 +336,9 @@ export async function generateAsaasPaymentForQuote(
         descontoManualPercent: Number(clientData.descontoManualPercent ?? clientData.descontoPercentual) || 0,
         flowKey: String(clientData.flowKey || (cotacao as any).flow_key || '') || null,
         productId: cotacao.product_id || null,
-        grupoTarifario: String(clientData.grupoTarifario || clientData.grupo || '') || null,
+        grupoTarifario: isHealthQuote(cotacao, clientData)
+          ? (String(clientData.grupoTarifario || clientData.grupo || '') || null)
+          : null,
       });
 
       valorTotal = preco ? Math.round(preco.valorTotal * 100) / 100 : 0;
@@ -425,10 +428,7 @@ export async function generateAsaasPaymentForQuote(
       }
     }
 
-    const isMedProduct = cotacao.product_id === 'prod-rc-med-001'
-      || clientData.flowKey === 'rc-medicos'
-      || (cotacao as any).flow_key === 'rc-medicos'
-      || Boolean(clientData.grupoTarifario);
+    const isMedProduct = isHealthQuote(cotacao, clientData);
     const defaultDescricao = isMedProduct
       ? `Seguro RC Profissional Saúde - Plano ${tipoDePlano || ''}`.trim()
       : `Seguro RC Advogado - Plano ${tipoDePlano || ''}`.trim();

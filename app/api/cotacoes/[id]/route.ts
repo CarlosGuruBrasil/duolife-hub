@@ -8,6 +8,7 @@ import { parseCurrencyToNumber, sanitizePlanFinancials, calculatePolicyExpiryDat
 import { parseAtuacaoList } from '@/lib/atuacao';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
+import { isHealthQuote } from '@/lib/product-schemas';
 
 export async function GET(
   req: NextRequest,
@@ -296,14 +297,31 @@ export async function PATCH(
     let valorParcelaCalculada: number | null = null;
     let parcelasCalculadas: number = parcela;
 
-    const resolvedGrupoTarifario =
-      String(
-        sanitizedInputClientData.grupoTarifario ||
-        proposal.grupoTarifario ||
-        currentClientData.grupoTarifario ||
-        currentClientData.grupo ||
-        ''
-      ).trim() || null;
+    let resolvedFlowKey =
+      (cotacao as Record<string, unknown>).product_flow_key ||
+      cotacao.flow_key ||
+      sanitizedInputClientData.flowKey ||
+      currentClientData.flowKey ||
+      null;
+    if (!resolvedFlowKey && cotacao.product_id) {
+      const [prodRow] = await sql`SELECT flow_key FROM products WHERE id = ${cotacao.product_id} LIMIT 1`;
+      resolvedFlowKey = prodRow?.flow_key || null;
+    }
+
+    const isSaude = isHealthQuote(
+      { product_flow_key: resolvedFlowKey as string, flow_key: resolvedFlowKey as string, product_id: cotacao.product_id },
+      sanitizedInputClientData.oab ? sanitizedInputClientData : currentClientData
+    );
+
+    const resolvedGrupoTarifario = isSaude
+      ? (String(
+          sanitizedInputClientData.grupoTarifario ||
+          proposal.grupoTarifario ||
+          currentClientData.grupoTarifario ||
+          currentClientData.grupo ||
+          ''
+        ).trim() || null)
+      : null;
 
     if (isFinancialMutable) {
       if (userSpecifiedPremio !== null && userSpecifiedPremio > 0) {
@@ -314,17 +332,6 @@ export async function PATCH(
           ? Math.round((premioFinal / parcelasCalculadas) * 100) / 100
           : premioFinal;
       } else {
-        let resolvedFlowKey =
-          (cotacao as Record<string, unknown>).product_flow_key ||
-          cotacao.flow_key ||
-          sanitizedInputClientData.flowKey ||
-          currentClientData.flowKey ||
-          null;
-        if (!resolvedFlowKey && cotacao.product_id) {
-          const [prodRow] = await sql`SELECT flow_key FROM products WHERE id = ${cotacao.product_id} LIMIT 1`;
-          resolvedFlowKey = prodRow?.flow_key || null;
-        }
-
         const precoCalculado = await calcularPrecoServidor({
           tipoDePlano: planoCodigo,
           qtdParcelasSolicitada: parcela,
@@ -829,6 +836,26 @@ export async function PATCH(
       ...(crc !== undefined ? { crc } : {}),
       ...(crcUf !== undefined ? { crcUf, ufCrc: crcUf } : {}),
     };
+
+    // Blindagem de integridade: se não for seguro de saúde, expurga campos residuais de saúde
+    if (!isSaude) {
+      delete mergedClientData.grupoTarifario;
+      delete mergedClientData.grupoTarifarioLabel;
+      delete mergedClientData.grupo;
+      delete mergedClientData.crm;
+      delete mergedClientData.crmUf;
+      delete mergedClientData.cro;
+      delete mergedClientData.croUf;
+      delete mergedClientData.associadoClinica;
+      delete mergedClientData.nomeClinica;
+      delete mergedClientData.nomeHospital;
+      delete mergedClientData.modalidadeContratacao;
+      if (!mergedClientData.oab && registroProfissionalNumero) {
+        mergedClientData.oab = registroProfissionalNumero;
+        mergedClientData.oabUf = registroProfissionalUf || 'SP';
+        mergedClientData.ufOab = registroProfissionalUf || 'SP';
+      }
+    }
 
     // Se a cotação já possuir contrato gerado na ZapSign (status contrato_gerado ou token ativo),
     // qualquer alteração realizada no cliente ou na proposta marca a minuta como desatualizada,

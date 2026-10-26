@@ -23,6 +23,7 @@ import type { CobrancaAsaasInitialData } from '@/components/admin/GerenciarCobra
 import { MatrixStatusBadge } from '@/components/common/MatrixStatusBadge';
 import { calculateMatrixStatus } from '@/lib/status-matrix';
 import { identificarRequisitosAssinatura } from '@/lib/assinatura-status';
+import { isHealthQuote } from '@/lib/product-schemas';
 
 const statusLabel: Record<string, string> = {
   rascunho: 'Rascunho',
@@ -235,21 +236,42 @@ export default async function AdminCotacaoDetailPage({
 
   const clientData = parseClientData(cotacao.client_data);
 
-  const isMedicoQuote = cotacao.product_flow_key === 'rc-medicos'
-    || cotacao.product_id === 'prod-rc-med-001'
-    || cotacao.product_code === 'RC-MED-001'
-    || clientData.flowKey === 'rc-medicos'
-    || Boolean(clientData.grupoTarifario);
+  const isMedicoQuote = isHealthQuote(cotacao, clientData);
+
+  const oabNum = String(clientData.oab || clientData.registroProfissionalNumero || '').trim();
+  const oabUf = String(clientData.oabUf || clientData.ufOab || clientData.registroProfissionalUf || clientData.uf || '').trim().toUpperCase();
+  const oabUfSuffix = oabUf && !oabNum.includes('/') ? `/${oabUf}` : '';
+
+  // Auto-cura preventiva no banco se cotação de advogado tiver resíduos legados de saúde
+  if (!isMedicoQuote && (clientData.grupoTarifario || clientData.grupo || clientData.crm)) {
+    delete clientData.grupoTarifario;
+    delete clientData.grupoTarifarioLabel;
+    delete clientData.grupo;
+    delete clientData.crm;
+    delete clientData.crmUf;
+    delete clientData.cro;
+    delete clientData.croUf;
+    if (!clientData.oab && oabNum) {
+      clientData.oab = oabNum;
+      clientData.oabUf = oabUf;
+    }
+    sql`
+      UPDATE cotacoes
+      SET client_data = client_data - 'grupoTarifario' - 'grupoTarifarioLabel' - 'grupo' - 'crm' - 'crmUf' - 'cro' - 'croUf'
+      WHERE id = ${id}
+    `.catch(() => {});
+  }
 
   const seguradoraNome = cotacao.product_insurer_name || (isMedicoQuote ? 'Kovr Seguradora' : 'KEV Seguros');
   const planoNome = String(clientData.nomePlano || clientData.tipoDePlano || (isMedicoQuote ? 'RC Médicos & Saúde' : 'RC Advogados'));
 
-  const isDentistaQuote = String(clientData.grupoTarifario || '').toUpperCase() === 'G2' || Boolean(clientData.cro);
-  const isOutroSaudeQuote = String(clientData.grupoTarifario || '').toUpperCase() === 'G1';
   let registroProfissionalLabel = 'OAB / UF';
-  let registroProfissionalValor = clientData.oab ? `OAB ${clientData.oab}` : 'Não informada';
+  let registroProfissionalValor = oabNum ? `OAB ${oabNum}${oabUfSuffix}` : 'Não informada';
 
   if (isMedicoQuote) {
+    const isDentistaQuote = String(clientData.grupoTarifario || '').toUpperCase() === 'G2' || Boolean(clientData.cro);
+    const isOutroSaudeQuote = String(clientData.grupoTarifario || '').toUpperCase() === 'G1';
+
     if (isDentistaQuote) {
       registroProfissionalLabel = 'CRO / UF';
       const uf = clientData.croUf || clientData.registroProfissionalUf || clientData.crmUf || '';

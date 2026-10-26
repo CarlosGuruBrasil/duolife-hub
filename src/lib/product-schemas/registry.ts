@@ -617,3 +617,69 @@ export function buildRamoZodSchema(ramo: RamoConfig) {
       }
     });
 }
+
+
+/**
+ * Determina com precisão e segurança se uma cotação/proposta pertence ao ramo RC Médicos / Saúde.
+ * Regra de integridade: Uma cotação de RC Advogados NUNCA pode ser classificada como médica/saúde,
+ * mesmo se houver resíduo de grupoTarifario ou campos secundários legados no client_data.
+ */
+export function isHealthQuote(
+  cotacao?: {
+    product_flow_key?: string | null;
+    flow_key?: string | null;
+    flowKey?: string | null;
+    product_code?: string | null;
+    code?: string | null;
+    product_id?: string | null;
+    productId?: string | null;
+    policy_prefix?: string | null;
+  } | null,
+  clientData?: Record<string, unknown> | null
+): boolean {
+  const cd = clientData || {};
+
+  // 1. Identificação prioritária de RC Advogados
+  const flowKey = String(
+    cotacao?.product_flow_key ||
+    cotacao?.flow_key ||
+    cotacao?.flowKey ||
+    cd.flowKey ||
+    cd.flow_key ||
+    cd.ramoId ||
+    ''
+  ).toLowerCase();
+
+  const productCode = String(cotacao?.product_code || cotacao?.code || '').toUpperCase();
+  const productId = String(cotacao?.product_id || cotacao?.productId || cd.productId || '').toLowerCase();
+  const policyPrefix = String(cotacao?.policy_prefix || cd.policyPrefix || '').toUpperCase();
+
+  const isAdvogado =
+    flowKey === 'rc-advogados' ||
+    flowKey === 'rc_advogados' ||
+    flowKey === 'rc_advogados_v1' ||
+    flowKey === 'rc_professional_v1' ||
+    productCode === 'RC-ADV-001' ||
+    productCode === 'RC-001' ||
+    productId === 'prod-rc-001' ||
+    policyPrefix === 'DL-RC-ADV' ||
+    Boolean(cd.oab);
+
+  if (isAdvogado) {
+    return false;
+  }
+
+  // 2. Identificação de RC Médicos / Saúde
+  const isMedico =
+    flowKey === 'rc-medicos' ||
+    flowKey === 'rc_medicos' ||
+    flowKey === 'rc_medicos_v1' ||
+    productCode === 'RC-MED-001' ||
+    productId === 'prod-rc-med-001' ||
+    policyPrefix === 'DL-RC-MED' ||
+    Boolean(cd.crm) ||
+    Boolean(cd.cro) ||
+    Boolean(cd.grupoTarifario);
+
+  return isMedico;
+}

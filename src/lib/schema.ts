@@ -1499,4 +1499,12 @@ async function runSeedInitialData(): Promise<void> {
     WHERE pa.status = 'active' AND pr.id IN ('prod-rc-001', 'prod-rc-med-001')
     ON CONFLICT (partner_id, product_id) DO NOTHING
   `;
+
+  // 8. Limpeza e auto-cura de resíduos de saúde em cotações de RC Advogados
+  await sql`
+    UPDATE cotacoes
+    SET client_data = client_data - 'grupoTarifario' - 'grupoTarifarioLabel' - 'grupo' - 'crm' - 'crmUf' - 'cro' - 'croUf'
+    WHERE (product_id = 'prod-rc-001' OR product_id IN (SELECT id FROM products WHERE flow_key IN ('rc-advogados', 'rc_advogados_v1', 'rc_professional_v1') OR code IN ('RC-ADV-001', 'RC-001')))
+      AND (client_data ? 'grupoTarifario' OR client_data ? 'grupoTarifarioLabel' OR client_data ? 'grupo')
+  `;
 }

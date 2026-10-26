@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import EditarPropostaButton from '@/components/modals/EditarPropostaButton';
 import { formatAtuacao, parseAtuacaoList } from '@/lib/format';
-import { getRamoConfig, rcAdvogadosConfig } from '@/lib/product-schemas';
+import { getRamoConfig, rcAdvogadosConfig, isHealthQuote } from '@/lib/product-schemas';
 
 export interface CotacaoInformacoesProfissionaisCardProps {
   cotacao: {
@@ -43,15 +43,13 @@ export default function CotacaoInformacoesProfissionaisCard({
 }: CotacaoInformacoesProfissionaisCardProps) {
   const cd = clientData || {};
 
+  const isMedico = isHealthQuote(cotacao, cd);
+
   // Configuração declarativa do ramo para labels e questões
   const ramoConfig =
     getRamoConfig(cotacao.product_flow_key || cotacao.product_id || cd.ramoId) ||
+    (isMedico ? getRamoConfig('rc-medicos') : rcAdvogadosConfig) ||
     rcAdvogadosConfig;
-
-  const isMedico =
-    ramoConfig.ramoId === 'rc-medicos' ||
-    (cotacao as any).product_flow_key === 'rc-medicos' ||
-    Boolean(cd.grupoTarifario);
 
   // Associação a Escritório
   const isAssociado =

@@ -354,6 +354,9 @@ export default function DynamicCotacaoForm({
   useEffect(() => {
     if (ramoConfigOverride) {
       setResolvedRamoConfig(ramoConfigOverride);
+      if (!ramoConfigOverride.gruposTarifarios) {
+        setForm((prev) => ({ ...prev, grupoTarifario: '' }));
+      }
     }
   }, [ramoConfigOverride]);
 
@@ -1344,6 +1347,8 @@ export default function DynamicCotacaoForm({
 
       if (!resolvedRamoConfig.gruposTarifarios) {
         delete payloadClientData.grupoTarifario;
+        delete payloadClientData.grupoTarifarioLabel;
+        delete payloadClientData.grupo;
       }
 
       delete payloadClientData.cpfCnpj;

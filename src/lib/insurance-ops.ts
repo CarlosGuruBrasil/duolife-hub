@@ -1,4 +1,5 @@
 import { sql } from './pg';
+import { isHealthQuote } from './product-schemas';
 
 function normalizeDocument(value: string) {
   return value.replace(/\D/g, '');
@@ -191,9 +192,12 @@ export async function ensureSaleForPaidQuote(input: {
         : null;
 
     // 3. Taxa de comissão e Split Financeiro Oficial
-    const isHealthProduct = input.productId === 'prod-rc-med-001'
-      || clientData.flowKey === 'rc-medicos'
-      || Boolean(clientData.grupoTarifario);
+    const isHealthProduct = isHealthQuote(
+      {
+        productId: input.productId,
+      },
+      clientData
+    );
     const [rateRow] = await tx<{ rate: number | null; policy_prefix: string | null }[]>`
       SELECT
         (
