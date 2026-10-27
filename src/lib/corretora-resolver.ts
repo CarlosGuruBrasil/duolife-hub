@@ -20,6 +20,30 @@ export interface CorretoraContratoInfo {
   uf?: string;
   logoBuffer: Buffer | null;
   logoMimeType: 'image/png' | 'image/jpeg' | null;
+  isNet4Life?: boolean;
+}
+
+/**
+ * Identifica se a corretora é a Net4Life (Corretora Master do ecossistema).
+ */
+export function isNet4LifeCorretora(corretora?: {
+  id?: string | null;
+  cnpj?: string | null;
+  nomeFantasia?: string | null;
+  razaoSocial?: string | null;
+} | null): boolean {
+  if (!corretora) return false;
+  const id = String(corretora.id || '').toLowerCase();
+  const cnpjClean = String(corretora.cnpj || '').replace(/\D/g, '');
+  const nome = String(corretora.nomeFantasia || corretora.razaoSocial || '').toLowerCase();
+  return (
+    id === 'corretora_net4life_001' ||
+    id === 'default' ||
+    cnpjClean.includes('07351909000133') ||
+    cnpjClean.includes('34567890000112') ||
+    nome.includes('net4life') ||
+    nome.includes('netforlife')
+  );
 }
 
 /**
@@ -179,6 +203,7 @@ export async function getCorretoraParaContrato(cotacaoId: string): Promise<Corre
       uf: 'SC',
       logoBuffer: buffer,
       logoMimeType: mime,
+      isNet4Life: true,
     };
   }
 
@@ -224,7 +249,12 @@ export async function getCorretoraParaContrato(cotacaoId: string): Promise<Corre
   }
 
   // Prioridade 3: Se for a própria corretora NET4Life, pode usar o logo padrão local se não tiver outro
-  const isNet4Life = corretora.id === 'corretora_net4life_001' || String(corretora.cnpj || '').includes('07351909000133');
+  const isNet4Life = isNet4LifeCorretora({
+    id: corretora.id,
+    cnpj: corretora.cnpj,
+    nomeFantasia: corretora.nome_fantasia,
+    razaoSocial: corretora.razao_social,
+  });
   if (!logoBuffer && isNet4Life) {
     const loadedNet = await loadLogoBuffer('/images/corretoras/net4life-logo.png');
     logoBuffer = loadedNet.buffer;
@@ -248,5 +278,6 @@ export async function getCorretoraParaContrato(cotacaoId: string): Promise<Corre
     uf: addr.state || 'SC',
     logoBuffer,
     logoMimeType,
+    isNet4Life,
   };
 }

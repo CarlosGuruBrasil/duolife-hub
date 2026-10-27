@@ -10,7 +10,7 @@ import { getZapSignConfig, sanitizeApiToken } from '@/lib/system-settings';
 import { parseAtuacaoList } from '@/lib/atuacao';
 import { rateLimit, rateLimitResponse } from '@/lib/rate-limit';
 import { gerarContratoPdfBuffer, determinarTipoContrato } from '@/lib/pdf-contract-generator';
-import { getCorretoraParaContrato } from '@/lib/corretora-resolver';
+import { getCorretoraParaContrato, isNet4LifeCorretora } from '@/lib/corretora-resolver';
 import { GRUPOS_TARIFARIOS_SAUDE } from '@/lib/product-schemas';
 import { criarDocumentoZapSignDireto, cancelarDocumentoZapSign } from '@/lib/zapsign-direct-docs';
 import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
@@ -112,9 +112,16 @@ export async function POST(
       ? (Date.now() - contratoGeradoEm.getTime()) > PRAZO_DIAS_ASSINATURA * 24 * 60 * 60 * 1000
       : false;
 
-    // 2. Determina modo e template do ZapSign
+    // 2. Determina corretora vinculada e modo do ZapSign
+    const corretoraInfo = await getCorretoraParaContrato(cotacao.id);
+    const isNet4Life = isNet4LifeCorretora(corretoraInfo);
     const zapConfig = await getZapSignConfig();
+
+    // Regra de Negócio:
+    // Apenas propostas vinculadas à corretora Net4life podem utilizar o modo por 'template' da ZapSign (quando habilitado).
+    // Para todas as demais corretoras parceiras, força OBRIGATORIAMENTE 'dynamic_pdf' (layout timbrado com logo e dados da corretora).
     const isDynamicPdf =
+      !isNet4Life ||
       isMedico ||
       zapConfig.docGenerationMode === 'dynamic_pdf' ||
       req.nextUrl.searchParams.get('modo') === 'dynamic_pdf';
@@ -129,6 +136,9 @@ export async function POST(
     logger.info(
       {
         cotacaoId: cotacao.id,
+        isNet4Life,
+        corretoraId: corretoraInfo.id,
+        corretoraNome: corretoraInfo.nomeFantasia,
         isDynamicPdf,
         docGenerationMode: zapConfig.docGenerationMode,
         tipoContrato,
@@ -349,8 +359,6 @@ export async function POST(
     const fatoTerceiros = resolveSimNao(clientData.fatoTerceiros, questionarioRisco.fatoTerceiros);
     const pagouReclamacao = resolveSimNao(clientData.pagouReclamacao, questionarioRisco.pagouReclamacao);
 
-    const corretoraInfo = await getCorretoraParaContrato(cotacao.id);
-
     const formatCpf = (raw?: string | null): string => {
       if (!raw) return '';
       const digits = String(raw).replace(/\D/g, '');
@@ -388,16 +396,33 @@ export async function POST(
     );
 
     // 5. Monta o dicionário de variáveis para o template do ZapSign
+    // Mapeia tanto as tags novas dos contratos atualizados (100k, 300k+ e Renovação)
+    // quanto as tags legadas para retrocompatibilidade total.
+    const enderecoFormatadoProponente = clientData.endereco || [
+      clientData.logradouro,
+      clientData.numero ? `nº ${clientData.numero}` : null,
+      clientData.complemento ? `(${clientData.complemento})` : null,
+      clientData.bairro,
+      clientData.cidade && clientData.uf ? `${clientData.cidade}/${clientData.uf}` : (clientData.cidade || clientData.uf),
+      clientData.cep ? `CEP: ${clientData.cep}` : null,
+    ].filter(Boolean).join(', ') || 'Não informado';
+
+    const valorFranquiaPlano = clientData.planoFranquia || clientData.franquia || 'R$ 1.000,00';
+
     const variaveis: Record<string, string> = {
-      // Dados Pessoais
+      // Dados Pessoais / Proponente (Novas tags + Legadas)
       "nome": cotacao.client_name,
+      "nome_cliente": cotacao.client_name,
       "email": cotacao.client_email || '',
       "celular": cotacao.client_phone || '',
       "cpf": cotacao.client_cpf_cnpj,
-      "oab": clientData.oab || '',
-      "dataNascto": formatData(clientData.dataNascto),
+      "oab": clientData.oab || clientData.registroProfissionalNumero || '',
+      "dataNascto": formatData(clientData.dataNascto || clientData.nascimento),
+      "nascimento": formatData(clientData.dataNascto || clientData.nascimento),
 
-      // Endereço
+      // Endereço (Tag unificada e tags decompostas)
+      "endereco": enderecoFormatadoProponente,
+      "endereco_completo": enderecoFormatadoProponente,
       "logradouro": clientData.logradouro || '',
       "numero": String(clientData.numero || ''),
       "complemento": clientData.complemento || '',
@@ -407,60 +432,81 @@ export async function POST(
       "uf": clientData.uf || '',
       "lgpd": "X",
 
-      // Dados Profissionais
-      "inicioProfissional": formatData(clientData.dataAtividade),
+      // Dados Profissionais (Novas tags + Legadas)
+      "inicioProfissional": formatData(clientData.dataAtividade || clientData.inicioProfissional),
+      "inicio_profissional": formatData(clientData.dataAtividade || clientData.inicioProfissional),
       "escritorio": clientData.associadoEscritorio === 'Sim'
         ? (clientData.nomeEscritorio || clientData.escritorioAssociado || clientData.escritorio || '')
         : (clientData.escritorioAssociado && clientData.escritorioAssociado !== 'Não associado' && clientData.escritorioAssociado !== 'Não'
             ? clientData.escritorioAssociado
             : 'Não associado'),
+      "escritorio_associado": clientData.associadoEscritorio === 'Sim'
+        ? (clientData.nomeEscritorio || clientData.escritorioAssociado || clientData.escritorio || '')
+        : (clientData.escritorioAssociado && clientData.escritorioAssociado !== 'Não associado' && clientData.escritorioAssociado !== 'Não'
+            ? clientData.escritorioAssociado
+            : 'Não associado'),
       "titularidade": clientData.titularidade || '',
-      "faturamentoAntes": clientData.faturamentoAntes || '',
-      "faturamentoDepois": clientData.faturamentoDepois || '',
+      "faturamentoAntes": clientData.faturamentoAntes || clientData.faturamento_ultimos || 'Não informado',
+      "faturamentoDepois": clientData.faturamentoDepois || clientData.faturamento_proximos || 'Não informado',
+      "faturamento_ultimos": clientData.faturamentoAntes || clientData.faturamento_ultimos || 'Não informado',
+      "faturamento_proximos": clientData.faturamentoDepois || clientData.faturamento_proximos || 'Não informado',
 
-      // Áreas de Atuação
+      // Áreas de Atuação (Suporta chaves completas e encurtadas dos novos PDFs)
       "civil": checkArea("civil"),
       "propriedadeIndustrial": checkArea("propriedadeIndustrial"),
+      "industrial": checkArea("propriedadeIndustrial"),
       "bancarioFinanceiro": checkArea("bancarioFinanceiro"),
+      "financeiro": checkArea("bancarioFinanceiro"),
       "criminal": checkArea("criminal"),
       "tributaria": checkArea("tributaria"),
+      "tributario": checkArea("tributaria"),
       "previdenciario": checkArea("previdenciario"),
       "direitoInternacional": checkArea("direitoInternacional"),
+      "internacional": checkArea("direitoInternacional"),
       "fusoesAquisicoes": checkArea("fusoesAquisicoes"),
+      "fusoes": checkArea("fusoesAquisicoes"),
       "direitoEmpresarial": checkArea("direitoEmpresarial"),
+      "empresarial": checkArea("direitoEmpresarial"),
       "trabalhista": checkArea("trabalhista"),
       "societario": checkArea("societario"),
       "outros": checkArea("outros"),
 
-      // PPE
-      "ppeCargos": resolveSimNao(clientData.ppeCargos, clientData.ppe),
-      "ppeRepresenta": resolveSimNao(clientData.ppeRepresenta, clientData.ppeRelacionado),
+      // PPE - Pessoa Politicamente Exposta (Novas tags + Legadas)
+      "ppeCargos": resolveSimNao(clientData.ppeCargos, clientData.ppe, clientData.tem_cargos),
+      "tem_cargos": resolveSimNao(clientData.ppeCargos, clientData.ppe, clientData.tem_cargos),
+      "ppeRepresenta": resolveSimNao(clientData.ppeRepresenta, clientData.ppeRelacionado, clientData.representante_legal),
+      "representante_legal": resolveSimNao(clientData.ppeRepresenta, clientData.ppeRelacionado, clientData.representante_legal),
       "ppeCargoSelect": ppeDescricao || ' ',
+      "cargos_ppe": ppeDescricao || ' ',
 
-      // Dados de seguro anterior (opcional)
+      // Informações do Seguro de Responsabilidade Civil Anterior
       "seguradora": clientData.seguradora || ' ',
-      "franquia": clientData.franquiaAnterior || ' ',
+      "limite": clientData.limite || clientData.lmiAnterior || ' ',
       "vigencia": clientData.vigencia ? formatData(clientData.vigencia) : ' ',
       "premio": clientData.premio || ' ',
-      "limite": clientData.limite || ' ',
       "dataRetroativa": clientData.dataRetroativa ? formatData(clientData.dataRetroativa) : 'Início de Vigência',
+      "franquiaAnterior": clientData.franquiaAnterior || ' ',
 
-      // Questionário de Risco / Histórico de Reclamação
+      // Questionário de Risco / Histórico de Reclamação (Novas tags + Legadas)
       "propostaRecusada": propostaRecusada,
+      "proposta_recusada": propostaRecusada,
       "propostaDetalhe": resolveDetalhe(propostaRecusada, clientData.propostaDetalhe, questionarioRisco.propostaDetalhe),
       "reclamacaoProfissional": reclamacaoProfissional,
+      "reclamacoes": reclamacaoProfissional,
       "reclamacaoDetalhe": resolveDetalhe(reclamacaoProfissional, clientData.reclamacaoDetalhe, questionarioRisco.reclamacaoDetalhe),
       "investigacaoAutoridade": investigacaoAutoridade,
+      "acao_disciplinar": investigacaoAutoridade,
       "investigacaoDetalhe": resolveDetalhe(investigacaoAutoridade, clientData.investigacaoDetalhe, questionarioRisco.investigacaoDetalhe),
       "fatoTerceiros": fatoTerceiros,
+      "reclamacao_terceiros": fatoTerceiros,
       "fatoDetalhe": resolveDetalhe(fatoTerceiros, clientData.fatoDetalhe, questionarioRisco.fatoDetalhe),
       "pagouReclamacao": pagouReclamacao,
+      "fundos_proprios": pagouReclamacao,
       "pagouDetalhe": resolveDetalhe(pagouReclamacao, clientData.pagouDetalhe, questionarioRisco.pagouDetalhe),
 
       // Termo de Adesão da Saúde (Tags Oficiais do Documento do Usuário)
       "website": clientData.website || clientData.site || 'Não informado',
       "cpf-cnpj": formatCpf(cotacao.client_cpf_cnpj),
-      "endereco_completo": `${clientData.logradouro || ''}, ${clientData.numero || 'S/N'}${clientData.complemento ? ` - ${clientData.complemento}` : ''} - ${clientData.bairro || ''}, ${clientData.cidade || ''} - ${clientData.uf || ''}, CEP: ${clientData.cep || ''}`,
       "data_atividades": formatData(clientData.dataAtividade),
       "registro_profissional": clientData.crm || clientData.cro || clientData.registroProfissionalNumero || clientData.oab || 'Não informado',
 
@@ -481,7 +527,7 @@ export async function POST(
       "renovacao": clientData.isRenovacao === 'Sim' ? 'X' : ' ',
       "nao_renovacao": clientData.isRenovacao === 'Sim' ? ' ' : 'X',
 
-      // Histórico de Reclamações (Página 1)
+      // Histórico de Reclamações (Página 1 Saúde)
       "houve_reclamacao": houveReclamacaoSaude === 'Sim' ? 'X' : ' ',
       "nao_houve_reclamacao": houveReclamacaoSaude === 'Sim' ? ' ' : 'X',
       "data_ocorrencia": houveReclamacaoSaude === 'Sim' ? (clientData.dataOcorrenciaReclamacao || formatData(clientData.dataOcorrencia) || 'Não informada') : 'Não se aplica',
@@ -490,7 +536,7 @@ export async function POST(
       "valor_indenizado": houveReclamacaoSaude === 'Sim' ? (clientData.valorIndenizado ? (String(clientData.valorIndenizado).startsWith('R$') ? clientData.valorIndenizado : formatMoeda(clientData.valorIndenizado)) : 'R$ 0,00') : 'R$ 0,00',
       "status_atual": houveReclamacaoSaude === 'Sim' ? (clientData.statusReclamacao || 'Regular') : 'Regular',
 
-      // Histórico de Fatos Conhecidos (Página 2)
+      // Histórico de Fatos Conhecidos (Página 2 Saúde)
       "conhecimento_fato": conhecimentoFatoSaude === 'Sim' ? 'X' : ' ',
       "sem_conhecimento_fato": conhecimentoFatoSaude === 'Sim' ? ' ' : 'X',
       "data_ocorrencia_conhecimento": conhecimentoFatoSaude === 'Sim' ? (clientData.dataOcorrenciaFato || 'Não informada') : 'Não se aplica',
@@ -503,15 +549,14 @@ export async function POST(
       "cidadeCorretora": corretoraInfo.cidade || 'São Paulo',
       "corretora": corretoraInfo.nomeFantasia || corretoraInfo.razaoSocial,
 
-      // Variáveis do Plano / Parcelamento
-      // "valor" é o prêmio à vista; "valorTotalParcelado" é o total efetivamente cobrado quando parcelado
-      // com juros (ex: 6x já embute 2% a.m.) — os dois podem divergir, por isso expomos ambos ao contrato.
+      // Variáveis do Plano / Parcelamento / Condições Comerciais
       "tipo": clientData.valorCobertura || 'Plano Padrão',
       "valor": formatMoeda(valorTotal),
       "valorTotalParcelado": formatMoeda(valorTotalComJuros),
       "planoParcela": clientData.parcela && Number(clientData.parcela) > 1 ? `${clientData.parcela} parcelas` : '1x',
       "planoValorParcela": formatMoeda(clientData.valorParcela || valorTotal),
-      "planoFranquia": clientData.planoFranquia || ' ',
+      "franquia": valorFranquiaPlano,
+      "planoFranquia": valorFranquiaPlano,
 
       // Variáveis de data
       "dia": dia,

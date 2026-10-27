@@ -1018,11 +1018,11 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
                     Modo de Envio da Proposta para a ZapSign
                   </h3>
                   <p className="text-xs text-gray-500 mt-0.5">
-                    Escolha se o contrato/proposta será enviado pelo PDF oficial gerado pela plataforma ou por modelos pré-cadastrados na ZapSign.
+                    Escolha se o contrato da <strong>Net4Life</strong> será enviado pelo PDF oficial gerado pela plataforma ou por modelos pré-cadastrados na ZapSign. Outras corretoras parceiras usam sempre a Proposta em PDF.
                   </p>
                 </div>
                 <span className="text-[11px] font-bold text-emerald-800 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200 shrink-0 self-start sm:self-auto">
-                  {isZapSignDynamicPdf ? '✓ PDF Dinâmico Ativo (Padrão)' : '• Envio por Modelo Ativo'}
+                  {isZapSignDynamicPdf ? '✓ PDF Dinâmico Ativo (Padrão)' : '• Envio por Modelo (Net4Life)'}
                 </span>
               </div>
 
@@ -1046,7 +1046,7 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
                       <div>
                         <h4 className="text-xs font-bold text-gray-900">Proposta em PDF Dinâmico</h4>
                         <span className="inline-block mt-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded">
-                          Padrão do Sistema • Recomendado
+                          Padrão do Sistema • Todas as Corretoras
                         </span>
                       </div>
                     </div>
@@ -1057,12 +1057,12 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
                     )}
                   </div>
                   <p className="text-xs text-gray-600 mt-3 leading-relaxed">
-                    Gera e envia o <strong>documento oficial de 2 páginas</strong> em tempo real (layout KEV Seguros + DuoLife) com substituição do logotipo oficial da corretora ou nome em texto, cálculo financeiro exato e âncora de assinatura digital ICP-Brasil.
+                    Gera e envia o <strong>documento oficial atualizado</strong> (100k em 1 pág, 300k+ em 2 págs ou Renovação em 1 pág) com substituição do logotipo oficial da corretora parceira, dados completos e âncoras de assinatura digital.
                   </p>
                   <div className="mt-3 pt-3 border-t border-gray-100 text-[11px] text-gray-500 space-y-1">
                     <div className="flex items-center gap-1.5 text-emerald-800 font-medium">
                       <Check className="h-3 w-3 text-emerald-600 shrink-0" />
-                      <span>Sem dependência de cadastro de minutas na ZapSign</span>
+                      <span>Obrigatório e automático para todas as corretoras parceiras</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-emerald-800 font-medium">
                       <Check className="h-3 w-3 text-emerald-600 shrink-0" />
@@ -1070,7 +1070,7 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
                     </div>
                     <div className="flex items-center gap-1.5 text-emerald-800 font-medium">
                       <Check className="h-3 w-3 text-emerald-600 shrink-0" />
-                      <span>Fórmula oficial de Prêmio Líquido e IOF (7,38%)</span>
+                      <span>Sem dependência de cadastro de minutas na ZapSign</span>
                     </div>
                   </div>
                 </div>
@@ -1093,8 +1093,8 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
                       </div>
                       <div>
                         <h4 className="text-xs font-bold text-gray-900">Envio por Modelo (Template ZapSign)</h4>
-                        <span className="inline-block mt-0.5 text-[10px] font-black uppercase tracking-wider text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
-                          Modo Alternativo
+                        <span className="inline-block mt-0.5 text-[10px] font-black uppercase tracking-wider text-amber-800 bg-amber-100 px-2 py-0.5 rounded">
+                          Exclusivo Net4Life
                         </span>
                       </div>
                     </div>
@@ -1105,16 +1105,20 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
                     )}
                   </div>
                   <p className="text-xs text-gray-600 mt-3 leading-relaxed">
-                    Envia utilizando as <strong>minutas cadastradas previamente</strong> no painel web da ZapSign. O sistema preenche as variáveis de-para configuradas nos Template IDs abaixo.
+                    Envia utilizando as <strong>minutas cadastradas na ZapSign</strong> exclusivamente para propostas da <strong>Net4Life</strong>. O sistema preenche as variáveis de-para configuradas nos Template IDs abaixo.
                   </p>
                   <div className="mt-3 pt-3 border-t border-gray-100 text-[11px] text-gray-500 space-y-1">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-gray-400">•</span>
+                    <div className="flex items-center gap-1.5 text-amber-800 font-medium">
+                      <span>•</span>
+                      <span>Disponível e aplicável somente para a corretora Net4Life</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-gray-600">
+                      <span>•</span>
                       <span>Exige que os Template IDs abaixo estejam cadastrados</span>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-gray-400">•</span>
-                      <span>Layout rígido baseado no modelo do painel ZapSign</span>
+                    <div className="flex items-center gap-1.5 text-gray-600">
+                      <span>•</span>
+                      <span>Outras corretoras continuarão enviando por PDF Dinâmico</span>
                     </div>
                   </div>
                 </div>
@@ -1179,8 +1183,8 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
               </div>
               <p className="text-xs text-gray-500">
                 {isZapSignDynamicPdf
-                  ? 'Como o modo Proposta em PDF Dinâmico está ativo, o sistema gera o contrato oficial diretamente pelo DuoLife Hub. Os IDs abaixo só serão usados caso você alterne para o modo "Envio por Modelo".'
-                  : 'Preencha os IDs dos modelos criados na sua conta ZapSign para direcionamento de cada tipo de proposta.'}
+                  ? 'Como o modo Proposta em PDF Dinâmico está ativo (padrão universal), o sistema gera o contrato oficial diretamente pelo DuoLife Hub com a marca e dados da corretora. Os IDs abaixo só serão utilizados para propostas da Net4Life caso o modo "Envio por Modelo" esteja selecionado.'
+                  : 'Preencha os IDs dos modelos criados na sua conta ZapSign para direcionamento de cada tipo de proposta da corretora Net4Life. (Demais corretoras sempre utilizarão PDF Dinâmico).'}
               </p>
               <div className="grid md:grid-cols-3 gap-4">
                 <div>
