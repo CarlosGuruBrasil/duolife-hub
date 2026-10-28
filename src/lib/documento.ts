@@ -32,3 +32,25 @@ export function validarCpf(valor: string): boolean {
 export function somenteDigitos(valor: string): string {
   return valor.replace(/\D/g, '');
 }
+
+export function formatarCpf(valor: string | null | undefined): string {
+  if (!valor) return '';
+  const n = somenteDigitos(valor);
+  if (n.length !== 11) return valor;
+  return `${n.slice(0, 3)}.${n.slice(3, 6)}.${n.slice(6, 9)}-${n.slice(9)}`;
+}
+
+export function formatarCnpj(valor: string | null | undefined): string {
+  if (!valor) return '';
+  const n = somenteDigitos(valor);
+  if (n.length !== 14) return valor;
+  return `${n.slice(0, 2)}.${n.slice(2, 5)}.${n.slice(5, 8)}/${n.slice(8, 12)}-${n.slice(12)}`;
+}
+
+export function formatarDocumento(valor: string | null | undefined): string {
+  if (!valor) return '';
+  const n = somenteDigitos(valor);
+  if (n.length === 11) return formatarCpf(n);
+  if (n.length === 14) return formatarCnpj(n);
+  return valor;
+}

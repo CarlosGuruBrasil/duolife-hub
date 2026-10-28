@@ -614,8 +614,25 @@ export const rcMedicosConfig: RamoConfig = {
     },
   ],
 
-  // Planos canônicos de referência (Grupo G5 - Médicos sem cirurgia)
-  planos: PLANOS_SAUDE_POR_GRUPO['G5'],
+  // Planos canônicos de referência (Grupo G5 - Médicos sem cirurgia) com compatibilidade retroativa para cotações 200k
+  planos: [
+    {
+      tipoDePlano: '200k',
+      nomeExibido: 'Plano 200 Mil',
+      cobertura: 'R$ 200.000,00',
+      franquia: 'R$ 2.000,00',
+      ordem: 0,
+      parcela: 'R$ 1.850,00',
+      parcela2X: 'R$ 925,00',
+      parcela3X: 'R$ 616,67',
+      parcela4X: 'R$ 462,50',
+      parcela5X: 'R$ 370,00',
+      parcela6X: 'R$ 308,33',
+      valorPagoKovr: 1200,
+      maxParcelas: 6,
+    },
+    ...PLANOS_SAUDE_POR_GRUPO['G5'],
+  ],
 
   templateZapSignKey: 'rc_medicos_contrato_v1',
 };

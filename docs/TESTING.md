@@ -1,20 +1,45 @@
 # Estratégia e Lacunas de Testes — DuoLife Hub
 
 > **Status da Análise:** Fato Confirmado pelo Código-Fonte  
-> **Classificação de Certeza:** Inventário dos scripts de teste existentes e diagnóstico de cobertura.
+> **Classificação de Certeza:** Inventário dos scripts de teste existentes, suíte de testes automatizados e diagnóstico de cobertura.
 
 ---
 
 ## 1. Estado Atual dos Testes Automatizados
 
-O repositório **não possui um runner de testes padrão integrado** (como Jest ou Vitest) configurado no `package.json`:
+O repositório adota o **Vitest** como o test runner oficial para testes unitários e de integração leve, configurado no `vitest.config.mts` e com scripts padronizados no `package.json`:
+
 ```json
 "scripts": {
-  "test": "echo \"No tests configured\""
+  "test": "vitest run",
+  "test:watch": "vitest"
 }
 ```
 
-No entanto, a equipe de engenharia desenvolveu uma ampla suíte de **scripts de teste automatizados e testes end-to-end executáveis via CLI** localizados no diretório `scripts/` utilizando `tsx` (TypeScript Execute).
+### Como Executar os Testes Automatizados
+- **Execução em lote (CI e pipelines locais):**
+  ```bash
+  npm test
+  ```
+- **Modo observador / interativo (desenvolvimento):**
+  ```bash
+  npm run test:watch
+  ```
+
+### Estrutura da Suíte em `tests/`
+A suíte de testes unitários automatizados fica localizada na pasta `tests/` na raiz do projeto (suportando também testes adjacentes `src/**/*.test.ts`):
+
+| Arquivo de Teste | Finalidade e Escopo | Tipo |
+|---|---|---|
+| `tests/smoke.test.ts` | Teste de sanidade do ambiente de execução do Vitest e compatibilidade de tipagens no DuoLife Hub. | Smoke / Sanidade |
+| `tests/unit/documento.test.ts` | Validação estrita dos algoritmos de checagem e formatação de CPF/CNPJ (`validarCpf`, `validarCnpj`, `somenteDigitos`, `formatarCpf`, `formatarCnpj`, `formatarDocumento`). | Unitário / Regra de Negócio |
+| `tests/unit/business-days.test.ts` | Validação de cálculo de dias úteis, salto de fins de semana, feriados nacionais fixos/móveis e vencimentos de fatura (`isBusinessDay`, `addBusinessDays`, `calculateBillingDueDate`). | Unitário / Regra de Negócio |
+| `tests/unit/policy-vigencia.test.ts` | Validação de datas de início e término de vigência de apólices e regras de renovação. | Unitário / Regra de Negócio |
+| `tests/unit/status-matrix.test.ts` | Validação das transições da máquina de estados de propostas e apólices (`status-matrix.ts`). | Unitário / Regra de Negócio |
+| `tests/unit/proxy-guard.test.ts` | Validação de segurança, headers e guard rails de proxies e rotas protegidas. | Unitário / Segurança |
+| `tests/unit/corretora-resolver.test.ts` | Validação do roteamento, isolamento multi-tenant e resolução de corretores. | Unitário / Arquitetura |
+
+Além dos testes unitários formais do Vitest, a equipe de engenharia mantém uma suíte complementar de **scripts de teste automatizados e testes end-to-end executáveis via CLI** localizados no diretório `scripts/` utilizando `tsx` (TypeScript Execute).
 
 ---
 
@@ -37,14 +62,18 @@ No entanto, a equipe de engenharia desenvolveu uma ampla suíte de **scripts de 
 
 ---
 
-## 3. Validação de Build e Tipagem (CI/CD Local)
+## 3. Validação de Build e Tipagem (CI/CD Local e Remoto)
 
-Antes de qualquer deploy, a integridade do código é verificada por meio de:
+Antes de qualquer deploy e a cada Pull Request/Push para as branches `main` e `develop`, a integridade do código é verificada por meio do pipeline de CI (`.github/workflows/ci.yml`):
 1. **Verificação Estrita de Tipos:**
    ```bash
    npx tsc --noEmit
    ```
-2. **Build de Produção com Turbopack:**
+2. **Execução de Testes Automatizados:**
+   ```bash
+   npm test
+   ```
+3. **Build de Produção com Turbopack:**
    ```bash
    npm run build
    ```
@@ -54,11 +83,10 @@ Antes de qualquer deploy, a integridade do código é verificada por meio de:
 
 ## 4. Lacunas de Testes Identificadas
 
-Embora os scripts CLI cubram cenários operacionais críticos, o projeto possui as seguintes lacunas de qualidade:
+Embora a suíte de testes unitários com Vitest e a esteira de CI tenham sido estabelecidas, o projeto possui as seguintes oportunidades mapeadas de evolução da qualidade:
 
-1. **Ausência de Runner Unificado de Testes Unitários:**
-   - *Impacto:* Falta de comando único `npm test` integrando relatórios de cobertura de código (*code coverage*) e pipelines de CI automatizados (ex: GitHub Actions).
-   - *Recomendação:* Adicionar o **Vitest** ao projeto e unificar as funções puras de `pricing.ts`, `documento.ts`, `business-days.ts` e `roles.ts` em testes unitários formais.
+1. **[RESOLVIDO em 28/10/2026] Runner Unificado de Testes Unitários e Pipeline CI/CD:**
+   - *Status:* Resolvido. O Vitest v5 foi integrado como runner oficial via `npm test`, estruturando a pasta `tests/` para testes unitários de funções puras e regras de negócio (`documento.ts`, `business-days.ts`, etc.) e integrado ao GitHub Actions (`.github/workflows/ci.yml`) com execução automática em pull requests e pushes para `main` e `develop`.
 2. **Falta de Testes de Componentes Frontend (React Testing Library):**
    - *Impacto:* O formulário `DynamicCotacaoForm.tsx` possui dezenas de transições de estado entre etapas e validações imperativas que não são testadas automaticamente na camada de interface.
    - *Recomendação:* Criar testes de renderização e preenchimento de formulário com `@testing-library/react`.

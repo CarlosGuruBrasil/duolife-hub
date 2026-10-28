@@ -101,13 +101,12 @@ Este documento reúne débitos técnicos arquiteturais, de banco de dados, front
 
 ---
 
-### TD-010 — Ausência de Runner Unificado de Testes Automatizados no Pipeline
-- **Descrição:** `package.json` possui `"test": "echo \"No tests configured\""`. O repositório possui ótimos scripts de teste em `scripts/`, porém dependem de execução manual via CLI e não há geração de relatórios de cobertura.
-- **Impacto:** Dificuldade de incorporar testes automatizados obrigatórios em pipelines de CI/CD (GitHub Actions).
-- **Risco:** **Médio**
-- **Arquivos Envolvidos:** `package.json`, `scripts/`.
+### TD-010 — Ausência de Runner Unificado de Testes Automatizados no Pipeline [RESOLVIDO]
+- **Status:** **Resolvido em 28/10/2026**
+- **Descrição Original:** `package.json` possuía `"test": "echo \"No tests configured\""`. O repositório possuía ótimos scripts de teste em `scripts/`, porém dependiam de execução manual via CLI e não havia suíte formal integrada a pipelines de integração contínua.
+- **Solução Implementada:** Integrado o **Vitest** v5 como test runner oficial do projeto via `vitest.config.mts` e scripts `npm test` / `npm run test:watch` no `package.json`. Criada a suíte de testes unitários na pasta `tests/` cobrindo sanidade do ambiente (`smoke.test.ts`), validação documental de CPF/CNPJ (`documento.test.ts`) e cálculo temporal de dias úteis e feriados nacionais (`business-days.test.ts`). Implementada pipeline automatizada no GitHub Actions (`.github/workflows/ci.yml`) com execução em `push` e `pull_request` nas branches `main` e `develop`, executando setup de Node.js v22 com cache npm, checagem estrita de TypeScript (`npx tsc --noEmit`), suíte Vitest (`npm test`) e validação de build Next.js (`npm run build`).
+- **Arquivos Envolvidos:** `package.json`, `vitest.config.mts`, `tests/smoke.test.ts`, `tests/documento.test.ts`, `tests/business-days.test.ts`, `.github/workflows/ci.yml`, `docs/TESTING.md`.
 - **Prioridade:** **Média**
-- **Sugestão Futura:** Instalar o **Vitest** e padronizar a execução de testes automatizados com `npm test`.
 
 ---
 
