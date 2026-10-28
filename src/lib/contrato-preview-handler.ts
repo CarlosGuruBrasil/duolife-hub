@@ -3,7 +3,7 @@ import { verifyAuth, unauthorized } from './auth';
 import { getAccessibleQuoteById } from './access';
 import { sql } from './pg';
 import { logger } from './logger';
-import { gerarContratoPdfBuffer } from './pdf-contract-generator';
+import { gerarContratoPdfGotenberg } from './gotenberg-contract-generator';
 
 export async function handlePreviewContratoPdf(
   req: NextRequest,
@@ -42,8 +42,8 @@ export async function handlePreviewContratoPdf(
       return new Response('Cotação não encontrada ou acesso negado', { status: 404 });
     }
 
-    // Gera o PDF sob demanda com os dados e a logo da corretora
-    const pdfData = await gerarContratoPdfBuffer(cotacao.id);
+    // Gera o PDF sob demanda com os dados e a logo da corretora via Gotenberg (com fallback automático)
+    const pdfData = await gerarContratoPdfGotenberg(cotacao.id);
 
     const disposition = isDownload ? 'attachment' : 'inline';
 

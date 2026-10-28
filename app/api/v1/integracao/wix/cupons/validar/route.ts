@@ -107,7 +107,7 @@ export async function POST(req: NextRequest) {
     const limite = Number(cupom.quantidade) || 0;
     if (limite > 0) {
       const [uso] = await sql`
-        SELECT usos FROM cupom_usos WHERE cupom_codigo = ${cupomCodigo}
+        SELECT usos FROM cupom_usos WHERE UPPER(cupom_codigo) = UPPER(${cupomCodigo}) LIMIT 1
       `;
       const usados = Number(uso?.usos) || 0;
       if (usados >= limite) {

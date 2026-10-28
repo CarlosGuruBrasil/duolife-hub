@@ -3,7 +3,7 @@ import { authenticateWixRequest } from '@/lib/wix-integration-auth';
 import { sql } from '@/lib/pg';
 import { parseJsonbField } from '@/lib/json-safe';
 import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
-import { gerarContratoPdfBuffer } from '@/lib/pdf-contract-generator';
+import { gerarContratoPdfGotenberg } from '@/lib/gotenberg-contract-generator';
 import { criarDocumentoZapSignDireto } from '@/lib/zapsign-direct-docs';
 import { logger } from '@/lib/logger';
 
@@ -74,9 +74,9 @@ export async function POST(
       });
     }
 
-    // 3. Gera PDF vetorial oficial via motor integrado
+    // 3. Gera PDF vetorial oficial via motor Gotenberg (com fallback transparente para PDF-Lib)
     logger.info({ cotacaoId: cotacao.id }, 'wix.contrato.gerando_pdf');
-    const pdfData = await gerarContratoPdfBuffer(cotacao.id);
+    const pdfData = await gerarContratoPdfGotenberg(cotacao.id);
 
     // 4. Configura signatários: Proponente assina imediatamente no checkout web
     const signatarioProponente = {

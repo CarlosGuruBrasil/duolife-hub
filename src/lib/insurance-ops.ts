@@ -1,5 +1,6 @@
 import { sql } from './pg';
 import { isHealthQuote } from './product-schemas';
+import { logger } from './logger';
 
 function normalizeDocument(value: string) {
   return value.replace(/\D/g, '');
@@ -309,6 +310,38 @@ export async function ensureSaleForPaidQuote(input: {
       SET status = 'aprovada', updated_at = NOW()
       WHERE id = ${input.cotacaoId}
     `;
+
+    // 7. Incremento atômico e idempotente de cupons promocionais (TD-012)
+    const rawCupom = clientData.cupomCodigo || (quote as any)?.cupom_codigo || null;
+    if (rawCupom && typeof rawCupom === 'string' && rawCupom.trim()) {
+      const cupomCodigo = rawCupom.trim().toUpperCase();
+      try {
+        const insertedEvent = await tx<{ id: string }[]>`
+          INSERT INTO cupom_uso_eventos (cupom_codigo, cotacao_id)
+          VALUES (${cupomCodigo}, ${input.cotacaoId})
+          ON CONFLICT (cotacao_id) DO NOTHING
+          RETURNING id
+        `;
+
+        if (insertedEvent.length > 0) {
+          await tx`
+            INSERT INTO cupom_usos (cupom_codigo, usos, updated_at)
+            VALUES (${cupomCodigo}, 1, NOW())
+            ON CONFLICT (cupom_codigo) DO UPDATE
+            SET usos = cupom_usos.usos + 1, updated_at = NOW()
+          `;
+          logger.info(
+            { cotacaoId: input.cotacaoId, cupomCodigo },
+            'insurance-ops.cupom_usage_incremented'
+          );
+        }
+      } catch (cupomErr) {
+        logger.warn(
+          { cotacaoId: input.cotacaoId, cupomCodigo, err: cupomErr },
+          'insurance-ops.cupom_increment_failed'
+        );
+      }
+    }
 
     return { saleId: sale.id, created: true };
   });

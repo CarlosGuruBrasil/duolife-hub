@@ -4,7 +4,8 @@ import { getRamoConfig, RamoConfig, PlanoDefinition } from '@/lib/product-schema
 import { validarCpf, validarCnpj } from '@/lib/documento';
 import { parseCurrencyToNumber } from '@/lib/format';
 import { calcularPrecoServidor } from '@/lib/pricing';
-import { gerarContratoPdfBuffer, determinarTipoContrato } from '@/lib/pdf-contract-generator';
+import { determinarTipoContrato } from '@/lib/pdf-contract-generator';
+import { gerarContratoPdfGotenberg } from '@/lib/gotenberg-contract-generator';
 import { criarDocumentoZapSignDireto } from '@/lib/zapsign-direct-docs';
 import { generateAsaasPaymentForQuote } from '@/lib/asaas-service';
 import { upsertInsuranceClient } from '@/lib/insurance-ops';
@@ -977,7 +978,7 @@ export async function createContract(saleSessionId: string) {
     `;
 
     if (cotacao) {
-      const pdfData = await gerarContratoPdfBuffer(cotacao.id);
+      const pdfData = await gerarContratoPdfGotenberg(cotacao.id);
       const directDoc = await criarDocumentoZapSignDireto({
         base64Pdf: pdfData.base64,
         docName: pdfData.docName,

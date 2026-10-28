@@ -54,11 +54,40 @@ function extractPixPayload(pixTransaction: unknown): string | null {
   return null;
 }
 
+/** Mapa em memória para deduplicação single-flight de requisições concorrentes imediatas */
+const inFlightPaymentGenerations = new Map<string, Promise<GeneratePaymentResult>>();
+
 /**
  * Gera ou recupera cobrança no Asaas para uma cotação.
- * Idempotente: se já existir checkoutId gravado para a cotação, retorna os dados existentes.
+ * Idempotente com proteção contra concorrência (Single-flight mutex + Anti-orphan cleanup).
  */
 export async function generateAsaasPaymentForQuote(
+  cotacaoId: string,
+  options?: GeneratePaymentOptions
+): Promise<GeneratePaymentResult> {
+  // 1. Single-flight mutex in-process: se já houver uma geração em andamento para esta mesma cotação,
+  // reutiliza a promessa em voo para evitar concorrência e cobranças duplicadas no gateway
+  if (!options?.forceRecreate) {
+    const activePromise = inFlightPaymentGenerations.get(cotacaoId);
+    if (activePromise) {
+      logger.info({ cotacaoId }, 'asaas.payment.single_flight_mutex_reused');
+      return await activePromise;
+    }
+  }
+
+  const executionPromise = (async () => {
+    try {
+      return await executeGenerateAsaasPayment(cotacaoId, options);
+    } finally {
+      inFlightPaymentGenerations.delete(cotacaoId);
+    }
+  })();
+
+  inFlightPaymentGenerations.set(cotacaoId, executionPromise);
+  return await executionPromise;
+}
+
+async function executeGenerateAsaasPayment(
   cotacaoId: string,
   options?: GeneratePaymentOptions
 ): Promise<GeneratePaymentResult> {
@@ -523,67 +552,128 @@ export async function generateAsaasPaymentForQuote(
       }
     }
 
+    // Calcula o valor cobrado total (com juros de parcelamento se aplicável - ISSUE-009)
+    const valorCobradoTotal = qtdParcelas > 1
+      ? Math.round(valorParcela * qtdParcelas * 100) / 100
+      : valorTotal;
+
     // 7. Grava a ordem de pagamento, parcelas e atualiza a cotação de forma atômica
     let paymentOrderId: string | null = null;
+    let isConflict = false;
+
     await sql.begin(async (tx) => {
-      const [paymentOrder] = await tx<{ id: string }[]>`
-        INSERT INTO payment_orders (
-          cotacao_id,
-          client_id,
-          partner_id,
-          product_id,
-          provider,
-          provider_customer_id,
-          external_payment_id,
-          external_installment_id,
-          billing_type,
-          status,
-          amount_total,
-          installment_count,
-          due_date,
-          invoice_url,
-          bank_slip_url,
-          description,
-          raw_payload,
-          updated_at
-        )
-        VALUES (
-          ${cotacao.id},
-          ${cotacao.client_id || null},
-          ${cotacao.partner_id},
-          ${cotacao.product_id},
-          'asaas',
-          ${clienteId},
-          ${paymentJson.id || null},
-          ${externalInstallmentId},
-          ${paymentJson.billingType || 'BOLETO'},
-          ${String(paymentJson.status || 'PENDING').toLowerCase()},
-          ${valorTotal},
-          ${qtdParcelas},
-          ${dueDateStr},
-          ${paymentJson.invoiceUrl || null},
-          ${paymentJson.bankSlipUrl || null},
-          ${descricao},
-          ${JSON.stringify(paymentJson)}::jsonb,
-          NOW()
-        )
-        ON CONFLICT (cotacao_id)
-        DO UPDATE SET
-          provider_customer_id = EXCLUDED.provider_customer_id,
-          external_payment_id = EXCLUDED.external_payment_id,
-          external_installment_id = EXCLUDED.external_installment_id,
-          billing_type = EXCLUDED.billing_type,
-          status = EXCLUDED.status,
-          amount_total = EXCLUDED.amount_total,
-          installment_count = EXCLUDED.installment_count,
-          due_date = EXCLUDED.due_date,
-          invoice_url = EXCLUDED.invoice_url,
-          bank_slip_url = EXCLUDED.bank_slip_url,
-          description = EXCLUDED.description,
-          raw_payload = EXCLUDED.raw_payload,
-          updated_at = NOW()
-        RETURNING id
-      `;
+      let paymentOrder: { id: string } | undefined;
+
+      if (options?.forceRecreate) {
+        const rows = await tx<{ id: string }[]>`
+          INSERT INTO payment_orders (
+            cotacao_id,
+            client_id,
+            partner_id,
+            product_id,
+            provider,
+            provider_customer_id,
+            external_payment_id,
+            external_installment_id,
+            billing_type,
+            status,
+            amount_total,
+            installment_count,
+            due_date,
+            invoice_url,
+            bank_slip_url,
+            description,
+            raw_payload,
+            updated_at
+          )
+          VALUES (
+            ${cotacao.id},
+            ${cotacao.client_id || null},
+            ${cotacao.partner_id},
+            ${cotacao.product_id},
+            'asaas',
+            ${clienteId},
+            ${paymentJson.id || null},
+            ${externalInstallmentId},
+            ${paymentJson.billingType || 'BOLETO'},
+            ${String(paymentJson.status || 'PENDING').toLowerCase()},
+            ${valorCobradoTotal},
+            ${qtdParcelas},
+            ${dueDateStr},
+            ${paymentJson.invoiceUrl || null},
+            ${paymentJson.bankSlipUrl || null},
+            ${descricao},
+            ${JSON.stringify(paymentJson)}::jsonb,
+            NOW()
+          )
+          ON CONFLICT (cotacao_id)
+          DO UPDATE SET
+            provider_customer_id = EXCLUDED.provider_customer_id,
+            external_payment_id = EXCLUDED.external_payment_id,
+            external_installment_id = EXCLUDED.external_installment_id,
+            billing_type = EXCLUDED.billing_type,
+            status = EXCLUDED.status,
+            amount_total = EXCLUDED.amount_total,
+            installment_count = EXCLUDED.installment_count,
+            due_date = EXCLUDED.due_date,
+            invoice_url = EXCLUDED.invoice_url,
+            bank_slip_url = EXCLUDED.bank_slip_url,
+            description = EXCLUDED.description,
+            raw_payload = EXCLUDED.raw_payload,
+            updated_at = NOW()
+          RETURNING id
+        `;
+        paymentOrder = rows[0];
+      } else {
+        const rows = await tx<{ id: string }[]>`
+          INSERT INTO payment_orders (
+            cotacao_id,
+            client_id,
+            partner_id,
+            product_id,
+            provider,
+            provider_customer_id,
+            external_payment_id,
+            external_installment_id,
+            billing_type,
+            status,
+            amount_total,
+            installment_count,
+            due_date,
+            invoice_url,
+            bank_slip_url,
+            description,
+            raw_payload,
+            updated_at
+          )
+          VALUES (
+            ${cotacao.id},
+            ${cotacao.client_id || null},
+            ${cotacao.partner_id},
+            ${cotacao.product_id},
+            'asaas',
+            ${clienteId},
+            ${paymentJson.id || null},
+            ${externalInstallmentId},
+            ${paymentJson.billingType || 'BOLETO'},
+            ${String(paymentJson.status || 'PENDING').toLowerCase()},
+            ${valorCobradoTotal},
+            ${qtdParcelas},
+            ${dueDateStr},
+            ${paymentJson.invoiceUrl || null},
+            ${paymentJson.bankSlipUrl || null},
+            ${descricao},
+            ${JSON.stringify(paymentJson)}::jsonb,
+            NOW()
+          )
+          ON CONFLICT (cotacao_id) DO NOTHING
+          RETURNING id
+        `;
+        paymentOrder = rows[0];
+        if (!paymentOrder) {
+          isConflict = true;
+        }
+      }
 
       paymentOrderId = paymentOrder?.id || null;
 
@@ -644,31 +734,64 @@ export async function generateAsaasPaymentForQuote(
               updated_at = NOW()
           `;
         }
+
+        // 8. Atualiza a cotação no Banco
+        clientData.checkoutId = checkoutId;
+        clientData.linkBoleto = linkBoleto;
+        clientData.invoiceUrl = paymentJson.invoiceUrl || linkBoleto;
+        clientData.billingType = paymentJson.billingType || billingType;
+        clientData.formaPagamento = paymentJson.billingType || billingType;
+        clientData.dataVencimento = dueDateStr;
+        clientData.paymentOrderId = paymentOrderId || null;
+        clientData.externalInstallmentId = externalInstallmentId;
+
+        await tx`
+          UPDATE cotacoes
+          SET
+            status = CASE
+              WHEN status IN ('aprovada', 'emitida') THEN status
+              ELSE 'pagamento_gerado'
+            END,
+            premio_final = ${valorTotal},
+            client_data = ${JSON.stringify(clientData)}::jsonb,
+            updated_at = NOW()
+          WHERE id = ${cotacao.id}
+        `;
+      }
+    });
+
+    // Se houve conflito concorrente de inserção (outra requisição gerou pagamento no mesmo instante):
+    if (isConflict) {
+      logger.warn(
+        { cotacaoId: cotacao.id, redundantPaymentId: paymentJson.id },
+        'asaas.payment.concurrent_race_detected_cleaning_up_redundant_charge'
+      );
+
+      // Limpa a cobrança duplicada imediatamente no Asaas para não gerar cobrança fantasma
+      if (externalInstallmentId) {
+        await deleteAsaasInstallment(externalInstallmentId).catch(() => {});
+      } else if (paymentJson.id) {
+        await deleteAsaasPayment(paymentJson.id).catch(() => {});
       }
 
-      // 8. Atualiza a cotação no Banco
-      clientData.checkoutId = checkoutId;
-      clientData.linkBoleto = linkBoleto;
-      clientData.invoiceUrl = paymentJson.invoiceUrl || linkBoleto;
-      clientData.billingType = paymentJson.billingType || billingType;
-      clientData.formaPagamento = paymentJson.billingType || billingType;
-      clientData.dataVencimento = dueDateStr;
-      clientData.paymentOrderId = paymentOrderId || null;
-      clientData.externalInstallmentId = externalInstallmentId;
-
-      await tx`
-        UPDATE cotacoes
-        SET
-          status = CASE
-            WHEN status IN ('aprovada', 'emitida') THEN status
-            ELSE 'pagamento_gerado'
-          END,
-          premio_final = ${valorTotal},
-          client_data = ${JSON.stringify(clientData)}::jsonb,
-          updated_at = NOW()
-        WHERE id = ${cotacao.id}
+      // Recupera e retorna a ordem vencedora que já foi salva no banco
+      const [winnerOrder] = await sql<any[]>`
+        SELECT external_payment_id, invoice_url, bank_slip_url, due_date::text AS due_date, status
+        FROM payment_orders
+        WHERE cotacao_id = ${cotacao.id}
+        LIMIT 1
       `;
-    });
+
+      if (winnerOrder) {
+        return {
+          ok: true,
+          checkoutId: winnerOrder.external_payment_id,
+          linkBoleto: winnerOrder.bank_slip_url || winnerOrder.invoice_url,
+          dueDate: winnerOrder.due_date,
+          alreadyExisted: true,
+        };
+      }
+    }
 
     // 9. Dispara evento de domínio FATURA_GERADA para envio de e-mail ao cliente
     try {

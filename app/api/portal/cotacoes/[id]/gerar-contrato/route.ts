@@ -9,7 +9,8 @@ import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
 import { getZapSignConfig, sanitizeApiToken } from '@/lib/system-settings';
 import { parseAtuacaoList } from '@/lib/atuacao';
 import { rateLimit, rateLimitResponse } from '@/lib/rate-limit';
-import { gerarContratoPdfBuffer, determinarTipoContrato } from '@/lib/pdf-contract-generator';
+import { determinarTipoContrato } from '@/lib/pdf-contract-generator';
+import { gerarContratoPdfGotenberg } from '@/lib/gotenberg-contract-generator';
 import { getCorretoraParaContrato, isNet4LifeCorretora } from '@/lib/corretora-resolver';
 import { GRUPOS_TARIFARIOS_SAUDE } from '@/lib/product-schemas';
 import { criarDocumentoZapSignDireto, cancelarDocumentoZapSign } from '@/lib/zapsign-direct-docs';
@@ -577,8 +578,8 @@ export async function POST(
     let resJson: any = null;
 
     if (isDynamicPdf) {
-      // 6a. Geração de contrato dinâmico em PDF com marca e dados da corretora (2 signatários: Corretora e Proponente)
-      const pdfData = await gerarContratoPdfBuffer(cotacao.id);
+      // 6a. Geração de contrato dinâmico em PDF com marca e dados da corretora (Gotenberg com fallback transparente)
+      const pdfData = await gerarContratoPdfGotenberg(cotacao.id);
 
       const signatarioProponente = {
         nome: pdfData.signatarioProponente?.nome || cotacao.client_name,
