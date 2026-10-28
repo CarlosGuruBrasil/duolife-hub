@@ -314,6 +314,7 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
 
   const clientMeta = parseJsonField<Record<string, unknown>>(client.metadata);
   const latestQuoteData = quotes[0] ? parseJsonField<Record<string, unknown>>(quotes[0].client_data) : {};
+  const dataAtividade = (clientMeta.dataAtividade as string) || (latestQuoteData.dataAtividade as string) || (latestQuoteData.inicioProfissional as string) || null;
 
   const clientAddress = (clientMeta.address && typeof clientMeta.address === 'object')
     ? (clientMeta.address as Record<string, string>)
@@ -338,6 +339,7 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
           <p className="muted mt-1 text-sm">
             {formatDocument(client.document_number)} • {client.email || '-'} • {client.phone || '-'}
             {client.birth_date ? ` • Nasc: ${new Date(client.birth_date).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}` : ''}
+            {dataAtividade ? ` • Início Profissional: ${new Date(dataAtividade).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}` : ''}
           </p>
           {clientAddress.logradouro && (
             <p className="text-xs text-slate-500 mt-1">
@@ -354,6 +356,7 @@ export default async function PortalClienteDetalhePage({ params }: { params: Pro
               email: client.email,
               phone: client.phone,
               birth_date: client.birth_date ? String(client.birth_date).slice(0, 10) : null,
+              dataAtividade: dataAtividade ? String(dataAtividade).slice(0, 10) : null,
               address: clientAddress,
             }}
             variant="primary"

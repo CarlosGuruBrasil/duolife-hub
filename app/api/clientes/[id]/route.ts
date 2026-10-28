@@ -3,6 +3,7 @@ import { verifyAuth, isInternalUser, unauthorized, getPartnerAccessContext, type
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
 import { parseJsonbField } from '@/lib/json-safe';
+import { parseDateInput, extractClientDataAtividade, syncQuoteClientData } from '@/lib/client-data-atividade';
 
 function normalizeDocument(value: string): string {
   return value.replace(/\D/g, '');
@@ -12,30 +13,7 @@ function inferDocumentType(documentNumber: string): 'cpf' | 'cnpj' {
   return documentNumber.length > 11 ? 'cnpj' : 'cpf';
 }
 
-function parseBirthDateInput(value: string | null | undefined): string | null {
-  if (!value) return null;
-  const trimmed = String(value).trim();
-  if (!trimmed) return null;
-
-  let y: string, m: string, d: string;
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(trimmed)) {
-    [d, m, y] = trimmed.split('/');
-  } else if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
-    [y, m, d] = trimmed.slice(0, 10).split('-');
-  } else {
-    return null;
-  }
-
-  const yearNum = parseInt(y, 10);
-  const monthNum = parseInt(m, 10);
-  const dayNum = parseInt(d, 10);
-  if (isNaN(yearNum) || isNaN(monthNum) || isNaN(dayNum)) return null;
-  if (yearNum < 1900 || yearNum > 2100 || monthNum < 1 || monthNum > 12 || dayNum < 1 || dayNum > 31) {
-    return null;
-  }
-
-  return `${yearNum}-${String(monthNum).padStart(2, '0')}-${String(dayNum).padStart(2, '0')}`;
-}
+const parseBirthDateInput = parseDateInput;
 
 async function hasClientScopeAccess(clientId: string, access: PartnerAccessContext): Promise<boolean> {
   if (access.isCorretoraUser && access.corretoraId) {
@@ -286,6 +264,9 @@ export async function GET(
       }
     }
 
+    const rawDataAtividade = (metadata.dataAtividade || latestClientData.dataAtividade || latestClientData.inicioProfissional || null) as unknown;
+    const dataAtividadeFormatted = parseDateInput(rawDataAtividade);
+
     const birthDateFormatted = client.birth_date
       ? (client.birth_date instanceof Date ? client.birth_date.toISOString().slice(0, 10) : String(client.birth_date).slice(0, 10))
       : null;
@@ -295,6 +276,9 @@ export async function GET(
       client: {
         ...client,
         birth_date: birthDateFormatted,
+        dataAtividade: dataAtividadeFormatted,
+        data_atividade: dataAtividadeFormatted,
+        inicioProfissional: dataAtividadeFormatted,
         address,
       },
       cotacoes: cotacoes || [],
@@ -429,6 +413,15 @@ export async function PATCH(
       birthDate = parseBirthDateInput(rawBirthDate);
     }
 
+    // Início Profissional (aceita camelCase ou snake_case)
+    const rawInicioProfissional = payload.dataAtividade ?? payload.data_atividade ?? payload.inicioProfissional ?? payload.inicio_profissional;
+    let parsedDataAtividade: string | null | undefined = undefined;
+    if (rawInicioProfissional !== undefined) {
+      parsedDataAtividade = (rawInicioProfissional === null || String(rawInicioProfissional).trim() === '')
+        ? null
+        : parseDateInput(rawInicioProfissional);
+    }
+
     // Endereço e Metadata
     const currentMetadata = parseJsonbField<Record<string, unknown>>(existingClient.metadata);
     const currentAddress = (currentMetadata.address && typeof currentMetadata.address === 'object' && !Array.isArray(currentMetadata.address))
@@ -445,6 +438,13 @@ export async function PATCH(
       uf: payload.address.uf !== undefined ? String(payload.address.uf).trim().toUpperCase() : String(currentAddress.uf || ''),
     } : currentAddress;
 
+    const metadataToMerge: Record<string, unknown> = {
+      address: updatedAddress,
+    };
+    if (rawInicioProfissional !== undefined) {
+      metadataToMerge.dataAtividade = parsedDataAtividade;
+    }
+
     // Atualiza insurance_clients com cast explícito de birth_date e merge seguro de JSONB
     const [updatedClient] = await sql`
       UPDATE insurance_clients
@@ -455,7 +455,7 @@ export async function PATCH(
         email = ${email},
         phone = ${phone},
         birth_date = ${birthDate ? birthDate : null}::date,
-        metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify({ address: updatedAddress })}::jsonb,
+        metadata = COALESCE(metadata, '{}'::jsonb) || ${JSON.stringify(metadataToMerge)}::jsonb,
         updated_at = NOW()
       WHERE id = ${existingClient.id}
       RETURNING *
@@ -491,31 +491,17 @@ export async function PATCH(
 
         for (const q of quotesToUpdate) {
           const cd = parseJsonbField<Record<string, unknown>>(q.client_data);
-          const updatedCd: Record<string, unknown> = {
-            ...cd,
-            nome: fullName,
-            cpfCnpj: documentNumber,
-            ...(email !== undefined ? { email } : {}),
-            ...(phone !== undefined ? { celular: phone, telefone: phone } : {}),
-            ...(birthDate !== null ? { dataNascto: birthDate } : {}),
-          };
-
-          if (payload.address) {
-            updatedCd.cep = updatedAddress.cep || cd.cep;
-            updatedCd.logradouro = updatedAddress.logradouro || cd.logradouro;
-            updatedCd.rua = updatedAddress.logradouro || cd.rua;
-            updatedCd.numero = updatedAddress.numero || cd.numero;
-            updatedCd.complemento = updatedAddress.complemento || cd.complemento;
-            updatedCd.bairro = updatedAddress.bairro || cd.bairro;
-            updatedCd.cidade = updatedAddress.cidade || cd.cidade;
-            updatedCd.uf = updatedAddress.uf || cd.uf;
-          }
-
-          if (q.status === 'contrato_gerado' || Boolean(cd.contratoToken)) {
-            updatedCd.minutaDesatualizada = true;
-            updatedCd.minutaAlteradaEm = new Date().toISOString();
-            updatedCd.minutaDesatualizadaMotivo = 'Dados do cliente alterados no cadastro';
-          }
+          const updatedCd = syncQuoteClientData(cd, {
+            fullName,
+            documentNumber,
+            email,
+            phone,
+            birthDate,
+            parsedDataAtividade: parsedDataAtividade ?? null,
+            hasDataAtividadePayload: rawInicioProfissional !== undefined,
+            address: payload.address ? updatedAddress : undefined,
+            status: q.status,
+          });
 
           await sql`
             UPDATE cotacoes
@@ -535,6 +521,9 @@ export async function PATCH(
       }
     }
 
+    const updatedMetadata = parseJsonbField<Record<string, unknown>>(updatedClient.metadata);
+    const returnDataAtividade = extractClientDataAtividade(updatedMetadata);
+
     const birthDateFormatted = updatedClient.birth_date
       ? (updatedClient.birth_date instanceof Date ? updatedClient.birth_date.toISOString().slice(0, 10) : String(updatedClient.birth_date).slice(0, 10))
       : null;
@@ -544,6 +533,9 @@ export async function PATCH(
       client: {
         ...updatedClient,
         birth_date: birthDateFormatted,
+        dataAtividade: returnDataAtividade,
+        data_atividade: returnDataAtividade,
+        inicioProfissional: returnDataAtividade,
         address: updatedAddress,
       },
     });

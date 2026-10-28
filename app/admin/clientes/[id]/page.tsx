@@ -133,6 +133,7 @@ export default async function AdminClienteDetalhePage({ params }: { params: Prom
   const rawWix = (clientMeta.wix && typeof clientMeta.wix === 'object') ? (clientMeta.wix as Record<string, unknown>) : {};
   const latestQuoteData = quotes[0] ? parseJsonField<Record<string, unknown>>(quotes[0].client_data) : {};
   const quoteWix = (latestQuoteData.wix && typeof latestQuoteData.wix === 'object') ? (latestQuoteData.wix as Record<string, unknown>) : {};
+  const dataAtividade = (clientMeta.dataAtividade as string) || (rawWix.dataAtividade as string) || (latestQuoteData.dataAtividade as string) || (latestQuoteData.inicioProfissional as string) || null;
 
   const oab = String(clientMeta.oab || rawWix.oab || rawWix.numeroOab || latestQuoteData.oab || quoteWix.oab || quoteWix.numeroOab || '').trim();
   const escritorio = String(clientMeta.escritorio || rawWix.escritorioAssociado || rawWix.escritorio || latestQuoteData.escritorio || quoteWix.escritorio || quoteWix.escritorioAssociado || '').trim();
@@ -171,8 +172,13 @@ export default async function AdminClienteDetalhePage({ params }: { params: Prom
             )}
 
             {/* Badges de Dados Profissionais (OAB, Escritório, Asaas, ZapSign) */}
-            {(oab || escritorio || asaasCustomer || zapsignToken) && (
+            {(oab || escritorio || asaasCustomer || zapsignToken || dataAtividade) && (
               <div className="flex flex-wrap items-center gap-2 mt-3 pt-2">
+                {dataAtividade && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-teal-50 text-teal-800 border border-teal-200">
+                    📅 Início Profissional: {new Date(dataAtividade).toLocaleDateString('pt-BR', { timeZone: 'UTC' })}
+                  </span>
+                )}
                 {oab && (
                   <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-100 text-slate-800 border border-slate-200">
                     ⚖️ OAB: {oab}
@@ -205,6 +211,7 @@ export default async function AdminClienteDetalhePage({ params }: { params: Prom
                 email: client.email,
                 phone: client.phone,
                 birth_date: client.birth_date ? String(client.birth_date).slice(0, 10) : null,
+                dataAtividade: dataAtividade ? String(dataAtividade).slice(0, 10) : null,
                 address: clientAddress,
               }}
               variant="primary"

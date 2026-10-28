@@ -26,6 +26,9 @@ export interface EditarClienteModalProps {
     email?: string | null;
     phone?: string | null;
     birth_date?: string | null;
+    dataAtividade?: string | null;
+    data_atividade?: string | null;
+    inicioProfissional?: string | null;
     address?: {
       cep?: string;
       logradouro?: string;
@@ -61,6 +64,7 @@ export default function EditarClienteModal({
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [birthDate, setBirthDate] = useState('');
+  const [dataAtividade, setDataAtividade] = useState('');
 
   // Endereço
   const [cep, setCep] = useState('');
@@ -86,6 +90,13 @@ export default function EditarClienteModal({
       setEmail(cliente.email || '');
       setPhone(maskPhone(cliente.phone || ''));
       setBirthDate(formatDateToInput(cliente.birth_date));
+      setDataAtividade(
+        formatDateToInput(
+          cliente.dataAtividade ||
+            (cliente as any).inicioProfissional ||
+            (cliente as any).data_atividade
+        )
+      );
 
       const addr = cliente.address || {};
       setCep(maskCep(addr.cep || ''));
@@ -187,6 +198,9 @@ export default function EditarClienteModal({
         phone: cleanDigits(phone) || null,
         birthDate: birthDate || null,
         birth_date: birthDate || null,
+        dataAtividade: dataAtividade || null,
+        inicioProfissional: dataAtividade || null,
+        data_atividade: dataAtividade || null,
         address: {
           cep: cleanDigits(cep) || null,
           logradouro: logradouro.trim() || null,
@@ -342,6 +356,22 @@ export default function EditarClienteModal({
                     onChange={(e) => setBirthDate(e.target.value)}
                     className="w-full rounded-xl border border-gray-300 bg-white px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#00d4e0] focus:ring-2 focus:ring-[#00d4e0]/20 transition-all"
                   />
+                </div>
+
+                {/* Início da Atividade Profissional */}
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+                    Início da Atividade Profissional
+                  </label>
+                  <input
+                    type="date"
+                    value={dataAtividade}
+                    onChange={(e) => setDataAtividade(e.target.value)}
+                    className="w-full rounded-xl border border-gray-300 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-[#0e4a5a] focus:ring-2 focus:ring-[#0e4a5a]/20 min-h-[44px] transition-all"
+                  />
+                  <p className="text-[11px] text-gray-500 mt-1">
+                    Data de graduação ou início do exercício profissional (utilizada em contratos e apólices).
+                  </p>
                 </div>
 
                 {/* E-mail */}
