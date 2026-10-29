@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import { ensureSchema } from '@/lib/schema';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
@@ -6,6 +6,22 @@ import { ensureSaleForPaidQuote } from '@/lib/insurance-ops';
 import { verifyWebhookToken } from '@/lib/webhook-auth';
 import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
 import { getAsaasConfig } from '@/lib/system-settings';
+
+/**
+ * Executa tarefas em background desacopladas da resposta HTTP ao Asaas.
+ * Utiliza o hook `after` nativo do Next.js 15+ para garantir que o Asaas
+ * receba HTTP 200 em < 250ms, evitando timeouts (> 5s) e interrupções da fila.
+ */
+function runInBackground(task: () => Promise<void>) {
+  try {
+    after(task);
+  } catch {
+    // Fallback caso executado fora do contexto de request do Next.js (ex: workers ou testes)
+    setImmediate(() => {
+      task().catch((err) => logger.error({ err }, 'asaas.webhook.background_task_failed'));
+    });
+  }
+}
 
 function normalizeAsaasStatus(value: string | null | undefined) {
   return String(value || '').toLowerCase();
@@ -356,6 +372,13 @@ export async function POST(req: NextRequest) {
             { paymentId: payment.id, paymentDateCreated: payment.dateCreated, cotacaoId: cotacao.id },
             'Asaas Webhook: Pagamento descartado por ter sido criado antes da cotação vigente'
           );
+          if (webhookEventId) {
+            await sql`
+              UPDATE webhook_events
+              SET processed = true, error_message = 'Ignorado: Cobrança criada antes da proposta'
+              WHERE id = ${webhookEventId}
+            `.catch(() => null);
+          }
           return NextResponse.json({ ok: true, ignored: true, reason: 'Charge created before quote' });
         }
       }
@@ -396,7 +419,10 @@ export async function POST(req: NextRequest) {
               OR (${cleanCpfCnpj}::text IS NOT NULL AND regexp_replace(c.client_cpf_cnpj, '\\D', '', 'g') = ${cleanCpfCnpj})
             ))
           )
-          AND c.status IN ('pagamento_gerado', 'assinado', 'contrato_gerado', 'enviada', 'rascunho')
+          AND (
+            c.status IN ('pagamento_gerado', 'assinado', 'contrato_gerado', 'enviada', 'rascunho')
+            OR (c.status = 'aprovada' AND NOT EXISTS (SELECT 1 FROM sales s WHERE s.cotacao_id = c.id))
+          )
           AND c.created_at <= (COALESCE(${payment.dateCreated}::timestamptz, NOW()) + interval '24 hours')
           ORDER BY c.created_at DESC
           LIMIT 1
@@ -421,6 +447,13 @@ export async function POST(req: NextRequest) {
 
       if (!cotacao) {
         logger.info({ paymentId: payment.id }, 'Asaas webhook ignored: No matching quote found');
+        if (webhookEventId) {
+          await sql`
+            UPDATE webhook_events
+            SET processed = true, error_message = 'Ignorado: Nenhuma cotação associada a este pagamento'
+            WHERE id = ${webhookEventId}
+          `.catch(() => null);
+        }
         return NextResponse.json({ success: true, ignored: true });
       }
 
@@ -478,15 +511,14 @@ export async function POST(req: NextRequest) {
         orderRow?.amount_total || cotacao.premio_final || cotacao.premio_calculado || payment.value
       );
 
-      // Atualiza a cotação para aprovada e garante premio_final
-      await sql`
-        UPDATE cotacoes
-        SET
-          status = 'aprovada',
-          premio_final = COALESCE(premio_final, ${premioTotalApolice}),
-          updated_at = NOW()
-        WHERE id = ${cotacao.id}
-      `;
+      // Garante premio_final na cotação se estiver nulo (sem alterar status prematuramente antes da transação de venda)
+      if (!cotacao.premio_final) {
+        await sql`
+          UPDATE cotacoes
+          SET premio_final = ${premioTotalApolice}, updated_at = NOW()
+          WHERE id = ${cotacao.id}
+        `;
+      }
 
       try {
         const sale = await ensureSaleForPaidQuote({
@@ -500,57 +532,60 @@ export async function POST(req: NextRequest) {
 
         logger.info({ cotacaoId: cotacao.id, saleId: sale.saleId, created: sale.created }, 'Sale processed from webhook');
 
-        // Dispara gatilhos da árvore de decisão apenas se a venda foi criada pela primeira vez (evita spam em parcelas 2+ ou retries)
+        // Dispara gatilhos da árvore de decisão de forma assíncrona (background) para responder ao Asaas em < 250ms
+        // e evitar timeouts (> 5s) e interrupção automática da fila no gateway.
         if (sale.created) {
-          try {
-            const [clientRow] = cotacao.client_id ? await sql<{ full_name: string; email: string; document_number: string; phone: string }[]>`
-              SELECT full_name, email, document_number, phone FROM insurance_clients WHERE id = ${cotacao.client_id} LIMIT 1
-            ` : [];
+          runInBackground(async () => {
+            try {
+              const [clientRow] = cotacao.client_id ? await sql<{ full_name: string; email: string; document_number: string; phone: string }[]>`
+                SELECT full_name, email, document_number, phone FROM insurance_clients WHERE id = ${cotacao.client_id} LIMIT 1
+              ` : [];
 
-            const [partnerRow] = await sql<{ nome: string; email: string; codigo_venda?: string }[]>`
-              SELECT
-                COALESCE(p.nome_fantasia, p.razao_social) AS nome,
-                COALESCE(NULLIF(p.email, ''), pu.email) AS email,
-                p.metadata->'whiteLabel'->>'wixCode' AS codigo_venda
-              FROM partners p
-              LEFT JOIN partner_users pu ON pu.partner_id = p.id AND pu.is_active = true
-              WHERE p.id = ${cotacao.partner_id}
-              ORDER BY pu.created_at ASC
-              LIMIT 1
-            `;
+              const [partnerRow] = await sql<{ nome: string; email: string; codigo_venda?: string }[]>`
+                SELECT
+                  COALESCE(p.nome_fantasia, p.razao_social) AS nome,
+                  COALESCE(NULLIF(p.email, ''), pu.email) AS email,
+                  p.metadata->'whiteLabel'->>'wixCode' AS codigo_venda
+                FROM partners p
+                LEFT JOIN partner_users pu ON pu.partner_id = p.id AND pu.is_active = true
+                WHERE p.id = ${cotacao.partner_id}
+                ORDER BY pu.created_at ASC
+                LIMIT 1
+              `;
 
-            await dispatchDomainEvent('PAGAMENTO_CONFIRMADO', {
-              eventType: 'PAGAMENTO_CONFIRMADO',
-              contextId: cotacao.id,
-              cliente: {
-                nome: clientRow?.full_name,
-                email: clientRow?.email,
-                documento: clientRow?.document_number,
-                telefone: clientRow?.phone,
-              },
-              parceiro: partnerRow ? {
-                id: cotacao.partner_id,
-                nome: partnerRow.nome,
-                email: partnerRow.email,
-                codigoVenda: partnerRow.codigo_venda,
-              } : undefined,
-              cotacao: {
-                id: cotacao.id,
-                status: 'aprovada',
-                premio_final: premioTotalApolice,
-                cobertura: Number(cotacao.importancia_segurada) || 0,
-              },
-              transacao: {
-                id: payment.id,
-                valor: Number(payment.value),
-                vencimento: payment.dueDate,
-                forma_pagamento: payment.billingType,
-                link_fatura: payment.invoiceUrl,
-              },
-            });
-          } catch (dispatchErr) {
-            logger.error({ dispatchErr, cotacaoId: cotacao.id }, 'Falha ao despachar gatilhos para pagamento confirmado');
-          }
+              await dispatchDomainEvent('PAGAMENTO_CONFIRMADO', {
+                eventType: 'PAGAMENTO_CONFIRMADO',
+                contextId: cotacao.id,
+                cliente: {
+                  nome: clientRow?.full_name,
+                  email: clientRow?.email,
+                  documento: clientRow?.document_number,
+                  telefone: clientRow?.phone,
+                },
+                parceiro: partnerRow ? {
+                  id: cotacao.partner_id,
+                  nome: partnerRow.nome,
+                  email: partnerRow.email,
+                  codigoVenda: partnerRow.codigo_venda,
+                } : undefined,
+                cotacao: {
+                  id: cotacao.id,
+                  status: 'aprovada',
+                  premio_final: premioTotalApolice,
+                  cobertura: Number(cotacao.importancia_segurada) || 0,
+                },
+                transacao: {
+                  id: payment.id,
+                  valor: Number(payment.value),
+                  vencimento: payment.dueDate,
+                  forma_pagamento: payment.billingType,
+                  link_fatura: payment.invoiceUrl,
+                },
+              });
+            } catch (dispatchErr) {
+              logger.error({ dispatchErr, cotacaoId: cotacao.id }, 'Falha ao despachar gatilhos para pagamento confirmado em background');
+            }
+          });
         }
       } catch (err) {
         logger.error({ err, cotacaoId: cotacao.id }, 'Error saving sale data from webhook');
@@ -564,104 +599,106 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Failed to process sale' }, { status: 500 });
       }
     } else if (isOverdueEvent(event) && installment?.cotacao_id) {
-      // Dispara gatilho de fatura vencida com contexto completo
-      try {
-        const [cotacao] = await sql<any[]>`
-          SELECT id, partner_id, client_id, client_name, client_email, client_cpf_cnpj, client_phone,
-                 partner_user_id, premio_final, importancia_segurada, client_data
-          FROM cotacoes
-          WHERE id = ${installment.cotacao_id}
-          LIMIT 1
-        `;
-
-        let clientRow: any = null;
-        if (cotacao?.client_id) {
-          const [c] = await sql<any[]>`
-            SELECT full_name, email, document_number, phone
-            FROM insurance_clients
-            WHERE id = ${cotacao.client_id}
+      // Dispara gatilho de fatura vencida em background para responder imediatamente ao Asaas
+      runInBackground(async () => {
+        try {
+          const [cotacao] = await sql<any[]>`
+            SELECT id, partner_id, client_id, client_name, client_email, client_cpf_cnpj, client_phone,
+                   partner_user_id, premio_final, importancia_segurada, client_data
+            FROM cotacoes
+            WHERE id = ${installment.cotacao_id}
             LIMIT 1
           `;
-          clientRow = c;
-        }
 
-        let partnerRow: any = null;
-        if (cotacao?.partner_id) {
-          const [p] = await sql<any[]>`
-            SELECT
-              COALESCE(p.nome_fantasia, p.razao_social) AS nome,
-              COALESCE(NULLIF(p.email, ''), pu.email) AS email,
-              p.metadata->'whiteLabel'->>'wixCode' AS codigo_venda
-            FROM partners p
-            LEFT JOIN partner_users pu ON pu.partner_id = p.id AND pu.is_active = true
-            WHERE p.id = ${cotacao.partner_id}
-            ORDER BY pu.created_at ASC
-            LIMIT 1
+          let clientRow: any = null;
+          if (cotacao?.client_id) {
+            const [c] = await sql<any[]>`
+              SELECT full_name, email, document_number, phone
+              FROM insurance_clients
+              WHERE id = ${cotacao.client_id}
+              LIMIT 1
+            `;
+            clientRow = c;
+          }
+
+          let partnerRow: any = null;
+          if (cotacao?.partner_id) {
+            const [p] = await sql<any[]>`
+              SELECT
+                COALESCE(p.nome_fantasia, p.razao_social) AS nome,
+                COALESCE(NULLIF(p.email, ''), pu.email) AS email,
+                p.metadata->'whiteLabel'->>'wixCode' AS codigo_venda
+              FROM partners p
+              LEFT JOIN partner_users pu ON pu.partner_id = p.id AND pu.is_active = true
+              WHERE p.id = ${cotacao.partner_id}
+              ORDER BY pu.created_at ASC
+              LIMIT 1
+            `;
+            partnerRow = p;
+          }
+
+          let vendedorRow: any = null;
+          if (cotacao?.partner_user_id) {
+            const [v] = await sql<any[]>`
+              SELECT id, name AS nome, email
+              FROM partner_users
+              WHERE id = ${cotacao.partner_user_id}
+              LIMIT 1
+            `;
+            vendedorRow = v;
+          }
+
+          const [saleRow] = await sql<any[]>`
+            SELECT policy_number FROM sales WHERE cotacao_id = ${installment.cotacao_id} LIMIT 1
           `;
-          partnerRow = p;
+
+          const clientData = (cotacao?.client_data as Record<string, any>) || {};
+          const clientName = clientRow?.full_name || cotacao?.client_name || clientData.nome || 'Cliente';
+          const clientEmail = clientRow?.email || cotacao?.client_email || clientData.email;
+          const clientDoc = clientRow?.document_number || cotacao?.client_cpf_cnpj || clientData.cpf || clientData.cnpj || '';
+          const clientPhone = clientRow?.phone || cotacao?.client_phone || clientData.celular || clientData.telefone || '';
+
+          await dispatchDomainEvent('FATURA_VENCIDA', {
+            eventType: 'FATURA_VENCIDA',
+            contextId: installment.cotacao_id,
+            cliente: {
+              nome: clientName,
+              email: clientEmail,
+              documento: clientDoc,
+              telefone: clientPhone,
+            },
+            parceiro: partnerRow ? {
+              id: cotacao.partner_id,
+              nome: partnerRow.nome,
+              email: partnerRow.email,
+              codigoVenda: partnerRow.codigo_venda,
+            } : undefined,
+            vendedor: vendedorRow ? {
+              id: vendedorRow.id,
+              nome: vendedorRow.nome,
+              email: vendedorRow.email,
+            } : undefined,
+            cotacao: cotacao ? {
+              id: cotacao.id,
+              premio_final: Number(cotacao.premio_final) || undefined,
+              cobertura: Number(cotacao.importancia_segurada) || undefined,
+              produto_nome: 'Seguro RC Profissional',
+            } : undefined,
+            transacao: {
+              id: payment.id,
+              valor: Number(payment.value) || 0,
+              vencimento: payment.dueDate,
+              forma_pagamento: payment.billingType,
+              link_fatura: payment.invoiceUrl,
+            },
+            dados: {
+              apolice_numero: saleRow?.policy_number,
+            },
+          });
+        } catch (overdueErr) {
+          logger.error({ overdueErr }, 'Falha ao despachar gatilho para fatura vencida em background');
         }
-
-        let vendedorRow: any = null;
-        if (cotacao?.partner_user_id) {
-          const [v] = await sql<any[]>`
-            SELECT id, name AS nome, email
-            FROM partner_users
-            WHERE id = ${cotacao.partner_user_id}
-            LIMIT 1
-          `;
-          vendedorRow = v;
-        }
-
-        const [saleRow] = await sql<any[]>`
-          SELECT policy_number FROM sales WHERE cotacao_id = ${installment.cotacao_id} LIMIT 1
-        `;
-
-        const clientData = (cotacao?.client_data as Record<string, any>) || {};
-        const clientName = clientRow?.full_name || cotacao?.client_name || clientData.nome || 'Cliente';
-        const clientEmail = clientRow?.email || cotacao?.client_email || clientData.email;
-        const clientDoc = clientRow?.document_number || cotacao?.client_cpf_cnpj || clientData.cpf || clientData.cnpj || '';
-        const clientPhone = clientRow?.phone || cotacao?.client_phone || clientData.celular || clientData.telefone || '';
-
-        await dispatchDomainEvent('FATURA_VENCIDA', {
-          eventType: 'FATURA_VENCIDA',
-          contextId: installment.cotacao_id,
-          cliente: {
-            nome: clientName,
-            email: clientEmail,
-            documento: clientDoc,
-            telefone: clientPhone,
-          },
-          parceiro: partnerRow ? {
-            id: cotacao.partner_id,
-            nome: partnerRow.nome,
-            email: partnerRow.email,
-            codigoVenda: partnerRow.codigo_venda,
-          } : undefined,
-          vendedor: vendedorRow ? {
-            id: vendedorRow.id,
-            nome: vendedorRow.nome,
-            email: vendedorRow.email,
-          } : undefined,
-          cotacao: cotacao ? {
-            id: cotacao.id,
-            premio_final: Number(cotacao.premio_final) || undefined,
-            cobertura: Number(cotacao.importancia_segurada) || undefined,
-            produto_nome: 'Seguro RC Profissional',
-          } : undefined,
-          transacao: {
-            id: payment.id,
-            valor: Number(payment.value) || 0,
-            vencimento: payment.dueDate,
-            forma_pagamento: payment.billingType,
-            link_fatura: payment.invoiceUrl,
-          },
-          dados: {
-            apolice_numero: saleRow?.policy_number,
-          },
-        });
-      } catch (overdueErr) {
-        logger.error({ overdueErr }, 'Falha ao despachar gatilho para fatura vencida');
-      }
+      });
     }
 
     await sql`

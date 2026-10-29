@@ -240,8 +240,8 @@ export async function processAsaasPayload(rawPayload: any): Promise<{ success: b
       }[]>`
         SELECT
           COUNT(*)::int AS total_count,
-          COUNT(*) FILTER (WHERE status IN ('received', 'confirmed'))::int AS paid_count,
-          COALESCE(SUM(amount) FILTER (WHERE status IN ('received', 'confirmed')), 0)::numeric AS paid_amount,
+          COUNT(*) FILTER (WHERE LOWER(COALESCE(status, '')) IN ('received', 'confirmed', 'received_in_cash', 'paid'))::int AS paid_count,
+          COALESCE(SUM(amount) FILTER (WHERE LOWER(COALESCE(status, '')) IN ('received', 'confirmed', 'received_in_cash', 'paid')), 0)::numeric AS paid_amount,
           MAX(due_date)::text AS latest_due_date
         FROM payment_installments
         WHERE payment_order_id = ${installment.payment_order_id}
@@ -411,7 +411,10 @@ export async function processAsaasPayload(rawPayload: any): Promise<{ success: b
               OR (${cleanCpfCnpj}::text IS NOT NULL AND regexp_replace(c.client_cpf_cnpj, '\\D', '', 'g') = ${cleanCpfCnpj})
             ))
           )
-          AND c.status IN ('pagamento_gerado', 'assinado', 'contrato_gerado', 'enviada', 'rascunho')
+          AND (
+            c.status IN ('pagamento_gerado', 'assinado', 'contrato_gerado', 'enviada', 'rascunho')
+            OR (c.status = 'aprovada' AND NOT EXISTS (SELECT 1 FROM sales s WHERE s.cotacao_id = c.id))
+          )
           AND c.created_at <= (COALESCE(${payment.dateCreated}::timestamptz, NOW()) + interval '24 hours')
           ORDER BY c.created_at DESC
           LIMIT 1
@@ -449,8 +452,8 @@ export async function processAsaasPayload(rawPayload: any): Promise<{ success: b
         SELECT
           po.id,
           COALESCE(po.installment_count, 1)::int AS installment_count,
-          COUNT(pi.id) FILTER (WHERE pi.status IN ('received', 'confirmed'))::int AS paid_count,
-          COALESCE(SUM(pi.amount) FILTER (WHERE pi.status IN ('received', 'confirmed')), 0)::numeric AS paid_amount,
+          COUNT(pi.id) FILTER (WHERE LOWER(COALESCE(pi.status, '')) IN ('received', 'confirmed', 'received_in_cash', 'paid'))::int AS paid_count,
+          COALESCE(SUM(pi.amount) FILTER (WHERE LOWER(COALESCE(pi.status, '')) IN ('received', 'confirmed', 'received_in_cash', 'paid')), 0)::numeric AS paid_amount,
           COALESCE(po.amount_total, 0)::numeric AS amount_total
         FROM payment_orders po
         LEFT JOIN payment_installments pi ON pi.payment_order_id = po.id
@@ -491,14 +494,14 @@ export async function processAsaasPayload(rawPayload: any): Promise<{ success: b
         orderRow?.amount_total || cotacao.premio_final || cotacao.premio_calculado || payment.value
       );
 
-      await sql`
-        UPDATE cotacoes
-        SET
-          status = 'aprovada',
-          premio_final = COALESCE(premio_final, ${premioTotalApolice}),
-          updated_at = NOW()
-        WHERE id = ${cotacao.id}
-      `;
+      // Garante premio_final na cotação se estiver nulo (sem alterar status prematuramente antes da transação de venda)
+      if (!cotacao.premio_final) {
+        await sql`
+          UPDATE cotacoes
+          SET premio_final = ${premioTotalApolice}, updated_at = NOW()
+          WHERE id = ${cotacao.id}
+        `;
+      }
 
       const sale = await ensureSaleForPaidQuote({
         cotacaoId: cotacao.id,

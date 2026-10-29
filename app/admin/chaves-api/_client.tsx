@@ -119,6 +119,74 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
+  const [checkingAsaasQueue, setCheckingAsaasQueue] = useState(false);
+  const [reactivatingAsaasQueue, setReactivatingAsaasQueue] = useState(false);
+  const [asaasQueueStatus, setAsaasQueueStatus] = useState<{
+    checked: boolean;
+    ok: boolean;
+    isInterrupted: boolean;
+    webhooksCount: number;
+    message?: string;
+    error?: string;
+  } | null>(null);
+
+  async function handleCheckAsaasQueue() {
+    setCheckingAsaasQueue(true);
+    try {
+      const res = await fetch('/api/admin/webhooks/asaas/status');
+      const data = await res.json();
+      setAsaasQueueStatus({
+        checked: true,
+        ok: Boolean(data.ok),
+        isInterrupted: Boolean(data.isInterrupted),
+        webhooksCount: Array.isArray(data.webhooks) ? data.webhooks.length : 0,
+        message: data.message,
+        error: data.error,
+      });
+      if (data.ok) {
+        if (data.isInterrupted) {
+          toast.warning('Atenção: A fila de webhooks do Asaas está INTERROMPIDA por falhas consecutivas!');
+        } else {
+          toast.success(data.message || 'Fila do Asaas está ativa e operando normalmente.');
+        }
+      } else {
+        toast.error(data.error || 'Falha ao consultar status da fila no Asaas.');
+      }
+    } catch {
+      toast.error('Erro de conexão ao verificar fila do Asaas.');
+    } finally {
+      setCheckingAsaasQueue(false);
+    }
+  }
+
+  async function handleReactivateAsaasQueue() {
+    setReactivatingAsaasQueue(true);
+    try {
+      const res = await fetch('/api/admin/webhooks/asaas/reativar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+      setAsaasQueueStatus({
+        checked: true,
+        ok: Boolean(data.ok),
+        isInterrupted: Boolean(data.isInterrupted),
+        webhooksCount: Array.isArray(data.webhooks) ? data.webhooks.length : 0,
+        message: data.message,
+        error: data.error,
+      });
+      if (data.ok) {
+        toast.success(data.message || 'Fila de webhooks do Asaas desinterrompida com sucesso!');
+      } else {
+        toast.error(data.error || 'Falha ao reativar fila no Asaas.');
+      }
+    } catch {
+      toast.error('Erro ao comunicar com o servidor para reativar fila.');
+    } finally {
+      setReactivatingAsaasQueue(false);
+    }
+  }
+
   async function handleTestZapSign() {
     setTestingZapSign(true);
     setZapSignTestResult(null);
@@ -945,6 +1013,94 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
                   <p className="text-[11px] text-gray-500">
                     Eventos processados: <code>PAYMENT_RECEIVED</code>, <code>PAYMENT_CONFIRMED</code>, <code>PAYMENT_OVERDUE</code>.
                   </p>
+
+                  {/* Gestão e Status da Fila do Asaas */}
+                  <div className="pt-3 border-t border-gray-200 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <span className="text-xs font-bold text-gray-800 flex items-center gap-1.5">
+                          <Zap className="h-4 w-4 text-[#0e4a5a]" /> Estado da Fila no Asaas (Live)
+                        </span>
+                        <p className="text-[11px] text-gray-500">
+                          Consulte se o Asaas suspendeu os envios por falhas consecutivas ou reative a transmissão imediata.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleCheckAsaasQueue}
+                          disabled={checkingAsaasQueue || reactivatingAsaasQueue}
+                          className="px-3 py-1.5 text-xs font-semibold text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 min-h-[36px]"
+                        >
+                          <RefreshCw className={`h-3.5 w-3.5 text-gray-600 ${checkingAsaasQueue ? 'animate-spin' : ''}`} />
+                          <span>{checkingAsaasQueue ? 'Verificando...' : 'Verificar Status'}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleReactivateAsaasQueue}
+                          disabled={checkingAsaasQueue || reactivatingAsaasQueue}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50 min-h-[36px] ${
+                            asaasQueueStatus?.isInterrupted
+                              ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-xs animate-pulse'
+                              : 'bg-[#0e4a5a] hover:bg-[#072a33] text-white shadow-xs'
+                          }`}
+                        >
+                          <Power className={`h-3.5 w-3.5 ${reactivatingAsaasQueue ? 'animate-spin' : ''}`} />
+                          <span>{reactivatingAsaasQueue ? 'Reativando...' : 'Reativar Fila no Asaas'}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {asaasQueueStatus && (
+                      <div
+                        className={`p-3 rounded-xl border text-xs leading-relaxed ${
+                          asaasQueueStatus.isInterrupted
+                            ? 'bg-rose-50 border-rose-200 text-rose-900'
+                            : asaasQueueStatus.ok
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                            : 'bg-amber-50 border-amber-200 text-amber-900'
+                        }`}
+                      >
+                        <div className="flex items-start gap-2">
+                          {asaasQueueStatus.isInterrupted ? (
+                            <AlertCircle className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
+                          ) : asaasQueueStatus.ok ? (
+                            <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                          ) : (
+                            <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                          )}
+                          <div className="space-y-1">
+                            <div className="font-bold flex items-center gap-2">
+                              <span>
+                                {asaasQueueStatus.isInterrupted
+                                  ? 'FILA INTERROMPIDA NO ASAAS'
+                                  : asaasQueueStatus.ok
+                                  ? 'FILA ATIVA E OPERANTE'
+                                  : 'STATUS DA FILA'}
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                                  asaasQueueStatus.isInterrupted
+                                    ? 'bg-rose-200 text-rose-900'
+                                    : 'bg-emerald-200 text-emerald-900'
+                                }`}
+                              >
+                                {asaasQueueStatus.isInterrupted ? 'Pausado' : 'Online'}
+                              </span>
+                            </div>
+                            <p className="text-[11px] opacity-90">
+                              {asaasQueueStatus.message ||
+                                (asaasQueueStatus.isInterrupted
+                                  ? 'O Asaas suspendeu os envios devido a 15 falhas consecutivas. Clique em "Reativar Fila no Asaas" para retomar o processamento imediato dos pagamentos pendentes.'
+                                  : 'O gateway está configurado para despachar eventos em tempo real.')}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })()}
