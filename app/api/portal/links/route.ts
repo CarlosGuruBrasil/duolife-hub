@@ -5,6 +5,7 @@ import { ensureSchema } from '@/lib/schema';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
 import { verifyPartnerAuth, isDevUser, isPlatformAdmin, unauthorized } from '@/lib/auth';
+import { calculateConversionMetrics } from '@/lib/link-tracker';
 
 const emptyToUndefined = (v: unknown) => (v === '' ? undefined : v);
 
@@ -49,6 +50,9 @@ export async function GET() {
         pl.flow_type,
         pl.status,
         COALESCE(pl.discount_percent, 0) AS discount_percent,
+        COALESCE(pl.views_count, 0)::int AS views_count,
+        COALESCE(pl.unique_views_count, 0)::int AS unique_views_count,
+        pl.last_accessed_at,
         pl.expires_at,
         pl.used_at,
         pl.created_at,
@@ -57,7 +61,8 @@ export async function GET() {
         pr.id AS product_id,
         pr.name AS product_name,
         pr.code AS product_code,
-        COUNT(c.id)::int AS total_cotacoes
+        COUNT(c.id)::int AS total_cotacoes,
+        COUNT(c.id) FILTER (WHERE c.status IN ('aprovada', 'emitida'))::int AS total_vendas
       FROM public_sale_links pl
       LEFT JOIN products pr ON pr.id = pl.product_id
       LEFT JOIN cotacoes c ON c.source_token = pl.token
@@ -68,11 +73,27 @@ export async function GET() {
     `;
 
     const baseUrl = appBaseUrl();
-    const mapped = links.map((l) => ({
-      ...l,
-      url: `${baseUrl}/contratar/${l.token}`,
-      isExpired: l.expires_at ? new Date(l.expires_at) < new Date() : false,
-    }));
+    const mapped = links.map((l: any) => {
+      const viewsCount = Number(l.views_count || 0);
+      const uniqueViewsCount = Number(l.unique_views_count || 0);
+      const totalCotacoes = Number(l.total_cotacoes || 0);
+      const totalVendas = Number(l.total_vendas || 0);
+      const metrics = calculateConversionMetrics(viewsCount, uniqueViewsCount, totalCotacoes, totalVendas);
+
+      return {
+        ...l,
+        views_count: viewsCount,
+        unique_views_count: uniqueViewsCount,
+        total_cotacoes: totalCotacoes,
+        total_vendas: totalVendas,
+        ...metrics,
+        conversion_rate_cotacao: metrics.conversionRateCotacao,
+        conversion_rate_venda: metrics.conversionRateVenda,
+        fechamento_rate: metrics.fechamentoRate,
+        url: `${baseUrl}/contratar/${l.token}`,
+        isExpired: l.expires_at ? new Date(l.expires_at) < new Date() : false,
+      };
+    });
 
     return NextResponse.json({ ok: true, links: mapped });
   } catch (err) {

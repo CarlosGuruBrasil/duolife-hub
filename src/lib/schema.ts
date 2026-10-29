@@ -6,7 +6,7 @@ import { ensureDefaultContractTemplates } from './contract-templates-service';
 let ready = false;
 let readyPromise: Promise<void> | null = null;
 
-const REQUIRED_TABLES = [
+export const EXPECTED_TABLES = [
   'system_settings',
   'admin_users',
   'corretoras',
@@ -25,6 +25,7 @@ const REQUIRED_TABLES = [
   'wix_items',
   'sync_log',
   'public_sale_links',
+  'sale_link_access_logs',
   'signature_documents',
   'cupom_usos',
   'cupom_uso_eventos',
@@ -44,6 +45,13 @@ const REQUIRED_TABLES = [
   'action_audit_logs',
   'contract_templates',
 ] as const;
+
+export const REQUIRED_TABLES = EXPECTED_TABLES;
+
+export function resetSchemaReadyForTesting(): void {
+  ready = false;
+  readyPromise = null;
+}
 
 function shouldRunRuntimeSchemaSetup(): boolean {
   return process.env.ALLOW_RUNTIME_SCHEMA === 'true';
@@ -718,13 +726,37 @@ async function runRuntimeSchemaSetup(): Promise<void> {
       metadata          JSONB NOT NULL DEFAULT '{}',
       created_by_user_id TEXT,
       discount_percent  INT NOT NULL DEFAULT 0,
+      views_count       INT NOT NULL DEFAULT 0,
+      unique_views_count INT NOT NULL DEFAULT 0,
+      last_accessed_at  TIMESTAMPTZ,
       created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `;
   await sql`ALTER TABLE public_sale_links ADD COLUMN IF NOT EXISTS discount_percent INT NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE public_sale_links ADD COLUMN IF NOT EXISTS views_count INT NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE public_sale_links ADD COLUMN IF NOT EXISTS unique_views_count INT NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE public_sale_links ADD COLUMN IF NOT EXISTS last_accessed_at TIMESTAMPTZ`;
   await sql`CREATE INDEX IF NOT EXISTS public_sale_links_partner_id ON public_sale_links (partner_id)`;
   await sql`CREATE INDEX IF NOT EXISTS public_sale_links_token      ON public_sale_links (token)`;
+
+  // Logs de auditoria e métricas de acesso aos links de venda
+  await sql`
+    CREATE TABLE IF NOT EXISTS sale_link_access_logs (
+      id         TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      link_id    TEXT NOT NULL REFERENCES public_sale_links(id) ON DELETE CASCADE,
+      token      TEXT NOT NULL,
+      partner_id TEXT NOT NULL REFERENCES partners(id) ON DELETE CASCADE,
+      ip_hash    TEXT NOT NULL,
+      user_agent TEXT,
+      referer    TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_sale_link_access_logs_link_id    ON sale_link_access_logs (link_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_sale_link_access_logs_token      ON sale_link_access_logs (token)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_sale_link_access_logs_partner_id ON sale_link_access_logs (partner_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_sale_link_access_logs_link_ip    ON sale_link_access_logs (link_id, ip_hash)`;
 
   // Documentos de assinatura eletrônica
   await sql`

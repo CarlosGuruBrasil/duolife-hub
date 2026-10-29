@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Copy, Check, ExternalLink, Link2, Palette, Building, Share2, Tag, Power, PowerOff, Loader2 } from 'lucide-react';
+import { Copy, Check, ExternalLink, Link2, Palette, Building, Share2, Tag, Power, PowerOff, Loader2, Eye, Users, TrendingUp, CheckCircle2 } from 'lucide-react';
 import type { WhiteLabelConfig } from '@/lib/white-label';
 import { toast } from '@/components/ui/toast';
 import GerarLinkClienteButton from '@/components/portal/GerarLinkClienteButton';
@@ -449,6 +449,42 @@ export default function PartnerProfileForm({
                         {isCopied ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
                         <span>{isCopied ? 'Copiado!' : 'Copiar'}</span>
                       </button>
+                    </div>
+
+                    {/* Régua de Métricas do Funil de Vendas */}
+                    <div className="pt-2 border-t border-gray-100 flex items-center justify-between gap-2 text-[11px] text-gray-600 flex-wrap">
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <span className="inline-flex items-center gap-1" title="Visualizações Totais do Link">
+                          <Eye size={12} className="text-gray-400" />
+                          <strong className="text-gray-900">{cl.views_count ?? 0}</strong> cliques
+                        </span>
+                        <span className="inline-flex items-center gap-1" title="Visitantes Únicos (IPs distintos)">
+                          <Users size={12} className="text-gray-400" />
+                          <strong className="text-gray-900">{cl.unique_views_count ?? 0}</strong> únicos
+                        </span>
+                        <span className="inline-flex items-center gap-1" title="Cotações / Propostas Iniciadas">
+                          <strong className="text-gray-900">{cl.total_cotacoes ?? 0}</strong> propostas
+                        </span>
+                        <span className="inline-flex items-center gap-1 text-emerald-700" title="Vendas Pagas / Emitidas">
+                          <CheckCircle2 size={12} className="text-emerald-600" />
+                          <strong className="text-emerald-800">{cl.total_vendas ?? 0}</strong> vendas
+                        </span>
+                      </div>
+
+                      {/* Badge de Conversão Final */}
+                      <div className="flex items-center gap-1">
+                        <span
+                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border flex items-center gap-1 ${
+                            (cl.conversion_rate_venda ?? 0) > 0
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                              : 'bg-gray-50 text-gray-600 border-gray-200'
+                          }`}
+                          title={`Taxa de Conversão: ${(cl.conversion_rate_venda ?? 0)}% dos cliques viraram apólices pagas`}
+                        >
+                          <TrendingUp size={11} className={(cl.conversion_rate_venda ?? 0) > 0 ? 'text-emerald-600' : 'text-gray-400'} />
+                          {cl.conversion_rate_venda ?? 0}% conv.
+                        </span>
+                      </div>
                     </div>
                   </div>
                 );

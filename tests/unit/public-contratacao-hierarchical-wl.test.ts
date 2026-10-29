@@ -34,47 +34,51 @@ describe('Public Contratação Hierarchical White-Label & Discount (/api/public/
     let capturedQuery = '';
     const mockSql = sql as any;
     mockSql.mockImplementation(async (strings: TemplateStringsArray, ...values: any[]) => {
-      capturedQuery = strings.join('?');
-      return [
-        {
-          id: 'link-wl-01',
-          token: 'dlk_heranca_001',
-          partner_id: 'partner-heranca-01',
-          product_id: 'prod-rc-001',
-          flow_type: 'external',
-          label: 'Campanha Herança WL',
-          status: 'active',
-          expires_at: null,
-          used_at: null,
-          metadata: {},
-          created_at: new Date().toISOString(),
-          discount_percent: 15,
-          razao_social: 'Parceiro Sem Logo LTDA',
-          nome_fantasia: 'Parceiro Sem Logo',
-          email: 'contato@parceiro.com.br',
-          phone: '11988887777',
-          partner_metadata: {
-            whiteLabel: {
-              companyName: 'Parceiro Sem Logo',
-              // Sem logoUrl nem cores próprias
+      const q = strings.join('?');
+      if (q.includes('FROM public_sale_links')) {
+        capturedQuery = q;
+        return [
+          {
+            id: 'link-wl-01',
+            token: 'dlk_heranca_001',
+            partner_id: 'partner-heranca-01',
+            product_id: 'prod-rc-001',
+            flow_type: 'external',
+            label: 'Campanha Herança WL',
+            status: 'active',
+            expires_at: null,
+            used_at: null,
+            metadata: {},
+            created_at: new Date().toISOString(),
+            discount_percent: 15,
+            razao_social: 'Parceiro Sem Logo LTDA',
+            nome_fantasia: 'Parceiro Sem Logo',
+            email: 'contato@parceiro.com.br',
+            phone: '11988887777',
+            partner_metadata: {
+              whiteLabel: {
+                companyName: 'Parceiro Sem Logo',
+                // Sem logoUrl nem cores próprias
+              },
             },
-          },
-          corretora_metadata: {
-            whiteLabel: {
-              slug: 'corretora-mae',
-              companyName: 'Corretora Mãe Seguros',
-              companySlogan: 'Sua corretora de confiança',
-              logoUrl: 'https://cdn.duolife.com.br/corretoras/mae-logo.svg',
-              primaryColor: '#004172',
-              secondaryColor: '#00a0af',
-              accentColor: '#00689b',
-              susep: '202018702',
+            corretora_metadata: {
+              whiteLabel: {
+                slug: 'corretora-mae',
+                companyName: 'Corretora Mãe Seguros',
+                companySlogan: 'Sua corretora de confiança',
+                logoUrl: 'https://cdn.duolife.com.br/corretoras/mae-logo.svg',
+                primaryColor: '#004172',
+                secondaryColor: '#00a0af',
+                accentColor: '#00689b',
+                susep: '202018702',
+              },
             },
+            product_name: 'RC Profissional Médico',
+            product_code: 'RC-MED-001',
           },
-          product_name: 'RC Profissional Médico',
-          product_code: 'RC-MED-001',
-        },
-      ];
+        ];
+      }
+      return [];
     });
 
     const req = new NextRequest('http://localhost/api/public/contratacao/dlk_heranca_001');

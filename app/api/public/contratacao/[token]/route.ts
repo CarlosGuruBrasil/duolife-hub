@@ -4,6 +4,7 @@ import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
 import { resolveHierarchicalWhiteLabel } from '@/lib/white-label';
 import { resolveContratoSignUrl } from '@/lib/contrato-link-resolver';
+import { extractClientAccessData, trackSaleLinkAccess } from '@/lib/link-tracker';
 
 function appBaseUrl() {
   return process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || 'https://duolife.com.br';
@@ -44,6 +45,18 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
 
     const link = await resolveLink(token);
     if (!link) return Response.json({ error: 'Link inválido ou expirado' }, { status: 404 });
+
+    const clientAccess = extractClientAccessData(_req.headers);
+    trackSaleLinkAccess({
+      linkId: link.id,
+      token: link.token,
+      partnerId: link.partner_id,
+      ip: clientAccess.ip,
+      userAgent: clientAccess.userAgent,
+      referer: clientAccess.referer,
+    }).catch((trackErr) => {
+      logger.warn({ trackErr, token }, 'public.link.track_access_failed');
+    });
 
     const whiteLabel = resolveHierarchicalWhiteLabel(link.partner_metadata, link.corretora_metadata);
 
