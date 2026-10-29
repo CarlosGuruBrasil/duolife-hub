@@ -38,7 +38,7 @@ export function ModalSincronizarAsaas({
 }: ModalSincronizarAsaasProps) {
   const router = useRouter();
   const [onlyPending, setOnlyPending] = useState(true);
-  const [limit, setLimit] = useState(100);
+  const [limit, setLimit] = useState(10);
   const [isLoading, setIsLoading] = useState(false);
   const [result, setResult] = useState<SyncResult | null>(null);
 
@@ -209,21 +209,32 @@ export function ModalSincronizarAsaas({
 
               {/* Limite de Lote */}
               <div>
-                <label htmlFor="limit-select" className="block text-xs font-bold text-gray-800 mb-1.5">
-                  Quantidade Máxima a Processar
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label htmlFor="limit-select" className="text-xs font-bold text-gray-800">
+                    Quantidade de Cadastros para Sincronização
+                  </label>
+                  <span className="text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                    Mais recentes primeiro
+                  </span>
+                </div>
                 <select
                   id="limit-select"
                   value={limit}
                   onChange={(e) => setLimit(Number(e.target.value))}
                   className="w-full h-11 px-3 text-xs bg-white border border-gray-300 rounded-xl focus:outline-hidden focus:border-[#0e4a5a] focus:ring-1 focus:ring-[#0e4a5a] cursor-pointer"
                 >
-                  <option value={25}>25 cotações</option>
-                  <option value={50}>50 cotações</option>
-                  <option value={100}>100 cotações (Padrão)</option>
-                  <option value={200}>200 cotações</option>
-                  <option value={500}>500 cotações (Completo)</option>
+                  <option value={5}>5 cadastros (Teste rápido)</option>
+                  <option value={10}>10 cadastros (Rápido)</option>
+                  <option value={25}>25 cadastros</option>
+                  <option value={50}>50 cadastros</option>
+                  <option value={100}>100 cadastros</option>
+                  <option value={200}>200 cadastros</option>
+                  <option value={500}>500 cadastros (Completo)</option>
                 </select>
+                <p className="text-[11px] text-gray-500 mt-1.5 flex items-center gap-1">
+                  <Clock className="h-3.5 w-3.5 text-gray-400 shrink-0" />
+                  Ordenado por data de vigência decrescente (começando com os cadastros mais recentes).
+                </p>
               </div>
             </div>
           )}

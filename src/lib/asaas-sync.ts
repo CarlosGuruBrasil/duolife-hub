@@ -815,7 +815,23 @@ export async function reconcileAsaasBatch(
           )
         )
       ` : sql``}
-    ORDER BY c.created_at DESC
+    ORDER BY
+      COALESCE(
+        CASE
+          WHEN c.client_data->>'dataInicioVigencia' ~ '^\d{4}-\d{2}-\d{2}' THEN (c.client_data->>'dataInicioVigencia')::date
+          WHEN c.client_data->>'dataInicioVigencia' ~ '^\d{2}/\d{2}/\d{4}' THEN to_date(c.client_data->>'dataInicioVigencia', 'DD/MM/YYYY')
+          WHEN c.client_data->>'vigencia' ~ '^\d{4}-\d{2}-\d{2}' THEN (c.client_data->>'vigencia')::date
+          WHEN c.client_data->>'vigencia' ~ '^\d{2}/\d{2}/\d{4}' THEN to_date(c.client_data->>'vigencia', 'DD/MM/YYYY')
+          WHEN c.client_data->>'dataVigencia' ~ '^\d{4}-\d{2}-\d{2}' THEN (c.client_data->>'dataVigencia')::date
+          WHEN c.client_data->>'dataVigencia' ~ '^\d{2}/\d{2}/\d{4}' THEN to_date(c.client_data->>'dataVigencia', 'DD/MM/YYYY')
+          WHEN c.client_data->>'inicioVigencia' ~ '^\d{4}-\d{2}-\d{2}' THEN (c.client_data->>'inicioVigencia')::date
+          WHEN c.client_data->>'inicioVigencia' ~ '^\d{2}/\d{2}/\d{4}' THEN to_date(c.client_data->>'inicioVigencia', 'DD/MM/YYYY')
+          ELSE NULL
+        END,
+        (SELECT s.issue_date FROM sales s WHERE s.cotacao_id = c.id LIMIT 1),
+        c.created_at::date
+      ) DESC,
+      c.created_at DESC
     LIMIT ${limit}
   `;
 

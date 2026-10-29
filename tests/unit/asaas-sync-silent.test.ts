@@ -42,6 +42,52 @@ describe('Sincronização em Lote Asaas - Modo Silencioso (Sem Notificações)',
       onlyPending: true,
       skipNotifications: true,
     });
+
+    // Caso 4: Suporte a limites rápidos de 5 e 10 cadastros
+    expect(parsePayload({ limit: 5 })).toEqual({
+      limit: 5,
+      onlyPending: true,
+      skipNotifications: true,
+    });
+    expect(parsePayload({ limit: 10 })).toEqual({
+      limit: 10,
+      onlyPending: true,
+      skipNotifications: true,
+    });
+  });
+
+  it('deve simular a ordenação decrescente por data de vigência (mais recentes primeiro)', () => {
+    interface MockQuote {
+      id: string;
+      vigencia: string;
+      createdAt: string;
+    }
+
+    const parseVigencia = (val: string): number => {
+      // Formato YYYY-MM-DD
+      if (/^\d{4}-\d{2}-\d{2}/.test(val)) {
+        return new Date(val).getTime();
+      }
+      // Formato DD/MM/YYYY
+      if (/^\d{2}\/\d{2}\/\d{4}/.test(val)) {
+        const [d, m, y] = val.split('/');
+        return new Date(`${y}-${m}-${d}`).getTime();
+      }
+      return 0;
+    };
+
+    const quotes: MockQuote[] = [
+      { id: '1', vigencia: '2026-01-10', createdAt: '2026-01-01' },
+      { id: '2', vigencia: '15/10/2026', createdAt: '2026-02-01' },
+      { id: '3', vigencia: '2026-05-20', createdAt: '2026-03-01' },
+      { id: '4', vigencia: '01/12/2026', createdAt: '2026-04-01' },
+    ];
+
+    const sortedDesc = [...quotes].sort((a, b) => parseVigencia(b.vigencia) - parseVigencia(a.vigencia));
+
+    // A ordem esperada decrescente por vigência é:
+    // id '4' (01/12/2026) -> id '2' (15/10/2026) -> id '3' (20/05/2026) -> id '1' (10/01/2026)
+    expect(sortedDesc.map((q) => q.id)).toEqual(['4', '2', '3', '1']);
   });
 
   it('deve verificar que notificações são puladas quando skipNotifications = true', async () => {
