@@ -1,6 +1,7 @@
 import { sql } from '../pg';
 import { logger } from '../logger';
 import { sendTemplatedEmail } from '../email-service';
+import { resolveWhiteLabelForContext, buildEmailWhiteLabelVariables } from '@/lib/email-whitelabel';
 import { evaluateDecisionTree } from './engine';
 import type {
   AutomationTriggerRecord,
@@ -78,6 +79,20 @@ export async function dispatchDomainEvent(
           if (actionNode.tipo === 'ACAO_EMAIL') {
             const config = actionNode.configuracao || {};
             const templateCode = config.template_id || 'boas_vindas';
+
+            // Resolve White-Label hierárquico para o contexto
+            let wlVars: Record<string, any> = {};
+            let fromName: string | undefined = undefined;
+            let replyTo: string | undefined = undefined;
+            try {
+              const { whiteLabel, partnerEmail } = await resolveWhiteLabelForContext(context);
+              const built = buildEmailWhiteLabelVariables(whiteLabel, partnerEmail);
+              wlVars = built;
+              fromName = built.from_name;
+              replyTo = built.reply_to;
+            } catch (wlErr) {
+              logger.warn({ wlErr, contextId: context.contextId }, 'Falha ao resolver White-Label para e-mail');
+            }
 
             // Resolve destinatários
             const recipientsToDispatch: Array<{ email: string; nome?: string }> = [];
@@ -211,7 +226,7 @@ export async function dispatchDomainEvent(
                   ? 'Cartão de Crédito'
                   : 'Fatura (Cartão de Crédito, Boleto ou PIX)'
               ),
-              parceiro_nome: context.parceiro?.nome || 'DuoLife',
+              parceiro_nome: context.parceiro?.nome || wlVars.empresa_nome || 'DuoLife',
               codigo_venda: context.parceiro?.codigoVenda || '',
               link_reset: context.dados?.link_reset || context.dados?.reset_url || '',
               reset_url: context.dados?.link_reset || context.dados?.reset_url || '',
@@ -224,7 +239,10 @@ export async function dispatchDomainEvent(
                 templateCode,
                 to: r.email,
                 toName: r.nome,
+                fromName,
+                replyTo,
                 variables: {
+                  ...wlVars,
                   ...templateVars,
                   nome: r.nome,
                   email: r.email,

@@ -21,6 +21,7 @@ export interface ResolvedPartnerLink {
   };
   linkId: string;
   productId: string | null;
+  discountPercent?: number;
 }
 
 export function getAppBaseUrl(): string {
@@ -37,6 +38,7 @@ export async function getOrCreatePartnerSaleLink(partnerId: string): Promise<{
   directUrl: string;
   refUrl: string;
   code: string;
+  discountPercent?: number;
 }> {
   await ensureSchema();
 
@@ -47,9 +49,10 @@ export async function getOrCreatePartnerSaleLink(partnerId: string): Promise<{
       token: string;
       partner_id: string;
       metadata: Record<string, unknown>;
+      discount_percent?: number;
     }>
   >`
-    SELECT id, token, partner_id, metadata
+    SELECT id, token, partner_id, metadata, COALESCE(discount_percent, 0) AS discount_percent
     FROM public_sale_links
     WHERE partner_id = ${partnerId}
       AND status = 'active'
@@ -84,6 +87,7 @@ export async function getOrCreatePartnerSaleLink(partnerId: string): Promise<{
       directUrl: `${baseUrl}/contratar/${link.token}`,
       refUrl: `${baseUrl}/?ref=${encodeURIComponent(partnerCode || link.token)}`,
       code: partnerCode,
+      discountPercent: Number(link.discount_percent || 0),
     };
   }
 
@@ -123,6 +127,7 @@ export async function getOrCreatePartnerSaleLink(partnerId: string): Promise<{
     directUrl: `${baseUrl}/contratar/${created.token}`,
     refUrl: `${baseUrl}/?ref=${encodeURIComponent(partnerCode || created.token)}`,
     code: partnerCode,
+    discountPercent: 0,
   };
 }
 
@@ -146,6 +151,7 @@ export async function resolvePartnerOrLink(refOrToken: string): Promise<Resolved
       link_id: string;
       token: string;
       product_id: string | null;
+      discount_percent?: number;
       partner_id: string;
       razao_social: string;
       nome_fantasia: string | null;
@@ -160,6 +166,7 @@ export async function resolvePartnerOrLink(refOrToken: string): Promise<Resolved
       pl.id AS link_id,
       pl.token,
       pl.product_id,
+      COALESCE(pl.discount_percent, 0) AS discount_percent,
       p.id AS partner_id,
       p.razao_social,
       p.nome_fantasia,
@@ -199,6 +206,7 @@ export async function resolvePartnerOrLink(refOrToken: string): Promise<Resolved
       },
       linkId: item.link_id,
       productId: item.product_id,
+      discountPercent: Number(item.discount_percent || 0),
     };
   }
 
@@ -260,6 +268,7 @@ export async function resolvePartnerOrLink(refOrToken: string): Promise<Resolved
       },
       linkId: partnerLink.id,
       productId: null,
+      discountPercent: partnerLink.discountPercent ?? 0,
     };
   }
 

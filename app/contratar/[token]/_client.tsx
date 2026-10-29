@@ -18,6 +18,7 @@ type ContractLink = {
   token: string;
   label: string | null;
   discountPercent?: number;
+  whiteLabel?: WhiteLabel;
   partner: {
     id: string;
     razaoSocial: string;
@@ -67,9 +68,11 @@ export default function ContractPageClient({ token }: Props) {
     return <div className="p-8 text-center text-red-600">Link inválido ou expirado.</div>;
   }
 
-  const wl = link.partner.whiteLabel;
+  const wl = link.whiteLabel || link.partner.whiteLabel;
   const primary = wl.primaryColor || '#0e4a5a';
   const accent = wl.accentColor || '#00d4e0';
+  const partnerName = wl.companyName || link.partner.nomeFantasia || link.partner.razaoSocial;
+  const discountPercent = Number(link.discountPercent || 0);
 
   return (
     <div style={{ ['--primary' as string]: primary, ['--accent' as string]: accent }} className="min-h-screen bg-[#f5f7f7] font-sans flex flex-col">
@@ -93,11 +96,28 @@ export default function ContractPageClient({ token }: Props) {
             <img 
               src={wl.logoUrl} 
               alt={wl.companyName || link.partner.razaoSocial} 
-              className="h-20 sm:h-24 w-auto object-contain bg-white/90 p-4 rounded-3xl backdrop-blur-sm border border-white/20 mb-8 shadow-xl transition-transform hover:scale-105" 
+              className="h-20 sm:h-24 w-auto object-contain bg-white/90 p-4 rounded-3xl backdrop-blur-sm border border-white/20 mb-6 sm:mb-8 shadow-xl transition-transform hover:scale-105" 
             />
           ) : (
-            <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-3xl bg-white/20 flex items-center justify-center backdrop-blur-sm border border-white/30 mb-8 shadow-xl">
+            <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-3xl bg-white/20 flex items-center justify-center backdrop-blur-sm border border-white/30 mb-6 sm:mb-8 shadow-xl">
               <span className="text-4xl font-bold">{wl.companyName?.[0] || link.partner.razaoSocial[0]}</span>
+            </div>
+          )}
+
+          {discountPercent > 0 && (
+            <div className="mb-6 w-full max-w-2xl px-2">
+              <div className="inline-flex items-center gap-2 sm:gap-3 px-4 py-2 sm:px-5 sm:py-2.5 rounded-full bg-emerald-500/20 border border-emerald-300/40 backdrop-blur-md shadow-md text-white text-xs sm:text-sm md:text-base font-medium">
+                <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-400 text-slate-900 font-extrabold text-xs shrink-0 shadow-sm">
+                  %
+                </span>
+                <span className="leading-snug text-left sm:text-center">
+                  <strong className="font-bold text-emerald-200">Condição Especial:</strong> Você recebeu{' '}
+                  <span className="font-extrabold text-white underline decoration-emerald-400 decoration-2 underline-offset-2">
+                    {discountPercent}% de desconto comercial pré-aplicado
+                  </span>{' '}
+                  por {partnerName}.
+                </span>
+              </div>
             </div>
           )}
           
@@ -133,7 +153,7 @@ export default function ContractPageClient({ token }: Props) {
               <CotacaoFormRC
                 publicToken={token}
                 productId={link.product?.id}
-                initialDiscountPercent={link.discountPercent}
+                initialDiscountPercent={discountPercent}
               />
             </div>
           </div>

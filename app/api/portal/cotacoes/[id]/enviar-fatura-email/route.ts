@@ -6,6 +6,7 @@ import { getAccessibleQuoteById } from '@/lib/access';
 import { generateAsaasPaymentForQuote } from '@/lib/asaas-service';
 import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
 import { sendTemplatedEmail } from '@/lib/email-service';
+import { resolveWhiteLabelForContext, buildEmailWhiteLabelVariables } from '@/lib/email-whitelabel';
 
 export async function POST(
   req: NextRequest,
@@ -179,11 +180,11 @@ export async function POST(
           forma_pagamento: billingType,
           status: 'PENDING',
         },
-        parceiro: partnerRow ? {
+        parceiro: cotacao.partner_id ? {
           id: cotacao.partner_id,
-          nome: partnerRow.nome,
-          email: partnerRow.email,
-          codigoVenda: partnerRow.codigo_venda,
+          nome: partnerRow?.nome,
+          email: partnerRow?.email,
+          codigoVenda: partnerRow?.codigo_venda,
         } : undefined,
         vendedor: vendedorRow ? {
           id: vendedorRow.id,
@@ -214,17 +215,37 @@ export async function POST(
     // 7. Fallback defensivo: se nenhum gatilho executou (ex: gatilho inativo ou não cadastrado), envia o template diretamente
     if (actionsExecuted === 0) {
       logger.info({ cotacaoId: cotacao.id, clientEmail }, 'cotacoes.enviar_fatura_email.running_direct_fallback');
+
+      let wlVars: Record<string, any> = {};
+      let fromName: string | undefined = undefined;
+      let replyTo: string | undefined = undefined;
+      try {
+        const { whiteLabel, partnerEmail } = await resolveWhiteLabelForContext({
+          parceiro: cotacao.partner_id ? { id: cotacao.partner_id, email: partnerRow?.email } : undefined,
+          cotacao: { id: cotacao.id },
+        });
+        const built = buildEmailWhiteLabelVariables(whiteLabel, partnerEmail);
+        wlVars = built;
+        fromName = built.from_name;
+        replyTo = built.reply_to;
+      } catch (wlErr) {
+        logger.warn({ wlErr, cotacaoId: cotacao.id }, 'Falha ao resolver White-Label para direct fallback de fatura');
+      }
+
       const directResult = await sendTemplatedEmail({
         templateCode: 'fatura_gerada',
         to: clientEmail,
         toName: clientName,
+        fromName,
+        replyTo,
         variables: {
+          ...wlVars,
           nome: clientName,
           cotacao_id: cotacao.id,
           valor: valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
           vencimento: formattedDueDate || 'À vista',
           link_fatura: linkBoleto,
-          parceiro_nome: partnerName,
+          parceiro_nome: partnerRow?.nome || wlVars.empresa_nome || partnerName,
           forma_pagamento: billingType,
           forma_pagamento_texto: formaPagamentoNome,
         },

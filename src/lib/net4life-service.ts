@@ -12,6 +12,8 @@ export interface Net4LifeSendEmailOptions {
   templateId?: string | null;
   /** Variáveis de substituição enviadas à API (usadas quando templateId está presente) */
   variables?: Record<string, any>;
+  fromName?: string | null;
+  replyTo?: string | null;
 }
 
 export interface Net4LifeSendResult {
@@ -199,10 +201,21 @@ export async function sendEmailViaNet4Life(
     if (config.senderEmail) {
       payload.remetente_email = config.senderEmail;
     }
-    if (config.senderName) {
+    const cleanFromName = typeof options.fromName === 'string'
+      ? options.fromName.replace(/[\r\n]+/g, ' ').trim()
+      : '';
+    if (cleanFromName) {
+      payload.remetente_nome = cleanFromName;
+    } else if (config.senderName) {
       payload.remetente_nome = config.senderName;
     }
-    if (config.replyTo) {
+
+    const cleanReplyTo = typeof options.replyTo === 'string'
+      ? options.replyTo.replace(/[\r\n]+/g, ' ').trim()
+      : '';
+    if (cleanReplyTo) {
+      payload.reply_to = cleanReplyTo;
+    } else if (config.replyTo) {
       payload.reply_to = config.replyTo;
     }
     if (config.smtpUser) {

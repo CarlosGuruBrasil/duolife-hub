@@ -38,6 +38,8 @@ export interface SendTemplatedEmailOptions {
   toName?: string | null;
   variables?: Record<string, any>;
   metadata?: Record<string, any>;
+  fromName?: string | null;
+  replyTo?: string | null;
 }
 
 export interface SendTemplatedEmailResult {
@@ -174,6 +176,80 @@ export function normalizeEmailVariables(rawVars: Record<string, any> = {}): Reco
   if (formaPagTexto && !norm.forma_pagamento_texto) {
     norm.forma_pagamento_texto = formaPagTexto;
   }
+  // 10. White-Label & Branding
+  const empresaNome =
+    norm.empresa_nome ||
+    norm.whitelabel_empresa ||
+    norm.corretora_nome ||
+    norm.company_name ||
+    norm.nome_corretora;
+  if (empresaNome) {
+    norm.empresa_nome = empresaNome;
+    norm.whitelabel_empresa = empresaNome;
+  }
+
+  const empresaSlogan = norm.empresa_slogan || norm.company_slogan || norm.slogan;
+  if (empresaSlogan) {
+    norm.empresa_slogan = empresaSlogan;
+  }
+
+  const empresaTel = norm.empresa_telefone || norm.company_phone || norm.telefone_empresa;
+  if (empresaTel) {
+    norm.empresa_telefone = empresaTel;
+  }
+
+  const empresaEmail = norm.empresa_email || norm.company_email || norm.email_empresa;
+  if (empresaEmail) {
+    norm.empresa_email = empresaEmail;
+  }
+
+  const empresaSite = norm.empresa_site || norm.company_website || norm.site_empresa || norm.website;
+  if (empresaSite) {
+    norm.empresa_site = empresaSite;
+  }
+
+  const empresaSusep = norm.empresa_susep || norm.susep || norm.codigo_susep;
+  if (empresaSusep) {
+    norm.empresa_susep = empresaSusep;
+  }
+
+  const logoUrl =
+    norm.logo_url ||
+    norm.whitelabel_logo_url ||
+    norm.whitelabel_logo ||
+    norm.logoUrl ||
+    norm.logo;
+  if (logoUrl) {
+    norm.logo_url = logoUrl;
+    norm.whitelabel_logo_url = logoUrl;
+    norm.whitelabel_logo = logoUrl;
+  }
+
+  // Cores de branding com fallbacks DuoLife seguros
+  const corPrimaria = norm.cor_primaria || norm.primary_color || norm.primaryColor;
+  norm.cor_primaria = corPrimaria || '#0e4a5a';
+
+  const corSecundaria = norm.cor_secundaria || norm.secondary_color || norm.secondaryColor;
+  norm.cor_secundaria = corSecundaria || '#7fa8b2';
+
+  const corDestaque = norm.cor_destaque || norm.cor_acento || norm.accent_color || norm.accentColor;
+  norm.cor_destaque = corDestaque || '#00d4e0';
+
+  // Header HTML dinâmico com fallback
+  if (!norm.whitelabel_header_html) {
+    const nomeHeader = norm.empresa_nome || 'DuoLife Hub';
+    if (norm.logo_url) {
+      norm.whitelabel_header_html = `<img src="${escapeHtml(norm.logo_url)}" alt="${escapeHtml(nomeHeader)}" style="max-height: 48px; max-width: 200px; display: block; margin: 0 auto;" border="0" />`;
+    } else {
+      norm.whitelabel_header_html = `<h1 style="margin: 0; font-family: 'Segoe UI', Arial, sans-serif; font-size: 22px; font-weight: bold; color: #ffffff; line-height: 1.2;">${escapeHtml(nomeHeader)}</h1>`;
+    }
+  }
+
+  // Footer HTML dinâmico com fallback
+  if (!norm.whitelabel_footer_html) {
+    const nomeFooter = norm.empresa_nome || 'DuoLife Seguros & Benefícios';
+    norm.whitelabel_footer_html = `${escapeHtml(nomeFooter)} &bull; {{-ano-}}`;
+  }
 
   return norm;
 }
@@ -269,6 +345,8 @@ export async function sendTemplatedEmail({
   toName,
   variables = {},
   metadata = {},
+  fromName,
+  replyTo,
 }: SendTemplatedEmailOptions): Promise<SendTemplatedEmailResult> {
   const normalizedCode = templateCode.trim().toLowerCase();
 
@@ -320,6 +398,8 @@ export async function sendTemplatedEmail({
     html: renderedHtml,
     templateId: template.external_id,
     variables: mergedVars,
+    fromName,
+    replyTo,
   });
 
   const status = result.success ? (result.mock ? 'mocked' : 'sent') : 'failed';
@@ -409,7 +489,7 @@ export const DEFAULT_TEMPLATES = [
     {
       code: 'boas_vindas',
       name: 'Boas-vindas — Novo Cliente / Lead',
-      subject: 'Seja bem-vindo à DuoLife, {{nome|Cliente}}!',
+      subject: 'Seja bem-vindo à {{empresa_nome|DuoLife}}, {{nome|Cliente}}!',
       body_html: `<!DOCTYPE html>
 <html>
 <head>
@@ -417,36 +497,36 @@ export const DEFAULT_TEMPLATES = [
   <style>
     body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f7faf9; color: #1e293b; margin: 0; padding: 24px; }
     .container { max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
-    .header { background: #0e4a5a; color: #ffffff; padding: 24px; text-align: center; }
+    .header { background: {{cor_primaria|#0e4a5a}}; color: #ffffff; padding: 24px; text-align: center; }
     .header h1 { margin: 0; font-size: 22px; font-weight: bold; }
     .content { padding: 32px 24px; line-height: 1.6; }
-    .btn { display: inline-block; background: #0e4a5a; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; margin-top: 16px; }
+    .btn { display: inline-block; background: {{cor_destaque|#00d4e0}}; color: {{cor_primaria|#0e4a5a}}; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; margin-top: 16px; min-height: 44px; box-sizing: border-box; line-height: 20px; }
     .footer { font-size: 12px; color: #64748b; text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <h1>DuoLife Hub</h1>
+      {{whitelabel_header_html}}
     </div>
     <div class="content">
       <h2>Olá, {{nome|Cliente}}!</h2>
-      <p>É um prazer receber você na <strong>DuoLife</strong>. Agradecemos pelo seu contato e confiança em nossas soluções de proteção profissional.</p>
+      <p>É um prazer receber você na <strong>{{empresa_nome|DuoLife}}</strong>. Agradecemos pelo seu contato e confiança em nossas soluções de proteção profissional.</p>
       <p>Nossa equipe técnica e comercial já está à disposição para apoiar você em todas as etapas.</p>
-      <p style="margin-top: 24px;">Atenciosamente,<br><strong>Equipe DuoLife</strong></p>
+      <p style="margin-top: 24px;">Atenciosamente,<br><strong>Equipe {{empresa_nome|DuoLife}}</strong></p>
     </div>
     <div class="footer">
-      Este e-mail foi enviado automaticamente pelo DuoLife Hub em {{-data-}} às {{-hora-}}.
+      {{whitelabel_footer_html}}
     </div>
   </div>
 </body>
 </html>`,
-      variables: ['nome'],
+      variables: ['nome', 'empresa_nome', 'cor_primaria', 'cor_destaque', 'whitelabel_header_html', 'whitelabel_footer_html'],
     },
     {
       code: 'cotacao_gerada',
       name: 'Proposta / Cotação Gerada',
-      subject: 'Sua Cotação DuoLife #{{cotacao_id}} está pronta!',
+      subject: 'Sua Cotação {{empresa_nome|DuoLife}} #{{cotacao_id}} está pronta!',
       body_html: `<!DOCTYPE html>
 <html>
 <head>
@@ -454,17 +534,17 @@ export const DEFAULT_TEMPLATES = [
   <style>
     body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f7faf9; color: #1e293b; margin: 0; padding: 24px; }
     .container { max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
-    .header { background: #0e4a5a; color: #ffffff; padding: 24px; text-align: center; }
+    .header { background: {{cor_primaria|#0e4a5a}}; color: #ffffff; padding: 24px; text-align: center; }
     .content { padding: 32px 24px; line-height: 1.6; }
     .card-info { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 20px 0; }
-    .btn { display: inline-block; background: #00d4e0; color: #0e4a5a; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; }
+    .btn { display: inline-block; background: {{cor_destaque|#00d4e0}}; color: {{cor_primaria|#0e4a5a}}; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; min-height: 44px; box-sizing: border-box; line-height: 20px; }
     .footer { font-size: 12px; color: #64748b; text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <h2 style="margin:0;">Proposta de Seguro DuoLife</h2>
+      {{whitelabel_header_html}}
     </div>
     <div class="content">
       <p>Olá, <strong>{{nome|Cliente}}</strong>!</p>
@@ -478,14 +558,15 @@ export const DEFAULT_TEMPLATES = [
       <div style="text-align: center; margin: 24px 0;">
         <a href="{{link_proposta|https://duolife.com.br}}" class="btn">Visualizar e Assinar Proposta</a>
       </div>
+      <p style="margin-top: 24px;">Atenciosamente,<br><strong>Equipe {{empresa_nome|DuoLife}}</strong></p>
     </div>
     <div class="footer">
-      DuoLife Seguros & Benefícios &bull; {{-ano-}}
+      {{whitelabel_footer_html}}
     </div>
   </div>
 </body>
 </html>`,
-      variables: ['nome', 'cotacao_id', 'produto_nome', 'cobertura', 'valor', 'parceiro_nome', 'link_proposta'],
+      variables: ['nome', 'cotacao_id', 'produto_nome', 'cobertura', 'valor', 'parceiro_nome', 'link_proposta', 'empresa_nome', 'cor_primaria', 'cor_destaque', 'whitelabel_header_html', 'whitelabel_footer_html'],
     },
     {
       code: 'proposta_criada',
@@ -498,11 +579,11 @@ export const DEFAULT_TEMPLATES = [
   <style>
     body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f7faf9; color: #1e293b; margin: 0; padding: 24px; }
     .container { max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
-    .header { background: #0e4a5a; color: #ffffff; padding: 24px; text-align: center; }
+    .header { background: {{cor_primaria|#0e4a5a}}; color: #ffffff; padding: 24px; text-align: center; }
     .content { padding: 32px 24px; line-height: 1.6; }
     .card-info { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 20px 0; }
     .badge { display: inline-block; background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; border-radius: 6px; padding: 4px 10px; font-weight: bold; font-size: 12px; margin-bottom: 12px; }
-    .btn { display: inline-block; background: #00d4e0; color: #0e4a5a; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; }
+    .btn { display: inline-block; background: {{cor_destaque|#00d4e0}}; color: {{cor_primaria|#0e4a5a}}; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; min-height: 44px; box-sizing: border-box; }
     .notice-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 14px; margin-top: 24px; font-size: 13px; color: #166534; }
     .footer { font-size: 12px; color: #64748b; text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; }
   </style>
@@ -510,7 +591,7 @@ export const DEFAULT_TEMPLATES = [
 <body>
   <div class="container">
     <div class="header">
-      <h2 style="margin:0;">Proposta e Contrato de Seguro</h2>
+      {{whitelabel_header_html}}
     </div>
     <div class="content">
       <span class="badge">&bull; Documento Gerado via ZapSign</span>
@@ -528,22 +609,22 @@ export const DEFAULT_TEMPLATES = [
         <a href="{{link_assinatura}}" class="btn" target="_blank">Assinar Contrato Digitalmente</a>
         <p style="margin-top: 14px; font-size: 12px; color: #64748b; word-break: break-all;">
           Ou acesse diretamente pelo link de assinatura:<br>
-          <a href="{{link_assinatura}}" style="color: #0e4a5a; text-decoration: underline;" target="_blank">{{link_assinatura}}</a>
+          <a href="{{link_assinatura}}" style="color: {{cor_primaria|#0e4a5a}}; text-decoration: underline;" target="_blank">{{link_assinatura}}</a>
         </p>
       </div>
       <div class="notice-box">
         <strong>Assinatura 100% Digital com Validade Jurídica:</strong><br>
         A assinatura é feita de forma prática e imediata pelo seu celular ou computador, sem necessidade de imprimir, escanear ou autenticar em cartório.
       </div>
-      <p style="margin-top: 24px;">Atenciosamente,<br><strong>Equipe DuoLife</strong></p>
+      <p style="margin-top: 24px;">Atenciosamente,<br><strong>Equipe {{empresa_nome|DuoLife}}</strong></p>
     </div>
     <div class="footer">
-      DuoLife Seguros & Benefícios &bull; Notificação automática gerada em {{-data-}} às {{-hora-}}
+      {{whitelabel_footer_html}}
     </div>
   </div>
 </body>
 </html>`,
-      variables: ['nome', 'cliente_nome', 'cotacao_id', 'produto_nome', 'cobertura', 'valor', 'parceiro_nome', 'link_assinatura', 'documento'],
+      variables: ['nome', 'cliente_nome', 'cotacao_id', 'produto_nome', 'cobertura', 'valor', 'parceiro_nome', 'link_assinatura', 'documento', 'empresa_nome', 'cor_primaria', 'cor_destaque', 'whitelabel_header_html', 'whitelabel_footer_html'],
     },
     {
       code: 'contrato_assinado',
@@ -556,7 +637,7 @@ export const DEFAULT_TEMPLATES = [
   <style>
     body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f7faf9; color: #1e293b; margin: 0; padding: 24px; }
     .container { max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
-    .header { background: #059669; color: #ffffff; padding: 24px; text-align: center; }
+    .header { background: {{cor_primaria|#059669}}; color: #ffffff; padding: 24px; text-align: center; }
     .content { padding: 32px 24px; line-height: 1.6; }
     .footer { font-size: 12px; color: #64748b; text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; }
   </style>
@@ -564,21 +645,21 @@ export const DEFAULT_TEMPLATES = [
 <body>
   <div class="container">
     <div class="header">
-      <h2 style="margin:0;">Contrato Assinado com Sucesso!</h2>
+      {{whitelabel_header_html}}
     </div>
     <div class="content">
       <p>Olá, <strong>{{nome|Cliente}}</strong>,</p>
       <p>Confirmamos o recebimento da assinatura eletrônica do seu contrato da proposta <strong>#{{cotacao_id}}</strong>.</p>
       <p>O documento assinado via ZapSign já está registrado em nossos sistemas e o próximo passo é a ativação financeira da sua apólice.</p>
-      <p style="margin-top: 24px;">Atenciosamente,<br><strong>Equipe DuoLife</strong></p>
+      <p style="margin-top: 24px;">Atenciosamente,<br><strong>Equipe {{empresa_nome|DuoLife}}</strong></p>
     </div>
     <div class="footer">
-      DuoLife Hub &bull; {{-ano-}}
+      {{whitelabel_footer_html}}
     </div>
   </div>
 </body>
 </html>`,
-      variables: ['nome', 'cotacao_id'],
+      variables: ['nome', 'cotacao_id', 'empresa_nome', 'cor_primaria', 'whitelabel_header_html', 'whitelabel_footer_html'],
     },
     {
       code: 'contrato_assinado_vendedor',
@@ -591,7 +672,7 @@ export const DEFAULT_TEMPLATES = [
   <style>
     body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f7faf9; color: #1e293b; margin: 0; padding: 24px; }
     .container { max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
-    .header { background: #0e4a5a; color: #ffffff; padding: 24px; text-align: center; }
+    .header { background: {{cor_primaria|#0e4a5a}}; color: #ffffff; padding: 24px; text-align: center; }
     .content { padding: 32px 24px; line-height: 1.6; }
     .card-info { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 20px 0; }
     .badge-success { display: inline-block; background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; border-radius: 6px; padding: 6px 12px; font-weight: bold; font-size: 13px; margin-bottom: 12px; }
@@ -601,7 +682,7 @@ export const DEFAULT_TEMPLATES = [
 <body>
   <div class="container">
     <div class="header">
-      <h2 style="margin:0;">Notificação de Venda — DuoLife Hub</h2>
+      {{whitelabel_header_html}}
     </div>
     <div class="content">
       <span class="badge-success">&check; Contrato Assinado via ZapSign</span>
@@ -615,15 +696,15 @@ export const DEFAULT_TEMPLATES = [
         <p style="margin: 4px 0;"><strong>Corretora / Parceiro:</strong> {{parceiro_nome|DuoLife}}</p>
       </div>
       <p>O documento assinado já está arquivado no sistema e o link da fatura/cobrança Asaas foi gerado para liquidação do segurado.</p>
-      <p style="margin-top: 24px;">Atenciosamente,<br><strong>DuoLife Hub</strong></p>
+      <p style="margin-top: 24px;">Atenciosamente,<br><strong>{{empresa_nome|DuoLife Hub}}</strong></p>
     </div>
     <div class="footer">
-      DuoLife Hub &bull; Notificação automática de produção em {{-data-}} às {{-hora-}}
+      {{whitelabel_footer_html}}
     </div>
   </div>
 </body>
 </html>`,
-      variables: ['nome', 'cliente_nome', 'cotacao_id', 'produto_nome', 'cobertura', 'valor', 'parceiro_nome'],
+      variables: ['nome', 'cliente_nome', 'cotacao_id', 'produto_nome', 'cobertura', 'valor', 'parceiro_nome', 'empresa_nome', 'cor_primaria', 'whitelabel_header_html', 'whitelabel_footer_html'],
     },
     {
       code: 'fatura_gerada',
@@ -636,17 +717,17 @@ export const DEFAULT_TEMPLATES = [
   <style>
     body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f7faf9; color: #1e293b; margin: 0; padding: 24px; }
     .container { max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
-    .header { background: #0e4a5a; color: #ffffff; padding: 24px; text-align: center; }
+    .header { background: {{cor_primaria|#0e4a5a}}; color: #ffffff; padding: 24px; text-align: center; }
     .content { padding: 32px 24px; line-height: 1.6; }
     .card-info { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 20px 0; }
-    .btn { display: inline-block; background: #00d4e0; color: #0e4a5a; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; }
+    .btn { display: inline-block; background: {{cor_destaque|#00d4e0}}; color: {{cor_primaria|#0e4a5a}}; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; min-height: 44px; box-sizing: border-box; }
     .footer { font-size: 12px; color: #64748b; text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <h2 style="margin:0;">Fatura de Seguro Disponível</h2>
+      {{whitelabel_header_html}}
     </div>
     <div class="content">
       <p>Olá, <strong>{{nome|Cliente}}</strong>,</p>
@@ -661,15 +742,15 @@ export const DEFAULT_TEMPLATES = [
         <a href="{{link_fatura}}" class="btn" target="_blank">Acessar Fatura para Pagamento</a>
       </div>
       <p style="font-size: 13px; color: #64748b;">Caso nenhuma forma de pagamento tenha sido pré-selecionada, você poderá escolher entre Cartão de Crédito, Boleto Bancário ou PIX diretamente na tela da fatura. Assim que o pagamento for compensado pelo banco, sua cobertura será ativada e a apólice será emitida automaticamente.</p>
-      <p style="margin-top: 24px;">Atenciosamente,<br><strong>Equipe DuoLife</strong></p>
+      <p style="margin-top: 24px;">Atenciosamente,<br><strong>Equipe {{empresa_nome|DuoLife}}</strong></p>
     </div>
     <div class="footer">
-      DuoLife Hub &bull; {{-ano-}}
+      {{whitelabel_footer_html}}
     </div>
   </div>
 </body>
 </html>`,
-      variables: ['nome', 'cotacao_id', 'valor', 'vencimento', 'link_fatura', 'forma_pagamento', 'forma_pagamento_texto'],
+      variables: ['nome', 'cotacao_id', 'valor', 'vencimento', 'link_fatura', 'forma_pagamento', 'forma_pagamento_texto', 'empresa_nome', 'cor_primaria', 'cor_destaque', 'whitelabel_header_html', 'whitelabel_footer_html'],
     },
     {
       code: 'pagamento_confirmado',
@@ -682,7 +763,7 @@ export const DEFAULT_TEMPLATES = [
   <style>
     body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f7faf9; color: #1e293b; margin: 0; padding: 24px; }
     .container { max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
-    .header { background: #0e4a5a; color: #ffffff; padding: 24px; text-align: center; }
+    .header { background: {{cor_primaria|#0e4a5a}}; color: #ffffff; padding: 24px; text-align: center; }
     .content { padding: 32px 24px; line-height: 1.6; }
     .badge { display: inline-block; background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; border-radius: 6px; padding: 8px 16px; font-weight: bold; margin: 16px 0; }
     .footer { font-size: 12px; color: #64748b; text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; }
@@ -691,7 +772,7 @@ export const DEFAULT_TEMPLATES = [
 <body>
   <div class="container">
     <div class="header">
-      <h2 style="margin:0;">Pagamento Confirmado</h2>
+      {{whitelabel_header_html}}
     </div>
     <div class="content">
       <p>Olá, <strong>{{nome|Cliente}}</strong>!</p>
@@ -700,19 +781,20 @@ export const DEFAULT_TEMPLATES = [
       </div>
       <p>Sua apólice do produto <strong>{{produto_nome|Seguro RC}}</strong> já está ativa e protegendo o seu exercício profissional.</p>
       <p>Você pode acessar os detalhes completos da apólice a qualquer momento através do seu painel.</p>
+      <p style="margin-top: 24px;">Atenciosamente,<br><strong>Equipe {{empresa_nome|DuoLife}}</strong></p>
     </div>
     <div class="footer">
-      DuoLife Seguros & Benefícios &bull; Disparado em {{-data-}} às {{-hora-}}
+      {{whitelabel_footer_html}}
     </div>
   </div>
 </body>
 </html>`,
-      variables: ['nome', 'cotacao_id', 'valor', 'produto_nome'],
+      variables: ['nome', 'cotacao_id', 'valor', 'produto_nome', 'empresa_nome', 'cor_primaria', 'whitelabel_header_html', 'whitelabel_footer_html'],
     },
     {
       code: 'recuperacao_senha',
       name: 'Recuperação / Redefinição de Senha',
-      subject: 'Redefinição de Senha — DuoLife Hub',
+      subject: 'Redefinição de Senha — {{empresa_nome|DuoLife Hub}}',
       body_html: `<!DOCTYPE html>
 <html>
 <head>
@@ -720,10 +802,10 @@ export const DEFAULT_TEMPLATES = [
   <style>
     body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f7faf9; color: #1e293b; margin: 0; padding: 24px; }
     .container { max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-    .header { background: #0e4a5a; color: #ffffff; padding: 28px 24px; text-align: center; }
+    .header { background: {{cor_primaria|#0e4a5a}}; color: #ffffff; padding: 28px 24px; text-align: center; }
     .content { padding: 32px 24px; line-height: 1.6; }
     .btn-container { text-align: center; margin: 32px 0; }
-    .btn { display: inline-block; background-color: #00d4e0; color: #072a33; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; }
+    .btn { display: inline-block; background-color: {{cor_destaque|#00d4e0}}; color: {{cor_primaria|#072a33}}; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; min-height: 44px; box-sizing: border-box; }
     .notice { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 24px 0; font-size: 13px; color: #64748b; }
     .footer { font-size: 12px; color: #64748b; text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; }
   </style>
@@ -731,11 +813,11 @@ export const DEFAULT_TEMPLATES = [
 <body>
   <div class="container">
     <div class="header">
-      <h2 style="margin: 0; font-size: 22px;">DuoLife Hub</h2>
+      {{whitelabel_header_html}}
     </div>
     <div class="content">
-      <h3 style="color: #0e4a5a; margin-top: 0;">Olá, {{nome|Usuário}}!</h3>
-      <p>Recebemos uma solicitação para redefinir a senha da sua conta de acesso ao <strong>DuoLife Hub</strong>.</p>
+      <h3 style="color: {{cor_primaria|#0e4a5a}}; margin-top: 0;">Olá, {{nome|Usuário}}!</h3>
+      <p>Recebemos uma solicitação para redefinir a senha da sua conta de acesso ao <strong>{{empresa_nome|DuoLife Hub}}</strong>.</p>
       <p>Para criar uma nova senha segura, clique no botão abaixo:</p>
       
       <div class="btn-container">
@@ -749,16 +831,16 @@ export const DEFAULT_TEMPLATES = [
 
       <p style="font-size: 12px; color: #94a3b8; word-break: break-all;">
         Se o botão acima não funcionar, copie e cole este link diretamente no seu navegador:<br>
-        <a href="{{link_reset|https://duolife.com.br}}" style="color: #0e4a5a;">{{link_reset}}</a>
+        <a href="{{link_reset|https://duolife.com.br}}" style="color: {{cor_primaria|#0e4a5a}};">{{link_reset}}</a>
       </p>
     </div>
     <div class="footer">
-      DuoLife Seguros & Benefícios &bull; Solicitação gerada em {{-data-}} às {{-hora-}}
+      {{whitelabel_footer_html}}
     </div>
   </div>
 </body>
 </html>`,
-      variables: ['nome', 'link_reset', 'tempo_expiracao'],
+      variables: ['nome', 'link_reset', 'tempo_expiracao', 'empresa_nome', 'cor_primaria', 'cor_destaque', 'whitelabel_header_html', 'whitelabel_footer_html'],
     },
     {
       code: 'alerta_renovacao_corretor',
@@ -771,25 +853,25 @@ export const DEFAULT_TEMPLATES = [
   <style>
     body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f7faf9; color: #1e293b; margin: 0; padding: 24px; }
     .container { max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-    .header { background: #0e4a5a; color: #ffffff; padding: 24px; text-align: center; }
+    .header { background: {{cor_primaria|#0e4a5a}}; color: #ffffff; padding: 24px; text-align: center; }
     .content { padding: 32px 24px; line-height: 1.6; }
     .badge { display: inline-block; background: #fef3c7; color: #92400e; border: 1px solid #fde68a; border-radius: 6px; padding: 6px 14px; font-weight: bold; font-size: 13px; margin-bottom: 16px; }
     .card-info { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px; margin: 20px 0; }
     .btn-container { text-align: center; margin: 28px 0; }
-    .btn { display: inline-block; background-color: #00d4e0; color: #072a33; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; }
+    .btn { display: inline-block; background-color: {{cor_destaque|#00d4e0}}; color: {{cor_primaria|#072a33}}; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 15px; min-height: 44px; box-sizing: border-box; }
     .footer { font-size: 12px; color: #64748b; text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <h2 style="margin:0; font-size: 20px;">DuoLife Hub &bull; Régua de Renovação</h2>
+      {{whitelabel_header_html}}
     </div>
     <div class="content">
       <div style="text-align: center;">
         <span class="badge">Aviso de Expiração: {{janela_label}}</span>
       </div>
-      <h3 style="color: #0e4a5a; margin-top: 0;">Olá, {{nome|Corretor}}!</h3>
+      <h3 style="color: {{cor_primaria|#0e4a5a}}; margin-top: 0;">Olá, {{nome|Corretor}}!</h3>
       <p>A apólice de seguro do seu cliente <strong>{{cliente_nome}}</strong> está próxima do término de vigência.</p>
       
       <div class="card-info">
@@ -812,12 +894,12 @@ export const DEFAULT_TEMPLATES = [
       <p style="font-size: 13px; color: #64748b;">Ao clicar no botão acima, o formulário de cotação já será aberto com os dados cadastrais e o histórico da apólice anterior pré-carregados para sua conferência e envio.</p>
     </div>
     <div class="footer">
-      DuoLife Seguros & Benefícios &bull; Disparado em {{-data-}} às {{-hora-}}
+      {{whitelabel_footer_html}}
     </div>
   </div>
 </body>
 </html>`,
-      variables: ['nome', 'cliente_nome', 'cliente_documento', 'cliente_telefone', 'cliente_email', 'apolice_numero', 'produto_nome', 'cobertura', 'data_expiracao', 'dias_restantes', 'janela_label', 'link_renovacao'],
+      variables: ['nome', 'cliente_nome', 'cliente_documento', 'cliente_telefone', 'cliente_email', 'apolice_numero', 'produto_nome', 'cobertura', 'data_expiracao', 'dias_restantes', 'janela_label', 'link_renovacao', 'empresa_nome', 'cor_primaria', 'cor_destaque', 'whitelabel_header_html', 'whitelabel_footer_html'],
     },
     {
       code: 'alerta_fatura_a_vencer_corretor',
@@ -830,20 +912,20 @@ export const DEFAULT_TEMPLATES = [
   <style>
     body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f7faf9; color: #1e293b; margin: 0; padding: 24px; }
     .container { max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
-    .header { background: #0e4a5a; color: #ffffff; padding: 22px; text-align: center; }
+    .header { background: {{cor_primaria|#0e4a5a}}; color: #ffffff; padding: 22px; text-align: center; }
     .content { padding: 30px 24px; line-height: 1.6; }
     .card-info { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px; margin: 20px 0; }
-    .btn { display: inline-block; background: #00d4e0; color: #072a33; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; }
+    .btn { display: inline-block; background: {{cor_destaque|#00d4e0}}; color: {{cor_primaria|#072a33}}; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; min-height: 44px; box-sizing: border-box; line-height: 20px; }
     .footer { font-size: 12px; color: #64748b; text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <h2 style="margin:0; font-size: 20px;">DuoLife Hub &bull; Alerta Preventivo de Cobrança</h2>
+      {{whitelabel_header_html}}
     </div>
     <div class="content">
-      <h3 style="color: #0e4a5a; margin-top: 0;">Olá, {{nome|Corretor}}!</h3>
+      <h3 style="color: {{cor_primaria|#0e4a5a}}; margin-top: 0;">Olá, {{nome|Corretor}}!</h3>
       <p>Identificamos uma parcela do seu segurado com vencimento próximo nos próximos <strong>{{dias_vencimento}} dias</strong>.</p>
       
       <div class="card-info">
@@ -862,12 +944,12 @@ export const DEFAULT_TEMPLATES = [
       </div>
     </div>
     <div class="footer">
-      DuoLife Hub &bull; {{-ano-}}
+      {{whitelabel_footer_html}}
     </div>
   </div>
 </body>
 </html>`,
-      variables: ['nome', 'cliente_nome', 'cliente_documento', 'cliente_telefone', 'apolice_numero', 'cotacao_id', 'parcela_info', 'valor_parcela', 'data_vencimento', 'dias_vencimento', 'link_fatura'],
+      variables: ['nome', 'cliente_nome', 'cliente_documento', 'cliente_telefone', 'apolice_numero', 'cotacao_id', 'parcela_info', 'valor_parcela', 'data_vencimento', 'dias_vencimento', 'link_fatura', 'empresa_nome', 'cor_primaria', 'cor_destaque', 'whitelabel_header_html', 'whitelabel_footer_html'],
     },
     {
       code: 'alerta_inadimplencia_corretor',
@@ -918,17 +1000,17 @@ export const DEFAULT_TEMPLATES = [
       </div>
     </div>
     <div class="footer">
-      DuoLife Hub &bull; Retenção &bull; {{-ano-}}
+      {{whitelabel_footer_html}}
     </div>
   </div>
 </body>
 </html>`,
-      variables: ['nome', 'cliente_nome', 'cliente_documento', 'cliente_telefone', 'cliente_email', 'apolice_numero', 'cotacao_id', 'parcela_info', 'valor_parcela', 'data_vencimento', 'dias_atraso', 'link_fatura'],
+      variables: ['nome', 'cliente_nome', 'cliente_documento', 'cliente_telefone', 'cliente_email', 'apolice_numero', 'cotacao_id', 'parcela_info', 'valor_parcela', 'data_vencimento', 'dias_atraso', 'link_fatura', 'whitelabel_footer_html'],
     },
     {
       code: 'alerta_inadimplencia_cliente',
       name: 'Lembrete de Pagamento de Fatura — Segurado',
-      subject: 'Lembrete de Pagamento: Sua fatura de seguro está em aberto — DuoLife',
+      subject: 'Lembrete de Pagamento: Sua fatura de seguro está em aberto — {{empresa_nome|DuoLife}}',
       body_html: `<!DOCTYPE html>
 <html>
 <head>
@@ -936,17 +1018,17 @@ export const DEFAULT_TEMPLATES = [
   <style>
     body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f7faf9; color: #1e293b; margin: 0; padding: 24px; }
     .container { max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
-    .header { background: #0e4a5a; color: #ffffff; padding: 24px; text-align: center; }
+    .header { background: {{cor_primaria|#0e4a5a}}; color: #ffffff; padding: 24px; text-align: center; }
     .content { padding: 30px 24px; line-height: 1.6; }
     .card-info { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px; margin: 20px 0; }
-    .btn { display: inline-block; background: #00d4e0; color: #072a33; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; }
+    .btn { display: inline-block; background: {{cor_destaque|#00d4e0}}; color: {{cor_primaria|#072a33}}; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; min-height: 44px; box-sizing: border-box; }
     .footer { font-size: 12px; color: #64748b; text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <h2 style="margin:0; font-size: 20px;">Lembrete de Pagamento de Seguro</h2>
+      {{whitelabel_header_html}}
     </div>
     <div class="content">
       <p>Olá, <strong>{{nome|Cliente}}</strong>!</p>
@@ -968,12 +1050,12 @@ export const DEFAULT_TEMPLATES = [
       <p style="font-size: 13px; color: #64748b;">Caso o pagamento já tenha sido efetuado nas últimas 24 horas, desconsidere esta mensagem — a compensação bancária é atualizada automaticamente.</p>
     </div>
     <div class="footer">
-      DuoLife Seguros & Benefícios &bull; {{-ano-}}
+      {{whitelabel_footer_html}}
     </div>
   </div>
 </body>
 </html>`,
-      variables: ['nome', 'cotacao_id', 'apolice_numero', 'parcela_info', 'valor_parcela', 'data_vencimento', 'link_fatura'],
+      variables: ['nome', 'cotacao_id', 'apolice_numero', 'parcela_info', 'valor_parcela', 'data_vencimento', 'link_fatura', 'empresa_nome', 'cor_primaria', 'cor_destaque', 'whitelabel_header_html', 'whitelabel_footer_html'],
     },
   ];
 

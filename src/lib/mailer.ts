@@ -10,6 +10,8 @@ export interface SendMailOptions {
   html: string;
   templateId?: string | null;
   variables?: Record<string, any>;
+  fromName?: string | null;
+  replyTo?: string | null;
 }
 
 export interface SendMailResult {
@@ -20,6 +22,24 @@ export interface SendMailResult {
   error?: any;
 }
 
+/**
+ * Extrai o e-mail puro de strings como '"Nome" <email@dom.com>' ou '<email@dom.com>' ou 'email@dom.com'.
+ */
+function extractEmail(address: string): string {
+  const match = address.match(/<([^>]+)>/);
+  if (match) return match[1].trim();
+  return address.trim().replace(/^["']|["']$/g, '');
+}
+
+/**
+ * Sanitiza quebras de linha para evitar injeção em cabeçalhos SMTP (\r, \n).
+ */
+function sanitizeHeader(val?: string | null): string | undefined {
+  if (!val) return undefined;
+  const cleaned = val.replace(/[\r\n]+/g, ' ').trim();
+  return cleaned.length > 0 ? cleaned : undefined;
+}
+
 export async function sendMail({
   to,
   toName,
@@ -27,6 +47,8 @@ export async function sendMail({
   html,
   templateId,
   variables,
+  fromName,
+  replyTo,
 }: SendMailOptions): Promise<SendMailResult> {
   const isDev = process.env.NODE_ENV !== 'production';
 
@@ -41,6 +63,8 @@ export async function sendMail({
       html,
       templateId,
       variables,
+      fromName,
+      replyTo,
     });
 
     if (net4lifeResult.success) {
@@ -74,12 +98,28 @@ export async function sendMail({
         },
       });
 
-      const info = await transporter.sendMail({
-        from: process.env.EMAIL_FROM || process.env.SMTP_FROM || '"DuoLife Hub" <noreply@duolife.com.br>',
+      const rawFrom = process.env.EMAIL_FROM || process.env.SMTP_FROM || '"DuoLife Hub" <noreply@duolife.com.br>';
+      const cleanFromName = sanitizeHeader(fromName);
+      const cleanReplyTo = sanitizeHeader(replyTo);
+
+      let fromHeader = rawFrom;
+      if (cleanFromName) {
+        const cleanSenderEmail = extractEmail(rawFrom);
+        fromHeader = `"${cleanFromName}" <${cleanSenderEmail}>`;
+      }
+
+      const mailPayload: nodemailer.SendMailOptions = {
+        from: fromHeader,
         to,
         subject,
         html,
-      });
+      };
+
+      if (cleanReplyTo) {
+        mailPayload.replyTo = cleanReplyTo;
+      }
+
+      const info = await transporter.sendMail(mailPayload);
 
       logger.info({ messageId: info.messageId, to }, 'E-mail enviado com sucesso via SMTP');
       return { success: true, provider: 'nodemailer_smtp', messageId: info.messageId };
@@ -94,6 +134,8 @@ export async function sendMail({
     logger.info({ to, subject }, 'Simulação de Envio de E-mail (Ambiente Dev)');
     console.log('--- EMAIL MOCK ---');
     console.log('To:', to, toName ? `(${toName})` : '');
+    if (fromName) console.log('From Name:', fromName);
+    if (replyTo) console.log('Reply-To:', replyTo);
     console.log('Subject:', subject);
     console.log('Body snippet:', html.slice(0, 200) + '...');
     console.log('------------------');
@@ -113,4 +155,3 @@ export async function sendMail({
 }
 
 export const sendEmail = sendMail;
-

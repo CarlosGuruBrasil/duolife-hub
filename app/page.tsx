@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, Suspense } from 'react';
+import ReferralBanner from '@/components/site/ReferralBanner';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import TeamMemberCard, { TeamMember } from '@/components/site/TeamMemberCard';
@@ -294,6 +295,9 @@ export default function Home() {
   return (
     <>
       {/* Header transparente */}
+      <Suspense fallback={null}>
+        <ReferralBanner />
+      </Suspense>
       <Header transparent />
 
       <main className="site-shell bg-white relative">

@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { ensureSchema } from '@/lib/schema';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
-import { getWhiteLabelConfig } from '@/lib/white-label';
+import { resolveHierarchicalWhiteLabel } from '@/lib/white-label';
 import { resolveContratoSignUrl } from '@/lib/contrato-link-resolver';
 
 function appBaseUrl() {
@@ -15,9 +15,11 @@ async function resolveLink(token: string) {
       pl.id, pl.token, pl.partner_id, pl.product_id, pl.flow_type, pl.label, pl.status, pl.expires_at,
       pl.used_at, pl.metadata, pl.created_at, COALESCE(pl.discount_percent, 0) AS discount_percent,
       p.razao_social, p.nome_fantasia, p.email, p.phone, p.metadata AS partner_metadata,
+      c.metadata AS corretora_metadata,
       pr.name AS product_name, pr.code AS product_code
     FROM public_sale_links pl
     JOIN partners p ON p.id = pl.partner_id
+    LEFT JOIN corretoras c ON c.id = p.corretora_id
     LEFT JOIN products pr ON pr.id = pl.product_id
     WHERE pl.token = ${token}
       AND pl.status = 'active'
@@ -43,19 +45,22 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
     const link = await resolveLink(token);
     if (!link) return Response.json({ error: 'Link inválido ou expirado' }, { status: 404 });
 
+    const whiteLabel = resolveHierarchicalWhiteLabel(link.partner_metadata, link.corretora_metadata);
+
     return Response.json({
       link: {
         token: link.token,
         label: link.label,
         flowType: link.flow_type,
         discountPercent: Number(link.discount_percent || 0),
+        whiteLabel,
         partner: {
           id: link.partner_id,
           razaoSocial: link.razao_social,
           nomeFantasia: link.nome_fantasia,
           email: link.email,
           phone: link.phone,
-          whiteLabel: getWhiteLabelConfig(link.partner_metadata),
+          whiteLabel,
         },
         product: link.product_id ? {
           id: link.product_id,

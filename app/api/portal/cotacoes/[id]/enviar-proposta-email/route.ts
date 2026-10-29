@@ -5,6 +5,7 @@ import { sql } from '@/lib/pg';
 import { getAccessibleQuoteById } from '@/lib/access';
 import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
 import { sendTemplatedEmail } from '@/lib/email-service';
+import { resolveWhiteLabelForContext, buildEmailWhiteLabelVariables } from '@/lib/email-whitelabel';
 import { safeExternalUrl } from '@/lib/safe-url';
 
 export async function POST(
@@ -116,11 +117,11 @@ export async function POST(
           produto_codigo: 'RC-001',
           produto_nome: 'Seguro RC Profissional',
         },
-        parceiro: partnerRow ? {
+        parceiro: cotacao.partner_id ? {
           id: cotacao.partner_id,
-          nome: partnerRow.nome,
-          email: partnerRow.email,
-          codigoVenda: partnerRow.codigo_venda,
+          nome: partnerRow?.nome,
+          email: partnerRow?.email,
+          codigoVenda: partnerRow?.codigo_venda,
         } : undefined,
         vendedor: vendedorRow ? {
           id: vendedorRow.id,
@@ -151,18 +152,38 @@ export async function POST(
     // 5. Fallback defensivo: se nenhum gatilho executou (ex: árvore inativa), envia o template diretamente
     if (actionsExecuted === 0) {
       logger.info({ cotacaoId: cotacao.id, clientEmail }, 'cotacoes.enviar_proposta_email.running_direct_fallback');
+
+      let wlVars: Record<string, any> = {};
+      let fromName: string | undefined = undefined;
+      let replyTo: string | undefined = undefined;
+      try {
+        const { whiteLabel, partnerEmail } = await resolveWhiteLabelForContext({
+          parceiro: cotacao.partner_id ? { id: cotacao.partner_id, email: partnerRow?.email } : undefined,
+          cotacao: { id: cotacao.id },
+        });
+        const built = buildEmailWhiteLabelVariables(whiteLabel, partnerEmail);
+        wlVars = built;
+        fromName = built.from_name;
+        replyTo = built.reply_to;
+      } catch (wlErr) {
+        logger.warn({ wlErr, cotacaoId: cotacao.id }, 'Falha ao resolver White-Label para direct fallback de proposta');
+      }
+
       const directResult = await sendTemplatedEmail({
         templateCode: 'proposta_criada',
         to: clientEmail,
         toName: clientName,
+        fromName,
+        replyTo,
         variables: {
+          ...wlVars,
           nome: clientName,
           cliente_nome: clientName,
           cotacao_id: cotacao.id,
           produto_nome: 'Seguro Responsabilidade Civil Profissional',
           cobertura: (Number(cotacao.importancia_segurada) || 100000).toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
           valor: valorTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
-          parceiro_nome: partnerName,
+          parceiro_nome: partnerRow?.nome || wlVars.empresa_nome || partnerName,
           link_assinatura: effectiveSignUrl,
           link_proposta: effectiveSignUrl,
           documento: clientDoc,

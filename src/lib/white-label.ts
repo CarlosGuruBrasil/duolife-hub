@@ -33,7 +33,7 @@ export interface WhiteLabelConfig {
   customTexts: Record<string, string>;
 }
 
-const DEFAULT_WHITE_LABEL: WhiteLabelConfig = {
+export const DEFAULT_WHITE_LABEL: WhiteLabelConfig = {
   slug: '',
   companyName: '',
   companySlogan: '',
