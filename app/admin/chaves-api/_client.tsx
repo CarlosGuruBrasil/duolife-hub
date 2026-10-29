@@ -893,36 +893,61 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
             </div>
 
             {/* Box de Webhook Info */}
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
-                  <ShieldCheck className="h-4 w-4 text-emerald-600" /> URL do Webhook DuoLife para Cadastrar no Asaas
-                </span>
-                <button
-                  type="button"
-                  onClick={() => handleCopy('https://duolife.com.br/api/webhook/asaas', 'webhook-asaas')}
-                  className="text-xs font-bold text-[#0e4a5a] hover:underline flex items-center gap-1 cursor-pointer"
-                >
-                  {copiedKey === 'webhook-asaas' ? (
-                    <>
-                      <Check className="h-3.5 w-3.5 text-emerald-600" />
-                      <span className="text-emerald-700">Copiado!</span>
-                    </>
+            {(() => {
+              const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://duolife.com.br';
+              const asaasWebhookUrl = `${currentOrigin}/api/webhook/asaas`;
+              const hasSecret = Boolean(settings.ASAAS_WEBHOOK_SECRET?.trim());
+
+              return (
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-gray-700 flex items-center gap-1.5">
+                      <ShieldCheck className="h-4 w-4 text-emerald-600" /> URL do Webhook DuoLife para Cadastrar no Asaas
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(asaasWebhookUrl, 'webhook-asaas')}
+                      className="text-xs font-bold text-[#0e4a5a] hover:underline flex items-center gap-1 cursor-pointer"
+                    >
+                      {copiedKey === 'webhook-asaas' ? (
+                        <>
+                          <Check className="h-3.5 w-3.5 text-emerald-600" />
+                          <span className="text-emerald-700">Copiado!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3.5 w-3.5" />
+                          <span>Copiar URL</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                  <code className="block bg-white p-2 rounded-lg border border-gray-200 text-xs font-mono text-gray-800 break-all">
+                    {asaasWebhookUrl}
+                  </code>
+
+                  {hasSecret ? (
+                    <div className="flex items-center gap-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-800 text-[11px]">
+                      <Check className="h-4 w-4 text-emerald-600 shrink-0" />
+                      <span>
+                        <strong>Token de Autenticação Ativo:</strong> Certifique-se de preencher exatamente o mesmo valor do campo <code>ASAAS_WEBHOOK_SECRET</code> acima no campo <strong>Token de autenticação</strong> da fila de webhook do Asaas.
+                      </span>
+                    </div>
                   ) : (
-                    <>
-                      <Copy className="h-3.5 w-3.5" />
-                      <span>Copiar URL</span>
-                    </>
+                    <div className="flex items-center gap-2 p-2 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-[11px]">
+                      <AlertCircle className="h-4 w-4 text-amber-600 shrink-0" />
+                      <span>
+                        <strong>Atenção:</strong> Nenhum segredo foi configurado em <code>ASAAS_WEBHOOK_SECRET</code>. O endpoint rejeitará chamadas com <strong>HTTP 401</strong> até que você defina e salve um token aqui e no painel do Asaas.
+                      </span>
+                    </div>
                   )}
-                </button>
-              </div>
-              <code className="block bg-white p-2 rounded-lg border border-gray-200 text-xs font-mono text-gray-800 break-all">
-                https://duolife.com.br/api/webhook/asaas
-              </code>
-              <p className="text-[11px] text-gray-500">
-                Eventos processados: <code>PAYMENT_RECEIVED</code>, <code>PAYMENT_CONFIRMED</code>, <code>PAYMENT_OVERDUE</code>.
-              </p>
-            </div>
+
+                  <p className="text-[11px] text-gray-500">
+                    Eventos processados: <code>PAYMENT_RECEIVED</code>, <code>PAYMENT_CONFIRMED</code>, <code>PAYMENT_OVERDUE</code>.
+                  </p>
+                </div>
+              );
+            })()}
           </div>
         )}
 

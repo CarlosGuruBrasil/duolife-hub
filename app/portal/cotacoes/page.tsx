@@ -13,6 +13,8 @@ import GerarLinkClienteButton from '@/components/portal/GerarLinkClienteButton';
 import { MatrixStatusBadge } from '@/components/common/MatrixStatusBadge';
 import { calculateMatrixStatus, getCotacaoMatrixFilterSql } from '@/lib/status-matrix';
 import { getCotacaoAssinaturaInfo } from '@/lib/assinatura-status';
+import { ContratoActionButton } from '@/components/cotacoes/ContratoActionButton';
+import { safeExternalUrl } from '@/lib/safe-url';
 
 export const dynamic = 'force-dynamic';
 
@@ -473,6 +475,17 @@ export default async function CotacoesPage({
                       'active',
                     ].includes(String(cotacao.status || '').toLowerCase()) || Boolean(clientData.contratoPdf || clientData.signedFileUrl || clientData.assinadoEm);
 
+                    const rawSignedPdf =
+                      (clientData.contratoPdf as string | undefined) ||
+                      (clientData.signedFileUrl as string | undefined) ||
+                      (clientData.linkContrato as string | undefined);
+                    const signedPdfUrl = (rawSignedPdf && !rawSignedPdf.includes('/verificar/'))
+                      ? safeExternalUrl(rawSignedPdf)
+                      : null;
+                    const rawSignUrl = (clientData.signUrl as string | undefined) || (clientData.signUrlProponente as string | undefined);
+                    const signUrl = rawSignUrl ? safeExternalUrl(rawSignUrl) : null;
+                    const hasContrato = isContratoAssinado || Boolean(signedPdfUrl || signUrl || clientData.signUrlCorretora || clientData.contratoToken);
+
                     const matrixStatus = calculateMatrixStatus({
                       hasCotacao: true,
                       cotacaoStatus: cotacao.status,
@@ -523,6 +536,28 @@ export default async function CotacoesPage({
                         <td className="px-5 py-4 text-gray-500 text-xs border-b border-gray-100">{formatDate(cotacao.created_at)}</td>
                       <td className="px-5 py-4 text-center border-b border-gray-100">
                         <div className="flex items-center justify-center gap-2">
+                          {hasContrato && (
+                            <ContratoActionButton
+                              cotacaoId={cotacao.id}
+                              cotacao={cotacao}
+                              status={cotacao.status}
+                              clientName={cotacao.client_name}
+                              clientCpfCnpj={cotacao.client_cpf_cnpj}
+                              clientEmail={clientData.email as string | undefined}
+                              productName={cotacao.product_name}
+                              signUrl={signUrl}
+                              signUrlCorretora={clientData.signUrlCorretora as string | undefined}
+                              contratoPdfUrl={signedPdfUrl || (clientData.contratoPdf as string | undefined)}
+                              isContratoAssinado={isContratoAssinado}
+                              statusAssinatura={clientData.statusAssinatura as string | undefined}
+                              totalAssinaturas={
+                                typeof clientData.totalAssinaturas === 'number'
+                                  ? clientData.totalAssinaturas
+                                  : undefined
+                              }
+                              variant="table"
+                            />
+                          )}
                           {cotacao.status === 'rascunho' && (
                             <Link
                               href={`/portal/cotacoes/nova?product=${encodeURIComponent(cotacao.product_id)}&cotacaoId=${cotacao.id}`}

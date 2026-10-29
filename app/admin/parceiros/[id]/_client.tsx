@@ -19,6 +19,10 @@ import {
   Mail,
   ShieldCheck,
   UserCheck,
+  Power,
+  PowerOff,
+  Tag,
+  ExternalLink,
 } from 'lucide-react';
 import type { WhiteLabelConfig } from '@/lib/white-label';
 import { formatDateTime } from '@/lib/format';
@@ -39,6 +43,7 @@ type LinkRow = {
   label: string | null;
   flow_type: string;
   status: string;
+  discount_percent?: number;
   expires_at: string | null;
   used_at: string | null;
   created_at: string;
@@ -198,10 +203,12 @@ export default function PartnerWhiteLabelClient({
   const [linksList, setLinksList] = useState(links);
   const [linkLabel, setLinkLabel] = useState('');
   const [linkProductId, setLinkProductId] = useState(products.find((p) => p.is_active)?.id || '');
+  const [linkDiscountPercent, setLinkDiscountPercent] = useState('0');
   const [linkFlowType, setLinkFlowType] = useState<'external' | 'internal'>('external');
   const [linkExpiresInDays, setLinkExpiresInDays] = useState('30');
   const [generatedLink, setGeneratedLink] = useState('');
   const [savingLink, setSavingLink] = useState(false);
+  const [togglingLinkId, setTogglingLinkId] = useState<string | null>(null);
   const [linkMessage, setLinkMessage] = useState<{ tipo: 'ok' | 'erro'; texto: string } | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -417,6 +424,8 @@ export default function PartnerWhiteLabelClient({
     setSavingLink(true);
     setLinkMessage(null);
 
+    const discountVal = Math.min(40, Math.max(0, Number(linkDiscountPercent) || 0));
+
     try {
       const res = await fetch(`/api/admin/parceiros/${partner.id}/links`, {
         method: 'POST',
@@ -426,6 +435,7 @@ export default function PartnerWhiteLabelClient({
           productId: linkProductId || undefined,
           flowType: linkFlowType,
           expiresInDays: Number(linkExpiresInDays) || 30,
+          discountPercent: discountVal,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -438,6 +448,7 @@ export default function PartnerWhiteLabelClient({
       setGeneratedLink(data.link?.url || '');
       setLinkMessage({ tipo: 'ok', texto: 'Link público gerado com sucesso!' });
       setLinkLabel('');
+      setLinkDiscountPercent('0');
 
       if (data.link) {
         setLinksList((prev) => [
@@ -447,6 +458,7 @@ export default function PartnerWhiteLabelClient({
             label: data.link.label,
             flow_type: data.link.flow_type || linkFlowType,
             status: 'active',
+            discount_percent: data.link.discount_percent ?? discountVal,
             expires_at: data.link.expires_at,
             used_at: null,
             created_at: new Date().toISOString(),
@@ -460,6 +472,38 @@ export default function PartnerWhiteLabelClient({
       setLinkMessage({ tipo: 'erro', texto: 'Erro ao gerar link público.' });
     } finally {
       setSavingLink(false);
+    }
+  }
+
+  async function toggleLinkStatus(linkId: string, currentStatus: string) {
+    const nextStatus = currentStatus === 'active' ? 'inactive' : 'active';
+    setTogglingLinkId(linkId);
+    setLinkMessage(null);
+
+    try {
+      const res = await fetch(`/api/admin/parceiros/${partner.id}/links/${linkId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || !data.ok) {
+        setLinkMessage({ tipo: 'erro', texto: data.error || 'Falha ao alterar status do link.' });
+        return;
+      }
+
+      setLinksList((prev) =>
+        prev.map((l) => (l.id === linkId ? { ...l, status: nextStatus } : l))
+      );
+      setLinkMessage({
+        tipo: 'ok',
+        texto: nextStatus === 'active' ? 'Link reativado com sucesso!' : 'Link desativado com sucesso!',
+      });
+    } catch {
+      setLinkMessage({ tipo: 'erro', texto: 'Erro de comunicação ao alterar status do link.' });
+    } finally {
+      setTogglingLinkId(null);
     }
   }
 
@@ -1398,16 +1442,29 @@ export default function PartnerWhiteLabelClient({
               </select>
             </label>
 
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 sm:grid-cols-3">
               <label className="block">
                 <span className="field-label">Fluxo de Venda</span>
                 <select
                   className="form-input"
                   value={linkFlowType}
                   onChange={(e) => setLinkFlowType(e.target.value as 'external' | 'internal')}>
-                  <option value="external">Venda externa (Autoatendimento do cliente)</option>
-                  <option value="internal">Venda interna (Corretor assistido)</option>
+                  <option value="external">Venda externa (Autoatendimento)</option>
+                  <option value="internal">Venda interna (Assistido)</option>
                 </select>
+              </label>
+
+              <label className="block">
+                <span className="field-label">Desconto Pré-Aplicado (%)</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={40}
+                  className="form-input"
+                  value={linkDiscountPercent}
+                  onChange={(e) => setLinkDiscountPercent(e.target.value)}
+                  placeholder="0"
+                />
               </label>
 
               <label className="block">
@@ -1499,32 +1556,116 @@ export default function PartnerWhiteLabelClient({
               {linksList.length === 0 ? (
                 <p className="text-sm text-gray-400 py-8 text-center">Nenhum link gerado ainda.</p>
               ) : (
-                linksList.map((link) => (
-                  <div key={link.id} className="rounded-xl border border-gray-200 p-3.5 text-sm bg-white space-y-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="font-bold text-gray-900 leading-tight">{link.label || 'Link sem rótulo'}</div>
-                      <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-gray-100 text-gray-600 shrink-0">
-                        {link.flow_type === 'external' ? 'Externa' : 'Interna'}
-                      </span>
-                    </div>
+                linksList.map((link) => {
+                  const isInactive = link.status === 'inactive';
+                  const isExpired = link.expires_at ? new Date(link.expires_at) < new Date() : false;
+                  const isToggling = togglingLinkId === link.id;
+                  const discount = Number(link.discount_percent || 0);
 
-                    <div className="text-xs text-gray-500">
-                      {link.product_name ? `${link.product_name} (${link.product_code})` : 'Produto Padrão'}
-                    </div>
+                  return (
+                    <div
+                      key={link.id}
+                      className={`rounded-xl border p-3.5 text-sm space-y-2 transition-all ${
+                        isInactive
+                          ? 'border-gray-200 bg-gray-50/70 opacity-90'
+                          : 'border-gray-200 bg-white hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`font-bold leading-tight truncate ${isInactive ? 'text-gray-500 line-through' : 'text-gray-900'}`}>
+                              {link.label || 'Link sem rótulo'}
+                            </span>
 
-                    <div className="flex items-center justify-between text-xs pt-1 border-t border-gray-100 text-gray-600 font-mono">
-                      <span>/contratar/{link.token}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleCopy(`${window.location.origin}/contratar/${link.token}`)}
-                        className="text-primary hover:underline flex items-center gap-1 font-sans text-xs font-semibold"
-                      >
-                        <Copy className="w-3 h-3" />
-                        Copiar
-                      </button>
+                            {/* Badge de Desconto */}
+                            {discount > 0 ? (
+                              <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
+                                -{discount}% OFF
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-600 shrink-0">
+                                Tabela Normal
+                              </span>
+                            )}
+
+                            {/* Badge de Status */}
+                            {isInactive ? (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 shrink-0">
+                                Inativo
+                              </span>
+                            ) : isExpired ? (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
+                                Expirado
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                                Ativo
+                              </span>
+                            )}
+
+                            <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-gray-100 text-gray-600 shrink-0">
+                              {link.flow_type === 'external' ? 'Externa' : 'Interna'}
+                            </span>
+                          </div>
+
+                          <div className="text-xs text-gray-500 mt-1">
+                            {link.product_name ? `${link.product_name} (${link.product_code})` : 'Produto Padrão'}
+                            {link.expires_at ? ` · Validade: ${new Date(link.expires_at).toLocaleDateString('pt-BR')}` : ''}
+                          </div>
+                        </div>
+
+                        {/* Ações: Desativar / Reativar */}
+                        <button
+                          type="button"
+                          disabled={isToggling}
+                          onClick={() => toggleLinkStatus(link.id, link.status)}
+                          className={`text-xs font-semibold px-2 py-1 rounded-lg border transition-all cursor-pointer flex items-center gap-1 shrink-0 ${
+                            isInactive
+                              ? 'text-emerald-700 bg-emerald-50 border-emerald-200 hover:bg-emerald-100'
+                              : 'text-rose-700 bg-rose-50 border-rose-200 hover:bg-rose-100'
+                          }`}
+                          title={isInactive ? 'Reativar link de vendas' : 'Desativar link de vendas'}
+                        >
+                          {isToggling ? (
+                            <Loader2 size={11} className="animate-spin" />
+                          ) : isInactive ? (
+                            <Power size={11} />
+                          ) : (
+                            <PowerOff size={11} />
+                          )}
+                          <span>{isInactive ? 'Reativar' : 'Desativar'}</span>
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs pt-1 border-t border-gray-100 text-gray-600 font-mono">
+                        <span className={isInactive ? 'text-gray-400' : ''}>/contratar/{link.token}</span>
+                        <div className="flex items-center gap-2">
+                          {!isInactive && (
+                            <a
+                              href={`${window.location.origin}/contratar/${link.token}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-primary hover:underline flex items-center gap-1 font-sans text-xs font-semibold"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              Abrir
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(`${window.location.origin}/contratar/${link.token}`)}
+                            disabled={isInactive}
+                            className="text-primary hover:underline flex items-center gap-1 font-sans text-xs font-semibold disabled:opacity-40"
+                          >
+                            <Copy className="w-3 h-3" />
+                            Copiar
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>

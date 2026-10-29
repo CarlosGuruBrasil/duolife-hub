@@ -40,6 +40,7 @@ export interface AsaasBatchReconcileOptions {
   limit?: number;
   onlyPending?: boolean;
   partnerId?: string;
+  skipNotifications?: boolean;
 }
 
 export interface AsaasBatchReconcileResult {
@@ -118,7 +119,10 @@ function isChargeAnachronic(
  * ou RECEIVED, atualiza payment_orders, payment_installments, emite a venda e
  * promove o status da cotação para 'aprovada'.
  */
-export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasReconcileQuoteResult> {
+export async function reconcileAsaasForQuote(
+  cotacaoId: string,
+  options: { skipNotifications?: boolean } = {}
+): Promise<AsaasReconcileQuoteResult> {
   const startTime = Date.now();
 
   try {
@@ -677,8 +681,8 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
       premioFinal: totalApolice,
     });
 
-    // Se a venda foi criada pela primeira vez, despacha evento PAGAMENTO_CONFIRMADO
-    if (saleResult.created) {
+    // Se a venda foi criada pela primeira vez, despacha evento PAGAMENTO_CONFIRMADO (a menos que skipNotifications = true)
+    if (saleResult.created && !options.skipNotifications) {
       try {
         const [clientRow] = cotacao.client_id
           ? await sql<{ full_name: string; email: string; document_number: string; phone: string }[]>`
@@ -726,6 +730,11 @@ export async function reconcileAsaasForQuote(cotacaoId: string): Promise<AsaasRe
       } catch (eventErr) {
         logger.warn({ eventErr, cotacaoId: cotacao.id }, 'asaas.reconcile.dispatch_event_failed');
       }
+    } else if (saleResult.created && options.skipNotifications) {
+      logger.info(
+        { cotacaoId: cotacao.id },
+        'reconcileAsaasForQuote: Venda criada com sucesso e notificações externas suprimidas (skipNotifications: true)'
+      );
     }
 
     logger.info(
@@ -767,14 +776,14 @@ export async function reconcileAsaasBatch(
   options: AsaasBatchReconcileOptions = {}
 ): Promise<AsaasBatchReconcileResult> {
   const startTime = Date.now();
-  const limit = Math.max(1, Math.min(options.limit || 50, 100));
+  const limit = Math.max(1, Math.min(options.limit || 50, 500));
 
   // Seleciona cotações pendentes que possuem checkoutId ou que estejam em status elegíveis,
-  // mesmo se o registro payment_orders ainda não tiver sido gravado
+  // ou todas as cotações ativas caso onlyPending === false
   const quotes = await sql<Array<{ id: string }>>`
     SELECT c.id
     FROM cotacoes c
-    WHERE (
+    WHERE ${options.onlyPending !== false ? sql`(
       c.status IN ('enviada', 'rascunho', 'pagamento_gerado', 'contrato_gerado', 'assinado')
       OR (c.client_data->>'checkoutId' IS NOT NULL AND c.status NOT IN ('aprovada', 'emitida'))
       OR (
@@ -785,7 +794,7 @@ export async function reconcileAsaasBatch(
             AND LOWER(COALESCE(pi.status, '')) NOT IN ('paid', 'received', 'confirmed', 'received_in_cash')
         )
       )
-    )
+    )` : sql`c.status NOT IN ('cancelada', 'recusada')`}
       ${options.partnerId ? sql`AND c.partner_id = ${options.partnerId}` : sql``}
       ${options.onlyPending !== false ? sql`
         AND (
@@ -806,7 +815,7 @@ export async function reconcileAsaasBatch(
           )
         )
       ` : sql``}
-    ORDER BY c.updated_at DESC
+    ORDER BY c.created_at DESC
     LIMIT ${limit}
   `;
 
@@ -817,7 +826,7 @@ export async function reconcileAsaasBatch(
   const details: AsaasReconcileQuoteResult[] = [];
 
   for (const q of quotes) {
-    const res = await reconcileAsaasForQuote(q.id);
+    const res = await reconcileAsaasForQuote(q.id, { skipNotifications: options.skipNotifications });
     details.push(res);
 
     if (res.updated && res.paid) {

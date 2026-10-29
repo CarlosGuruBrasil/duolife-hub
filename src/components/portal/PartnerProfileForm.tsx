@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Copy, Check, ExternalLink, Link2, Palette, Building, Share2, Tag } from 'lucide-react';
+import { Copy, Check, ExternalLink, Link2, Palette, Building, Share2, Tag, Power, PowerOff, Loader2 } from 'lucide-react';
 import type { WhiteLabelConfig } from '@/lib/white-label';
 import { toast } from '@/components/ui/toast';
 import GerarLinkClienteButton from '@/components/portal/GerarLinkClienteButton';
@@ -96,6 +96,7 @@ export default function PartnerProfileForm({
   const [customLinks, setCustomLinks] = useState<any[]>([]);
   const [loadingCustomLinks, setLoadingCustomLinks] = useState(false);
   const [copiedCustomToken, setCopiedCustomToken] = useState<string | null>(null);
+  const [togglingLinkId, setTogglingLinkId] = useState<string | null>(null);
 
   const fetchCustomLinks = async () => {
     setLoadingCustomLinks(true);
@@ -124,6 +125,33 @@ export default function PartnerProfileForm({
       setTimeout(() => setCopiedCustomToken(null), 2500);
     } catch {
       toast.error('Erro ao copiar link.');
+    }
+  };
+
+  const handleToggleLinkStatus = async (linkId: string, currentStatus: string) => {
+    const nextStatus = currentStatus === 'active' ? 'inactive' : 'active';
+    setTogglingLinkId(linkId);
+    try {
+      const res = await fetch(`/api/portal/links/${linkId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        toast.error(data.error || 'Erro ao alterar status do link');
+        return;
+      }
+      setCustomLinks((prev) =>
+        prev.map((l) => (l.id === linkId ? { ...l, status: nextStatus } : l))
+      );
+      toast.success(
+        nextStatus === 'active' ? 'Link reativado com sucesso!' : 'Link desativado com sucesso!'
+      );
+    } catch {
+      toast.error('Erro de conexão ao alterar status do link');
+    } finally {
+      setTogglingLinkId(null);
     }
   };
 
@@ -313,17 +341,27 @@ export default function PartnerProfileForm({
             <div className="grid gap-3 sm:grid-cols-2">
               {customLinks.map((cl) => {
                 const isCopied = copiedCustomToken === cl.token;
+                const isInactive = cl.status === 'inactive';
+                const isExpired = Boolean(cl.isExpired || (cl.expires_at && new Date(cl.expires_at) < new Date()));
+                const isToggling = togglingLinkId === cl.id;
+
                 return (
                   <div
                     key={cl.id}
-                    className="p-3.5 rounded-xl border border-gray-200 bg-white space-y-2.5 shadow-2xs hover:border-gray-300 transition-all"
+                    className={`p-3.5 rounded-xl border transition-all space-y-2.5 shadow-2xs ${
+                      isInactive
+                        ? 'border-gray-200 bg-gray-50/70 opacity-90'
+                        : 'border-gray-200 bg-white hover:border-gray-300'
+                    }`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-xs text-gray-900 truncate">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className={`font-bold text-xs truncate ${isInactive ? 'text-gray-500 line-through' : 'text-gray-900'}`}>
                             {cl.label || cl.product_name || 'Link de Autocadastro'}
                           </span>
+
+                          {/* Badge de Desconto */}
                           {cl.discount_percent > 0 ? (
                             <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
                               -{cl.discount_percent}% OFF
@@ -333,19 +371,63 @@ export default function PartnerProfileForm({
                               Tabela Normal
                             </span>
                           )}
+
+                          {/* Badge de Status de Ativação */}
+                          {isInactive ? (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200 shrink-0">
+                              Inativo
+                            </span>
+                          ) : isExpired ? (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-50 text-amber-700 border border-amber-200 shrink-0">
+                              Expirado
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                              Ativo
+                            </span>
+                          )}
                         </div>
+
                         <p className="text-[11px] text-gray-500 mt-0.5 truncate">
                           {cl.product_name || 'RC Profissional'} • {cl.total_cotacoes || 0} cotaç{cl.total_cotacoes === 1 ? 'ão' : 'ões'}
+                          {cl.expires_at ? ` • Validade: ${new Date(cl.expires_at).toLocaleDateString('pt-BR')}` : ''}
                         </p>
                       </div>
-                      <a
-                        href={cl.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-[#0e4a5a] hover:underline inline-flex items-center gap-1 font-medium shrink-0"
-                      >
-                        Abrir <ExternalLink size={11} />
-                      </a>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        {!isInactive && (
+                          <a
+                            href={cl.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-[#0e4a5a] hover:underline inline-flex items-center gap-1 font-medium"
+                          >
+                            Abrir <ExternalLink size={11} />
+                          </a>
+                        )}
+
+                        {/* Botão de Ação: Desativar / Reativar */}
+                        <button
+                          type="button"
+                          disabled={isToggling}
+                          onClick={() => handleToggleLinkStatus(cl.id, cl.status)}
+                          className={`text-xs font-semibold px-2 py-1 rounded-lg border transition-all cursor-pointer flex items-center gap-1 ${
+                            isInactive
+                              ? 'text-emerald-700 bg-emerald-50 border-emerald-200 hover:bg-emerald-100'
+                              : 'text-rose-700 bg-rose-50 border-rose-200 hover:bg-rose-100'
+                          }`}
+                          title={isInactive ? 'Reativar link para clientes' : 'Desativar link de vendas'}
+                        >
+                          {isToggling ? (
+                            <Loader2 size={11} className="animate-spin" />
+                          ) : isInactive ? (
+                            <Power size={11} />
+                          ) : (
+                            <PowerOff size={11} />
+                          )}
+                          <span>{isInactive ? 'Reativar' : 'Desativar'}</span>
+                        </button>
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -353,13 +435,16 @@ export default function PartnerProfileForm({
                         type="text"
                         readOnly
                         value={cl.url}
-                        className="form-input text-xs font-mono bg-gray-50 text-gray-700 py-1.5 px-2 select-all flex-1"
+                        className={`form-input text-xs font-mono py-1.5 px-2 select-all flex-1 ${
+                          isInactive ? 'bg-gray-100 text-gray-400 border-gray-200' : 'bg-gray-50 text-gray-700'
+                        }`}
                       />
                       <button
                         type="button"
                         onClick={() => copyCustomLink(cl.url, cl.token)}
-                        className="btn btn-secondary py-1.5 px-2.5 text-xs flex items-center gap-1 whitespace-nowrap cursor-pointer"
-                        title="Copiar URL exclusiva"
+                        disabled={isInactive}
+                        className="btn btn-secondary py-1.5 px-2.5 text-xs flex items-center gap-1 whitespace-nowrap cursor-pointer disabled:opacity-40"
+                        title={isInactive ? 'Link inativo' : 'Copiar URL exclusiva'}
                       >
                         {isCopied ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
                         <span>{isCopied ? 'Copiado!' : 'Copiar'}</span>

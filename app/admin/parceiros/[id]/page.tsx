@@ -22,6 +22,7 @@ interface LinkRow {
   label: string | null;
   flow_type: string;
   status: string;
+  discount_percent: number;
   expires_at: string | null;
   used_at: string | null;
   created_at: string;
@@ -154,6 +155,7 @@ export default async function PartnerDetailPage({ params }: { params: Promise<{ 
       pl.label,
       pl.flow_type,
       pl.status,
+      COALESCE(pl.discount_percent, 0) AS discount_percent,
       pl.expires_at,
       pl.used_at,
       pl.created_at,

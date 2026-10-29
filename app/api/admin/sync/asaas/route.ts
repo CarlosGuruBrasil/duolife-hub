@@ -24,10 +24,12 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json().catch(() => ({}));
-    const limit = typeof body.limit === 'number' ? body.limit : 50;
+    const limit = typeof body.limit === 'number' ? Math.max(1, Math.min(body.limit, 500)) : 100;
     const onlyPending = body.onlyPending !== false;
+    // Por padrão estrito de segurança, a sincronização manual não dispara notificações externas/e-mails
+    const skipNotifications = body.skipNotifications !== false;
 
-    const result = await reconcileAsaasBatch({ limit, onlyPending });
+    const result = await reconcileAsaasBatch({ limit, onlyPending, skipNotifications });
     return Response.json({ ok: true, ...result });
   } catch (err) {
     logger.error({ err }, 'api.admin.sync.asaas.batch_failed');

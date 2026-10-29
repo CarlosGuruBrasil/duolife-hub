@@ -63,19 +63,70 @@ export async function POST(req: NextRequest) {
   let webhookEventId: string | null = null;
   try {
     await ensureSchema();
-    const authHeader = req.headers.get('asaas-access-token');
+    const rawAuthHeader = req.headers.get('asaas-access-token');
     const asaasCfg = await getAsaasConfig();
     const secret = asaasCfg.webhookSecret || process.env.ASAAS_WEBHOOK_SECRET;
 
-    // Fail-closed: sem secret configurado ou token que não bate, a requisição é sempre rejeitada.
-    if (!verifyWebhookToken(authHeader, secret)) {
-      logger.warn({ ip: req.headers.get('x-forwarded-for'), hasSecretConfigured: Boolean(secret) }, 'Asaas Webhook unauthorized attempt');
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const requestHeaders: Record<string, string> = {};
+    req.headers.forEach((val, key) => {
+      if (!['authorization', 'asaas-access-token'].includes(key.toLowerCase())) {
+        requestHeaders[key] = val;
+      }
+    });
 
     const payload = await req.json().catch(() => ({}));
     const event = payload?.event;
     const payment = payload?.payment;
+
+    // Fail-closed com auditoria explícita:
+    // Sem secret configurado ou token divergente, rejeita com 401 e audita em webhook_events
+    if (!verifyWebhookToken(rawAuthHeader, secret)) {
+      const reason = !secret
+        ? 'Secret do webhook não configurado no DuoLife Hub (ASAAS_WEBHOOK_SECRET ausente no banco e no ambiente)'
+        : !rawAuthHeader
+          ? 'Cabeçalho asaas-access-token ausente na requisição'
+          : 'Token do cabeçalho asaas-access-token não confere com o segredo configurado';
+
+      logger.warn(
+        {
+          ip: req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip'),
+          hasSecretConfigured: Boolean(secret),
+          hasHeaderProvided: Boolean(rawAuthHeader),
+          reason,
+        },
+        'Asaas Webhook unauthorized attempt'
+      );
+
+      // Grava tentativa não autorizada na auditoria para visibilidade imediata no painel admin
+      try {
+        await sql`
+          INSERT INTO webhook_events (
+            provider,
+            event_type,
+            external_id,
+            signature_valid,
+            payload,
+            request_headers,
+            processed,
+            error_message
+          )
+          VALUES (
+            'asaas',
+            ${event || 'UNAUTHORIZED_ATTEMPT'},
+            ${payment?.id ? String(payment.id) : null},
+            false,
+            ${JSON.stringify(payload)}::jsonb,
+            ${JSON.stringify(requestHeaders)}::jsonb,
+            false,
+            ${reason}
+          )
+        `;
+      } catch (auditErr) {
+        logger.error({ auditErr }, 'Falha ao registrar tentativa não autorizada na auditoria');
+      }
+
+      return NextResponse.json({ error: 'Unauthorized', message: reason }, { status: 401 });
+    }
 
     if (!payment || !payment.id) {
       logger.info({ event, payload }, 'Asaas Webhook ping/teste recebido sem payment');
@@ -95,13 +146,6 @@ export async function POST(req: NextRequest) {
       logger.info({ eventKey }, 'Asaas Webhook replay descartado (evento já processado)');
       return NextResponse.json({ ok: true, ignored: true, message: 'Evento já processado com sucesso' });
     }
-
-    const requestHeaders: Record<string, string> = {};
-    req.headers.forEach((val, key) => {
-      if (!['authorization', 'asaas-access-token'].includes(key.toLowerCase())) {
-        requestHeaders[key] = val;
-      }
-    });
 
     const [webhookEvent] = await sql<{ id: string }[]>`
       INSERT INTO webhook_events (

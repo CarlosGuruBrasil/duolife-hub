@@ -14,6 +14,8 @@ import { CotacoesPagination } from './_components/CotacoesPagination';
 import { PeriodPreset, resolveDateRange } from '@/lib/date-filters';
 import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
 import TransferirParceiroCotacaoButton from '@/components/modals/TransferirParceiroCotacaoButton';
+import { ContratoActionButton } from '@/components/cotacoes/ContratoActionButton';
+import { SincronizarAsaasButton } from '@/components/cotacoes/SincronizarAsaasButton';
 
 import { MatrixStatusBadge } from '@/components/common/MatrixStatusBadge';
 import { calculateMatrixStatus, getCotacaoMatrixFilterSql } from '@/lib/status-matrix';
@@ -430,12 +432,15 @@ export default async function AdminCotacoesPage({
           <h1 className="admin-page-title">Cotações Gerais</h1>
           <p className="admin-page-copy">Gerencie cotações, faturas do Asaas, assinaturas do ZapSign e vendas finalizadas.</p>
         </div>
-        <Link
-          href="/admin/cotacoes/nova"
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#00d4e0] text-[#072a33] font-black rounded-xl shadow-xs hover:bg-[#00b8c4] transition-all text-xs uppercase tracking-wider shrink-0"
-        >
-          <Plus size={16} strokeWidth={2.5} /> Nova Cotação
-        </Link>
+        <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
+          <SincronizarAsaasButton />
+          <Link
+            href="/admin/cotacoes/nova"
+            className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#00d4e0] text-[#072a33] font-black rounded-xl shadow-xs hover:bg-[#00b8c4] transition-all text-xs uppercase tracking-wider shrink-0 min-h-[44px]"
+          >
+            <Plus size={16} strokeWidth={2.5} /> Nova Cotação
+          </Link>
+        </div>
       </section>
 
       {/* Seção de Filtros Reativos */}
@@ -609,16 +614,27 @@ export default async function AdminCotacoesPage({
                             <span className="text-xs text-slate-400 font-normal">—</span>
                           )}
 
-                          {(isContratoAssinado || contratoUrl) && (
-                            <a
-                              href={isContratoAssinado ? `/api/cotacoes/${cotacao.id}/contrato-pdf?download=true` : (contratoUrl || `/api/cotacoes/${cotacao.id}/contrato-pdf`)}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200/80 px-2.5 py-1 rounded-lg transition-colors"
-                              title={isContratoAssinado ? 'Baixar Contrato Assinado (PDF)' : 'Ver Contrato ZapSign'}
-                            >
-                              {isContratoAssinado ? '📄 Contrato' : '✍️ Contrato'} <ExternalLink size={10} />
-                            </a>
+                          {(isContratoAssinado || contratoUrl || clientData.signUrlCorretora || clientData.contratoToken) && (
+                            <ContratoActionButton
+                              cotacaoId={cotacao.id}
+                              cotacao={cotacao}
+                              status={cotacao.status}
+                              clientName={cotacao.client_name}
+                              clientCpfCnpj={cotacao.client_cpf_cnpj}
+                              clientEmail={cotacao.client_email}
+                              productName={cotacao.product_name}
+                              signUrl={signUrl}
+                              signUrlCorretora={clientData.signUrlCorretora as string | undefined}
+                              contratoPdfUrl={signedPdfUrl || (clientData.contratoPdf as string | undefined)}
+                              isContratoAssinado={isContratoAssinado}
+                              statusAssinatura={clientData.statusAssinatura as string | undefined}
+                              totalAssinaturas={
+                                typeof clientData.totalAssinaturas === 'number'
+                                  ? clientData.totalAssinaturas
+                                  : undefined
+                              }
+                              variant="table"
+                            />
                           )}
                         </div>
                       </td>
