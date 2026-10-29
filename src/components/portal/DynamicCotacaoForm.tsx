@@ -1036,7 +1036,6 @@ export default function DynamicCotacaoForm({
       if (res.ok && data?.ok) {
         setCupomDesconto(Number(data.desconto) || 0);
         setCupomAplicado(true);
-        setParcelaSel(null);
       } else {
         const errorMsg =
           data?.error ||
@@ -1051,6 +1050,13 @@ export default function DynamicCotacaoForm({
       console.error('Falha de conexão ao validar cupom:', err);
       setCupomError('Erro de conexão ao validar cupom. Verifique se o servidor está ativo.');
     }
+  }
+
+  function handleRemoverCupom() {
+    setCupomCode('');
+    setCupomDesconto(0);
+    setCupomAplicado(false);
+    setCupomError('');
   }
 
   const getOpcoesParcelamento = useCallback(
@@ -1087,6 +1093,28 @@ export default function DynamicCotacaoForm({
     },
     [descontoPercentual, cupomDesconto]
   );
+
+  // ------------------------------------------------------------------
+  // Auto-seleciona à vista por padrão quando só houver 1 opção (ex: Plano 100k)
+  // e mantém a seleção atualizada com o valor correto ao entrar no passo 5 ou mudar cupom
+  // ------------------------------------------------------------------
+  useEffect(() => {
+    if (!planoSel || step < 5) return;
+    const opcoes = getOpcoesParcelamento(planoSel);
+    if (opcoes.length === 1) {
+      // Se só existe uma opção (à vista / 1x), mantém sempre selecionada por padrão
+      const opUnica = opcoes[0];
+      if (!parcelaSel || parcelaSel.qtd !== opUnica.qtd || Math.abs(parcelaSel.valor - opUnica.valor) > 0.001) {
+        setParcelaSel({ qtd: opUnica.qtd, valor: opUnica.valor });
+      }
+    } else if (parcelaSel) {
+      // Se já havia uma parcela selecionada e o valor mudou devido a cupom/desconto, atualiza o valor
+      const opCorrespondente = opcoes.find((op) => op.qtd === parcelaSel.qtd);
+      if (opCorrespondente && Math.abs(parcelaSel.valor - opCorrespondente.valor) > 0.001) {
+        setParcelaSel({ qtd: opCorrespondente.qtd, valor: opCorrespondente.valor });
+      }
+    }
+  }, [step, planoSel, getOpcoesParcelamento, parcelaSel]);
 
   // ------------------------------------------------------------------
   // 5. Navegação e Validação dos Passos
@@ -3370,14 +3398,25 @@ export default function DynamicCotacaoForm({
                     disabled={cupomAplicado}
                     className="form-input text-xs py-1.5 px-3 max-w-[160px] uppercase"
                   />
-                  <button
-                    type="button"
-                    onClick={handleValidarCupom}
-                    disabled={cupomAplicado || !cupomCode.trim()}
-                    className="btn btn-secondary text-xs py-1.5 px-3 cursor-pointer"
-                  >
-                    {cupomAplicado ? 'Aplicado' : 'Validar'}
-                  </button>
+                  {cupomAplicado ? (
+                    <button
+                      type="button"
+                      onClick={handleRemoverCupom}
+                      className="btn btn-secondary text-xs py-1.5 px-3 text-rose-600 hover:text-rose-700 hover:bg-rose-50 border-rose-200 cursor-pointer"
+                      title="Remover cupom promocional"
+                    >
+                      Remover
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleValidarCupom}
+                      disabled={cupomAplicado || !cupomCode.trim()}
+                      className="btn btn-secondary text-xs py-1.5 px-3 cursor-pointer"
+                    >
+                      Validar
+                    </button>
+                  )}
                 </div>
               </div>
               {cupomError && <p className="text-xs text-rose-600">{cupomError}</p>}
