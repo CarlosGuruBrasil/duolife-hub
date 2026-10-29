@@ -37,28 +37,33 @@ export async function POST(req: NextRequest) {
 
     const searchCode = codigo.trim().toLowerCase();
 
-    // 1. Busca cupons na coleção do Wix armazenada em wix_items
+    // 1. Busca cupons na coleção do Wix armazenada em wix_items com busca tolerante
     const items = await sql`
-      SELECT payload
-      FROM wix_items
-      WHERE wix_collection_id IN (
-        SELECT id FROM wix_collections WHERE collection_id = 'CUPOMPROMOCIONAL'
-      )
-      AND is_active = true
+      SELECT wi.payload
+      FROM wix_items wi
+      JOIN wix_collections wc ON wi.wix_collection_id = wc.id
+      WHERE (wc.collection_name ILIKE '%CUPOM%' OR wc.collection_id ILIKE '%CUPOM%')
+        AND wi.is_active = true
+      ORDER BY wi.created_at DESC
     `;
 
     const cupons = items
       .map((row) => {
         try {
           const parsed = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
-          return (parsed?.item?.data as CupomPayload) || null;
+          const itemObj = (parsed?.item || parsed) as Record<string, unknown>;
+          const dataObj = (itemObj?.data || itemObj) as Record<string, unknown>;
+          return (dataObj as CupomPayload) || null;
         } catch {
           return null;
         }
       })
-      .filter((c): c is CupomPayload => Boolean(c && c.codigo));
+      .filter((c): c is CupomPayload => Boolean(c && (c.codigo || (c as any).nome)));
 
-    const cupom = cupons.find((c) => c.codigo?.toLowerCase() === searchCode);
+    const cupom = cupons.find((c) => {
+      const cod = String(c?.codigo || (c as any)?.nome || (c as any)?.Codigo || '').trim().toLowerCase();
+      return cod === searchCode;
+    });
 
     if (!cupom) {
       return NextResponse.json(

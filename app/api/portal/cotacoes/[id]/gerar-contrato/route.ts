@@ -225,22 +225,26 @@ export async function POST(
 
         if (evento) {
           const cupomItens = await sql`
-            SELECT payload FROM wix_items
-            WHERE wix_collection_id IN (
-              SELECT id FROM wix_collections WHERE collection_id = 'CUPOMPROMOCIONAL'
-            )
-            AND is_active = true
+            SELECT wi.payload FROM wix_items wi
+            JOIN wix_collections wc ON wi.wix_collection_id = wc.id
+            WHERE (wc.collection_name ILIKE '%CUPOM%' OR wc.collection_id ILIKE '%CUPOM%')
+              AND wi.is_active = true
+            ORDER BY wi.created_at DESC
           `;
           const cupomData = cupomItens
             .map(r => {
               try {
                 const parsed = typeof r.payload === 'string' ? JSON.parse(r.payload) : r.payload;
-                return parsed?.item?.data || null;
+                const itemObj = (parsed?.item || parsed) as Record<string, unknown>;
+                return (itemObj?.data || itemObj) as Record<string, unknown>;
               } catch {
                 return null;
               }
             })
-            .find(c => c && String(c.codigo).toLowerCase() === cupomCodigo.toLowerCase());
+            .find(c => {
+              const cod = String(c?.codigo || c?.nome || c?.Codigo || '').trim().toLowerCase();
+              return cod === cupomCodigo.toLowerCase();
+            });
 
           const limite = Number(cupomData?.quantidade) || null;
 

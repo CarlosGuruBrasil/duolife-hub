@@ -11,16 +11,27 @@ export function parseMoneyToNumber(v?: string | null): number {
 export const FALLBACK_PLANOS = rcAdvogadosConfig.planos;
 
 async function fetchWixCollectionItems(collectionId: string): Promise<any[]> {
-  const items = await sql`
-    SELECT payload FROM wix_items
-    WHERE wix_collection_id IN (SELECT id FROM wix_collections WHERE collection_id = ${collectionId})
-      AND is_active = true
-  `;
+  const isCupom = collectionId.toUpperCase().includes('CUPOM');
+  const items = isCupom
+    ? await sql`
+        SELECT wi.payload FROM wix_items wi
+        JOIN wix_collections wc ON wi.wix_collection_id = wc.id
+        WHERE (wc.collection_name ILIKE '%CUPOM%' OR wc.collection_id ILIKE '%CUPOM%')
+          AND wi.is_active = true
+        ORDER BY wi.created_at DESC
+      `
+    : await sql`
+        SELECT payload FROM wix_items
+        WHERE wix_collection_id IN (SELECT id FROM wix_collections WHERE collection_id = ${collectionId})
+          AND is_active = true
+      `;
   return items
     .map((row) => {
       try {
         const parsed = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
-        return parsed?.item?.data || null;
+        const itemObj = (parsed?.item || parsed) as Record<string, unknown>;
+        const dataObj = (itemObj?.data || itemObj) as Record<string, unknown>;
+        return dataObj || null;
       } catch {
         return null;
       }
@@ -45,21 +56,26 @@ async function getCupomDescontoValido(cupomCodigo?: string | null): Promise<numb
   if (!cupomCodigo) return 0;
 
   const cupons = await fetchWixCollectionItems('CUPOMPROMOCIONAL');
-  const cupom = cupons.find((c) => c.codigo?.toLowerCase() === String(cupomCodigo).trim().toLowerCase());
+  const search = String(cupomCodigo).trim().toLowerCase();
+  const cupom = cupons.find((c) => {
+    const cod = String(c?.codigo || c?.nome || c?.Codigo || '').trim().toLowerCase();
+    return cod === search;
+  });
   if (!cupom) return 0;
   if (cupom.cupomAtivo === false) return 0;
 
   if (cupom.validade) {
-    const validDateStr = cupom.validade.$date || cupom.validade;
+    const validDateStr = (cupom.validade as any)?.$date || cupom.validade;
     if (validDateStr) {
       const validDate = new Date(validDateStr);
       if (!isNaN(validDate.getTime()) && validDate < new Date()) return 0;
     }
   }
 
+  const codToQuery = String(cupom.codigo || cupom.nome || search);
   const limite = Number(cupom.quantidade) || 0;
   if (limite > 0) {
-    const [uso] = await sql`SELECT usos FROM cupom_usos WHERE UPPER(cupom_codigo) = UPPER(${cupom.codigo}) LIMIT 1`;
+    const [uso] = await sql`SELECT usos FROM cupom_usos WHERE UPPER(cupom_codigo) = UPPER(${codToQuery}) LIMIT 1`;
     const usados = Number(uso?.usos) || 0;
     if (usados >= limite) return 0;
   }

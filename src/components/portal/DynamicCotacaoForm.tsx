@@ -1014,24 +1014,42 @@ export default function DynamicCotacaoForm({
     setCupomDesconto(0);
     setCupomAplicado(false);
 
-    if (!cupomCode.trim()) return;
+    const cleanCode = cupomCode.trim();
+    if (!cleanCode) return;
 
     try {
       const res = await fetch('/api/portal/validar-cupom', {
         method: 'POST',
         headers: getHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ code: cupomCode.trim() }),
+        body: JSON.stringify({ code: cleanCode }),
       });
-      const data = await res.json();
-      if (data.ok) {
+
+      let data: any = null;
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        console.warn('Resposta não-JSON ao validar cupom:', res.status, text.slice(0, 100));
+      }
+
+      if (res.ok && data?.ok) {
         setCupomDesconto(Number(data.desconto) || 0);
         setCupomAplicado(true);
         setParcelaSel(null);
       } else {
-        setCupomError(data.error || 'Cupom inválido ou expirado');
+        const errorMsg =
+          data?.error ||
+          (res.status === 401
+            ? 'Sessão não autorizada ou expirada. Faça login novamente.'
+            : res.status === 404
+            ? 'Cupom inválido ou não encontrado.'
+            : 'Cupom inválido ou expirado.');
+        setCupomError(errorMsg);
       }
-    } catch {
-      setCupomError('Erro de conexão ao validar cupom.');
+    } catch (err) {
+      console.error('Falha de conexão ao validar cupom:', err);
+      setCupomError('Erro de conexão ao validar cupom. Verifique se o servidor está ativo.');
     }
   }
 
