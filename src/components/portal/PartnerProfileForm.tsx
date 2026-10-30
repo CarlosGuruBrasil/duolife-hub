@@ -130,7 +130,31 @@ export default function PartnerProfileForm({
   const [loadingCustomLinks, setLoadingCustomLinks] = useState(false);
   const [copiedCustomToken, setCopiedCustomToken] = useState<string | null>(null);
   const [togglingLinkId, setTogglingLinkId] = useState<string | null>(null);
+  const [deletingLinkId, setDeletingLinkId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [filterType, setFilterType] = useState<'all' | 'corretora' | 'seller'>('all');
   const [isExportingLinks, setIsExportingLinks] = useState(false);
+
+  const handleDeleteLink = async (linkId: string) => {
+    setDeletingLinkId(linkId);
+    try {
+      const res = await fetch(`/api/portal/links/${linkId}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        toast.error(data.error || 'Erro ao excluir link de venda');
+        return;
+      }
+      setCustomLinks((prev) => prev.filter((l) => l.id !== linkId));
+      setConfirmDeleteId(null);
+      toast.success('Link de vendas excluído com sucesso!');
+    } catch {
+      toast.error('Erro de conexão ao excluir link de vendas');
+    } finally {
+      setDeletingLinkId(null);
+    }
+  };
 
   const handleExportLinks = async () => {
     setIsExportingLinks(true);
@@ -459,10 +483,52 @@ export default function PartnerProfileForm({
                 products={products || [{ id: 'prod-rc-001', name: 'RC Profissional Advogados' }]}
                 onLinkCreated={fetchCustomLinks}
                 buttonText="Gerar Novo Link Exclusivo"
+                canManageCompany={canEdit}
                 variant="outline"
               />
             </div>
           </div>
+
+          {/* Abas de Filtro: Todos / Corretora / Vendedores */}
+          {customLinks.length > 0 && (
+            <div className="flex items-center gap-1.5 border-b border-gray-100 pb-2">
+              <button
+                type="button"
+                onClick={() => setFilterType('all')}
+                className={`text-xs font-semibold px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                  filterType === 'all'
+                    ? 'bg-[#0e4a5a] text-white shadow-xs'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                Todos ({customLinks.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterType('corretora')}
+                className={`text-xs font-semibold px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                  filterType === 'corretora'
+                    ? 'bg-[#0e4a5a] text-white shadow-xs'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <Building size={12} />
+                <span>Da Corretora ({customLinks.filter((l) => l.link_type === 'corretora').length})</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterType('seller')}
+                className={`text-xs font-semibold px-2.5 py-1 rounded-lg transition-all cursor-pointer flex items-center gap-1 ${
+                  filterType === 'seller'
+                    ? 'bg-[#0e4a5a] text-white shadow-xs'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                <Users size={12} />
+                <span>Por Vendedor ({customLinks.filter((l) => (l.link_type || 'seller') === 'seller').length})</span>
+              </button>
+            </div>
+          )}
 
           {loadingCustomLinks && customLinks.length === 0 ? (
             <div className="p-4 text-center text-xs text-gray-500 bg-white rounded-xl border border-gray-200">
@@ -477,7 +543,12 @@ export default function PartnerProfileForm({
             </div>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2">
-              {customLinks.map((cl) => {
+              {customLinks
+                .filter((cl) => {
+                  if (filterType === 'all') return true;
+                  return (cl.link_type || 'seller') === filterType;
+                })
+                .map((cl) => {
                 const isCopied = copiedCustomToken === cl.token;
                 const isInactive = cl.status === 'inactive';
                 const isExpired = Boolean(cl.isExpired || (cl.expires_at && new Date(cl.expires_at) < new Date()));
@@ -498,6 +569,17 @@ export default function PartnerProfileForm({
                           <span className={`font-bold text-xs truncate ${isInactive ? 'text-gray-500 line-through' : 'text-gray-900'}`}>
                             {cl.label || cl.product_name || 'Link de Autocadastro'}
                           </span>
+
+                          {/* Badge de Origem/Tipo: Corretora vs Vendedor */}
+                          {cl.link_type === 'corretora' ? (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-sky-50 text-sky-800 border border-sky-200 shrink-0 flex items-center gap-1" title="Link institucional da Corretora">
+                              <Building size={10} /> Corretora
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-800 border border-indigo-200 shrink-0 flex items-center gap-1" title={`Link do vendedor: ${cl.seller_name || 'Vendedor'}`}>
+                              <Users size={10} /> {cl.seller_name || 'Vendedor'}
+                            </span>
+                          )}
 
                           {/* Badge de Desconto */}
                           {cl.discount_percent > 0 ? (
@@ -544,27 +626,64 @@ export default function PartnerProfileForm({
                           </a>
                         )}
 
-                        {/* Botão de Ação: Desativar / Reativar */}
-                        <button
-                          type="button"
-                          disabled={isToggling}
-                          onClick={() => handleToggleLinkStatus(cl.id, cl.status)}
-                          className={`text-xs font-semibold px-2 py-1 rounded-lg border transition-all cursor-pointer flex items-center gap-1 ${
-                            isInactive
-                              ? 'text-emerald-700 bg-emerald-50 border-emerald-200 hover:bg-emerald-100'
-                              : 'text-rose-700 bg-rose-50 border-rose-200 hover:bg-rose-100'
-                          }`}
-                          title={isInactive ? 'Reativar link para clientes' : 'Desativar link de vendas'}
-                        >
-                          {isToggling ? (
-                            <Loader2 size={11} className="animate-spin" />
-                          ) : isInactive ? (
-                            <Power size={11} />
+                        {/* Botão de Ação: Desativar / Reativar (apenas se permitido) */}
+                        {cl.canManageLink !== false && (
+                          <button
+                            type="button"
+                            disabled={isToggling}
+                            onClick={() => handleToggleLinkStatus(cl.id, cl.status)}
+                            className={`text-xs font-semibold px-2 py-1 rounded-lg border transition-all cursor-pointer flex items-center gap-1 ${
+                              isInactive
+                                ? 'text-emerald-700 bg-emerald-50 border-emerald-200 hover:bg-emerald-100'
+                                : 'text-amber-700 bg-amber-50 border-amber-200 hover:bg-amber-100'
+                            }`}
+                            title={isInactive ? 'Reativar link para clientes' : 'Desativar link de vendas'}
+                          >
+                            {isToggling ? (
+                              <Loader2 size={11} className="animate-spin" />
+                            ) : isInactive ? (
+                              <Power size={11} />
+                            ) : (
+                              <PowerOff size={11} />
+                            )}
+                            <span>{isInactive ? 'Reativar' : 'Desativar'}</span>
+                          </button>
+                        )}
+
+                        {/* Botão de Ação: Excluir Link */}
+                        {cl.canManageLink !== false && (
+                          confirmDeleteId === cl.id ? (
+                            <div className="flex items-center gap-1 bg-rose-50 border border-rose-200 rounded-lg p-0.5 shadow-2xs">
+                              <span className="text-[10px] text-rose-800 font-bold px-1">Excluir?</span>
+                              <button
+                                type="button"
+                                disabled={deletingLinkId === cl.id}
+                                onClick={() => handleDeleteLink(cl.id)}
+                                className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-600 text-white hover:bg-rose-700 cursor-pointer disabled:opacity-50"
+                              >
+                                {deletingLinkId === cl.id ? <Loader2 size={10} className="animate-spin" /> : 'Sim'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setConfirmDeleteId(null)}
+                                className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-white text-gray-700 hover:bg-gray-100 border border-gray-200 cursor-pointer"
+                              >
+                                Não
+                              </button>
+                            </div>
                           ) : (
-                            <PowerOff size={11} />
-                          )}
-                          <span>{isInactive ? 'Reativar' : 'Desativar'}</span>
-                        </button>
+                            <button
+                              type="button"
+                              disabled={deletingLinkId === cl.id}
+                              onClick={() => setConfirmDeleteId(cl.id)}
+                              className="text-xs font-semibold px-2 py-1 rounded-lg border border-rose-200 bg-rose-50/70 text-rose-700 hover:bg-rose-100 transition-all cursor-pointer flex items-center gap-1"
+                              title="Excluir este link de vendas"
+                            >
+                              <Trash2 size={11} />
+                              <span>Excluir</span>
+                            </button>
+                          )
+                        )}
                       </div>
                     </div>
 
@@ -942,6 +1061,15 @@ export default function PartnerProfileForm({
                 </p>
               </div>
 
+              {!canEdit && (
+                <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-center gap-2">
+                  <PowerOff size={14} className="text-amber-700 shrink-0" />
+                  <span>
+                    A identidade visual e as cores da marca são definidas exclusivamente pela diretoria da corretora e aplicadas a todos os links.
+                  </span>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
                 {COLOR_PRESETS.map((preset) => {
                   const isCurrent =
@@ -954,11 +1082,18 @@ export default function PartnerProfileForm({
                       key={preset.name}
                       type="button"
                       disabled={!canEdit}
-                      onClick={() => handleApplyPreset(preset)}
-                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-2 ${
-                        isCurrent
-                          ? 'border-[#0e4a5a] bg-teal-50/40 shadow-sm'
-                          : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-xs'
+                      onClick={() => canEdit && handleApplyPreset(preset)}
+                      title={
+                        !canEdit
+                          ? 'Apenas a diretoria da corretora pode alterar a paleta de cores corporativa'
+                          : `Aplicar paleta ${preset.name}`
+                      }
+                      className={`p-3 rounded-xl border text-left transition-all flex flex-col gap-2 ${
+                        !canEdit
+                          ? 'border-gray-200 bg-gray-50/70 opacity-60 cursor-not-allowed'
+                          : isCurrent
+                          ? 'border-[#0e4a5a] bg-teal-50/40 shadow-sm cursor-pointer'
+                          : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-xs cursor-pointer'
                       }`}
                     >
                       <div className="flex items-center gap-1.5">
@@ -997,14 +1132,18 @@ export default function PartnerProfileForm({
                       value={form.primaryColor}
                       onChange={(e) => updateField('primaryColor', e.target.value)}
                       disabled={!canEdit}
-                      className="w-10 h-10 rounded-lg border border-gray-300 p-0.5 cursor-pointer shrink-0"
+                      className={`w-10 h-10 rounded-lg border border-gray-300 p-0.5 shrink-0 ${
+                        !canEdit ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                      }`}
                     />
                     <input
                       type="text"
                       maxLength={7}
                       value={form.primaryColor}
                       onChange={(e) => updateField('primaryColor', e.target.value)}
-                      className="form-input font-mono text-xs uppercase"
+                      className={`form-input font-mono text-xs uppercase ${
+                        !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
+                      }`}
                       disabled={!canEdit}
                     />
                   </div>
@@ -1019,14 +1158,18 @@ export default function PartnerProfileForm({
                       value={form.secondaryColor}
                       onChange={(e) => updateField('secondaryColor', e.target.value)}
                       disabled={!canEdit}
-                      className="w-10 h-10 rounded-lg border border-gray-300 p-0.5 cursor-pointer shrink-0"
+                      className={`w-10 h-10 rounded-lg border border-gray-300 p-0.5 shrink-0 ${
+                        !canEdit ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                      }`}
                     />
                     <input
                       type="text"
                       maxLength={7}
                       value={form.secondaryColor}
                       onChange={(e) => updateField('secondaryColor', e.target.value)}
-                      className="form-input font-mono text-xs uppercase"
+                      className={`form-input font-mono text-xs uppercase ${
+                        !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
+                      }`}
                       disabled={!canEdit}
                     />
                   </div>
@@ -1041,14 +1184,18 @@ export default function PartnerProfileForm({
                       value={form.accentColor}
                       onChange={(e) => updateField('accentColor', e.target.value)}
                       disabled={!canEdit}
-                      className="w-10 h-10 rounded-lg border border-gray-300 p-0.5 cursor-pointer shrink-0"
+                      className={`w-10 h-10 rounded-lg border border-gray-300 p-0.5 shrink-0 ${
+                        !canEdit ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+                      }`}
                     />
                     <input
                       type="text"
                       maxLength={7}
                       value={form.accentColor}
                       onChange={(e) => updateField('accentColor', e.target.value)}
-                      className="form-input font-mono text-xs uppercase"
+                      className={`form-input font-mono text-xs uppercase ${
+                        !canEdit ? 'bg-gray-100 cursor-not-allowed' : ''
+                      }`}
                       disabled={!canEdit}
                     />
                   </div>

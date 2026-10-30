@@ -726,6 +726,8 @@ async function runRuntimeSchemaSetup(): Promise<void> {
       used_at           TIMESTAMPTZ,
       metadata          JSONB NOT NULL DEFAULT '{}',
       created_by_user_id TEXT,
+      link_type         TEXT NOT NULL DEFAULT 'seller',
+      seller_user_id    TEXT,
       discount_percent  INT NOT NULL DEFAULT 0,
       is_exclusive      BOOLEAN NOT NULL DEFAULT false,
       target_document   TEXT,
@@ -748,10 +750,14 @@ async function runRuntimeSchemaSetup(): Promise<void> {
   await sql`ALTER TABLE public_sale_links ADD COLUMN IF NOT EXISTS views_count INT NOT NULL DEFAULT 0`;
   await sql`ALTER TABLE public_sale_links ADD COLUMN IF NOT EXISTS unique_views_count INT NOT NULL DEFAULT 0`;
   await sql`ALTER TABLE public_sale_links ADD COLUMN IF NOT EXISTS last_accessed_at TIMESTAMPTZ`;
+  await sql`ALTER TABLE public_sale_links ADD COLUMN IF NOT EXISTS link_type TEXT NOT NULL DEFAULT 'seller'`;
+  await sql`ALTER TABLE public_sale_links ADD COLUMN IF NOT EXISTS seller_user_id TEXT`;
   await sql`CREATE INDEX IF NOT EXISTS public_sale_links_partner_id ON public_sale_links (partner_id)`;
   await sql`CREATE INDEX IF NOT EXISTS public_sale_links_token      ON public_sale_links (token)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_public_sale_links_target_doc ON public_sale_links (target_document)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_public_sale_links_is_exclusive ON public_sale_links (is_exclusive)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_public_sale_links_seller_user_id ON public_sale_links (seller_user_id)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_public_sale_links_link_type ON public_sale_links (link_type)`;
 
   // Logs de auditoria e métricas de acesso aos links de venda
   await sql`

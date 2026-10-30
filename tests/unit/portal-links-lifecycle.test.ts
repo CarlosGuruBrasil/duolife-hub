@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 
 vi.mock('@/lib/auth', () => ({
   verifyPartnerAuth: vi.fn(),
+  canManageOwnCompany: vi.fn(() => true),
   unauthorized: vi.fn(() => new Response(JSON.stringify({ error: 'Não autorizado' }), { status: 401 })),
 }));
 
@@ -312,19 +313,21 @@ describe('Portal Links Lifecycle - PATCH & DELETE (/api/portal/links/[id])', () 
       expect(data.link.status).toBe('active');
     });
 
-    it('deve ter sucesso ao desativar via DELETE e retornar mensagem apropriada', async () => {
+    it('deve ter sucesso ao excluir via DELETE e retornar mensagem apropriada', async () => {
       vi.mocked(verifyPartnerAuth).mockResolvedValueOnce(loggedPartnerUser as any);
 
       const existingLink = {
         id: 'link-01',
         partner_id: 'partner-100',
         token: 'dlk_teste_01',
+        created_by_user_id: 'user-sales-01',
         status: 'active',
       };
 
       mockSql
         .mockResolvedValueOnce([existingLink]) // 1. SELECT existing
-        .mockResolvedValueOnce([]); // 2. UPDATE status = 'inactive'
+        .mockResolvedValueOnce([{ count: 0 }]) // 2. SELECT COUNT cotacoes
+        .mockResolvedValueOnce([]); // 3. DELETE physical query
 
       const req = new NextRequest('http://localhost/api/portal/links/link-01', {
         method: 'DELETE',
@@ -334,7 +337,7 @@ describe('Portal Links Lifecycle - PATCH & DELETE (/api/portal/links/[id])', () 
 
       expect(res.status).toBe(200);
       expect(data.ok).toBe(true);
-      expect(data.message).toBe('Link desativado com sucesso');
+      expect(data.message).toBe('Link excluído com sucesso');
     });
 
     it('deve resolver effectivePartnerId através de corretoraId caso partnerId não esteja setado diretamente', async () => {
@@ -349,13 +352,15 @@ describe('Portal Links Lifecycle - PATCH & DELETE (/api/portal/links/[id])', () 
         id: 'link-02',
         partner_id: 'partner-from-corretora',
         token: 'dlk_corretora_02',
+        created_by_user_id: 'user-corretora-admin',
         status: 'active',
       };
 
       mockSql
         .mockResolvedValueOnce([partnerResolved]) // SELECT partner by corretora_id
         .mockResolvedValueOnce([existingLink])    // SELECT existing link
-        .mockResolvedValueOnce([]);               // UPDATE status = 'inactive'
+        .mockResolvedValueOnce([{ count: 0 }])    // SELECT COUNT cotacoes
+        .mockResolvedValueOnce([]);               // DELETE query
 
       const req = new NextRequest('http://localhost/api/portal/links/link-02', {
         method: 'DELETE',
@@ -365,7 +370,7 @@ describe('Portal Links Lifecycle - PATCH & DELETE (/api/portal/links/[id])', () 
 
       expect(res.status).toBe(200);
       expect(data.ok).toBe(true);
-      expect(data.message).toBe('Link desativado com sucesso');
+      expect(data.message).toBe('Link excluído com sucesso');
     });
   });
 });

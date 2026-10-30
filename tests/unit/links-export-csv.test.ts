@@ -19,6 +19,7 @@ vi.mock('@/lib/pg', () => ({
 
 vi.mock('@/lib/auth', () => ({
   verifyPartnerAuth: mockVerifyPartnerAuth,
+  canManageOwnCompany: vi.fn(() => true),
   unauthorized: () => new Response(JSON.stringify({ error: 'Não autorizado' }), { status: 401 }),
 }));
 

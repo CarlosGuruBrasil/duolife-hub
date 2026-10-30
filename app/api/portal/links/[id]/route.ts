@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { ensureSchema } from '@/lib/schema';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
-import { verifyPartnerAuth, unauthorized } from '@/lib/auth';
+import { verifyPartnerAuth, canManageOwnCompany, unauthorized } from '@/lib/auth';
 
 const updateLinkSchema = z.object({
   status: z.enum(['active', 'inactive']).optional(),
@@ -67,6 +67,9 @@ export async function PATCH(
         label,
         status,
         discount_percent,
+        link_type,
+        seller_user_id,
+        created_by_user_id,
         expires_at,
         used_at,
         metadata,
@@ -79,6 +82,19 @@ export async function PATCH(
 
     if (!existing || existing.partner_id !== effectivePartnerId) {
       return NextResponse.json({ error: 'Link não encontrado' }, { status: 404 });
+    }
+
+    // Regra de autorização: gestor/diretor gerencia todos os links da corretora.
+    // Vendedor (broker) só pode gerenciar seus próprios links.
+    const isManager = canManageOwnCompany(user);
+    const isOwner =
+      existing.created_by_user_id === user.userId || existing.seller_user_id === user.userId;
+
+    if (!isManager && !isOwner) {
+      return NextResponse.json(
+        { error: 'Você só possui permissão para alterar os seus próprios links de vendas' },
+        { status: 403 }
+      );
     }
 
     const { status, label } = parsed.data;
@@ -101,6 +117,9 @@ export async function PATCH(
         label,
         status,
         discount_percent,
+        link_type,
+        seller_user_id,
+        created_by_user_id,
         expires_at,
         used_at,
         metadata,
@@ -120,7 +139,7 @@ export async function PATCH(
     };
 
     logger.info(
-      { partnerId: effectivePartnerId, linkId: id, status: newStatus, label: newLabel },
+      { partnerId: effectivePartnerId, linkId: id, status: newStatus, label: newLabel, userId: user.userId },
       'portal.links.updated'
     );
 
@@ -152,7 +171,7 @@ export async function DELETE(
     }
 
     const [existing] = await sql`
-      SELECT id, partner_id
+      SELECT id, partner_id, token, link_type, seller_user_id, created_by_user_id, status
       FROM public_sale_links
       WHERE id = ${id}
       LIMIT 1
@@ -162,22 +181,55 @@ export async function DELETE(
       return NextResponse.json({ error: 'Link não encontrado' }, { status: 404 });
     }
 
-    await sql`
-      UPDATE public_sale_links
-      SET
-        status = 'inactive',
-        updated_at = NOW()
-      WHERE id = ${id} AND partner_id = ${effectivePartnerId}
+    // Regra de autorização: gestor/diretor exclui qualquer link da corretora.
+    // Vendedor só pode excluir seus próprios links.
+    const isManager = canManageOwnCompany(user);
+    const isOwner =
+      existing.created_by_user_id === user.userId || existing.seller_user_id === user.userId;
+
+    if (!isManager && !isOwner) {
+      return NextResponse.json(
+        { error: 'Você só possui permissão para excluir os seus próprios links de vendas' },
+        { status: 403 }
+      );
+    }
+
+    // Verifica se existem cotações ou propostas associadas a este link
+    const [quoteCountRow] = await sql`
+      SELECT COUNT(id)::int AS count
+      FROM cotacoes
+      WHERE source_token = ${existing.token}
     `;
+    const totalCotacoes = Number(quoteCountRow?.count || 0);
 
-    logger.info(
-      { partnerId: effectivePartnerId, linkId: id },
-      'portal.links.deactivated'
-    );
+    if (totalCotacoes === 0) {
+      // Exclusão física definitiva
+      await sql`
+        DELETE FROM public_sale_links
+        WHERE id = ${id} AND partner_id = ${effectivePartnerId}
+      `;
+      logger.info(
+        { partnerId: effectivePartnerId, linkId: id, userId: user.userId, mode: 'hard_delete' },
+        'portal.links.deleted'
+      );
+    } else {
+      // Exclusão lógica para preservar histórico financeiro e de auditoria de apólices já emitidas
+      await sql`
+        UPDATE public_sale_links
+        SET
+          status = 'deleted',
+          updated_at = NOW()
+        WHERE id = ${id} AND partner_id = ${effectivePartnerId}
+      `;
+      logger.info(
+        { partnerId: effectivePartnerId, linkId: id, userId: user.userId, mode: 'soft_delete', totalCotacoes },
+        'portal.links.soft_deleted'
+      );
+    }
 
-    return NextResponse.json({ ok: true, message: 'Link desativado com sucesso' });
+    return NextResponse.json({ ok: true, message: 'Link excluído com sucesso' });
   } catch (err) {
     logger.error({ err }, 'portal.links.delete.failed');
-    return NextResponse.json({ error: 'Erro interno ao desativar link' }, { status: 500 });
+    return NextResponse.json({ error: 'Erro interno ao excluir link' }, { status: 500 });
   }
 }

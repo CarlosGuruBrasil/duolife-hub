@@ -205,4 +205,43 @@ describe('Portal Branding UI - Aba Identidade White Label', () => {
     expect(html).toContain('Escolher Logotipo');
     expect(html).toContain('Nenhum logotipo selecionado');
   });
+
+  it('deve bloquear alteração de cores para vendedores (canEdit === false) com cursor-not-allowed e aviso da diretoria da corretora', async () => {
+    await act(async () => {
+      root.render(
+        <PartnerProfileForm
+          partner={mockPartner}
+          whiteLabel={mockWhiteLabel}
+          saleLink={mockSaleLink}
+          canEdit={false}
+        />
+      );
+    });
+
+    const tabButton = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Identidade White Label')
+    );
+    await act(async () => {
+      tabButton?.click();
+    });
+
+    const html = container.innerHTML;
+    expect(html).toContain('A identidade visual e as cores da marca são definidas exclusivamente pela diretoria da corretora');
+
+    const esmeraldaButton = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Esmeralda Prestige')
+    );
+    expect(esmeraldaButton).toBeDefined();
+    expect(esmeraldaButton?.disabled).toBe(true);
+    expect(esmeraldaButton?.className).toContain('cursor-not-allowed');
+
+    // Tentar clicar não deve disparar atualização
+    await act(async () => {
+      esmeraldaButton?.click();
+    });
+
+    // Cor primária original (#0e4a5a) deve ser mantida
+    const originalInput = container.querySelector('input[value="#0e4a5a"]') as HTMLInputElement;
+    expect(originalInput).not.toBeNull();
+  });
 });

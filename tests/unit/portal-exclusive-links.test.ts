@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server';
 
 vi.mock('@/lib/auth', () => ({
   verifyPartnerAuth: vi.fn(),
+  canManageOwnCompany: vi.fn(() => true),
   unauthorized: vi.fn(() => new Response(JSON.stringify({ error: 'Não autorizado' }), { status: 401 })),
   isDevUser: vi.fn(() => false),
   isPlatformAdmin: vi.fn(() => false),

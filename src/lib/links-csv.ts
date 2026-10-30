@@ -22,6 +22,8 @@ export interface SaleLinkExportRow {
   expires_at?: string | Date | null;
   product_name?: string | null;
   product_code?: string | null;
+  link_type?: string | null;
+  seller_name?: string | null;
   url?: string | null;
 }
 
@@ -72,6 +74,8 @@ function formatStatus(row: SaleLinkExportRow): string {
 export const CABECALHO_LINKS_CSV = [
   'Rótulo / Campanha',
   'Token',
+  'Origem / Tipo',
+  'Vendedor / Responsável',
   'Modalidade',
   'Produto',
   'Desconto (%)',
@@ -100,6 +104,8 @@ export function gerarLinksCsv(links: SaleLinkExportRow[]): string {
   const headerLine = CABECALHO_LINKS_CSV.map(escapeCsv).join(';');
 
   const dataLines = links.map((link) => {
+    const tipoLink = link.link_type === 'corretora' ? 'Corretora (Geral)' : 'Vendedor';
+    const vendedor = link.link_type === 'corretora' ? 'Corretora' : (link.seller_name || 'Vendedor');
     const modalidade = link.is_exclusive ? 'Exclusivo (Cliente Específico)' : 'Geral (Público)';
     const produto = link.product_name
       ? (link.product_code ? `${link.product_name} (${link.product_code})` : link.product_name)
@@ -125,6 +131,8 @@ export function gerarLinksCsv(links: SaleLinkExportRow[]): string {
     const fields = [
       link.label || 'Link de Autocadastro',
       link.token,
+      tipoLink,
+      vendedor,
       modalidade,
       produto,
       desconto,

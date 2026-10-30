@@ -10,6 +10,7 @@ interface GerarLinkClienteButtonProps {
   variant?: 'primary' | 'secondary' | 'outline' | 'banner';
   buttonText?: string;
   className?: string;
+  canManageCompany?: boolean;
   onLinkCreated?: (link: GeneratedLinkData) => void;
 }
 
@@ -19,6 +20,7 @@ export default function GerarLinkClienteButton({
   variant = 'secondary',
   buttonText = 'Gerar Link para Cliente',
   className = '',
+  canManageCompany = false,
   onLinkCreated,
 }: GerarLinkClienteButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -58,6 +60,7 @@ export default function GerarLinkClienteButton({
           onClose={() => setIsOpen(false)}
           products={products}
           defaultProductId={defaultProductId}
+          canManageCompany={canManageCompany}
           onLinkCreated={onLinkCreated}
         />
       </>
@@ -88,6 +91,7 @@ export default function GerarLinkClienteButton({
         onClose={() => setIsOpen(false)}
         products={products}
         defaultProductId={defaultProductId}
+        canManageCompany={canManageCompany}
         onLinkCreated={onLinkCreated}
       />
     </>

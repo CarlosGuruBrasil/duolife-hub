@@ -66,6 +66,12 @@ describe('White-Label Links & Duplicidade Cadastral - Schema Migration', () => {
     const hasCadastralConflict = executedQueries.some((q) =>
       q.includes('ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS cadastral_conflict')
     );
+    const hasLinkTypeColumn = executedQueries.some((q) =>
+      q.includes('ALTER TABLE public_sale_links ADD COLUMN IF NOT EXISTS link_type')
+    );
+    const hasSellerUserIdColumn = executedQueries.some((q) =>
+      q.includes('ALTER TABLE public_sale_links ADD COLUMN IF NOT EXISTS seller_user_id')
+    );
 
     expect(hasExclusiveColumn).toBe(true);
     expect(hasTargetDocColumn).toBe(true);
@@ -73,5 +79,7 @@ describe('White-Label Links & Duplicidade Cadastral - Schema Migration', () => {
     expect(hasMaxUsesColumn).toBe(true);
     expect(hasUsedCountColumn).toBe(true);
     expect(hasCadastralConflict).toBe(true);
+    expect(hasLinkTypeColumn).toBe(true);
+    expect(hasSellerUserIdColumn).toBe(true);
   });
 });

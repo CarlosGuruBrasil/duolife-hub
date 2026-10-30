@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { ensureSchema } from '@/lib/schema';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
-import { verifyPartnerAuth, isDevUser, isPlatformAdmin, unauthorized } from '@/lib/auth';
+import { verifyPartnerAuth, canManageOwnCompany, isDevUser, isPlatformAdmin, unauthorized } from '@/lib/auth';
 import { calculateConversionMetrics } from '@/lib/link-tracker';
 import { somenteDigitos, validarCpf, validarCnpj } from '@/lib/documento';
 
@@ -20,6 +20,8 @@ const createLinkSchema = z
     targetDocument: z.preprocess(emptyToUndefined, z.string().trim().optional()),
     targetName: z.preprocess(emptyToUndefined, z.string().trim().max(150).optional()),
     maxUses: z.coerce.number().int().positive().optional(),
+    linkType: z.enum(['corretora', 'seller']).default('seller'),
+    sellerUserId: z.preprocess(emptyToUndefined, z.string().trim().optional()),
   })
   .refine(
     (data) => {
@@ -63,40 +65,94 @@ export async function GET() {
       return NextResponse.json({ error: 'Nenhum parceiro ativo associado' }, { status: 400 });
     }
 
-    const links = await sql`
-      SELECT
-        pl.id,
-        pl.token,
-        pl.label,
-        pl.flow_type,
-        pl.status,
-        COALESCE(pl.discount_percent, 0) AS discount_percent,
-        COALESCE(pl.is_exclusive, false) AS is_exclusive,
-        pl.target_document,
-        pl.target_name,
-        pl.max_uses,
-        COALESCE(pl.used_count, 0)::int AS used_count,
-        COALESCE(pl.views_count, 0)::int AS views_count,
-        COALESCE(pl.unique_views_count, 0)::int AS unique_views_count,
-        pl.last_accessed_at,
-        pl.expires_at,
-        pl.used_at,
-        pl.created_at,
-        pl.updated_at,
-        pl.metadata,
-        pr.id AS product_id,
-        pr.name AS product_name,
-        pr.code AS product_code,
-        COUNT(c.id)::int AS total_cotacoes,
-        COUNT(c.id) FILTER (WHERE c.status IN ('aprovada', 'emitida'))::int AS total_vendas
-      FROM public_sale_links pl
-      LEFT JOIN products pr ON pr.id = pl.product_id
-      LEFT JOIN cotacoes c ON c.source_token = pl.token
-      WHERE pl.partner_id = ${effectivePartnerId}
-      GROUP BY pl.id, pr.id
-      ORDER BY pl.created_at DESC
-      LIMIT 100
-    `;
+    const canManageCompany = canManageOwnCompany(user);
+
+    // Gestores e Diretores visualizam todos os links do parceiro/corretora.
+    // Corretores/Vendedores visualizam seus próprios links e links institucionais da corretora.
+    const links = canManageCompany
+      ? await sql`
+          SELECT
+            pl.id,
+            pl.token,
+            pl.label,
+            pl.flow_type,
+            pl.status,
+            COALESCE(pl.discount_percent, 0) AS discount_percent,
+            COALESCE(pl.is_exclusive, false) AS is_exclusive,
+            COALESCE(pl.link_type, 'seller') AS link_type,
+            pl.seller_user_id,
+            pl.created_by_user_id,
+            COALESCE(pu.name, cu.name, pl.metadata->>'sellerName', pl.metadata->>'createdByName') AS seller_name,
+            pl.target_document,
+            pl.target_name,
+            pl.max_uses,
+            COALESCE(pl.used_count, 0)::int AS used_count,
+            COALESCE(pl.views_count, 0)::int AS views_count,
+            COALESCE(pl.unique_views_count, 0)::int AS unique_views_count,
+            pl.last_accessed_at,
+            pl.expires_at,
+            pl.used_at,
+            pl.created_at,
+            pl.updated_at,
+            pl.metadata,
+            pr.id AS product_id,
+            pr.name AS product_name,
+            pr.code AS product_code,
+            COUNT(c.id)::int AS total_cotacoes,
+            COUNT(c.id) FILTER (WHERE c.status IN ('aprovada', 'emitida'))::int AS total_vendas
+          FROM public_sale_links pl
+          LEFT JOIN products pr ON pr.id = pl.product_id
+          LEFT JOIN cotacoes c ON c.source_token = pl.token
+          LEFT JOIN partner_users pu ON pu.id = COALESCE(pl.seller_user_id, pl.created_by_user_id)
+          LEFT JOIN corretora_users cu ON cu.id = COALESCE(pl.seller_user_id, pl.created_by_user_id)
+          WHERE pl.partner_id = ${effectivePartnerId}
+            AND pl.status != 'deleted'
+          GROUP BY pl.id, pr.id, pu.id, cu.id
+          ORDER BY pl.created_at DESC
+          LIMIT 100
+        `
+      : await sql`
+          SELECT
+            pl.id,
+            pl.token,
+            pl.label,
+            pl.flow_type,
+            pl.status,
+            COALESCE(pl.discount_percent, 0) AS discount_percent,
+            COALESCE(pl.is_exclusive, false) AS is_exclusive,
+            COALESCE(pl.link_type, 'seller') AS link_type,
+            pl.seller_user_id,
+            pl.created_by_user_id,
+            COALESCE(pu.name, cu.name, pl.metadata->>'sellerName', pl.metadata->>'createdByName') AS seller_name,
+            pl.target_document,
+            pl.target_name,
+            pl.max_uses,
+            COALESCE(pl.used_count, 0)::int AS used_count,
+            COALESCE(pl.views_count, 0)::int AS views_count,
+            COALESCE(pl.unique_views_count, 0)::int AS unique_views_count,
+            pl.last_accessed_at,
+            pl.expires_at,
+            pl.used_at,
+            pl.created_at,
+            pl.updated_at,
+            pl.metadata,
+            pr.id AS product_id,
+            pr.name AS product_name,
+            pr.code AS product_code,
+            COUNT(c.id)::int AS total_cotacoes,
+            COUNT(c.id) FILTER (WHERE c.status IN ('aprovada', 'emitida'))::int AS total_vendas
+          FROM public_sale_links pl
+          LEFT JOIN products pr ON pr.id = pl.product_id
+          LEFT JOIN cotacoes c ON c.source_token = pl.token
+          LEFT JOIN partner_users pu ON pu.id = COALESCE(pl.seller_user_id, pl.created_by_user_id)
+          LEFT JOIN corretora_users cu ON cu.id = COALESCE(pl.seller_user_id, pl.created_by_user_id)
+          WHERE pl.partner_id = ${effectivePartnerId}
+            AND pl.status != 'deleted'
+            AND (pl.created_by_user_id = ${user.userId} OR pl.seller_user_id = ${user.userId} OR pl.link_type = 'corretora')
+          GROUP BY pl.id, pr.id, pu.id, cu.id
+          ORDER BY pl.created_at DESC
+          LIMIT 100
+        `;
 
     const baseUrl = appBaseUrl();
     const mapped = links.map((l: any) => {
@@ -105,9 +161,18 @@ export async function GET() {
       const totalCotacoes = Number(l.total_cotacoes || 0);
       const totalVendas = Number(l.total_vendas || 0);
       const metrics = calculateConversionMetrics(viewsCount, uniqueViewsCount, totalCotacoes, totalVendas);
+      const canManageLink = Boolean(
+        canManageCompany ||
+        l.created_by_user_id === user.userId ||
+        l.seller_user_id === user.userId
+      );
 
       return {
         ...l,
+        link_type: l.link_type || 'seller',
+        seller_user_id: l.seller_user_id || l.created_by_user_id || null,
+        seller_name: l.seller_name || null,
+        canManageLink,
         views_count: viewsCount,
         unique_views_count: uniqueViewsCount,
         total_cotacoes: totalCotacoes,
@@ -121,7 +186,7 @@ export async function GET() {
       };
     });
 
-    return NextResponse.json({ ok: true, links: mapped });
+    return NextResponse.json({ ok: true, links: mapped, canManageCompany });
   } catch (err) {
     logger.error({ err }, 'portal.links.get.failed');
     return NextResponse.json({ error: 'Erro interno ao consultar links' }, { status: 500 });
@@ -159,7 +224,27 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { productId, discountPercent, label, expiresInDays, isExclusive, targetDocument, targetName, maxUses } = parsed.data;
+    const {
+      productId,
+      discountPercent,
+      label,
+      expiresInDays,
+      isExclusive,
+      targetDocument,
+      targetName,
+      maxUses,
+      linkType,
+      sellerUserId,
+    } = parsed.data;
+
+    const canManageCompany = canManageOwnCompany(user);
+
+    // Se o usuário for vendedor (broker), o link obrigatoriamente pertence a ele
+    const effectiveLinkType = canManageCompany ? (linkType || 'seller') : 'seller';
+    const effectiveSellerUserId =
+      effectiveLinkType === 'seller'
+        ? (canManageCompany ? (sellerUserId || user.userId) : user.userId)
+        : null;
 
     // Higienização de campos exclusivos
     const cleanTargetDoc = targetDocument ? somenteDigitos(targetDocument) : null;
@@ -214,6 +299,8 @@ export async function POST(req: NextRequest) {
         status,
         discount_percent,
         is_exclusive,
+        link_type,
+        seller_user_id,
         target_document,
         target_name,
         max_uses,
@@ -231,6 +318,8 @@ export async function POST(req: NextRequest) {
         'active',
         ${discountPercent},
         ${effectiveIsExclusive},
+        ${effectiveLinkType},
+        ${effectiveSellerUserId},
         ${cleanTargetDoc},
         ${targetName || null},
         ${effectiveMaxUses},
@@ -239,6 +328,8 @@ export async function POST(req: NextRequest) {
         ${JSON.stringify({
           discountPercent,
           isExclusive: effectiveIsExclusive,
+          linkType: effectiveLinkType,
+          sellerUserId: effectiveSellerUserId,
           targetDocument: cleanTargetDoc,
           targetName: targetName || null,
           maxUses: effectiveMaxUses,
@@ -249,13 +340,13 @@ export async function POST(req: NextRequest) {
         })}::jsonb,
         ${user.userId}
       )
-      RETURNING id, token, label, flow_type, status, discount_percent, is_exclusive, target_document, target_name, max_uses, used_count, expires_at, created_at
+      RETURNING id, token, label, flow_type, status, discount_percent, is_exclusive, link_type, seller_user_id, target_document, target_name, max_uses, used_count, expires_at, created_at
     `;
 
     const fullUrl = `${appBaseUrl()}/contratar/${token}`;
 
     logger.info(
-      { partnerId: effectivePartnerId, userId: user.userId, token, discountPercent },
+      { partnerId: effectivePartnerId, userId: user.userId, token, discountPercent, linkType: effectiveLinkType, sellerUserId: effectiveSellerUserId },
       'portal.partner.exclusiveSaleLink.created'
     );
 
@@ -265,6 +356,8 @@ export async function POST(req: NextRequest) {
         link: {
           ...created,
           url: fullUrl,
+          seller_name: user.name,
+          canManageLink: true,
           total_cotacoes: 0,
         },
       },

@@ -46,6 +46,7 @@ interface GerarLinkClienteModalProps {
   onClose: () => void;
   products: ProductOption[];
   defaultProductId?: string;
+  canManageCompany?: boolean;
   onLinkCreated?: (link: GeneratedLinkData) => void;
 }
 
@@ -54,8 +55,10 @@ export default function GerarLinkClienteModal({
   onClose,
   products,
   defaultProductId,
+  canManageCompany = false,
   onLinkCreated,
 }: GerarLinkClienteModalProps) {
+  const [linkType, setLinkType] = useState<'seller' | 'corretora'>('seller');
   const [productId, setProductId] = useState<string>('');
   const [isExclusive, setIsExclusive] = useState<boolean>(false);
   const [targetDocument, setTargetDocument] = useState<string>('');
@@ -83,6 +86,7 @@ export default function GerarLinkClienteModal({
       setCopied(false);
       setDiscountPercent(0);
       setIsExclusive(false);
+      setLinkType('seller');
       setTargetDocument('');
       setTargetName('');
       setLabel('');
@@ -131,6 +135,7 @@ export default function GerarLinkClienteModal({
           label: label.trim() || undefined,
           expiresInDays: expiresInDays ? Number(expiresInDays) : undefined,
           isExclusive,
+          linkType: canManageCompany ? linkType : 'seller',
           targetDocument: isExclusive && targetDocument.trim() ? targetDocument.trim() : undefined,
           targetName: isExclusive && targetName.trim() ? targetName.trim() : undefined,
         }),
@@ -223,6 +228,66 @@ export default function GerarLinkClienteModal({
           {/* Conteúdo: Formulário OU Tela de Sucesso com o Link */}
           {!generatedLink ? (
             <form onSubmit={handleSubmit} className="space-y-5 pt-5">
+              {/* Seleção de Vínculo: Corretora vs Vendedor (Apenas para Gestor/Diretoria) */}
+              {canManageCompany && (
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-2">
+                    Vínculo Operacional do Link
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div
+                      onClick={() => setLinkType('seller')}
+                      className={`border-2 rounded-xl p-3 cursor-pointer transition-all ${
+                        linkType === 'seller'
+                          ? 'border-[#0e4a5a] bg-indigo-50/40 shadow-xs'
+                          : 'border-gray-200 bg-white hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          name="linkType"
+                          checked={linkType === 'seller'}
+                          onChange={() => setLinkType('seller')}
+                          className="text-[#0e4a5a] focus:ring-[#0e4a5a]"
+                        />
+                        <span className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                          <UserCheck className="w-3.5 h-3.5 text-indigo-600" /> Link de Vendedor
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-500 mt-1 pl-5">
+                        As cotações e o atendimento deste link serão atribuídos ao vendedor.
+                      </p>
+                    </div>
+
+                    <div
+                      onClick={() => setLinkType('corretora')}
+                      className={`border-2 rounded-xl p-3 cursor-pointer transition-all ${
+                        linkType === 'corretora'
+                          ? 'border-[#0e4a5a] bg-sky-50/40 shadow-xs'
+                          : 'border-gray-200 bg-white hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="radio"
+                          name="linkType"
+                          checked={linkType === 'corretora'}
+                          onChange={() => setLinkType('corretora')}
+                          className="text-[#0e4a5a] focus:ring-[#0e4a5a]"
+                        />
+                        <span className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                          <Globe className="w-3.5 h-3.5 text-blue-600" /> Link Geral da Corretora
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-gray-500 mt-1 pl-5">
+                        Link institucional geral da corretora, sem vinculação exclusiva a vendedor.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Modalidade: Geral vs Exclusivo */}
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-2">
