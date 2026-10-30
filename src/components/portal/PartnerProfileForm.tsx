@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Copy, Check, ExternalLink, Link2, Palette, Building, Share2, Tag, Power, PowerOff, Loader2, Eye, Users, TrendingUp, CheckCircle2, Upload, Image as ImageIcon, Sparkles, Trash2 } from 'lucide-react';
+import { Copy, Check, ExternalLink, Link2, Palette, Building, Share2, Tag, Power, PowerOff, Loader2, Eye, Users, TrendingUp, CheckCircle2, Upload, Image as ImageIcon, Sparkles, Trash2, Download } from 'lucide-react';
 import type { WhiteLabelConfig } from '@/lib/white-label';
 import { toast } from '@/components/ui/toast';
 import GerarLinkClienteButton from '@/components/portal/GerarLinkClienteButton';
@@ -130,6 +130,34 @@ export default function PartnerProfileForm({
   const [loadingCustomLinks, setLoadingCustomLinks] = useState(false);
   const [copiedCustomToken, setCopiedCustomToken] = useState<string | null>(null);
   const [togglingLinkId, setTogglingLinkId] = useState<string | null>(null);
+  const [isExportingLinks, setIsExportingLinks] = useState(false);
+
+  const handleExportLinks = async () => {
+    setIsExportingLinks(true);
+    toast.info('Gerando relatório de links de venda...');
+    try {
+      const res = await fetch('/api/portal/links/exportar');
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        toast.error(errJson.error || 'Falha ao exportar relatório de links.');
+        return;
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `relatorio_links_vendas_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast.success('Relatório CSV baixado com sucesso!');
+    } catch {
+      toast.error('Erro de conexão ao baixar relatório.');
+    } finally {
+      setIsExportingLinks(false);
+    }
+  };
 
   const fetchCustomLinks = async () => {
     setLoadingCustomLinks(true);
@@ -412,12 +440,28 @@ export default function PartnerProfileForm({
                 Gere links personalizados para campanhas ou clientes específicos onde o desconto comercial já é aplicado previamente.
               </p>
             </div>
-            <GerarLinkClienteButton
-              products={products || [{ id: 'prod-rc-001', name: 'RC Profissional Advogados' }]}
-              onLinkCreated={fetchCustomLinks}
-              buttonText="Gerar Novo Link Exclusivo"
-              variant="outline"
-            />
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={handleExportLinks}
+                disabled={isExportingLinks || customLinks.length === 0}
+                className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-xl border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition-all shadow-2xs disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                title="Exportar métricas e dados de todos os links para CSV/Excel"
+              >
+                {isExportingLinks ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-500" />
+                ) : (
+                  <Download className="w-3.5 h-3.5 text-gray-600" />
+                )}
+                <span>{isExportingLinks ? 'Exportando...' : 'Exportar CSV'}</span>
+              </button>
+              <GerarLinkClienteButton
+                products={products || [{ id: 'prod-rc-001', name: 'RC Profissional Advogados' }]}
+                onLinkCreated={fetchCustomLinks}
+                buttonText="Gerar Novo Link Exclusivo"
+                variant="outline"
+              />
+            </div>
           </div>
 
           {loadingCustomLinks && customLinks.length === 0 ? (
