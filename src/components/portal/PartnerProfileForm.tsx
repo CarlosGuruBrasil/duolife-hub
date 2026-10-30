@@ -1,10 +1,43 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Copy, Check, ExternalLink, Link2, Palette, Building, Share2, Tag, Power, PowerOff, Loader2, Eye, Users, TrendingUp, CheckCircle2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Copy, Check, ExternalLink, Link2, Palette, Building, Share2, Tag, Power, PowerOff, Loader2, Eye, Users, TrendingUp, CheckCircle2, Upload, Image as ImageIcon, Sparkles, Trash2 } from 'lucide-react';
 import type { WhiteLabelConfig } from '@/lib/white-label';
 import { toast } from '@/components/ui/toast';
 import GerarLinkClienteButton from '@/components/portal/GerarLinkClienteButton';
+
+const COLOR_PRESETS = [
+  {
+    name: 'DuoLife Clássico',
+    primary: '#0e4a5a',
+    secondary: '#7fa8b2',
+    accent: '#00d4e0',
+  },
+  {
+    name: 'Esmeralda Prestige',
+    primary: '#064e3b',
+    secondary: '#34d399',
+    accent: '#10b981',
+  },
+  {
+    name: 'Azul Royal',
+    primary: '#1e3a8a',
+    secondary: '#60a5fa',
+    accent: '#3b82f6',
+  },
+  {
+    name: 'Grafite & Âmbar',
+    primary: '#18181b',
+    secondary: '#a1a1aa',
+    accent: '#f59e0b',
+  },
+  {
+    name: 'Ruby Elegance',
+    primary: '#4c0519',
+    secondary: '#fb7185',
+    accent: '#e11d48',
+  },
+];
 
 interface SaleLinkInfo {
   token: string;
@@ -158,6 +191,67 @@ export default function PartnerProfileForm({
   function updateField(field: keyof FormState, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
   }
+
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [showUrlInput, setShowUrlInput] = useState(Boolean(form.logoUrl && !form.logoUrl.startsWith('/uploads/')));
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleLogoFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('O logotipo não pode exceder 2MB');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/svg+xml', 'image/webp'];
+    if (!allowedTypes.includes(file.type.toLowerCase())) {
+      toast.error('Formato inválido. Envie imagens PNG, JPG, SVG ou WEBP');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    setIsUploadingLogo(true);
+    try {
+      const formData = new FormData();
+      formData.append('logo', file);
+
+      const res = await fetch('/api/portal/perfil/logo', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        toast.error(data.error || 'Erro ao realizar upload do logotipo');
+        return;
+      }
+
+      updateField('logoUrl', data.logoUrl);
+      toast.success('Logotipo atualizado com sucesso!');
+    } catch {
+      toast.error('Falha de conexão ao enviar logotipo');
+    } finally {
+      setIsUploadingLogo(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleRemoveLogo = () => {
+    updateField('logoUrl', '');
+    toast.info('Logotipo removido. Lembre-se de salvar as alterações para confirmar.');
+  };
+
+  const handleApplyPreset = (preset: typeof COLOR_PRESETS[0]) => {
+    setForm((prev) => ({
+      ...prev,
+      primaryColor: preset.primary,
+      secondaryColor: preset.secondary,
+      accentColor: preset.accent,
+    }));
+    toast.success(`Paleta "${preset.name}" aplicada!`);
+  };
 
   async function copyToClipboard(text: string, isDirect: boolean) {
     try {
@@ -674,52 +768,196 @@ export default function PartnerProfileForm({
 
         {/* ABA 3: WHITE LABEL */}
         {activeTab === 'whitelabel' && (
-          <div className="space-y-6">
+          <div className="space-y-8">
             <div>
               <h3 className="text-base font-bold text-[#0e4a5a]">Personalização Visual da Página de Vendas</h3>
               <p className="text-xs text-gray-500 mt-0.5">
-                Defina como sua marca será apresentada aos segurados na página pública de contratação.
+                Defina como sua marca será apresentada aos segurados na página pública de contratação e nos links exclusivos.
               </p>
             </div>
 
-            <div className="grid gap-5 md:grid-cols-2">
-              <label className="block">
-                <span className="field-label">Slogan ou Subtítulo</span>
-                <input
-                  value={form.companySlogan}
-                  onChange={(e) => updateField('companySlogan', e.target.value)}
-                  placeholder="Ex: Assessoria e Proteção Profissional"
-                  className="form-input"
-                  disabled={!canEdit}
-                />
-              </label>
+            {/* SEÇÃO 1: LOGOTIPO DA CORRETORA */}
+            <div className="border border-gray-200 rounded-xl p-5 bg-gray-50/50 space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <h4 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+                    <ImageIcon size={16} className="text-[#0e4a5a]" />
+                    <span>Logotipo da Corretora</span>
+                  </h4>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Envie o logo da sua empresa em PNG, JPG, SVG ou WEBP (máximo 2MB).
+                  </p>
+                </div>
 
-              <label className="block">
-                <span className="field-label">URL do Logotipo da Corretora</span>
-                <input
-                  type="url"
-                  value={form.logoUrl}
-                  onChange={(e) => updateField('logoUrl', e.target.value)}
-                  placeholder="https://.../logo.png"
-                  className="form-input"
-                  disabled={!canEdit}
-                />
-              </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/svg+xml,image/webp"
+                    onChange={handleLogoFileSelect}
+                    className="hidden"
+                    disabled={!canEdit || isUploadingLogo}
+                  />
 
-              {/* Cores */}
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block">
-                  <span className="field-label">Cor Primária</span>
-                  <div className="flex items-center gap-2 mt-1">
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={!canEdit || isUploadingLogo}
+                    className="btn btn-secondary text-xs py-2 px-3 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    {isUploadingLogo ? (
+                      <Loader2 size={14} className="animate-spin text-[#0e4a5a]" />
+                    ) : (
+                      <Upload size={14} className="text-[#0e4a5a]" />
+                    )}
+                    <span>{isUploadingLogo ? 'Enviando...' : form.logoUrl ? 'Substituir Imagem' : 'Escolher Logotipo'}</span>
+                  </button>
+
+                  {form.logoUrl && (
+                    <button
+                      type="button"
+                      onClick={handleRemoveLogo}
+                      disabled={!canEdit || isUploadingLogo}
+                      className="text-xs font-semibold px-2.5 py-2 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 flex items-center gap-1 transition-all cursor-pointer disabled:opacity-50"
+                      title="Remover logotipo"
+                    >
+                      <Trash2 size={13} />
+                      <span>Remover Logotipo</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Preview do Logotipo */}
+              {form.logoUrl ? (
+                <div className="flex items-center gap-4 bg-white border border-gray-200 rounded-lg p-3">
+                  <div className="h-16 w-36 bg-gray-50 border border-gray-100 rounded-md flex items-center justify-center p-2 shrink-0">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={form.logoUrl}
+                      alt="Logotipo"
+                      className="max-h-full max-w-full object-contain"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-gray-800 truncate">Logotipo Ativo</p>
+                    <p className="text-[11px] text-gray-500 font-mono truncate">{form.logoUrl}</p>
+                    <button
+                      type="button"
+                      onClick={() => setShowUrlInput(!showUrlInput)}
+                      className="text-[11px] text-[#0e4a5a] hover:underline mt-1 block"
+                    >
+                      {showUrlInput ? 'Ocultar URL manual' : 'Editar URL manualmente'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  onClick={() => canEdit && !isUploadingLogo && fileInputRef.current?.click()}
+                  className={`border-2 border-dashed border-gray-300 rounded-lg p-6 text-center bg-white transition-all ${
+                    canEdit && !isUploadingLogo ? 'cursor-pointer hover:border-[#0e4a5a] hover:bg-gray-50' : ''
+                  }`}
+                >
+                  <Upload size={24} className="mx-auto text-gray-400 mb-2" />
+                  <p className="text-xs font-medium text-gray-700">
+                    Nenhum logotipo selecionado
+                  </p>
+                  <p className="text-[11px] text-gray-400 mt-0.5">
+                    Clique aqui ou no botão acima para carregar o arquivo de imagem do seu computador
+                  </p>
+                </div>
+              )}
+
+              {/* Campo manual de URL externa (caso prefira link direto) */}
+              {(showUrlInput || !form.logoUrl) && (
+                <div className="pt-2">
+                  <label className="block">
+                    <span className="text-[11px] font-semibold text-gray-600">Ou cole a URL direta da imagem:</span>
+                    <input
+                      type="url"
+                      value={form.logoUrl}
+                      onChange={(e) => updateField('logoUrl', e.target.value)}
+                      placeholder="https://suacorretora.com.br/logo.png"
+                      className="form-input text-xs font-mono mt-1"
+                      disabled={!canEdit}
+                    />
+                  </label>
+                </div>
+              )}
+            </div>
+
+            {/* SEÇÃO 2: PALETAS DE CORES */}
+            <div className="space-y-4">
+              <div>
+                <h4 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+                  <Sparkles size={16} className="text-[#0e4a5a]" />
+                  <span>Paletas Rápidas Corporativas (1-Clique)</span>
+                </h4>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Selecione um dos esquemas de cores pré-definidos para aplicar automaticamente na sua marca.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+                {COLOR_PRESETS.map((preset) => {
+                  const isCurrent =
+                    form.primaryColor.toLowerCase() === preset.primary.toLowerCase() &&
+                    form.secondaryColor.toLowerCase() === preset.secondary.toLowerCase() &&
+                    form.accentColor.toLowerCase() === preset.accent.toLowerCase();
+
+                  return (
+                    <button
+                      key={preset.name}
+                      type="button"
+                      disabled={!canEdit}
+                      onClick={() => handleApplyPreset(preset)}
+                      className={`p-3 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-2 ${
+                        isCurrent
+                          ? 'border-[#0e4a5a] bg-teal-50/40 shadow-sm'
+                          : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-xs'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className="w-4 h-4 rounded-full border border-black/10 shrink-0"
+                          style={{ backgroundColor: preset.primary }}
+                          title={`Primária: ${preset.primary}`}
+                        />
+                        <span
+                          className="w-4 h-4 rounded-full border border-black/10 shrink-0"
+                          style={{ backgroundColor: preset.secondary }}
+                          title={`Secundária: ${preset.secondary}`}
+                        />
+                        <span
+                          className="w-4 h-4 rounded-full border border-black/10 shrink-0"
+                          style={{ backgroundColor: preset.accent }}
+                          title={`Destaque: ${preset.accent}`}
+                        />
+                      </div>
+                      <span className="text-xs font-semibold text-gray-800 line-clamp-1">
+                        {preset.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Seletores Manuais de Cor */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                <label className="block bg-gray-50/50 border border-gray-200 rounded-xl p-3">
+                  <span className="text-xs font-bold text-gray-900 block">Cor Primária</span>
+                  <span className="text-[11px] text-gray-500 block mb-2">Títulos, botões e cabeçalhos</span>
+                  <div className="flex items-center gap-2">
                     <input
                       type="color"
                       value={form.primaryColor}
                       onChange={(e) => updateField('primaryColor', e.target.value)}
                       disabled={!canEdit}
-                      className="w-10 h-10 rounded border border-gray-300 p-0.5 cursor-pointer"
+                      className="w-10 h-10 rounded-lg border border-gray-300 p-0.5 cursor-pointer shrink-0"
                     />
                     <input
                       type="text"
+                      maxLength={7}
                       value={form.primaryColor}
                       onChange={(e) => updateField('primaryColor', e.target.value)}
                       className="form-input font-mono text-xs uppercase"
@@ -728,18 +966,42 @@ export default function PartnerProfileForm({
                   </div>
                 </label>
 
-                <label className="block">
-                  <span className="field-label">Cor de Destaque</span>
-                  <div className="flex items-center gap-2 mt-1">
+                <label className="block bg-gray-50/50 border border-gray-200 rounded-xl p-3">
+                  <span className="text-xs font-bold text-gray-900 block">Cor Secundária</span>
+                  <span className="text-[11px] text-gray-500 block mb-2">Bordas e detalhes de apoio</span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={form.secondaryColor}
+                      onChange={(e) => updateField('secondaryColor', e.target.value)}
+                      disabled={!canEdit}
+                      className="w-10 h-10 rounded-lg border border-gray-300 p-0.5 cursor-pointer shrink-0"
+                    />
+                    <input
+                      type="text"
+                      maxLength={7}
+                      value={form.secondaryColor}
+                      onChange={(e) => updateField('secondaryColor', e.target.value)}
+                      className="form-input font-mono text-xs uppercase"
+                      disabled={!canEdit}
+                    />
+                  </div>
+                </label>
+
+                <label className="block bg-gray-50/50 border border-gray-200 rounded-xl p-3">
+                  <span className="text-xs font-bold text-gray-900 block">Cor de Destaque</span>
+                  <span className="text-[11px] text-gray-500 block mb-2">Badges, descontos e CTAs</span>
+                  <div className="flex items-center gap-2">
                     <input
                       type="color"
                       value={form.accentColor}
                       onChange={(e) => updateField('accentColor', e.target.value)}
                       disabled={!canEdit}
-                      className="w-10 h-10 rounded border border-gray-300 p-0.5 cursor-pointer"
+                      className="w-10 h-10 rounded-lg border border-gray-300 p-0.5 cursor-pointer shrink-0"
                     />
                     <input
                       type="text"
+                      maxLength={7}
                       value={form.accentColor}
                       onChange={(e) => updateField('accentColor', e.target.value)}
                       className="form-input font-mono text-xs uppercase"
@@ -748,29 +1010,145 @@ export default function PartnerProfileForm({
                   </div>
                 </label>
               </div>
+            </div>
 
-              <label className="block">
-                <span className="field-label">Título da Página de Contratação</span>
-                <input
-                  value={form.publicTitle}
-                  onChange={(e) => updateField('publicTitle', e.target.value)}
-                  placeholder="Ex: Contratação de Seguro RC Profissional"
-                  className="form-input"
-                  disabled={!canEdit}
-                />
-              </label>
+            {/* SEÇÃO 3: TEXTOS INSTITUCIONAIS */}
+            <div className="space-y-4 pt-2">
+              <h4 className="text-sm font-bold text-gray-900">Textos da Página de Vendas</h4>
 
-              <label className="block md:col-span-2">
-                <span className="field-label">Mensagem / Apresentação aos Segurados</span>
-                <textarea
-                  rows={3}
-                  value={form.publicDescription}
-                  onChange={(e) => updateField('publicDescription', e.target.value)}
-                  placeholder="Apresente sua corretora e orientações para o preenchimento da proposta..."
-                  className="form-input"
-                  disabled={!canEdit}
-                />
-              </label>
+              <div className="grid gap-5 md:grid-cols-2">
+                <label className="block">
+                  <span className="field-label">Slogan ou Subtítulo</span>
+                  <input
+                    value={form.companySlogan}
+                    onChange={(e) => updateField('companySlogan', e.target.value)}
+                    placeholder="Ex: Assessoria e Proteção Profissional"
+                    className="form-input"
+                    disabled={!canEdit}
+                  />
+                </label>
+
+                <label className="block">
+                  <span className="field-label">Título da Página de Contratação</span>
+                  <input
+                    value={form.publicTitle}
+                    onChange={(e) => updateField('publicTitle', e.target.value)}
+                    placeholder="Ex: Contratação de Seguro RC Profissional"
+                    className="form-input"
+                    disabled={!canEdit}
+                  />
+                </label>
+
+                <label className="block md:col-span-2">
+                  <span className="field-label">Mensagem / Apresentação aos Segurados</span>
+                  <textarea
+                    rows={3}
+                    value={form.publicDescription}
+                    onChange={(e) => updateField('publicDescription', e.target.value)}
+                    placeholder="Apresente sua corretora e orientações para o preenchimento da proposta..."
+                    className="form-input"
+                    disabled={!canEdit}
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* SEÇÃO 4: SIMULADOR EM TEMPO REAL (LIVE PREVIEW) */}
+            <div className="pt-4 border-t border-gray-200 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+                    <Palette size={16} className="text-[#0e4a5a]" />
+                    <span>Prévia ao Vivo da Página de Contratação</span>
+                  </h4>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Veja como seus clientes visualizarão sua marca ao abrir os links exclusivos de autocadastro.
+                  </p>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-teal-50 text-teal-800 border border-teal-200">
+                  Tempo Real
+                </span>
+              </div>
+
+              {/* Mockup da Página Pública */}
+              <div className="border border-gray-300 rounded-2xl overflow-hidden bg-gray-50 shadow-xs">
+                {/* Cabeçalho do Mockup */}
+                <div
+                  className="bg-white border-b px-5 py-4 flex items-center justify-between gap-4 transition-all"
+                  style={{ borderTop: `4px solid ${form.primaryColor}` }}
+                >
+                  <div className="flex items-center gap-3">
+                    {form.logoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={form.logoUrl}
+                        alt="Logo Corretora"
+                        className="h-9 max-w-[140px] object-contain"
+                      />
+                    ) : (
+                      <span
+                        className="text-base font-extrabold tracking-tight"
+                        style={{ color: form.primaryColor }}
+                      >
+                        {form.companyName || partner.nome_fantasia || 'Sua Corretora'}
+                      </span>
+                    )}
+
+                    {form.companySlogan && (
+                      <span className="hidden sm:inline-block text-xs text-gray-500 border-l border-gray-200 pl-3">
+                        {form.companySlogan}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="text-right">
+                    <span className="text-[11px] text-gray-400 block">Atendimento</span>
+                    <span className="text-xs font-semibold text-gray-700">
+                      {form.companyPhone || partner.phone || '(00) 0000-0000'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Corpo do Mockup */}
+                <div className="p-5 space-y-4">
+                  <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="text-[10px] font-bold px-2 py-0.5 rounded-md text-white shadow-xs"
+                          style={{ backgroundColor: form.accentColor }}
+                        >
+                          10% OFF EXCLUSIVO
+                        </span>
+                        <span className="text-xs text-gray-400">• Parceria Oficial DuoLife</span>
+                      </div>
+                      <h5
+                        className="text-base font-bold transition-all"
+                        style={{ color: form.primaryColor }}
+                      >
+                        {form.publicTitle || 'Seguro de Responsabilidade Civil Profissional'}
+                      </h5>
+                      <p className="text-xs text-gray-600 max-w-xl">
+                        {form.publicDescription ||
+                          'Contratação simplificada e 100% digital com cobertura completa e emissão expressa.'}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      className="px-5 py-2.5 rounded-xl text-xs font-bold text-white shadow-sm transition-all whitespace-nowrap self-stretch md:self-auto"
+                      style={{ backgroundColor: form.primaryColor }}
+                    >
+                      Contratar Agora
+                    </button>
+                  </div>
+                </div>
+
+                {/* Rodapé da Prévia */}
+                <div className="bg-white/70 border-t border-gray-200 px-5 py-2 text-[11px] text-gray-500 text-center">
+                  Simulação de exibição pública da marca na contratação do segurado
+                </div>
+              </div>
             </div>
           </div>
         )}

@@ -7,7 +7,7 @@ import { ensureSchema } from '@/lib/schema';
 import { getWhiteLabelConfig, mergeWhiteLabelConfig } from '@/lib/white-label';
 import { getOrCreatePartnerSaleLink } from '@/lib/referral';
 
-const emptyToUndefined = (v: unknown) => (v === '' ? undefined : v);
+const emptyToUndefined = (v: unknown) => (v === '' || v === null ? undefined : v);
 
 const partnerProfileSchema = z.object({
   nomeFantasia: z.string().trim().min(2, 'Nome fantasia precisa ter pelo menos 2 caracteres'),
@@ -32,7 +32,10 @@ const partnerProfileSchema = z.object({
   companyPhone: z.preprocess(emptyToUndefined, z.string().trim().optional()),
   companyEmail: z.preprocess(emptyToUndefined, z.string().trim().email('E-mail comercial inválido').optional()),
   companyWebsite: z.preprocess(emptyToUndefined, z.string().trim().optional()),
-  logoUrl: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+  logoUrl: z
+    .union([z.string().trim(), z.null()])
+    .optional()
+    .transform((v) => (v === null ? '' : v)),
   primaryColor: z.preprocess(emptyToUndefined, z.string().trim().regex(/^#[0-9a-fA-F]{6}$/, 'Cor primária inválida').optional()),
   secondaryColor: z.preprocess(emptyToUndefined, z.string().trim().regex(/^#[0-9a-fA-F]{6}$/, 'Cor secundária inválida').optional()),
   accentColor: z.preprocess(emptyToUndefined, z.string().trim().regex(/^#[0-9a-fA-F]{6}$/, 'Cor de destaque inválida').optional()),
