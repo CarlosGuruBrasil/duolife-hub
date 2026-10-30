@@ -63,6 +63,13 @@ export async function POST(
       return Response.json({ error: 'Cotação não encontrada' }, { status: 404 });
     }
 
+    if (cotacao.status === 'pendente_duplicidade') {
+      return Response.json(
+        { error: 'Esta proposta possui duplicidade cadastral pendente de validação obrigatória pelo vendedor antes de gerar o contrato.' },
+        { status: 422 }
+      );
+    }
+
     if (ESTADOS_TERMINAIS.includes(cotacao.status)) {
       return Response.json({ error: `Cotação já está em estado final (${cotacao.status}) — não é possível gerar contrato` }, { status: 422 });
     }

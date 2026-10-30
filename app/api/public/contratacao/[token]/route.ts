@@ -15,6 +15,8 @@ async function resolveLink(token: string) {
     SELECT
       pl.id, pl.token, pl.partner_id, pl.product_id, pl.flow_type, pl.label, pl.status, pl.expires_at,
       pl.used_at, pl.metadata, pl.created_at, COALESCE(pl.discount_percent, 0) AS discount_percent,
+      COALESCE(pl.is_exclusive, false) AS is_exclusive,
+      pl.target_document, pl.target_name, pl.max_uses, COALESCE(pl.used_count, 0) AS used_count,
       p.razao_social, p.nome_fantasia, p.email, p.phone, p.metadata AS partner_metadata,
       c.metadata AS corretora_metadata,
       pr.name AS product_name, pr.code AS product_code
@@ -46,6 +48,10 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
     const link = await resolveLink(token);
     if (!link) return Response.json({ error: 'Link inválido ou expirado' }, { status: 404 });
 
+    if (link.max_uses && Number(link.used_count || 0) >= Number(link.max_uses)) {
+      return Response.json({ error: 'Link expirado ou já utilizado' }, { status: 404 });
+    }
+
     const clientAccess = extractClientAccessData(_req.headers);
     trackSaleLinkAccess({
       linkId: link.id,
@@ -66,6 +72,11 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
         label: link.label,
         flowType: link.flow_type,
         discountPercent: Number(link.discount_percent || 0),
+        isExclusive: Boolean(link.is_exclusive),
+        targetDocument: link.target_document || null,
+        targetName: link.target_name || null,
+        maxUses: link.max_uses ? Number(link.max_uses) : null,
+        usedCount: Number(link.used_count || 0),
         whiteLabel,
         partner: {
           id: link.partner_id,

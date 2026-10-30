@@ -39,6 +39,13 @@ export async function POST(
       return Response.json({ error: 'Cotação não encontrada' }, { status: 404 });
     }
 
+    if (cotacao.status === 'pendente_duplicidade') {
+      return Response.json(
+        { error: 'Esta proposta possui duplicidade cadastral pendente de validação obrigatória pelo vendedor antes de gerar o pagamento.' },
+        { status: 422 }
+      );
+    }
+
     const clientData = (cotacao.client_data as Record<string, any>) || {};
 
     // Trava de obrigatoriedade: o termo deve estar assinado antes da emissão do boleto/pagamento

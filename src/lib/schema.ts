@@ -623,6 +623,7 @@ async function runRuntimeSchemaSetup(): Promise<void> {
   await sql`ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS renewed_from_cotacao_id TEXT REFERENCES cotacoes(id)`;
   await sql`ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS corretora_id TEXT REFERENCES corretoras(id)`;
   await sql`ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS flow_key TEXT`;
+  await sql`ALTER TABLE cotacoes ADD COLUMN IF NOT EXISTS cadastral_conflict JSONB`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_partner_id ON cotacoes (partner_id)`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_status     ON cotacoes (status)`;
   await sql`CREATE INDEX IF NOT EXISTS cotacoes_source_token ON cotacoes (source_token)`;
@@ -726,6 +727,11 @@ async function runRuntimeSchemaSetup(): Promise<void> {
       metadata          JSONB NOT NULL DEFAULT '{}',
       created_by_user_id TEXT,
       discount_percent  INT NOT NULL DEFAULT 0,
+      is_exclusive      BOOLEAN NOT NULL DEFAULT false,
+      target_document   TEXT,
+      target_name       TEXT,
+      max_uses          INT,
+      used_count        INT NOT NULL DEFAULT 0,
       views_count       INT NOT NULL DEFAULT 0,
       unique_views_count INT NOT NULL DEFAULT 0,
       last_accessed_at  TIMESTAMPTZ,
@@ -734,11 +740,18 @@ async function runRuntimeSchemaSetup(): Promise<void> {
     )
   `;
   await sql`ALTER TABLE public_sale_links ADD COLUMN IF NOT EXISTS discount_percent INT NOT NULL DEFAULT 0`;
+  await sql`ALTER TABLE public_sale_links ADD COLUMN IF NOT EXISTS is_exclusive BOOLEAN NOT NULL DEFAULT false`;
+  await sql`ALTER TABLE public_sale_links ADD COLUMN IF NOT EXISTS target_document TEXT`;
+  await sql`ALTER TABLE public_sale_links ADD COLUMN IF NOT EXISTS target_name TEXT`;
+  await sql`ALTER TABLE public_sale_links ADD COLUMN IF NOT EXISTS max_uses INT`;
+  await sql`ALTER TABLE public_sale_links ADD COLUMN IF NOT EXISTS used_count INT NOT NULL DEFAULT 0`;
   await sql`ALTER TABLE public_sale_links ADD COLUMN IF NOT EXISTS views_count INT NOT NULL DEFAULT 0`;
   await sql`ALTER TABLE public_sale_links ADD COLUMN IF NOT EXISTS unique_views_count INT NOT NULL DEFAULT 0`;
   await sql`ALTER TABLE public_sale_links ADD COLUMN IF NOT EXISTS last_accessed_at TIMESTAMPTZ`;
   await sql`CREATE INDEX IF NOT EXISTS public_sale_links_partner_id ON public_sale_links (partner_id)`;
   await sql`CREATE INDEX IF NOT EXISTS public_sale_links_token      ON public_sale_links (token)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_public_sale_links_target_doc ON public_sale_links (target_document)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_public_sale_links_is_exclusive ON public_sale_links (is_exclusive)`;
 
   // Logs de auditoria e métricas de acesso aos links de venda
   await sql`

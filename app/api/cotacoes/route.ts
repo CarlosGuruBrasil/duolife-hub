@@ -4,13 +4,15 @@ import { getPartnerAccessContext, isPlatformAdmin, isInternalUser, isDevUser, ro
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { ensureSchema, seedInitialData } from '@/lib/schema';
-import { upsertInsuranceClient } from '@/lib/insurance-ops';
+import { upsertInsuranceClient, handleClientRegistrationIntegrity } from '@/lib/insurance-ops';
 import { calcularPrecoServidor } from '@/lib/pricing';
 import { getRamoConfig, buildRamoZodSchema } from '@/lib/product-schemas';
+import { somenteDigitos } from '@/lib/documento';
 
 const cotacaoSchema = z.object({
   id: z.string().trim().optional().nullable(),
   cotacaoId: z.string().trim().optional().nullable(),
+  clientSessionToken: z.string().trim().optional().nullable(),
   clientName: z.string().trim().min(2, 'Nome do proponente deve ter ao menos 2 caracteres'),
   clientCpfCnpj: z
     .string()
@@ -193,9 +195,15 @@ export async function POST(req: NextRequest) {
     let user: any = null;
     let access: Awaited<ReturnType<typeof getPartnerAccessContext>> = null;
 
+    let publicLinkData: any = null;
+
     if (publicToken) {
       const [link] = await sql`
-        SELECT id, partner_id, flow_type, product_id, status, expires_at, created_by_user_id, COALESCE(discount_percent, 0) AS discount_percent
+        SELECT
+          id, partner_id, flow_type, product_id, status, expires_at, created_by_user_id,
+          COALESCE(discount_percent, 0) AS discount_percent,
+          COALESCE(is_exclusive, false) AS is_exclusive,
+          target_document, target_name, max_uses, COALESCE(used_count, 0) AS used_count
         FROM public_sale_links
         WHERE token = ${publicToken}
           AND status = 'active'
@@ -203,7 +211,12 @@ export async function POST(req: NextRequest) {
         LIMIT 1
       `;
       if (!link) return Response.json({ error: 'Token público inválido ou expirado' }, { status: 401 });
-      
+
+      if (link.max_uses && Number(link.used_count || 0) >= Number(link.max_uses)) {
+        return Response.json({ error: 'Este link de contratação já atingiu o limite de utilizações permitidas' }, { status: 404 });
+      }
+
+      publicLinkData = link;
       publicLinkId = link.id;
       targetPartnerId = link.partner_id;
       userId = link.created_by_user_id || null;
@@ -235,6 +248,15 @@ export async function POST(req: NextRequest) {
       );
     }
     const data = parsed.data as any;
+
+    if (publicLinkData?.is_exclusive && publicLinkData?.target_document) {
+      if (somenteDigitos(data.clientCpfCnpj) !== somenteDigitos(publicLinkData.target_document)) {
+        return Response.json(
+          { error: 'Este link de contratação exclusivo foi emitido para outro titular/documento.' },
+          { status: 422 }
+        );
+      }
+    }
 
     if (!publicToken) {
       user = await verifyAuth();
@@ -408,14 +430,21 @@ export async function POST(req: NextRequest) {
       clientMetadata.oab = clientDataInput.oab;
     }
 
-    const client = await upsertInsuranceClient({
+    const clientSessionToken = data.clientSessionToken || req.headers.get('x-client-session-token') || null;
+
+    const integrityResult = await handleClientRegistrationIntegrity({
       documentNumber: data.clientCpfCnpj,
       fullName: data.clientName,
       email: data.clientEmail || null,
       phone: data.clientPhone || null,
       birthDate: typeof clientDataInput.dataNascto === 'string' ? clientDataInput.dataNascto : null,
       metadata: clientMetadata,
+      clientSessionToken,
+      isPublicRegistration: Boolean(publicToken),
     });
+
+    const client = integrityResult.client;
+    const initialStatus = integrityResult.hasDuplicateConflict ? 'pendente_duplicidade' : 'rascunho';
 
     // Inicializa validador de integridade do ramo (buildRamoZodSchema)
     const ramoSchema = buildRamoZodSchema(ramoConfig);
@@ -598,6 +627,7 @@ export async function POST(req: NextRequest) {
         importancia_segurada,
         premio_calculado,
         status,
+        cadastral_conflict,
         notes,
         flow_type,
         source_token,
@@ -617,26 +647,40 @@ export async function POST(req: NextRequest) {
         ${JSON.stringify(clientDataFinal)}::jsonb,
         ${data.importanciaSegurada || null},
         ${premioCalculado},
-        'rascunho',
+        ${initialStatus},
+        ${integrityResult.cadastralConflict ? JSON.stringify(integrityResult.cadastralConflict) : null}::jsonb,
         ${data.notes || null},
         ${flowType},
         ${sourceToken},
         ${isRenewal},
         ${renewedFromCotacaoId}
       )
-      RETURNING id, status, created_at
+      RETURNING id, status, created_at, cadastral_conflict
     `;
 
     if (publicToken) {
       await sql`
         UPDATE public_sale_links
         SET used_at = COALESCE(used_at, NOW()),
+            used_count = COALESCE(used_count, 0) + 1,
+            status = CASE
+              WHEN max_uses IS NOT NULL AND (COALESCE(used_count, 0) + 1) >= max_uses THEN 'used'
+              ELSE status
+            END,
             updated_at = NOW()
         WHERE token = ${publicToken}
       `;
     }
 
-    return Response.json({ ok: true, cotacao }, { status: 201 });
+    return Response.json(
+      {
+        ok: true,
+        cotacao,
+        duplicateConflict: integrityResult.hasDuplicateConflict,
+        clientSessionToken: integrityResult.clientSessionToken,
+      },
+      { status: 201 }
+    );
   } catch (err) {
     logger.error({ err }, 'cotacoes.create.failed');
     return Response.json({ error: 'Erro interno' }, { status: 500 });

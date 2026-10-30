@@ -6,15 +6,36 @@ import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
 import { verifyPartnerAuth, isDevUser, isPlatformAdmin, unauthorized } from '@/lib/auth';
 import { calculateConversionMetrics } from '@/lib/link-tracker';
+import { somenteDigitos, validarCpf, validarCnpj } from '@/lib/documento';
 
 const emptyToUndefined = (v: unknown) => (v === '' ? undefined : v);
 
-const createLinkSchema = z.object({
-  productId: z.preprocess(emptyToUndefined, z.string().trim().min(1).optional()),
-  discountPercent: z.coerce.number().min(0, 'Desconto não pode ser negativo').max(40, 'Desconto máximo permitido é de 40%').default(0),
-  label: z.preprocess(emptyToUndefined, z.string().trim().min(1).max(100).optional()),
-  expiresInDays: z.coerce.number().int().positive().max(3650).optional(),
-});
+const createLinkSchema = z
+  .object({
+    productId: z.preprocess(emptyToUndefined, z.string().trim().min(1).optional()),
+    discountPercent: z.coerce.number().min(0, 'Desconto não pode ser negativo').max(40, 'Desconto máximo permitido é de 40%').default(0),
+    label: z.preprocess(emptyToUndefined, z.string().trim().min(1).max(100).optional()),
+    expiresInDays: z.coerce.number().int().positive().max(3650).optional(),
+    isExclusive: z.boolean().default(false),
+    targetDocument: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+    targetName: z.preprocess(emptyToUndefined, z.string().trim().max(150).optional()),
+    maxUses: z.coerce.number().int().positive().optional(),
+  })
+  .refine(
+    (data) => {
+      if (data.isExclusive && data.targetDocument) {
+        const cleanDoc = somenteDigitos(data.targetDocument);
+        if (cleanDoc.length === 11) return validarCpf(cleanDoc);
+        if (cleanDoc.length === 14) return validarCnpj(cleanDoc);
+        return false;
+      }
+      return true;
+    },
+    {
+      message: 'Documento (CPF ou CNPJ) informado para o link exclusivo é inválido',
+      path: ['targetDocument'],
+    }
+  );
 
 function appBaseUrl() {
   return process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || 'https://duolife.com.br';
@@ -50,6 +71,11 @@ export async function GET() {
         pl.flow_type,
         pl.status,
         COALESCE(pl.discount_percent, 0) AS discount_percent,
+        COALESCE(pl.is_exclusive, false) AS is_exclusive,
+        pl.target_document,
+        pl.target_name,
+        pl.max_uses,
+        COALESCE(pl.used_count, 0)::int AS used_count,
         COALESCE(pl.views_count, 0)::int AS views_count,
         COALESCE(pl.unique_views_count, 0)::int AS unique_views_count,
         pl.last_accessed_at,
@@ -133,7 +159,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { productId, discountPercent, label, expiresInDays } = parsed.data;
+    const { productId, discountPercent, label, expiresInDays, isExclusive, targetDocument, targetName, maxUses } = parsed.data;
+
+    // Higienização de campos exclusivos
+    const cleanTargetDoc = targetDocument ? somenteDigitos(targetDocument) : null;
+    const effectiveIsExclusive = Boolean(isExclusive);
+    const effectiveMaxUses = effectiveIsExclusive ? (maxUses ?? 1) : (maxUses ?? null);
 
     // Define o produto alvo (ou padrão) e valida disponibilidade do produto e permissão do parceiro
     const targetProductId = productId || 'prod-rc-001';
@@ -182,6 +213,11 @@ export async function POST(req: NextRequest) {
         label,
         status,
         discount_percent,
+        is_exclusive,
+        target_document,
+        target_name,
+        max_uses,
+        used_count,
         expires_at,
         metadata,
         created_by_user_id
@@ -194,9 +230,18 @@ export async function POST(req: NextRequest) {
         ${label || null},
         'active',
         ${discountPercent},
+        ${effectiveIsExclusive},
+        ${cleanTargetDoc},
+        ${targetName || null},
+        ${effectiveMaxUses},
+        0,
         ${expiresAt},
         ${JSON.stringify({
           discountPercent,
+          isExclusive: effectiveIsExclusive,
+          targetDocument: cleanTargetDoc,
+          targetName: targetName || null,
+          maxUses: effectiveMaxUses,
           createdByName: user.name,
           createdByUserEmail: user.email,
           createdAt: new Date().toISOString(),
@@ -204,7 +249,7 @@ export async function POST(req: NextRequest) {
         })}::jsonb,
         ${user.userId}
       )
-      RETURNING id, token, label, flow_type, status, discount_percent, expires_at, created_at
+      RETURNING id, token, label, flow_type, status, discount_percent, is_exclusive, target_document, target_name, max_uses, used_count, expires_at, created_at
     `;
 
     const fullUrl = `${appBaseUrl()}/contratar/${token}`;

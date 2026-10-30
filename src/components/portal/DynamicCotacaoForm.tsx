@@ -50,6 +50,13 @@ import {
   parseCurrencyToNumber,
 } from '@/components/modals/masks';
 import { validarCpf, validarCnpj, somenteDigitos } from '@/lib/documento';
+import {
+  saveLocalDraft,
+  loadLocalDraft,
+  clearLocalDraft,
+  getClientSessionToken,
+  setClientSessionToken,
+} from '@/lib/client-draft-storage';
 
 export interface Plano {
   tipoDePlano: string;
@@ -428,6 +435,51 @@ export default function DynamicCotacaoForm({
   const [loading, setLoading] = useState(false);
   const [loadingPlanos, setLoadingPlanos] = useState(true);
   const [cotacaoId, setCotacaoId] = useState('');
+  const [hasRestoredDraft, setHasRestoredDraft] = useState(false);
+  const [duplicatePendingAlert, setDuplicatePendingAlert] = useState(false);
+
+  // Auto-recuperação do rascunho salvo em LocalStorage
+  useEffect(() => {
+    if (!publicToken) return;
+    const draft = loadLocalDraft(publicToken);
+    if (draft && draft.form) {
+      setForm((prev) => ({ ...prev, ...draft.form }));
+      if (draft.step && draft.step > 1 && draft.step <= 4) {
+        setStep(draft.step);
+      }
+      if (draft.planoSel) setPlanoSel(draft.planoSel);
+      if (draft.parcelaSel) setParcelaSel(draft.parcelaSel);
+      if (draft.formaPagamento) setFormaPagamento(draft.formaPagamento as any);
+      setHasRestoredDraft(true);
+    }
+  }, [publicToken]);
+
+  // Auto-save contínuo em LocalStorage durante o preenchimento pelo cliente
+  useEffect(() => {
+    if (!publicToken || step >= 5) return;
+    const timer = setTimeout(() => {
+      saveLocalDraft(publicToken, {
+        step,
+        form,
+        planoSel,
+        parcelaSel,
+        formaPagamento,
+      });
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [publicToken, step, form, planoSel, parcelaSel, formaPagamento]);
+
+  const handleClearDraft = () => {
+    if (publicToken) {
+      clearLocalDraft(publicToken);
+      setHasRestoredDraft(false);
+      setForm({ ...initialFormState, dataInicioVigencia: getTodayIsoDate() });
+      setStep(1);
+      setPlanoSel(null);
+      setParcelaSel(null);
+      toast.info('Rascunho local removido.');
+    }
+  };
 
   const setError = useCallback((msg: string) => {
     if (msg) toast.error(msg);
@@ -1407,6 +1459,7 @@ export default function DynamicCotacaoForm({
 
       const cleanCalculatedCob = cleanCob > 0 ? cleanCob : parseMoneyToFloat(planoSel.cobertura);
 
+      const clientToken = getClientSessionToken(docDigits);
       const payload = {
         cotacaoId: cotacaoId || undefined,
         clientName: form.nome.trim(),
@@ -1417,18 +1470,38 @@ export default function DynamicCotacaoForm({
         importanciaSegurada: cleanCalculatedCob > 0 ? cleanCalculatedCob : undefined,
         clientData: payloadClientData,
         adminSelectedPartnerId,
+        clientSessionToken: clientToken || undefined,
       };
 
       // 1. Salva ou atualiza a cotação
       const res = await fetch('/api/cotacoes', {
         method: 'POST',
-        headers: getHeaders({ 'Content-Type': 'application/json' }),
+        headers: getHeaders({
+          'Content-Type': 'application/json',
+          ...(clientToken ? { 'x-client-session-token': clientToken } : {}),
+        }),
         body: JSON.stringify(payload),
       });
       const data = await res.json();
 
       if (!res.ok) {
         setError(data.error || 'Erro ao registrar cotação.');
+        setLoading(false);
+        return;
+      }
+
+      if (data.clientSessionToken) {
+        setClientSessionToken(docDigits, data.clientSessionToken);
+      }
+
+      if (publicToken) {
+        clearLocalDraft(publicToken);
+      }
+
+      // Se houver conflito de duplicidade cadastral, interrompe o avanço e exibe tela de segurança LGPD
+      if (data.duplicateConflict || data.cotacao?.status === 'pendente_duplicidade') {
+        setCotacaoId(data.cotacao.id);
+        setDuplicatePendingAlert(true);
         setLoading(false);
         return;
       }
@@ -1658,7 +1731,44 @@ export default function DynamicCotacaoForm({
   // ------------------------------------------------------------------
   return (
     <div ref={formTopRef} className="w-full scroll-mt-24">
-      {/* Indicador de Passos da Esteira */}
+      {duplicatePendingAlert ? (
+        <div className="card bg-white border border-amber-200 rounded-2xl p-6 sm:p-8 shadow-sm text-center max-w-xl mx-auto my-8 space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200 shadow-2xs">
+            <ShieldCheck className="w-7 h-7" />
+          </div>
+          <h3 className="text-lg font-bold text-gray-900">Proposta Enviada para Validação Cadastral</h3>
+          <p className="text-sm text-gray-600 leading-relaxed">
+            Por questões de segurança e proteção cadastral (LGPD), identificamos um registro prévio associado a este documento.
+          </p>
+          <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900 text-left space-y-1.5">
+            <p className="font-semibold">O que acontece agora?</p>
+            <p className="text-amber-800">
+              O corretor responsável pelo seu link foi notificado e fará a conferência das informações para validar a proposta e liberar a emissão do contrato para assinatura.
+            </p>
+          </div>
+          <p className="text-xs text-gray-500">Você receberá atualizações no seu e-mail informado.</p>
+        </div>
+      ) : (
+        <>
+          {hasRestoredDraft && (
+            <div className="mb-6 p-4 rounded-xl bg-blue-50 border border-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-blue-900 shadow-2xs">
+              <div className="flex items-center gap-2.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse shrink-0" />
+                <span>
+                  <strong>Preenchimento recuperado:</strong> Restauramos os dados salvos automaticamente neste navegador.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleClearDraft}
+                className="text-[11px] font-bold text-blue-700 hover:text-blue-900 underline underline-offset-2 self-start sm:self-auto cursor-pointer"
+              >
+                Limpar rascunho e recomeçar
+              </button>
+            </div>
+          )}
+
+          {/* Indicador de Passos da Esteira */}
       <div className="flex justify-between items-center mb-8 border-b border-gray-200 pb-4">
         {[
           { num: 1, label: 'Cobertura', icon: ShieldCheck },
@@ -4205,6 +4315,8 @@ export default function DynamicCotacaoForm({
         proponenteEmail={form.email}
         signUrlCorretora={signUrlCorretora}
       />
+        </>
+      )}
     </div>
   );
 }

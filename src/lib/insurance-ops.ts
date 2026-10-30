@@ -1,6 +1,7 @@
 import { sql } from './pg';
 import { isHealthQuote } from './product-schemas';
 import { logger } from './logger';
+import { generateClientSessionToken } from './client-draft-storage';
 
 function normalizeDocument(value: string) {
   return value.replace(/\D/g, '');
@@ -102,6 +103,194 @@ export function resolveFinancialSplit(input: {
     estipulanteAmount: round2(premio * (estipulantePct / 100)),
     admPct,
     admAmount: round2(premio * (admPct / 100)),
+  };
+}
+
+export interface CadastralConflictSnapshot {
+  hasConflict: boolean;
+  resolved: boolean;
+  resolvedAt?: string | null;
+  resolution?: 'MANTER_ORIGINAL' | 'USAR_NOVOS' | null;
+  resolvedByUserId?: string | null;
+  originalClientId: string;
+  originalData: {
+    fullName: string;
+    email?: string | null;
+    phone?: string | null;
+    birthDate?: string | null;
+    metadata?: Record<string, unknown>;
+  };
+  submittedData: {
+    fullName: string;
+    email?: string | null;
+    phone?: string | null;
+    birthDate?: string | null;
+    metadata?: Record<string, unknown>;
+  };
+  divergentFields: string[];
+  detectedAt: string;
+}
+
+export interface ClientRegistrationIntegrityResult {
+  client: any;
+  isNew: boolean;
+  hasDuplicateConflict: boolean;
+  clientSessionToken?: string;
+  cadastralConflict?: CadastralConflictSnapshot;
+}
+
+export async function handleClientRegistrationIntegrity(input: {
+  documentNumber: string;
+  fullName: string;
+  email?: string | null;
+  phone?: string | null;
+  birthDate?: string | null;
+  metadata?: Record<string, unknown>;
+  clientSessionToken?: string | null;
+  isPublicRegistration?: boolean;
+}): Promise<ClientRegistrationIntegrityResult> {
+  const documentNumber = normalizeDocument(input.documentNumber);
+  const documentType = inferDocumentType(documentNumber);
+  const birthDate =
+    input.birthDate && /^\d{4}-\d{2}-\d{2}/.test(input.birthDate)
+      ? input.birthDate.slice(0, 10)
+      : null;
+
+  // 1. Busca se cliente já existe na base
+  const [existing] = await sql`
+    SELECT id, document_number, document_type, full_name, email, phone, birth_date, metadata
+    FROM insurance_clients
+    WHERE document_number = ${documentNumber}
+    LIMIT 1
+  `;
+
+  // Cenário 1: Novo cliente
+  if (!existing) {
+    const sessionToken = generateClientSessionToken();
+    const newMetadata = {
+      ...(input.metadata || {}),
+      client_session_token: sessionToken,
+    };
+
+    const [created] = await sql`
+      INSERT INTO insurance_clients (
+        document_number,
+        document_type,
+        full_name,
+        email,
+        phone,
+        birth_date,
+        metadata,
+        updated_at
+      )
+      VALUES (
+        ${documentNumber},
+        ${documentType},
+        ${input.fullName},
+        ${input.email || null},
+        ${input.phone || null},
+        ${birthDate ? birthDate : null}::date,
+        ${JSON.stringify(newMetadata)}::jsonb,
+        NOW()
+      )
+      RETURNING id, document_number, document_type, full_name, email, phone, metadata
+    `;
+
+    return {
+      client: created,
+      isNew: true,
+      hasDuplicateConflict: false,
+      clientSessionToken: sessionToken,
+    };
+  }
+
+  // Cenário 2: Cliente já existe. Se não for registro público do cliente, permite fluxo interno do corretor
+  if (!input.isPublicRegistration) {
+    return {
+      client: existing,
+      isNew: false,
+      hasDuplicateConflict: false,
+    };
+  }
+
+  // Cenário 3: Registro público por link do cliente.
+  const storedToken = (existing.metadata as any)?.client_session_token;
+  const isSameClientSession =
+    Boolean(input.clientSessionToken) &&
+    Boolean(storedToken) &&
+    input.clientSessionToken === storedToken;
+
+  if (isSameClientSession) {
+    // Mesma máquina/navegador com o token legítimo: sobrescreve dados cadastrais diretamente
+    const mergedMetadata = {
+      ...((existing.metadata as any) || {}),
+      ...(input.metadata || {}),
+      client_session_token: storedToken,
+    };
+
+    const [updated] = await sql`
+      UPDATE insurance_clients
+      SET
+        full_name = ${input.fullName},
+        email = COALESCE(${input.email || null}, email),
+        phone = COALESCE(${input.phone || null}, phone),
+        birth_date = COALESCE(${birthDate ? birthDate : null}::date, birth_date),
+        metadata = ${JSON.stringify(mergedMetadata)}::jsonb,
+        updated_at = NOW()
+      WHERE id = ${existing.id}
+      RETURNING id, document_number, document_type, full_name, email, phone, metadata
+    `;
+
+    return {
+      client: updated || existing,
+      isNew: false,
+      hasDuplicateConflict: false,
+      clientSessionToken: storedToken,
+    };
+  }
+
+  // Cenário 4: Documento em duplicidade sem token idêntico.
+  // NÃO atualiza insurance_clients e retém snapshot de conflito para decisão obrigatória do vendedor
+  const divergentFields: string[] = [];
+  if (existing.full_name?.trim().toLowerCase() !== input.fullName?.trim().toLowerCase()) {
+    divergentFields.push('nome');
+  }
+  if (input.email && existing.email?.trim().toLowerCase() !== input.email?.trim().toLowerCase()) {
+    divergentFields.push('email');
+  }
+  if (input.phone && normalizeDocument(existing.phone || '') !== normalizeDocument(input.phone || '')) {
+    divergentFields.push('celular');
+  }
+
+  const cadastralConflict: CadastralConflictSnapshot = {
+    hasConflict: true,
+    resolved: false,
+    resolvedAt: null,
+    resolution: null,
+    originalClientId: existing.id,
+    originalData: {
+      fullName: existing.full_name,
+      email: existing.email,
+      phone: existing.phone,
+      birthDate: existing.birth_date ? String(existing.birth_date).slice(0, 10) : null,
+      metadata: existing.metadata,
+    },
+    submittedData: {
+      fullName: input.fullName,
+      email: input.email,
+      phone: input.phone,
+      birthDate: birthDate,
+      metadata: input.metadata,
+    },
+    divergentFields,
+    detectedAt: new Date().toISOString(),
+  };
+
+  return {
+    client: existing,
+    isNew: false,
+    hasDuplicateConflict: true,
+    cadastralConflict,
   };
 }
 

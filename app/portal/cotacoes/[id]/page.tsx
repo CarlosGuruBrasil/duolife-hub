@@ -16,6 +16,7 @@ import { VerificarZapSignButton } from '@/components/cotacao/VerificarZapSignBut
 import RegerarMinutaButton from '@/components/cotacao/RegerarMinutaButton';
 import { SincronizarAsaasButton } from '@/components/cotacao/SincronizarAsaasButton';
 import CotacaoInformacoesProfissionaisCard from '@/components/cotacao/CotacaoInformacoesProfissionaisCard';
+import ResolverDuplicidadeButton from '@/components/portal/ResolverDuplicidadeButton';
 import { MatrixStatusBadge } from '@/components/common/MatrixStatusBadge';
 import { calculateMatrixStatus } from '@/lib/status-matrix';
 import { identificarRequisitosAssinatura } from '@/lib/assinatura-status';
@@ -23,6 +24,7 @@ import { isHealthQuote } from '@/lib/product-schemas';
 
 const statusLabel: Record<string, string> = {
   rascunho: 'Rascunho',
+  pendente_duplicidade: 'Pendente Decisão Cadastral',
   enviada: 'Enviada',
   contrato_gerado: 'Aguardando Assinatura (ZapSign)',
   assinado: 'Contrato Assinado (ZapSign)',
@@ -39,6 +41,7 @@ const statusLabel: Record<string, string> = {
 
 const statusColor: Record<string, string> = {
   rascunho: 'bg-slate-100 text-slate-700 border-slate-200',
+  pendente_duplicidade: 'bg-amber-100 text-amber-900 border-amber-300',
   enviada: 'bg-blue-50 text-blue-700 border-blue-200',
   aprovada: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   recusada: 'bg-rose-50 text-rose-700 border-rose-200',
@@ -89,7 +92,7 @@ export default async function PortalCotacaoDetailPage({
         SELECT
           c.id, c.client_id, c.client_name, c.client_cpf_cnpj, c.client_email, c.client_phone,
           c.status, c.importancia_segurada, c.premio_final, c.premio_calculado, c.client_data, c.created_at, c.updated_at,
-          c.notes, c.product_id, c.partner_id,
+          c.notes, c.product_id, c.partner_id, c.cadastral_conflict,
           p.name AS product_name, p.flow_key AS product_flow_key, p.code AS product_code, p.insurer_name AS product_insurer_name,
           part.nome_fantasia AS partner_name
         FROM cotacoes c
@@ -104,7 +107,7 @@ export default async function PortalCotacaoDetailPage({
         SELECT
           c.id, c.client_id, c.client_name, c.client_cpf_cnpj, c.client_email, c.client_phone,
           c.status, c.importancia_segurada, c.premio_final, c.premio_calculado, c.client_data, c.created_at, c.updated_at,
-          c.notes, c.product_id, c.partner_id,
+          c.notes, c.product_id, c.partner_id, c.cadastral_conflict,
           p.name AS product_name, p.flow_key AS product_flow_key, p.code AS product_code, p.insurer_name AS product_insurer_name,
           part.nome_fantasia AS partner_name
         FROM cotacoes c
@@ -119,7 +122,7 @@ export default async function PortalCotacaoDetailPage({
         SELECT
           c.id, c.client_id, c.client_name, c.client_cpf_cnpj, c.client_email, c.client_phone,
           c.status, c.importancia_segurada, c.premio_final, c.premio_calculado, c.client_data, c.created_at, c.updated_at,
-          c.notes, c.product_id, c.partner_id,
+          c.notes, c.product_id, c.partner_id, c.cadastral_conflict,
           p.name AS product_name, p.flow_key AS product_flow_key, p.code AS product_code, p.insurer_name AS product_insurer_name,
           part.nome_fantasia AS partner_name
         FROM cotacoes c
@@ -134,7 +137,7 @@ export default async function PortalCotacaoDetailPage({
         SELECT
           c.id, c.client_id, c.client_name, c.client_cpf_cnpj, c.client_email, c.client_phone,
           c.status, c.importancia_segurada, c.premio_final, c.premio_calculado, c.client_data, c.created_at, c.updated_at,
-          c.notes, c.product_id, c.partner_id,
+          c.notes, c.product_id, c.partner_id, c.cadastral_conflict,
           p.name AS product_name, p.flow_key AS product_flow_key, p.code AS product_code, p.insurer_name AS product_insurer_name,
           part.nome_fantasia AS partner_name
         FROM cotacoes c
@@ -604,6 +607,13 @@ export default async function PortalCotacaoDetailPage({
     totalInstallments: totalInstallmentsCount,
   });
 
+  const conflictData = cotacao.cadastral_conflict
+    ? (typeof cotacao.cadastral_conflict === 'string'
+        ? JSON.parse(cotacao.cadastral_conflict)
+        : cotacao.cadastral_conflict)
+    : null;
+  const hasActiveConflict = Boolean(conflictData?.hasConflict && !conflictData?.resolved);
+
   return (
     <div className="space-y-6">
       {/* Voltar */}
@@ -613,6 +623,38 @@ export default async function PortalCotacaoDetailPage({
       >
         <ArrowLeft size={14} /> {isFromVendas ? 'Voltar para Vendas' : 'Voltar para Cotações'}
       </Link>
+
+      {/* Banner de Pendência Obrigatória de Duplicidade Cadastral */}
+      {hasActiveConflict && (
+        <div className="bg-amber-50 border-2 border-amber-300 rounded-2xl p-5 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4 animate-in fade-in">
+          <div className="flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center border border-amber-300 shrink-0 mt-0.5">
+              <AlertTriangle className="w-5 h-5 text-amber-700" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-amber-950">
+                  Pendência de Duplicidade Cadastral (Decisão Obrigatória)
+                </h3>
+                <span className="text-[10px] bg-amber-200/80 text-amber-900 font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  Bloqueio Ativo
+                </span>
+              </div>
+              <p className="text-xs text-amber-900 mt-1 leading-relaxed">
+                Este cliente finalizou o cadastro pelo link público, mas o documento já possui registro prévio na base. A emissão de contrato e faturamento está temporariamente travada até sua decisão.
+              </p>
+            </div>
+          </div>
+
+          <div className="shrink-0 self-start md:self-auto">
+            <ResolverDuplicidadeButton
+              cotacaoId={cotacao.id}
+              documentNumber={cotacao.client_cpf_cnpj}
+              conflict={conflictData}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Header Principal da Cotação */}
       <div className="bg-white rounded-2xl border border-slate-200/80 p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">

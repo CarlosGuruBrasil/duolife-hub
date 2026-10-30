@@ -14,9 +14,12 @@ import {
   ShieldCheck,
   Calendar,
   Sparkles,
+  Globe,
+  UserCheck,
 } from 'lucide-react';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { toast } from '@/components/ui/toast/toast';
+import { maskCpfCnpj } from '@/components/modals/masks';
 
 export interface ProductOption {
   id: string;
@@ -30,6 +33,10 @@ export interface GeneratedLinkData {
   url: string;
   label: string | null;
   discount_percent: number;
+  is_exclusive?: boolean;
+  target_document?: string | null;
+  target_name?: string | null;
+  max_uses?: number | null;
   expires_at: string | null;
   product_name?: string | null;
 }
@@ -50,6 +57,9 @@ export default function GerarLinkClienteModal({
   onLinkCreated,
 }: GerarLinkClienteModalProps) {
   const [productId, setProductId] = useState<string>('');
+  const [isExclusive, setIsExclusive] = useState<boolean>(false);
+  const [targetDocument, setTargetDocument] = useState<string>('');
+  const [targetName, setTargetName] = useState<string>('');
   const [discountPercent, setDiscountPercent] = useState<number>(0);
   const [label, setLabel] = useState<string>('');
   const [expiresInDays, setExpiresInDays] = useState<string>('');
@@ -72,6 +82,9 @@ export default function GerarLinkClienteModal({
       setGeneratedLink(null);
       setCopied(false);
       setDiscountPercent(0);
+      setIsExclusive(false);
+      setTargetDocument('');
+      setTargetName('');
       setLabel('');
       setExpiresInDays('');
     }
@@ -117,6 +130,9 @@ export default function GerarLinkClienteModal({
           discountPercent: Number(discountPercent) || 0,
           label: label.trim() || undefined,
           expiresInDays: expiresInDays ? Number(expiresInDays) : undefined,
+          isExclusive,
+          targetDocument: isExclusive && targetDocument.trim() ? targetDocument.trim() : undefined,
+          targetName: isExclusive && targetName.trim() ? targetName.trim() : undefined,
         }),
       });
 
@@ -207,6 +223,107 @@ export default function GerarLinkClienteModal({
           {/* Conteúdo: Formulário OU Tela de Sucesso com o Link */}
           {!generatedLink ? (
             <form onSubmit={handleSubmit} className="space-y-5 pt-5">
+              {/* Modalidade: Geral vs Exclusivo */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-2">
+                  Modalidade do Link
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div
+                    onClick={() => setIsExclusive(false)}
+                    className={`border-2 rounded-xl p-3.5 cursor-pointer transition-all ${
+                      !isExclusive
+                        ? 'border-[#0e4a5a] bg-emerald-50/30 shadow-xs'
+                        : 'border-gray-200 bg-white hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="radio"
+                        name="modalidadeLink"
+                        checked={!isExclusive}
+                        onChange={() => setIsExclusive(false)}
+                        className="text-[#0e4a5a] focus:ring-[#0e4a5a]"
+                      />
+                      <span className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                        <Globe className="w-3.5 h-3.5 text-blue-600" /> Link Geral (Público)
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-gray-500 mt-1 pl-5">
+                      Aberto a qualquer cliente. Permite múltiplos cadastros e contratações.
+                    </p>
+                  </div>
+
+                  <div
+                    onClick={() => setIsExclusive(true)}
+                    className={`border-2 rounded-xl p-3.5 cursor-pointer transition-all ${
+                      isExclusive
+                        ? 'border-[#0e4a5a] bg-emerald-50/30 shadow-xs'
+                        : 'border-gray-200 bg-white hover:border-gray-300'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="radio"
+                        name="modalidadeLink"
+                        checked={isExclusive}
+                        onChange={() => setIsExclusive(true)}
+                        className="text-[#0e4a5a] focus:ring-[#0e4a5a]"
+                      />
+                      <span className="text-xs font-bold text-gray-900 flex items-center gap-1.5">
+                        <UserCheck className="w-3.5 h-3.5 text-emerald-600" /> Link Exclusivo (Cliente)
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-gray-500 mt-1 pl-5">
+                      Uso único para cliente específico. Expira após a primeira contratação.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Campos Específicos se Exclusivo */}
+              {isExclusive && (
+                <div className="bg-emerald-50/50 border border-emerald-200 rounded-xl p-4 space-y-3.5">
+                  <div className="flex items-center gap-2 text-emerald-900 font-semibold text-xs">
+                    <UserCheck className="w-4 h-4 text-emerald-700" />
+                    <span>Dados do Cliente Alvo (Uso Único)</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-700 mb-1">
+                        CPF ou CNPJ do Cliente
+                      </label>
+                      <input
+                        type="text"
+                        value={targetDocument}
+                        onChange={(e) => setTargetDocument(maskCpfCnpj(e.target.value))}
+                        placeholder="000.000.000-00"
+                        className="form-input text-xs w-full py-2 bg-white border-gray-300"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-gray-700 mb-1">
+                        Nome do Cliente (Opcional)
+                      </label>
+                      <input
+                        type="text"
+                        value={targetName}
+                        onChange={(e) => setTargetName(e.target.value)}
+                        placeholder="Ex: Dr. Roberto Santos"
+                        className="form-input text-xs w-full py-2 bg-white border-gray-300"
+                        maxLength={150}
+                      />
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-emerald-800">
+                    🔒 <strong>Segurança:</strong> O cliente fará o preenchimento cadastral completo. Nenhum dado prévio será exibido na tela dele.
+                  </p>
+                </div>
+              )}
+
               {/* 1. Seleção de Produto */}
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-gray-700 mb-1.5">
@@ -380,12 +497,18 @@ export default function GerarLinkClienteModal({
                 <div className="flex items-center space-x-2 text-emerald-800">
                   <CheckCircle2 className="w-5 h-5 text-emerald-600 flex-shrink-0" />
                   <div>
-                    <h4 className="text-sm font-bold text-emerald-950">Link pronto para envio</h4>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-bold text-emerald-950">Link pronto para envio</h4>
+                      {generatedLink.is_exclusive && (
+                        <span className="inline-flex items-center gap-1 text-[10px] bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full font-bold">
+                          Uso Único (Exclusivo)
+                        </span>
+                      )}
+                    </div>
                     <p className="text-xs text-emerald-800">
                       {generatedLink.discount_percent > 0 ? (
                         <>
-                          Desconto de <strong>{generatedLink.discount_percent}%</strong> fixado para todos os
-                          cadastros realizados através deste link.
+                          Desconto de <strong>{generatedLink.discount_percent}%</strong> fixado para a contratação através deste link.
                         </>
                       ) : (
                         'Link ativo sem desconto pré-aplicado.'
@@ -393,6 +516,12 @@ export default function GerarLinkClienteModal({
                     </p>
                   </div>
                 </div>
+
+                {generatedLink.target_name && (
+                  <div className="text-xs text-purple-900 bg-purple-50 px-3 py-1.5 rounded-lg border border-purple-200 inline-block font-medium">
+                    Cliente Alvo: <strong>{generatedLink.target_name}</strong>
+                  </div>
+                )}
 
                 {generatedLink.label && (
                   <div className="text-xs text-emerald-900 bg-white/70 px-3 py-1.5 rounded-lg border border-emerald-200 inline-block font-medium">
