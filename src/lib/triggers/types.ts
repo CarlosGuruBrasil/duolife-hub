@@ -23,7 +23,8 @@ export type EventoDominio =
   | 'FATURA_A_VENCER'
   | 'FATURA_VENCIDA_ALERTA'
   | 'LEAD_CRIADO'
-  | 'RECUPERAR_SENHA';
+  | 'RECUPERAR_SENHA'
+  | 'CONFLITO_CADASTRAL_DETECTADO';
 
 export interface DestinatarioConfig {
   destinatario_tipo: 'CLIENTE' | 'PARCEIRO' | 'VENDEDOR' | 'ADMIN' | 'PERSONALIZADO';

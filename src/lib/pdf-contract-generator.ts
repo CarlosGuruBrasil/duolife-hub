@@ -480,20 +480,26 @@ function renderTimbradoHeaderAndFooter(
     });
   }
 
-  const rodapeLinha1 = 'Avenida Brigadeiro Faria Lima, 3477, Torre B, 2º andar. Itaim Bibi, São Paulo - SP, 04538-133';
+  const rawRodapeLinha1 = corretora.footerText || corretora.enderecoFormatado || 'Avenida Brigadeiro Faria Lima, 3477, Torre B, 2º andar. Itaim Bibi, São Paulo - SP, 04538-133';
+  const rodapeLinha1 = sanitizeForPdf(rawRodapeLinha1);
   const w1 = fontRegular.widthOfTextAtSize(rodapeLinha1, 8.0);
   page.drawText(rodapeLinha1, {
-    x: (pageWidth - w1) / 2,
+    x: Math.max(20, (pageWidth - w1) / 2),
     y: 42.0,
     size: 8.0,
     font: fontRegular,
     color: rgb(0.12, 0.12, 0.12),
   });
 
-  const rodapeLinha2 = 'kevseguros.com.br';
+  const rawRodapeLinha2 = [
+    corretora.website,
+    corretora.phone,
+    corretora.cnpj ? `CNPJ: ${corretora.cnpj}` : null,
+  ].filter(Boolean).join(' - ') || 'kevseguros.com.br';
+  const rodapeLinha2 = sanitizeForPdf(rawRodapeLinha2);
   const w2 = fontBold.widthOfTextAtSize(rodapeLinha2, 8.5);
   page.drawText(rodapeLinha2, {
-    x: (pageWidth - w2) / 2,
+    x: Math.max(20, (pageWidth - w2) / 2),
     y: 30.5,
     size: 8.5,
     font: fontBold,

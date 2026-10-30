@@ -30,6 +30,11 @@ export interface CorretoraContratoData {
   cidade?: string;
   estado?: string;
   logoUrl?: string;
+  email?: string;
+  phone?: string;
+  website?: string;
+  footerText?: string;
+  primaryColor?: string;
 }
 
 export interface DataCidadeData {

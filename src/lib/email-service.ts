@@ -1057,6 +1057,64 @@ export const DEFAULT_TEMPLATES = [
 </html>`,
       variables: ['nome', 'cotacao_id', 'apolice_numero', 'parcela_info', 'valor_parcela', 'data_vencimento', 'link_fatura', 'empresa_nome', 'cor_primaria', 'cor_destaque', 'whitelabel_header_html', 'whitelabel_footer_html'],
     },
+    {
+      code: 'alerta_conflito_cadastral_vendedor',
+      name: 'Alerta de Duplicidade Cadastral — Vendedor Responsável',
+      subject: '[Ação Necessária] Conflito cadastral identificado na proposta #{{cotacao_id}} - {{cliente_nome}}',
+      body_html: `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f7faf9; color: #1e293b; margin: 0; padding: 24px; }
+    .container { max-width: 600px; margin: 0 auto; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+    .header { background: {{cor_primaria|#0e4a5a}}; color: #ffffff; padding: 24px; text-align: center; }
+    .content { padding: 30px 24px; line-height: 1.6; }
+    .alert-box { background: #fffbeb; border: 1px solid #fef3c7; border-left: 4px solid #f59e0b; border-radius: 6px; padding: 14px 18px; margin: 18px 0; color: #92400e; font-size: 13.5px; }
+    .card-info { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px; margin: 20px 0; font-size: 14px; }
+    .btn { display: inline-block; background: {{cor_destaque|#00d4e0}}; color: {{cor_primaria|#072a33}}; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold; min-height: 44px; box-sizing: border-box; }
+    .footer { font-size: 12px; color: #64748b; text-align: center; padding: 20px; border-top: 1px solid #e2e8f0; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      {{whitelabel_header_html}}
+    </div>
+    <div class="content">
+      <p>Olá, <strong>{{nome|Vendedor}}</strong>!</p>
+      
+      <div class="alert-box">
+        <strong>Atenção:</strong> Um cliente preencheu uma proposta através do seu link exclusivo/White-Label, porém os dados informados divergiram de um cadastro já existente para o mesmo CPF/CNPJ.
+      </div>
+
+      <p>Para manter a segurança das informações e garantir conformidade com a LGPD, a proposta foi temporariamente pausada no status <strong>Pendente de Resolução Cadastral</strong>.</p>
+      
+      <div class="card-info">
+        <p style="margin: 4px 0;"><strong>Proposta:</strong> #{{cotacao_id}}</p>
+        <p style="margin: 4px 0;"><strong>Produto:</strong> {{produto_nome}}</p>
+        <p style="margin: 4px 0;"><strong>Cliente (Proponente):</strong> {{cliente_nome}}</p>
+        <p style="margin: 4px 0;"><strong>Documento:</strong> {{cliente_documento}}</p>
+        <p style="margin: 4px 0;"><strong>Telefone:</strong> {{cliente_telefone|Não informado}}</p>
+        <p style="margin: 4px 0;"><strong>E-mail:</strong> {{cliente_email|Não informado}}</p>
+      </div>
+
+      <p>Você precisa revisar os dados no comparador lado a lado no Portal e decidir se deseja <strong>Manter os Dados Originais</strong> ou <strong>Utilizar os Novos Dados</strong> antes de prosseguir com a emissão do contrato e cobrança:</p>
+
+      <div style="text-align: center; margin: 28px 0;">
+        <a href="{{link_resolucao}}" class="btn" target="_blank">Revisar e Resolver Conflito no Portal</a>
+      </div>
+
+      <p style="font-size: 12.5px; color: #64748b;">A geração de minuta de contrato e envio para assinatura permanecerão travados até a resolução desta divergência.</p>
+    </div>
+    <div class="footer">
+      {{whitelabel_footer_html}}
+    </div>
+  </div>
+</body>
+</html>`,
+      variables: ['nome', 'cliente_nome', 'cliente_documento', 'cliente_telefone', 'cliente_email', 'cotacao_id', 'produto_nome', 'link_resolucao', 'empresa_nome', 'cor_primaria', 'cor_destaque', 'whitelabel_header_html', 'whitelabel_footer_html'],
+    },
   ];
 
 export async function ensureDefaultEmailTemplates(): Promise<void> {

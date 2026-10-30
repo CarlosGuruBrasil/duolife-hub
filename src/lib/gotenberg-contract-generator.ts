@@ -65,16 +65,24 @@ export interface GerarContratoGotenbergOptions {
   waitDelayMs?: number;
 }
 
-/**
- * Renderiza o contêiner de folha A4 timbrada oficial da Kev / DuoLife em HTML puro
- * compatível com o Turbopack do Next.js 16 (sem dependência de react-dom/server).
- */
-export function renderA4SheetHtml(params: {
+export interface RenderA4SheetParams {
   innerHtml: string;
   corretoraNome?: string;
   corretoraLogoUrl?: string;
   backgroundUrl?: string;
-}): string {
+  corretoraEndereco?: string;
+  corretoraContato?: string;
+  corretoraWebsite?: string;
+  corretoraCnpj?: string;
+  footerText?: string;
+  primaryColor?: string;
+}
+
+/**
+ * Renderiza o contêiner de folha A4 timbrada oficial com suporte a White-Label dinâmico
+ * compatível com o Turbopack do Next.js 16 (sem dependência de react-dom/server).
+ */
+export function renderA4SheetHtml(params: RenderA4SheetParams): string {
   const bg = params.backgroundUrl || '/images/contrato-kev/kev-background.jpg';
   const cNome = params.corretoraNome || 'Corretora Parceira';
   const cLogo = params.corretoraLogoUrl
@@ -83,6 +91,13 @@ export function renderA4SheetHtml(params: {
         <span class="text-[11px] font-black uppercase tracking-tight text-slate-900 leading-tight line-clamp-2">${cNome}</span>
         <span class="text-[7.5px] font-semibold text-emerald-800 tracking-wider uppercase">Corretora de Seguros</span>
        </div>`;
+
+  const footerEndereco = params.footerText || params.corretoraEndereco || 'Avenida Brigadeiro Faria Lima, 3477, Torre B, 2º andar. Itaim Bibi, São Paulo - SP, 04538-133';
+  const footerContato = [
+    params.corretoraWebsite,
+    params.corretoraContato,
+    params.corretoraCnpj ? `CNPJ: ${params.corretoraCnpj}` : null,
+  ].filter(Boolean).join(' • ') || 'kevseguros.com.br';
 
   return `
     <div class="contract-sheet-root relative w-[210mm] h-[297mm] min-w-[210mm] max-w-[210mm] min-h-[297mm] max-h-[297mm] bg-white text-slate-900 overflow-hidden box-border" style="page-break-after: always; break-after: page; -webkit-print-color-adjust: exact; print-color-adjust: exact;">
@@ -109,17 +124,17 @@ export function renderA4SheetHtml(params: {
           ${params.innerHtml}
         </main>
 
-        <!-- RODAPÉ INSTITUCIONAL KEV SEGUROS -->
+        <!-- RODAPÉ INSTITUCIONAL PARCEIRO / CORRETORA / KEV SEGUROS -->
         <footer class="mt-2 pt-2 border-t border-slate-200/80 flex items-center justify-between text-center select-none">
           <div class="w-4 h-4 flex items-center justify-center shrink-0">
             <img src="/images/contrato-kev/chevron-left.jpg" alt="" class="h-2.5 w-auto object-contain" />
           </div>
           <div class="flex-1 px-4">
             <p class="text-[6.8px] text-slate-600 font-medium tracking-tight leading-tight">
-              Avenida Brigadeiro Faria Lima, 3477, Torre B, 2º andar. Itaim Bibi, São Paulo - SP, 04538-133
+              ${footerEndereco}
             </p>
             <p class="text-[6.8px] font-bold text-slate-800 tracking-tight leading-tight mt-0.5">
-              kevseguros.com.br
+              ${footerContato}
             </p>
           </div>
           <div class="w-4 h-4 flex items-center justify-center shrink-0">
@@ -482,6 +497,11 @@ export async function buildContractDataForQuote(cotacaoId: string): Promise<{
       cidade: corretora.cidade || 'Florianópolis',
       estado: corretora.uf || 'SC',
       logoUrl: logoDataUri,
+      email: corretora.email,
+      phone: corretora.phone,
+      website: corretora.website,
+      footerText: corretora.footerText,
+      primaryColor: corretora.primaryColor,
     },
     dataCidade: {
       cidade: cidadeCorretora,
@@ -535,6 +555,12 @@ export async function renderContractHtmlForQuote(cotacaoId: string): Promise<{
     innerHtml,
     corretoraNome: contractData.corretora?.nomeFantasia || contractData.corretora?.nome,
     corretoraLogoUrl: contractData.corretora?.logoUrl,
+    corretoraEndereco: corretora.enderecoFormatado,
+    corretoraContato: [corretora.phone, corretora.email].filter(Boolean).join(' • '),
+    corretoraWebsite: corretora.website,
+    corretoraCnpj: corretora.cnpj,
+    footerText: corretora.footerText,
+    primaryColor: corretora.primaryColor,
   });
 
   let fullHtml = buildHtmlDocument(sheetHtml, {

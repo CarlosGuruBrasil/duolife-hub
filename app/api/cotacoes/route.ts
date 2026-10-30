@@ -5,6 +5,7 @@ import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { ensureSchema, seedInitialData } from '@/lib/schema';
 import { upsertInsuranceClient, handleClientRegistrationIntegrity } from '@/lib/insurance-ops';
+import { notificarVendedorConflitoCadastral } from '@/lib/cadastral-alerts';
 import { calcularPrecoServidor } from '@/lib/pricing';
 import { getRamoConfig, buildRamoZodSchema } from '@/lib/product-schemas';
 import { somenteDigitos } from '@/lib/documento';
@@ -670,6 +671,21 @@ export async function POST(req: NextRequest) {
             updated_at = NOW()
         WHERE token = ${publicToken}
       `;
+    }
+
+    // Se houve conflito cadastral com duplicidade, dispara alerta imediato para o vendedor responsável
+    if (integrityResult.hasDuplicateConflict) {
+      void notificarVendedorConflitoCadastral({
+        cotacaoId: cotacao.id,
+        clienteNome: data.clientName,
+        clienteDocumento: data.clientCpfCnpj,
+        clienteEmail: data.clientEmail || null,
+        clienteTelefone: data.clientPhone || null,
+        produtoNome: product.name || 'Seguro de Responsabilidade Civil',
+        targetPartnerId,
+        userId,
+        req,
+      });
     }
 
     return Response.json(
