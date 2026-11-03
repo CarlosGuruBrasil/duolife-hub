@@ -110,6 +110,7 @@ describe('QrCodeModal Component', () => {
 
     await act(async () => {
       cardTabButton?.click();
+      await new Promise((r) => setTimeout(r, 100));
     });
 
     expect(container.textContent).toContain('Plaquinha completa com a marca');

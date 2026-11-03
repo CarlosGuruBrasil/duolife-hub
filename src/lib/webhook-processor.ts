@@ -284,7 +284,7 @@ export async function processAsaasPayload(rawPayload: any): Promise<{ success: b
 
       if (refundCotacaoId) {
         await handleAsaasPaymentRefund(refundCotacaoId, event);
-        return { success: true, refunded: true, message: 'Pagamento estornado e apólice/comissões atualizadas' };
+        return { success: true, message: 'Pagamento estornado e apólice/comissões atualizadas' };
       }
     }
 
