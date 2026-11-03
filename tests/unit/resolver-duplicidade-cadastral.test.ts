@@ -14,6 +14,7 @@ vi.mock('@/lib/schema', () => ({
 const { mockSql } = vi.hoisted(() => {
   const fn: any = vi.fn();
   fn.unsafe = vi.fn().mockResolvedValue([]);
+  fn.begin = vi.fn(async (cb: (tx: any) => Promise<any>) => cb(fn));
   return { mockSql: fn };
 });
 
@@ -145,11 +146,13 @@ describe('Resolução de Duplicidade Cadastral (POST /api/portal/cotacoes/[id]/r
 
     // 1. SELECT da cotação
     mockSql.mockResolvedValueOnce([sampleConflictQuote]);
-    // 2. UPDATE insurance_clients
+    // 2. SELECT sales (sem apólice ativa)
+    mockSql.mockResolvedValueOnce([]);
+    // 3. UPDATE insurance_clients
     mockSql.mockResolvedValueOnce([{ id: 'client-orig-01' }]);
-    // 3. UPDATE cotacoes
+    // 4. UPDATE cotacoes
     mockSql.mockResolvedValueOnce([{ id: 'cotacao-conflict-01', status: 'rascunho' }]);
-    // 4. INSERT audit log
+    // 5. INSERT audit log
     mockSql.mockResolvedValueOnce([]);
 
     const req = new NextRequest('http://localhost/api/portal/cotacoes/cotacao-conflict-01/resolver-duplicidade', {
@@ -164,5 +167,30 @@ describe('Resolução de Duplicidade Cadastral (POST /api/portal/cotacoes/[id]/r
     expect(data.ok).toBe(true);
     expect(data.resolution).toBe('USAR_NOVOS');
     expect(data.status).toBe('rascunho');
+  });
+
+  it('deve bloquear USAR_NOVOS com erro 422 se o cliente original tiver apólice ativa', async () => {
+    vi.mocked(verifyPartnerAuth).mockResolvedValueOnce(loggedPartner as any);
+    vi.mocked(getPartnerAccessContext).mockResolvedValueOnce({
+      partnerId: 'partner-100',
+      isCorretoraUser: false,
+      visibleUserIds: null,
+    } as any);
+
+    // 1. SELECT da cotação
+    mockSql.mockResolvedValueOnce([sampleConflictQuote]);
+    // 2. SELECT sales (com apólice ativa existente)
+    mockSql.mockResolvedValueOnce([{ id: 'sale-001', policy_number: 'APOLICE-12345' }]);
+
+    const req = new NextRequest('http://localhost/api/portal/cotacoes/cotacao-conflict-01/resolver-duplicidade', {
+      method: 'POST',
+      body: JSON.stringify({ choice: 'USAR_NOVOS' }),
+    });
+
+    const res = await POST(req, { params: Promise.resolve({ id: 'cotacao-conflict-01' }) });
+    const data = await res.json();
+
+    expect(res.status).toBe(422);
+    expect(data.error).toContain('possui apólice ativa emitida');
   });
 });

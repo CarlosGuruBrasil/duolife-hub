@@ -75,6 +75,24 @@ export async function POST(
       return NextResponse.json({ error: 'Este conflito já foi resolvido anteriormente' }, { status: 409 });
     }
 
+    if (choice === 'USAR_NOVOS') {
+      const [existingActiveSale] = await sql<{ id: string; policy_number: string }[]>`
+        SELECT id, policy_number
+        FROM sales
+        WHERE client_id = ${cotacao.client_id}
+          AND status = 'ativa'
+        LIMIT 1
+      `;
+      if (existingActiveSale) {
+        return NextResponse.json(
+          {
+            error: `Não é permitido sobrescrever o cadastro mestre com USAR_NOVOS porque este cliente possui apólice ativa emitida (${existingActiveSale.policy_number || 'ativa'}). Utilize MANTER_ORIGINAL para preservar o titular original.`,
+          },
+          { status: 422 }
+        );
+      }
+    }
+
     const updatedConflict = {
       ...conflict,
       resolved: true,
@@ -83,74 +101,74 @@ export async function POST(
       resolvedByUserId: user.userId,
     };
 
-    if (choice === 'MANTER_ORIGINAL') {
-      const orig = conflict.originalData || {};
-      const clientData = (typeof cotacao.client_data === 'string' ? JSON.parse(cotacao.client_data) : cotacao.client_data) || {};
-      const updatedClientData = {
-        ...clientData,
-        nome: orig.fullName || cotacao.client_name,
-        email: orig.email || cotacao.client_email,
-        celular: orig.phone || cotacao.client_phone,
-      };
+    await sql.begin(async (tx) => {
+      if (choice === 'MANTER_ORIGINAL') {
+        const orig = conflict.originalData || {};
+        const clientData = (typeof cotacao.client_data === 'string' ? JSON.parse(cotacao.client_data) : cotacao.client_data) || {};
+        const updatedClientData = {
+          ...clientData,
+          nome: orig.fullName || cotacao.client_name,
+          email: orig.email || cotacao.client_email,
+          celular: orig.phone || cotacao.client_phone,
+          dataNascto: orig.birthDate || clientData.dataNascto,
+        };
 
-      await sql`
-        UPDATE cotacoes
-        SET
-          client_name = ${orig.fullName || cotacao.client_name},
-          client_email = ${orig.email || cotacao.client_email || null},
-          client_phone = ${orig.phone || cotacao.client_phone || null},
-          client_data = ${JSON.stringify(updatedClientData)}::jsonb,
-          cadastral_conflict = ${JSON.stringify(updatedConflict)}::jsonb,
-          status = 'rascunho',
-          updated_at = NOW()
-        WHERE id = ${cotacao.id}
-      `;
-    } else {
-      const sub = conflict.submittedData || {};
-      await sql`
-        UPDATE insurance_clients
-        SET
-          full_name = ${sub.fullName || cotacao.client_name},
-          email = COALESCE(${sub.email || null}, email),
-          phone = COALESCE(${sub.phone || null}, phone),
-          birth_date = COALESCE(${sub.birthDate ? sub.birthDate : null}::date, birth_date),
-          updated_at = NOW()
-        WHERE id = ${cotacao.client_id}
-      `;
+        await tx`
+          UPDATE cotacoes
+          SET
+            client_name = ${orig.fullName || cotacao.client_name},
+            client_email = ${orig.email || cotacao.client_email || null},
+            client_phone = ${orig.phone || cotacao.client_phone || null},
+            client_data = ${JSON.stringify(updatedClientData)}::jsonb,
+            cadastral_conflict = ${JSON.stringify(updatedConflict)}::jsonb,
+            status = 'rascunho',
+            updated_at = NOW()
+          WHERE id = ${cotacao.id}
+        `;
+      } else {
+        const sub = conflict.submittedData || {};
+        await tx`
+          UPDATE insurance_clients
+          SET
+            full_name = ${sub.fullName || cotacao.client_name},
+            email = COALESCE(${sub.email || null}, email),
+            phone = COALESCE(${sub.phone || null}, phone),
+            birth_date = COALESCE(${sub.birthDate ? sub.birthDate : null}::date, birth_date),
+            updated_at = NOW()
+          WHERE id = ${cotacao.client_id}
+        `;
 
-      await sql`
-        UPDATE cotacoes
-        SET
-          cadastral_conflict = ${JSON.stringify(updatedConflict)}::jsonb,
-          status = 'rascunho',
-          updated_at = NOW()
-        WHERE id = ${cotacao.id}
-      `;
-    }
+        await tx`
+          UPDATE cotacoes
+          SET
+            cadastral_conflict = ${JSON.stringify(updatedConflict)}::jsonb,
+            status = 'rascunho',
+            updated_at = NOW()
+          WHERE id = ${cotacao.id}
+        `;
+      }
 
-    // Registra auditoria
-    await sql`
-      INSERT INTO action_audit_logs (
-        action,
-        entity_type,
-        entity_id,
-        actor_id,
-        metadata
-      )
-      VALUES (
-        'RESOLVER_DUPLICIDADE_CADASTRAL',
-        'cotacao',
-        ${cotacao.id},
-        ${user.userId},
-        ${JSON.stringify({
-          choice,
-          partnerId: user.partnerId,
-          clientId: cotacao.client_id,
-          divergentFields: conflict.divergentFields,
-        })}::jsonb
-      )
-    `.catch((err) => {
-      logger.warn({ err }, 'audit_log.resolver_duplicidade.failed');
+      await tx`
+        INSERT INTO action_audit_logs (
+          action,
+          entity_type,
+          entity_id,
+          actor_id,
+          metadata
+        )
+        VALUES (
+          'RESOLVER_DUPLICIDADE_CADASTRAL',
+          'cotacao',
+          ${cotacao.id},
+          ${user.userId},
+          ${JSON.stringify({
+            choice,
+            partnerId: user.partnerId,
+            clientId: cotacao.client_id,
+            divergentFields: conflict.divergentFields,
+          })}::jsonb
+        )
+      `;
     });
 
     return NextResponse.json({

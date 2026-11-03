@@ -56,6 +56,16 @@ function formatData(val: any): string {
   return `${dia}/${mes}/${ano}`;
 }
 
+export function escapeHtml(str: unknown): string {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export interface GotenbergContractResult extends ContratoPdfResult {
   engine: 'gotenberg' | 'pdflib_fallback';
 }
@@ -151,23 +161,23 @@ export function renderA4SheetHtml(params: RenderA4SheetParams): string {
  * com as âncoras da ZapSign ({{assinatura_proponente}} e {{assinatura_corretora}}).
  */
 export function renderRcAdvogadoInnerHtml(dados: ContractData): string {
-  const pNome = dados.proponente?.nome || 'Dr(a). Não informado';
-  const pNasc = dados.proponente?.dataNascimento || 'Não informado';
-  const pCpf = dados.proponente?.cpf || 'Não informado';
-  const pEmail = dados.proponente?.email || 'Não informado';
-  const pCelular = dados.proponente?.celular || 'Não informado';
-  const pEndereco = dados.proponente?.endereco || 'Não informado';
-  const pInicio = dados.proponente?.inicioProfissional || 'Não informado';
-  const pOab = dados.proponente?.oab || 'Não informado';
+  const pNome = escapeHtml(dados.proponente?.nome || 'Dr(a). Não informado');
+  const pNasc = escapeHtml(dados.proponente?.dataNascimento || 'Não informado');
+  const pCpf = escapeHtml(dados.proponente?.cpf || 'Não informado');
+  const pEmail = escapeHtml(dados.proponente?.email || 'Não informado');
+  const pCelular = escapeHtml(dados.proponente?.celular || 'Não informado');
+  const pEndereco = escapeHtml(dados.proponente?.endereco || 'Não informado');
+  const pInicio = escapeHtml(dados.proponente?.inicioProfissional || 'Não informado');
+  const pOab = escapeHtml(dados.proponente?.oab || 'Não informado');
 
-  const cImportancia = dados.condicoes?.importanciaSegurada || 'R$ 100.000,00';
-  const cFranquia = dados.condicoes?.franquia || 'Não há aplicação de franquia';
-  const cPremio = dados.condicoes?.valorPremio || 'R$ 790,00';
-  const cFormaPag = dados.condicoes?.formaPagamento || '1x à vista';
-  const cVigencia = dados.condicoes?.vigencia || '1 ano';
-  const cEstipulante = dados.condicoes?.estipulante || 'DUOLIFE PLATAFORMA DE NEGÓCIOS';
-  const cCorretora = dados.condicoes?.corretora || dados.corretora?.nomeFantasia || dados.corretora?.nome || 'Corretora Parceira';
-  const cSeguradora = dados.condicoes?.seguradora || 'AKAD SEGUROS S.A.';
+  const cImportancia = escapeHtml(dados.condicoes?.importanciaSegurada || 'R$ 100.000,00');
+  const cFranquia = escapeHtml(dados.condicoes?.franquia || 'Não há aplicação de franquia');
+  const cPremio = escapeHtml(dados.condicoes?.valorPremio || 'R$ 790,00');
+  const cFormaPag = escapeHtml(dados.condicoes?.formaPagamento || '1x à vista');
+  const cVigencia = escapeHtml(dados.condicoes?.vigencia || '1 ano');
+  const cEstipulante = escapeHtml(dados.condicoes?.estipulante || 'DUOLIFE PLATAFORMA DE NEGÓCIOS');
+  const cCorretora = escapeHtml(dados.condicoes?.corretora || dados.corretora?.nomeFantasia || dados.corretora?.nome || 'Corretora Parceira');
+  const cSeguradora = escapeHtml(dados.condicoes?.seguradora || 'AKAD SEGUROS S.A.');
 
   const titulo = 'Seguro de Responsabilidade Civil para Advogado';
   const subtitulo = 'Termo de Adesão por parte do Advogado';

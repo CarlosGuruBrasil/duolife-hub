@@ -61,6 +61,13 @@ export async function POST(
     const clientDoc = clientRow?.document_number || cotacao.client_cpf_cnpj || clientData.cpf || clientData.cnpj || '';
     const clientPhone = clientRow?.phone || cotacao.client_phone || clientData.celular || clientData.telefone || '';
 
+    if (cotacao.status === 'pendente_duplicidade') {
+      return Response.json(
+        { error: 'Esta cotação possui duplicidade cadastral pendente. É obrigatório resolver o conflito antes de enviar a fatura.' },
+        { status: 422 }
+      );
+    }
+
     if (!clientEmail || !clientEmail.includes('@')) {
       return Response.json(
         { error: 'O cliente não possui um endereço de e-mail válido cadastrado para envio.' },

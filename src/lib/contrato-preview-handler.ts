@@ -42,6 +42,10 @@ export async function handlePreviewContratoPdf(
       return new Response('Cotação não encontrada ou acesso negado', { status: 404 });
     }
 
+    if (cotacao.status === 'pendente_duplicidade') {
+      return new Response('Esta proposta possui duplicidade cadastral pendente de validação.', { status: 422 });
+    }
+
     // Gera o PDF sob demanda com os dados e a logo da corretora via Gotenberg (com fallback automático)
     const pdfData = await gerarContratoPdfGotenberg(cotacao.id);
 

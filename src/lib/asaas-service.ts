@@ -101,6 +101,13 @@ async function executeGenerateAsaasPayment(
       return { ok: false, error: 'Cotação não encontrada' };
     }
 
+    if (cotacao.status === 'pendente_duplicidade') {
+      return {
+        ok: false,
+        error: 'Esta cotação possui duplicidade cadastral pendente. É obrigatório resolver o conflito antes de gerar cobrança.',
+      };
+    }
+
     if (
       ESTADOS_TERMINAIS.includes(cotacao.status) &&
       cotacao.status !== 'assinado' &&

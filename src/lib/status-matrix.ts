@@ -801,7 +801,7 @@ CASE
     THEN 'Negócio Fechado'
   WHEN (${c}.status IN ('assinado', 'pagamento_gerado'))
     THEN 'Pendente de Pagamento'
-  WHEN (${c}.id IS NOT NULL AND ${c}.status IN ('rascunho', 'enviada', 'contrato_gerado'))
+  WHEN (${c}.id IS NOT NULL AND ${c}.status IN ('rascunho', 'enviada', 'contrato_gerado', 'pendente_duplicidade'))
     THEN 'Pendente de Assinatura'
   ELSE 'Inativo'
 END`.trim();
@@ -820,7 +820,7 @@ CASE
     THEN 'Em dia'
   WHEN (${c}.status IN ('assinado', 'pagamento_gerado'))
     THEN 'Falta Pagamento'
-  WHEN (${c}.id IS NOT NULL AND ${c}.status IN ('rascunho', 'enviada', 'contrato_gerado'))
+  WHEN (${c}.id IS NOT NULL AND ${c}.status IN ('rascunho', 'enviada', 'contrato_gerado', 'pendente_duplicidade'))
     THEN 'Falta Assinatura'
   ELSE 'Inativo'
 END`.trim();
@@ -998,7 +998,7 @@ export function getCotacaoMatrixFilterSql(
     if (['negocio_fechado', 'negócio fechado'].includes(sg)) {
       clauses.push(`(${s}.id IS NOT NULL OR ${c}.status IN ('emitida', 'aprovada'))`);
     } else if (['pendente_assinatura', 'pendente de assinatura'].includes(sg)) {
-      clauses.push(`(${s}.id IS NULL AND ${c}.status IN ('rascunho', 'enviada', 'contrato_gerado'))`);
+      clauses.push(`(${s}.id IS NULL AND ${c}.status IN ('rascunho', 'enviada', 'contrato_gerado', 'pendente_duplicidade'))`);
     } else if (['pendente_pagamento', 'pendente de pagamento'].includes(sg)) {
       clauses.push(`(${s}.id IS NULL AND ${c}.status IN ('assinado', 'pagamento_gerado'))`);
     } else if (['inativo'].includes(sg)) {
@@ -1017,7 +1017,7 @@ export function getCotacaoMatrixFilterSql(
     } else if (['quitado'].includes(sp)) {
       clauses.push(`(${s}.id IS NOT NULL AND (${s}.expiry_date < CURRENT_DATE OR ${s}.status = 'expirada'))`);
     } else if (['falta_assinatura', 'falta assinatura'].includes(sp)) {
-      clauses.push(`(${s}.id IS NULL AND ${c}.status IN ('rascunho', 'enviada', 'contrato_gerado'))`);
+      clauses.push(`(${s}.id IS NULL AND ${c}.status IN ('rascunho', 'enviada', 'contrato_gerado', 'pendente_duplicidade'))`);
     } else if (['falta_pagamento', 'falta pagamento'].includes(sp)) {
       clauses.push(`(${s}.id IS NULL AND ${c}.status IN ('assinado', 'pagamento_gerado'))`);
     } else if (['cancelado'].includes(sp)) {
