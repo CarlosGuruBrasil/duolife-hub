@@ -25,7 +25,8 @@ const createLinkSchema = z
   })
   .refine(
     (data) => {
-      if (data.isExclusive && data.targetDocument) {
+      if (data.isExclusive) {
+        if (!data.targetDocument) return false;
         const cleanDoc = somenteDigitos(data.targetDocument);
         if (cleanDoc.length === 11) return validarCpf(cleanDoc);
         if (cleanDoc.length === 14) return validarCnpj(cleanDoc);
@@ -34,7 +35,7 @@ const createLinkSchema = z
       return true;
     },
     {
-      message: 'Documento (CPF ou CNPJ) informado para o link exclusivo é inválido',
+      message: 'Para links exclusivos, é obrigatório informar um CPF ou CNPJ válido',
       path: ['targetDocument'],
     }
   );

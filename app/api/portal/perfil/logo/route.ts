@@ -6,6 +6,7 @@ import { verifyPartnerAuth, canManageOwnCompany, unauthorized } from '@/lib/auth
 import { ensureSchema } from '@/lib/schema';
 import { sql } from '@/lib/pg';
 import { getWhiteLabelConfig, mergeWhiteLabelConfig } from '@/lib/white-label';
+import { isSvgSafe } from '@/lib/svg-sanitizer';
 import { logger } from '@/lib/logger';
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2MB em bytes
@@ -119,6 +120,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const buffer = Buffer.from(await file.arrayBuffer());
+
+    // Validação estrita de segurança contra Stored XSS caso seja SVG
+    if (ext === 'svg' && !isSvgSafe(buffer.toString('utf-8'))) {
+      return NextResponse.json(
+        { error: 'Arquivo SVG contém conteúdo potencialmente inseguro (scripts ou eventos embutidos não são permitidos)' },
+        { status: 400 }
+      );
+    }
+
     // 9. Gravação segura e atômica no diretório public/uploads/logos/
     const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'logos');
     await fs.mkdir(uploadDir, { recursive: true });
@@ -127,9 +138,6 @@ export async function POST(req: NextRequest) {
     const fileName = `logo-${entityType}-${entityId}-${Date.now()}-${randomSuffix}.${ext}`;
     const finalFilePath = path.join(uploadDir, fileName);
     const tempFilePath = path.join(uploadDir, `.${fileName}.tmp`);
-
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
 
     // Escrita atômica: salva no temporário e renomeia
     await fs.writeFile(tempFilePath, buffer);

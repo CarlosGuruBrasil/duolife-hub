@@ -73,8 +73,8 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
         flowType: link.flow_type,
         discountPercent: Number(link.discount_percent || 0),
         isExclusive: Boolean(link.is_exclusive),
-        targetDocument: link.target_document || null,
-        targetName: link.target_name || null,
+        targetDocument: null, // Ocultado por privacidade LGPD e segurança
+        targetName: link.target_name ? (link.target_name.slice(0, 3) + '***') : null,
         maxUses: link.max_uses ? Number(link.max_uses) : null,
         usedCount: Number(link.used_count || 0),
         whiteLabel,

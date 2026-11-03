@@ -211,8 +211,9 @@ describe('Portal Exclusive Links - Criação e Acesso Público', () => {
 
       expect(res.status).toBe(200);
       expect(data.link.isExclusive).toBe(true);
-      expect(data.link.targetDocument).toBe('52998224725');
-      expect(data.link.targetName).toBe('Dr. Roberto');
+      // Blindagem LGPD: endpoint público não deve expor CPF em texto claro
+      expect(data.link.targetDocument).toBeNull();
+      expect(data.link.targetName).toContain('Dr.');
     });
   });
 });

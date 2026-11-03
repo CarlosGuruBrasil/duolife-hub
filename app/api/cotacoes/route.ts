@@ -660,7 +660,7 @@ export async function POST(req: NextRequest) {
     `;
 
     if (publicToken) {
-      await sql`
+      const [updatedLink] = await sql<{ id: string }[]>`
         UPDATE public_sale_links
         SET used_at = COALESCE(used_at, NOW()),
             used_count = COALESCE(used_count, 0) + 1,
@@ -670,7 +670,17 @@ export async function POST(req: NextRequest) {
             END,
             updated_at = NOW()
         WHERE token = ${publicToken}
+          AND (max_uses IS NULL OR COALESCE(used_count, 0) < max_uses)
+        RETURNING id
       `;
+
+      if (!updatedLink && publicLinkData?.max_uses) {
+        await sql`DELETE FROM cotacoes WHERE id = ${cotacao.id}`;
+        return Response.json(
+          { error: 'Este link de contratação já atingiu o limite de utilizações permitidas' },
+          { status: 404 }
+        );
+      }
     }
 
     // Se houve conflito cadastral com duplicidade, dispara alerta imediato para o vendedor responsável
