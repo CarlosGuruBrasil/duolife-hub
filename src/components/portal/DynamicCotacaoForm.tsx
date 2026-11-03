@@ -2180,6 +2180,7 @@ export default function DynamicCotacaoForm({
               <span className="field-label">CPF / CNPJ *</span>
               <input
                 required
+                inputMode="numeric"
                 value={form.cpfCnpj}
                 onChange={(e) => updateField('cpfCnpj', maskCpfCnpj(e.target.value))}
                 className="form-input"
@@ -2202,6 +2203,8 @@ export default function DynamicCotacaoForm({
             <label className="block">
               <span className="field-label">Celular / WhatsApp *</span>
               <input
+                type="tel"
+                inputMode="tel"
                 required
                 value={form.celular}
                 onChange={(e) => updateField('celular', maskPhone(e.target.value))}
@@ -2354,6 +2357,7 @@ export default function DynamicCotacaoForm({
               <div className="relative">
                 <input
                   required
+                  inputMode="numeric"
                   value={form.cep}
                   maxLength={9}
                   onChange={(e) => {

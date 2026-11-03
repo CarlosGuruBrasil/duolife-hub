@@ -114,7 +114,7 @@ export default function ReferralBanner() {
     <aside
       role="complementary"
       aria-label="Informações de Consultoria do Parceiro"
-      className="fixed bottom-6 right-6 z-50 max-w-sm sm:max-w-md w-[calc(100%-3rem)] bg-white/95 backdrop-blur-md border border-emerald-200/90 rounded-2xl shadow-2xl p-4 transition-all duration-300 ring-1 ring-black/5 animate-in fade-in slide-in-from-bottom-5"
+      className="fixed bottom-20 md:bottom-6 right-4 sm:right-6 md:right-24 z-50 max-w-sm sm:max-w-md w-[calc(100%-2rem)] sm:w-[calc(100%-3rem)] bg-white/95 backdrop-blur-md border border-emerald-200/90 rounded-2xl shadow-2xl p-4 transition-all duration-300 ring-1 ring-black/5 animate-in fade-in slide-in-from-bottom-5"
     >
       <div className="flex items-start justify-between gap-3">
         {/* Identificação Visual do Consultor */}

@@ -25,6 +25,25 @@ export default function ReferralTracker() {
           document.cookie = `duolife_ref=${encodeURIComponent(trimmed)}; path=/; max-age=${ttl}; SameSite=Lax`;
           try {
             sessionStorage.setItem('duolife_ref', trimmed);
+            const partnerDisplayName = data.referral.companyName || data.referral.partnerName;
+            if (partnerDisplayName) {
+              sessionStorage.setItem(
+                'duolife_active_referral',
+                JSON.stringify({
+                  partnerName: partnerDisplayName,
+                  token: data.referral.token || trimmed,
+                  expiresAt: data.referral.expiresAt || null,
+                })
+              );
+              window.dispatchEvent(
+                new CustomEvent('duolife:referral', {
+                  detail: {
+                    partnerName: partnerDisplayName,
+                    token: data.referral.token || trimmed,
+                  },
+                })
+              );
+            }
           } catch {}
         }
       })

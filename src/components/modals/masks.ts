@@ -46,7 +46,12 @@ export function maskCnpj(value: string | null | undefined): string {
 
 export function maskPhone(value: string | null | undefined): string {
   if (!value) return '';
-  const digits = cleanDigits(value).slice(0, 11);
+  let raw = cleanDigits(value);
+  // Trata preenchimento automático internacional (+55 ou 55) em celulares ou fixos
+  if ((raw.length === 12 || raw.length === 13) && raw.startsWith('55')) {
+    raw = raw.slice(2);
+  }
+  const digits = raw.slice(0, 11);
   if (!digits) return '';
   if (digits.length <= 2) return `(${digits}`;
   if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
