@@ -16,10 +16,12 @@ import {
   Sparkles,
   Globe,
   UserCheck,
+  QrCode,
 } from 'lucide-react';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { toast } from '@/components/ui/toast/toast';
 import { maskCpfCnpj } from '@/components/modals/masks';
+import QrCodeModal from '@/components/portal/QrCodeModal';
 
 export interface ProductOption {
   id: string;
@@ -69,6 +71,7 @@ export default function GerarLinkClienteModal({
   const [loading, setLoading] = useState<boolean>(false);
   const [generatedLink, setGeneratedLink] = useState<GeneratedLinkData | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
+  const [showQrCodeModal, setShowQrCodeModal] = useState<boolean>(false);
 
   // Inicializa o produto selecionado
   useEffect(() => {
@@ -91,6 +94,7 @@ export default function GerarLinkClienteModal({
       setTargetName('');
       setLabel('');
       setExpiresInDays('');
+      setShowQrCodeModal(false);
     }
   }, [isOpen]);
 
@@ -616,8 +620,16 @@ export default function GerarLinkClienteModal({
                 </div>
               </div>
 
-              {/* Ações Rápidas: WhatsApp e Testar */}
+              {/* Ações Rápidas: QR Code, WhatsApp e Testar */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowQrCodeModal(true)}
+                  className="btn btn-secondary text-xs py-2.5 px-3 flex items-center justify-center space-x-2 border-indigo-200 text-indigo-900 hover:bg-indigo-50 bg-indigo-50/40 cursor-pointer col-span-1 sm:col-span-2 shadow-2xs font-semibold"
+                >
+                  <QrCode className="w-4 h-4 text-indigo-700" />
+                  <span>Visualizar & Baixar QR Code / Placa de Balcão</span>
+                </button>
                 <a
                   href={whatsappUrl}
                   target="_blank"
@@ -663,6 +675,17 @@ export default function GerarLinkClienteModal({
           )}
         </div>
       </div>
+
+      {showQrCodeModal && generatedLink && (
+        <QrCodeModal
+          isOpen={showQrCodeModal}
+          onClose={() => setShowQrCodeModal(false)}
+          url={generatedLink.url}
+          title="QR Code do Link de Vendas"
+          label={generatedLink.label || generatedLink.product_name || 'RC Profissional'}
+          discountPercent={generatedLink.discount_percent}
+        />
+      )}
     </div>
   );
 }

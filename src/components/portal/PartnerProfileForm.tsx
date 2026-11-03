@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { Copy, Check, ExternalLink, Link2, Palette, Building, Share2, Tag, Power, PowerOff, Loader2, Eye, Users, TrendingUp, CheckCircle2, Upload, Image as ImageIcon, Sparkles, Trash2, Download } from 'lucide-react';
+import { Copy, Check, ExternalLink, Link2, Palette, Building, Share2, Tag, Power, PowerOff, Loader2, Eye, Users, TrendingUp, CheckCircle2, Upload, Image as ImageIcon, Sparkles, Trash2, Download, QrCode } from 'lucide-react';
 import type { WhiteLabelConfig } from '@/lib/white-label';
 import { toast } from '@/components/ui/toast';
 import GerarLinkClienteButton from '@/components/portal/GerarLinkClienteButton';
+import QrCodeModal from '@/components/portal/QrCodeModal';
 
 const COLOR_PRESETS = [
   {
@@ -134,6 +135,19 @@ export default function PartnerProfileForm({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<'all' | 'corretora' | 'seller'>('all');
   const [isExportingLinks, setIsExportingLinks] = useState(false);
+
+  // Modal de QR Code
+  const [qrCodeModalData, setQrCodeModalData] = useState<{
+    isOpen: boolean;
+    url: string;
+    title?: string;
+    label?: string;
+    discountPercent?: number | null;
+    sellerName?: string | null;
+  }>({
+    isOpen: false,
+    url: '',
+  });
 
   const handleDeleteLink = async (linkId: string) => {
     setDeletingLinkId(linkId);
@@ -406,6 +420,22 @@ export default function PartnerProfileForm({
               />
               <button
                 type="button"
+                onClick={() =>
+                  setQrCodeModalData({
+                    isOpen: true,
+                    url: dynamicDirectUrl,
+                    title: 'QR Code — Contratação Direta',
+                    label: 'Contratação Direta de Seguro RC',
+                  })
+                }
+                className="btn btn-secondary py-2 px-2.5 text-xs flex items-center gap-1.5 whitespace-nowrap cursor-pointer hover:bg-gray-100"
+                title="Gerar e baixar QR Code deste link"
+              >
+                <QrCode size={14} className="text-[#0e4a5a]" />
+                <span>QR Code</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => copyToClipboard(dynamicDirectUrl, true)}
                 className="btn btn-primary py-2 px-3 text-xs flex items-center gap-1.5 whitespace-nowrap"
               >
@@ -440,6 +470,22 @@ export default function PartnerProfileForm({
                 value={dynamicRefUrl}
                 className="form-input text-xs font-mono bg-gray-50 text-gray-700 py-2 select-all flex-1"
               />
+              <button
+                type="button"
+                onClick={() =>
+                  setQrCodeModalData({
+                    isOpen: true,
+                    url: dynamicRefUrl,
+                    title: 'QR Code — Indicação Institucional',
+                    label: 'Seguros e Benefícios Corporativos',
+                  })
+                }
+                className="btn btn-secondary py-2 px-2.5 text-xs flex items-center gap-1.5 whitespace-nowrap cursor-pointer hover:bg-gray-100"
+                title="Gerar e baixar QR Code deste link"
+              >
+                <QrCode size={14} className="text-emerald-700" />
+                <span>QR Code</span>
+              </button>
               <button
                 type="button"
                 onClick={() => copyToClipboard(dynamicRefUrl, false)}
@@ -696,6 +742,25 @@ export default function PartnerProfileForm({
                           isInactive ? 'bg-gray-100 text-gray-400 border-gray-200' : 'bg-gray-50 text-gray-700'
                         }`}
                       />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setQrCodeModalData({
+                            isOpen: true,
+                            url: cl.url,
+                            title: `QR Code — ${cl.label || cl.product_name || 'Link de Vendas'}`,
+                            label: cl.label || cl.product_name || 'RC Profissional',
+                            discountPercent: cl.discount_percent,
+                            sellerName: cl.seller_name,
+                          })
+                        }
+                        disabled={isInactive}
+                        className="btn btn-secondary py-1.5 px-2 text-xs flex items-center gap-1 whitespace-nowrap cursor-pointer disabled:opacity-40 hover:bg-gray-100"
+                        title={isInactive ? 'Link inativo' : 'Gerar e baixar QR Code deste link'}
+                      >
+                        <QrCode size={13} className="text-[#0e4a5a]" />
+                        <span>QR Code</span>
+                      </button>
                       <button
                         type="button"
                         onClick={() => copyCustomLink(cl.url, cl.token)}
@@ -1360,6 +1425,24 @@ export default function PartnerProfileForm({
           </button>
         </div>
       </form>
+
+      {/* Modal de QR Code e Cartão de Balcão */}
+      <QrCodeModal
+        isOpen={qrCodeModalData.isOpen}
+        onClose={() => setQrCodeModalData((prev) => ({ ...prev, isOpen: false }))}
+        url={qrCodeModalData.url}
+        title={qrCodeModalData.title}
+        companyName={form.companyName || partner.nome_fantasia || partner.razao_social}
+        companySlogan={form.companySlogan}
+        companyPhone={form.companyPhone || partner.phone}
+        companyEmail={form.companyEmail || partner.email}
+        logoUrl={form.logoUrl}
+        primaryColor={form.primaryColor}
+        accentColor={form.accentColor}
+        label={qrCodeModalData.label}
+        discountPercent={qrCodeModalData.discountPercent}
+        sellerName={qrCodeModalData.sellerName}
+      />
     </div>
   );
 }
