@@ -1,6 +1,6 @@
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
-import { ensureSaleForPaidQuote } from '@/lib/insurance-ops';
+import { ensureSaleForPaidQuote, handleAsaasPaymentRefund } from '@/lib/insurance-ops';
 import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
 import { generateAsaasPaymentForQuote } from '@/lib/asaas-service';
 import { findPartnerByWixCode, logSyncEvent, normalizeWixRecord } from '@/lib/wix-sync';
@@ -275,6 +275,19 @@ export async function processAsaasPayload(rawPayload: any): Promise<{ success: b
       }
     }
 
+    if (isRefundedEvent(event)) {
+      const refundCotacaoId =
+        installment?.cotacao_id ||
+        (payment.externalReference && /^[0-9a-f-]{36}$/i.test(payment.externalReference)
+          ? payment.externalReference
+          : null);
+
+      if (refundCotacaoId) {
+        await handleAsaasPaymentRefund(refundCotacaoId, event);
+        return { success: true, refunded: true, message: 'Pagamento estornado e apólice/comissões atualizadas' };
+      }
+    }
+
     if (isPaidEvent(event)) {
       let cotacao: {
         id: string;
@@ -438,8 +451,8 @@ export async function processAsaasPayload(rawPayload: any): Promise<{ success: b
       }
 
       if (!cotacao) {
-        logger.info({ paymentId: payment.id }, 'processAsaasPayload: Nenhuma cotação correspondente encontrada (ignorado)');
-        return { success: true, message: 'Nenhuma cotação correspondente encontrada para este pagamento (ignorado)' };
+        logger.warn({ paymentId: payment.id }, 'processAsaasPayload: Nenhuma cotação correspondente encontrada para pagamento confirmado');
+        return { success: false, message: 'Cotação não localizada para pagamento confirmado' };
       }
 
       const [orderSummary] = await sql<{

@@ -63,6 +63,22 @@ export const SPREADSHEET_EXACT_MATRIX_SAUDE: Record<
   },
 };
 
+export function parseVigenciaDate(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const str = value.trim();
+  // Formato ISO YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+    return str.slice(0, 10);
+  }
+  // Formato Brasileiro DD/MM/YYYY
+  const brMatch = str.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (brMatch) {
+    const [, day, month, year] = brMatch;
+    return `${year}-${month}-${day}`;
+  }
+  return null;
+}
+
 export function resolveFinancialSplit(input: {
   isHealth: boolean;
   premioFinal: number;
@@ -375,11 +391,8 @@ export async function ensureSaleForPaidQuote(input: {
 
     // Extrai data de início da vigência indicada na proposta, com fallback para data atual
     const clientData = (quote?.client_data || {}) as Record<string, any>;
-    const rawInicioVigencia = clientData.dataInicioVigencia || clientData.vigencia || clientData.dataVigencia;
-    const inicioVigenciaIso =
-      typeof rawInicioVigencia === 'string' && /^\d{4}-\d{2}-\d{2}/.test(rawInicioVigencia)
-        ? rawInicioVigencia.slice(0, 10)
-        : null;
+    const rawInicioVigencia = clientData.dataInicioVigencia || clientData.vigencia || clientData.dataVigencia || clientData.inicioVigencia;
+    const inicioVigenciaIso = parseVigenciaDate(rawInicioVigencia);
 
     // 3. Taxa de comissão e Split Financeiro Oficial
     const isHealthProduct = isHealthQuote(
@@ -535,4 +548,53 @@ export async function ensureSaleForPaidQuote(input: {
     return { saleId: sale.id, created: true };
   });
 }
+
+export async function handleAsaasPaymentRefund(
+  cotacaoId: string,
+  eventName: string
+): Promise<{ success: boolean; updated: boolean }> {
+  if (!cotacaoId || !cotacaoId.trim()) {
+    return { success: false, updated: false };
+  }
+
+  const cleanId = cotacaoId.trim();
+
+  return await sql.begin(async (tx) => {
+    // 1. Estorna comissões geradas para a apólice
+    await tx`
+      UPDATE commissions
+      SET status = 'estornada',
+          notes = COALESCE(notes || ' | ', '') || ${'Estornado via Webhook Asaas (' + eventName + ')'},
+          updated_at = NOW()
+      WHERE sale_id IN (SELECT id FROM sales WHERE cotacao_id = ${cleanId})
+        AND status != 'estornada'
+    `;
+
+    // 2. Cancela a apólice emitida
+    await tx`
+      UPDATE sales
+      SET status = 'cancelada',
+          updated_at = NOW()
+      WHERE cotacao_id = ${cleanId}
+        AND status != 'cancelada'
+    `;
+
+    // 3. Cancela a proposta/cotação
+    await tx`
+      UPDATE cotacoes
+      SET status = 'cancelada',
+          updated_at = NOW()
+      WHERE id = ${cleanId}
+        AND status != 'cancelada'
+    `;
+
+    logger.warn(
+      { cotacaoId: cleanId, eventName },
+      'insurance-ops: estorno de comissoes e cancelamento de apolice executados com sucesso'
+    );
+
+    return { success: true, updated: true };
+  });
+}
+
 

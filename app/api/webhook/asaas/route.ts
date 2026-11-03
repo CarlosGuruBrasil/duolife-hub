@@ -2,7 +2,7 @@ import { NextRequest, NextResponse, after } from 'next/server';
 import { ensureSchema } from '@/lib/schema';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
-import { ensureSaleForPaidQuote } from '@/lib/insurance-ops';
+import { ensureSaleForPaidQuote, handleAsaasPaymentRefund } from '@/lib/insurance-ops';
 import { verifyWebhookToken } from '@/lib/webhook-auth';
 import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
 import { getAsaasConfig } from '@/lib/system-settings';
@@ -182,8 +182,15 @@ export async function POST(req: NextRequest) {
         ${JSON.stringify(requestHeaders)}::jsonb,
         false
       )
+      ON CONFLICT (provider, external_id) DO NOTHING
       RETURNING id
     `;
+
+    if (!webhookEvent) {
+      logger.info({ eventKey }, 'Asaas Webhook replay concorrente descartado via unique constraint');
+      return NextResponse.json({ ok: true, ignored: true, message: 'Evento já registrado ou em processamento' });
+    }
+
     webhookEventId = webhookEvent.id;
 
     const paymentStatus = normalizeAsaasStatus(payment.status);
@@ -269,6 +276,29 @@ export async function POST(req: NextRequest) {
           updated_at = NOW()
         WHERE id = ${installment.payment_order_id}
       `;
+    }
+
+    // Tratamento prioritário de estorno/devolução (PAYMENT_REFUNDED / PAYMENT_DELETED)
+    if (isRefundedEvent(event)) {
+      const refundCotacaoId =
+        installment?.cotacao_id ||
+        (payment.externalReference && /^[0-9a-f-]{36}$/i.test(payment.externalReference)
+          ? payment.externalReference
+          : null);
+
+      if (refundCotacaoId) {
+        await handleAsaasPaymentRefund(refundCotacaoId, event);
+
+        if (webhookEventId) {
+          await sql`
+            UPDATE webhook_events
+            SET processed = true, error_message = NULL
+            WHERE id = ${webhookEventId}
+          `.catch(() => null);
+        }
+
+        return NextResponse.json({ success: true, refunded: true, cotacaoId: refundCotacaoId });
+      }
     }
 
     // Apenas nos importamos com pagamentos confirmados ou recebidos
@@ -446,15 +476,18 @@ export async function POST(req: NextRequest) {
       }
 
       if (!cotacao) {
-        logger.info({ paymentId: payment.id }, 'Asaas webhook ignored: No matching quote found');
+        logger.warn({ paymentId: payment.id }, 'Asaas webhook: Nenhuma cotação associada a este pagamento confirmado');
         if (webhookEventId) {
           await sql`
             UPDATE webhook_events
-            SET processed = true, error_message = 'Ignorado: Nenhuma cotação associada a este pagamento'
+            SET processed = false, error_message = 'Pendente: Cotação não localizada para pagamento confirmado'
             WHERE id = ${webhookEventId}
           `.catch(() => null);
         }
-        return NextResponse.json({ success: true, ignored: true });
+        return NextResponse.json(
+          { success: false, error: 'Cotação não localizada para pagamento confirmado' },
+          { status: 422 }
+        );
       }
 
       // Garante que a ordem de pagamento reflita a situação real de quitação (sem forçar quitação total em carnê parcelado)
