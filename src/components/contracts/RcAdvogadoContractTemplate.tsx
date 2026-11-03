@@ -1,5 +1,6 @@
 import React from 'react';
 import type { ContractData } from '@/types/contract';
+import { formatarDocumento } from '@/lib/format';
 
 export interface RcAdvogadoContractTemplateProps {
   data?: ContractData;
@@ -34,7 +35,7 @@ export function RcAdvogadoContractTemplate({
   // Extração ou resolução de Proponente
   const pNome = isPlaceholder ? '{{nome}}' : (data?.proponente?.nome || 'Dr(a). Não informado');
   const pNasc = isPlaceholder ? '{{dataNascimento}}' : (data?.proponente?.dataNascimento || 'Não informado');
-  const pCpf = isPlaceholder ? '{{cpf}}' : (data?.proponente?.cpf || 'Não informado');
+  const pCpf = isPlaceholder ? '{{cpf}}' : (formatarDocumento(data?.proponente?.cpf) || 'Não informado');
   const pEmail = isPlaceholder ? '{{email}}' : (data?.proponente?.email || 'Não informado');
   const pCelular = isPlaceholder ? '{{celular}}' : (data?.proponente?.celular || 'Não informado');
   const pEndereco = isPlaceholder ? '{{endereco}}' : (data?.proponente?.endereco || 'Não informado');

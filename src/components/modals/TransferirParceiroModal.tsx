@@ -16,6 +16,7 @@ import {
   DollarSign,
 } from 'lucide-react';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
+import { formatarDocumento } from '@/lib/format';
 
 export interface PartnerUserOption {
   id: string;
@@ -343,7 +344,7 @@ export default function TransferirParceiroModal({
                   <option value="">Selecione o parceiro de destino...</option>
                   {filteredPartners.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} {p.documento ? `(${p.documento})` : ''} {!p.isActive ? '[Inativo]' : ''}
+                      {p.name} {p.documento ? `(${formatarDocumento(p.documento)})` : ''} {!p.isActive ? '[Inativo]' : ''}
                     </option>
                   ))}
                 </select>

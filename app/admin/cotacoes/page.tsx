@@ -6,7 +6,7 @@ import { sql } from '@/lib/pg';
 import { RecusarCotacaoButton } from './_recusar-button';
 import { ExcluirCotacaoButton } from '@/components/dev';
 import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
-import { formatCurrency, formatDateTime, formatStatusLabel } from '@/lib/format';
+import { formatCurrency, formatDateTime, formatStatusLabel, formatarDocumento } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
 
 import { CotacoesFilterSection } from './_components/CotacoesFilterSection';
@@ -539,7 +539,7 @@ export default async function AdminCotacoesPage({
                           {cotacao.client_name}
                         </Link>
                         <div className="text-xs text-slate-500 font-normal mt-0.5">
-                          {cotacao.client_cpf_cnpj} {oab ? `· OAB ${oab}` : ''}
+                          {formatarDocumento(cotacao.client_cpf_cnpj)} {oab ? `· OAB ${oab}` : ''}
                         </div>
                       </td>
 

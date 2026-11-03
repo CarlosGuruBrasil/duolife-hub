@@ -202,6 +202,29 @@ describe('documento.ts - Validação e Formatação de Documentos Brasileiros (C
       expect(formatarDocumento('outra-coisa')).toBe('outra-coisa');
       expect(formatarDocumento('')).toBe('');
     });
+
+    it('formatarDocumento deve aceitar fallback customizado', () => {
+      expect(formatarDocumento(null, '-')).toBe('-');
+      expect(formatarDocumento(undefined, 'Não informado')).toBe('Não informado');
+      expect(formatarDocumento('', '-')).toBe('-');
+      expect(formatarCpf(null, '-')).toBe('-');
+      expect(formatarCnpj(null, '-')).toBe('-');
+    });
+
+    it('formatarDocumento deve formatar objetos de parceiro/cliente com person_type', () => {
+      expect(formatarDocumento({ person_type: 'pf', cpf: '52998224725' })).toBe('529.982.247-25');
+      expect(formatarDocumento({ person_type: 'pj', cnpj: '11222333000181' })).toBe('11.222.333/0001-81');
+      expect(formatarDocumento({ person_type: 'pj', cpf: null, cnpj: null }, '-')).toBe('-');
+      expect(formatarDocumento({ document_number: '52998224725' })).toBe('529.982.247-25');
+    });
+
+    it('formatDocument alias e re-export em format.ts devem funcionar identicamente', async () => {
+      const { formatDocument: aliasDoc } = await import('@/lib/documento');
+      const { formatarDocumento: reexportedDoc, formatDocument: reexportedAlias } = await import('@/lib/format');
+      expect(aliasDoc('52998224725')).toBe('529.982.247-25');
+      expect(reexportedDoc('11222333000181')).toBe('11.222.333/0001-81');
+      expect(reexportedAlias('52998224725')).toBe('529.982.247-25');
+    });
   });
 
   describe('5. Máscaras dinâmicas de interface (masks.ts)', () => {

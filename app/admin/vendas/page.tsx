@@ -7,7 +7,7 @@ import { ensureSchema } from '@/lib/schema';
 import { VendasFilterSection } from './_components/VendasFilterSection';
 import { VendasPagination } from './_components/VendasPagination';
 import { PeriodPreset, resolveDateRange, getPeriodLabel } from '@/lib/date-filters';
-import { formatCurrency, formatDate, formatStatusLabel, formatPlanLabel, formatPolicyValidity } from '@/lib/format';
+import { formatCurrency, formatDate, formatStatusLabel, formatPlanLabel, formatPolicyValidity, formatarDocumento } from '@/lib/format';
 import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
 import { MatrixStatusBadge } from '@/components/common/MatrixStatusBadge';
 import { calculateMatrixStatus, getSaleMatrixFilterSql } from '@/lib/status-matrix';
@@ -460,7 +460,7 @@ export default async function AdminVendasPage({
                             <ExternalLink size={12} className="text-gray-400 opacity-0 group-hover/name:opacity-100 transition-opacity shrink-0" />
                           </Link>
                           {venda.client_cpf_cnpj && (
-                            <div className="text-xs text-gray-500">{venda.client_cpf_cnpj}</div>
+                            <div className="text-xs text-gray-500">{formatarDocumento(venda.client_cpf_cnpj)}</div>
                           )}
                         </td>
                         <td className="px-5 py-4 border-b border-gray-100 text-center">

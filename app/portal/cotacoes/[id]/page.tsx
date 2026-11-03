@@ -6,7 +6,7 @@ import { verifyPartnerAuth, getPartnerAccessContext } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { PagamentosPanel } from '@/components/portal/PagamentosPanel';
-import { formatCurrency, formatDate, formatDateTime, formatAtuacao, formatStatusLabel, sanitizePlanFinancials, resolvePolicyExpiryDate } from '@/lib/format';
+import { formatCurrency, formatDate, formatDateTime, formatAtuacao, formatStatusLabel, sanitizePlanFinancials, resolvePolicyExpiryDate, formatarDocumento } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
 import { isDateBeforeToday } from '@/lib/business-days';
 import EditarPropostaButton from '@/components/modals/EditarPropostaButton';
@@ -670,7 +670,7 @@ export default async function PortalCotacaoDetailPage({
           </div>
           <h1 className="text-2xl font-bold text-slate-900 mt-2">{cotacao.client_name}</h1>
           <p className="text-xs text-slate-500 font-medium mt-1">
-            CPF/CNPJ: <strong className="text-slate-700">{cotacao.client_cpf_cnpj}</strong> · E-mail: <strong className="text-slate-700">{cotacao.client_email || 'Não informado'}</strong> · Tel: <strong className="text-slate-700">{cotacao.client_phone || 'Não informado'}</strong>
+            CPF/CNPJ: <strong className="text-slate-700">{formatarDocumento(cotacao.client_cpf_cnpj)}</strong> · E-mail: <strong className="text-slate-700">{cotacao.client_email || 'Não informado'}</strong> · Tel: <strong className="text-slate-700">{cotacao.client_phone || 'Não informado'}</strong>
           </p>
         </div>
 

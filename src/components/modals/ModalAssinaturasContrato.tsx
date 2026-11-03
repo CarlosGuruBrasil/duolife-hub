@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { safeExternalUrl } from '@/lib/safe-url';
+import { formatarDocumento } from '@/lib/format';
 
 export type PapelSignatario = 'cliente' | 'corretora' | 'outro';
 
@@ -405,7 +406,7 @@ export function ModalAssinaturasContrato({
                             <p className="text-xs text-gray-500 truncate">
                               {signatario.documento && (
                                 <span className="font-medium mr-2">
-                                  Doc: {signatario.documento}
+                                  Doc: {formatarDocumento(signatario.documento)}
                                 </span>
                               )}
                               {signatario.email && (

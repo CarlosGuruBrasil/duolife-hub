@@ -10,6 +10,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { formatDate } from '@/lib/format';
+import { formatarCpf, formatarCnpj } from '@/lib/documento';
 import { maskCnpj, maskPhone, maskCpfCnpj } from '@/components/modals/masks';
 import type { WhiteLabelConfig } from '@/lib/white-label';
 import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
@@ -134,20 +135,6 @@ const FORM_VAZIO = {
   admin_password: '',
   send_invite_email: true,
 };
-
-function formatarCnpj(cnpj: string | null): string {
-  if (!cnpj) return '-';
-  const n = cnpj.replace(/\D/g, '');
-  if (n.length === 14) return n.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
-  return cnpj;
-}
-
-function formatarCpf(cpf: string | null): string {
-  if (!cpf) return '-';
-  const n = cpf.replace(/\D/g, '');
-  if (n.length === 11) return n.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-  return cpf;
-}
 
 const STATUS_LABELS: Record<string, { label: string; color: string; icon: typeof CheckCircle }> = {
   active:    { label: 'Ativa',     color: '#417572', icon: CheckCircle },

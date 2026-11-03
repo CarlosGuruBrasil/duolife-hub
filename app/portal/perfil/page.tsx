@@ -8,6 +8,7 @@ import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { getWhiteLabelConfig } from '@/lib/white-label';
 import { getOrCreatePartnerSaleLink } from '@/lib/referral';
+import { formatarDocumento } from '@/lib/format';
 
 interface PartnerRow {
   id: string;
@@ -45,15 +46,6 @@ const statusLabel: Record<string, string> = {
   suspended: 'Suspenso',
   inactive: 'Inativo',
 };
-
-function formatDocumento(p: PartnerRow): string {
-  const doc = p.person_type === 'pf' ? p.cpf : p.cnpj;
-  if (!doc) return '-';
-  const n = doc.replace(/\D/g, '');
-  if (n.length === 11) return n.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-  if (n.length === 14) return n.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
-  return doc;
-}
 
 export default async function PerfilPage() {
   const user = await verifyPartnerAuth();
@@ -208,7 +200,7 @@ export default async function PerfilPage() {
           <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">
             {partner.person_type === 'pf' ? 'CPF' : 'CNPJ'}
           </div>
-          <div className="mt-2 text-base font-bold text-gray-900">{formatDocumento(partner)}</div>
+          <div className="mt-2 text-base font-bold text-gray-900">{formatarDocumento(partner, '-')}</div>
         </div>
         <div className="card">
           <div className="text-xs font-semibold uppercase tracking-wide text-gray-500">Status Operacional</div>

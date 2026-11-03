@@ -4,7 +4,7 @@ import React from 'react';
 import Link from 'next/link';
 import { ArrowRight, UserCheck } from 'lucide-react';
 import { PortalClientRow } from '@/types/portal-clients';
-import { formatStatusLabel } from '@/lib/format';
+import { formatStatusLabel, formatDocument } from '@/lib/format';
 
 const statusLabel: Record<string, string> = {
   rascunho: 'Rascunho',
@@ -41,13 +41,6 @@ const statusBadgeColor: Record<string, string> = {
   expirada: 'bg-rose-50 text-rose-700 border-rose-200',
   rascunho: 'bg-gray-100 text-gray-700 border-gray-200',
 };
-
-function formatDocument(value: string) {
-  const digits = value.replace(/\D/g, '');
-  if (digits.length === 11) return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-  if (digits.length === 14) return digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
-  return value;
-}
 
 function formatDate(value: string) {
   try {

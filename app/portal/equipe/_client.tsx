@@ -28,6 +28,8 @@ import {
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import type { AuthUser } from '@/lib/auth';
 import { toast } from '@/components/ui/toast';
+import { formatarDocumento } from '@/lib/format';
+import { maskCpfCnpj } from '@/components/modals/masks';
 
 interface Vendedor {
   partner_id: string;
@@ -460,8 +462,8 @@ export default function EquipeClient({ user }: { user: AuthUser }) {
                           </div>
                         )}
                         {(v.cpf || v.cnpj) && (
-                          <div className="text-[11px] font-mono text-gray-400 mt-0.5">
-                            Doc: {v.cpf || v.cnpj}
+                          <div className="text-[11px] font-mono text-gray-500 mt-0.5">
+                            Doc: {formatarDocumento(v.cpf || v.cnpj)}
                           </div>
                         )}
                       </td>
@@ -615,7 +617,7 @@ export default function EquipeClient({ user }: { user: AuthUser }) {
                     type="text"
                     placeholder="000.000.000-00"
                     value={formData.cpfCnpj}
-                    onChange={(e) => setFormData({ ...formData, cpfCnpj: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, cpfCnpj: maskCpfCnpj(e.target.value) })}
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl px-3.5 py-2 text-sm text-gray-900 focus:outline-none focus:border-[#0e4a5a] focus:bg-white"
                   />
                 </div>

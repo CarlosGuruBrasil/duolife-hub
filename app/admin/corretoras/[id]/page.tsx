@@ -11,6 +11,7 @@ import type { WhiteLabelConfig } from '@/lib/white-label';
 import { toast } from '@/components/ui/toast';
 import { BANCOS_BRASILEIROS } from '../page';
 import { maskCnpj, maskPhone, maskCpfCnpj } from '@/components/modals/masks';
+import { formatarCpf, formatarCnpj, formatarDocumento } from '@/lib/documento';
 
 interface CorretoraDetail {
   id: string;
@@ -80,13 +81,6 @@ interface PendingFileDoc {
   base64: string;
   mime: string;
   name: string;
-}
-
-function formatarCpf(cpf: string | null): string {
-  if (!cpf) return '-';
-  const n = cpf.replace(/\D/g, '');
-  if (n.length === 11) return n.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-  return cpf;
 }
 
 export default function AdminCorretoraDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -477,7 +471,7 @@ export default function AdminCorretoraDetailPage({ params }: { params: Promise<{
               <p className="text-sm text-gray-500 mt-0.5">{corretora.razao_social}</p>
 
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs text-gray-600 mt-2">
-                <span>CNPJ: <strong className="font-mono">{corretora.cnpj || '-'}</strong></span>
+                <span>CNPJ: <strong className="font-mono">{formatarCnpj(corretora.cnpj) || '-'}</strong></span>
                 {corretora.susep && (
                   <span>SUSEP: <strong className="font-mono text-primary">{corretora.susep}</strong></span>
                 )}
@@ -499,7 +493,11 @@ export default function AdminCorretoraDetailPage({ params }: { params: Promise<{
                 )}
                 {corretora.pix_chave && (
                   <span className="font-mono text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded text-[11px]">
-                    PIX ({corretora.pix_tipo_chave}): {corretora.pix_chave}
+                    PIX ({corretora.pix_tipo_chave}): {
+                      corretora.pix_tipo_chave === 'cnpj' || corretora.pix_tipo_chave === 'cpf'
+                        ? formatarDocumento(corretora.pix_chave)
+                        : corretora.pix_chave
+                    }
                   </span>
                 )}
               </div>

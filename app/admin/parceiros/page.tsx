@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Building2, CheckCircle, Clock, XCircle, Plus, UserPlus } from 'lucide-react';
-import { formatDate } from '@/lib/format';
+import { formatDate, formatarDocumento } from '@/lib/format';
 import { TableScrollContainer } from '@/components/ui/TableScrollContainer';
 import { toast } from '@/components/ui/toast';
 
@@ -43,15 +43,6 @@ const FORM_VAZIO = {
   director_name: '',
   director_email: '',
 };
-
-function formatarDocumento(p: Parceiro): string {
-  const doc = p.person_type === 'pf' ? p.cpf : p.cnpj;
-  if (!doc) return '-';
-  const n = doc.replace(/\D/g, '');
-  if (n.length === 11) return n.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-  if (n.length === 14) return n.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
-  return doc;
-}
 
 const STATUS_LABELS: Record<string, { label: string; color: string; icon: typeof CheckCircle }> = {
   active:    { label: 'Ativo',     color: '#417572', icon: CheckCircle },

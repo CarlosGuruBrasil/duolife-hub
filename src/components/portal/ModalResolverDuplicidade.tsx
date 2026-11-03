@@ -14,6 +14,7 @@ import {
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { toast } from '@/components/ui/toast/toast';
 import { useRouter } from 'next/navigation';
+import { formatarDocumento } from '@/lib/format';
 
 export interface CadastralConflictData {
   hasConflict: boolean;
@@ -107,7 +108,7 @@ export default function ModalResolverDuplicidade({
               </h3>
               <p className="text-xs text-gray-600 mt-0.5">
                 O cliente contratou pelo link público, mas o documento{' '}
-                <strong className="font-mono text-gray-800">{documentNumber}</strong> já existia na base de dados.
+                <strong className="font-mono text-gray-800">{formatarDocumento(documentNumber)}</strong> já existia na base de dados.
               </p>
             </div>
           </div>

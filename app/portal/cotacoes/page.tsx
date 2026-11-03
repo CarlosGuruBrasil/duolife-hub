@@ -4,7 +4,7 @@ import { Plus, Play, Search, FileText } from 'lucide-react';
 import { getPartnerAccessContext, verifyPartnerAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema, seedInitialData } from '@/lib/schema';
-import { formatCurrency, formatDate, formatStatusLabel } from '@/lib/format';
+import { formatCurrency, formatDate, formatStatusLabel, formatarDocumento } from '@/lib/format';
 import { PortalCotacoesFilterSection } from './_components/PortalCotacoesFilterSection';
 import { PortalCotacoesPagination } from './_components/PortalCotacoesPagination';
 import { PeriodPreset, resolveDateRange } from '@/lib/date-filters';
@@ -509,7 +509,7 @@ export default async function CotacoesPage({
                           >
                             {cotacao.client_name}
                           </Link>
-                          <div className="text-xs text-gray-500">{cotacao.client_cpf_cnpj}</div>
+                          <div className="text-xs text-gray-500">{formatarDocumento(cotacao.client_cpf_cnpj)}</div>
                         </td>
                         <td className="px-5 py-4 border-b border-gray-100 text-center">
                           <div className="flex flex-col items-center justify-center gap-1.5">

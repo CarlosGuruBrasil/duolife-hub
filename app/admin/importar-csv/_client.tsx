@@ -19,6 +19,7 @@ import {
   Info,
 } from 'lucide-react';
 import { parseCsvContent, type RawCsvRow } from '@/lib/csv-parser';
+import { formatarDocumento } from '@/lib/format';
 
 export default function CsvImportClient() {
   const [file, setFile] = useState<File | null>(null);
@@ -457,7 +458,7 @@ export default function CsvImportClient() {
                 {importErrors.map((err, i) => (
                   <div key={i} className="p-2.5 rounded-lg bg-red-50/70 border border-red-100 flex items-center justify-between">
                     <span>
-                      Linha {err.row}: <strong>{err.name || 'Sem nome'}</strong> ({err.doc || 'Sem CPF'})
+                      Linha {err.row}: <strong>{err.name || 'Sem nome'}</strong> ({formatarDocumento(err.doc) || 'Sem CPF'})
                     </span>
                     <span className="font-medium text-red-700">{err.message}</span>
                   </div>
@@ -498,7 +499,7 @@ export default function CsvImportClient() {
                       <tr key={i} className="hover:bg-gray-50/60 transition-colors">
                         <td className="p-3 font-mono text-gray-400">{i + 1}</td>
                         <td className="p-3 font-bold text-gray-900 whitespace-nowrap">{r['Nome'] || '-'}</td>
-                        <td className="p-3 font-mono text-gray-600 whitespace-nowrap">{r['Cpf'] || '-'}</td>
+                        <td className="p-3 font-mono text-gray-600 whitespace-nowrap">{formatarDocumento(r['Cpf']) || '-'}</td>
                         <td className="p-3 whitespace-nowrap">
                           <span className="px-2 py-0.5 rounded-full bg-cyan-50 border border-cyan-200 text-[#0e4a5a] font-bold text-[10px]">
                             {r['Nomeplano'] || '100k'}

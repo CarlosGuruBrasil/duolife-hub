@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import InternalPageHero from '@/components/site/InternalPageHero';
+import { maskCnpj } from '@/components/modals/masks';
 import {
   BarChart3,
   CheckCircle2,
@@ -191,7 +192,7 @@ export default function SejaParceiroClient() {
                   <div className="grid sm:grid-cols-2 gap-6">
                     <div>
                       <label className="block text-[10px] font-black text-primary uppercase tracking-wider mb-2">CNPJ da Corretora</label>
-                      <input value={form.cnpj} onChange={e => setForm({ ...form, cnpj: e.target.value })}
+                      <input value={form.cnpj} onChange={e => setForm({ ...form, cnpj: maskCnpj(e.target.value) })}
                         className="w-full bg-surface border border-border rounded-xl px-4 py-3.5 text-sm text-primary placeholder-secondary/70 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent transition-colors" placeholder="00.000.000/0001-00" />
                     </div>
                     <div>

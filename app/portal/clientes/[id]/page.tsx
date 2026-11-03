@@ -4,17 +4,10 @@ import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { getPartnerAccessContext, verifyPartnerAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
-import { formatCurrency, formatDateTime as formatDate, formatStatusLabel } from '@/lib/format';
+import { formatCurrency, formatDateTime as formatDate, formatStatusLabel, formatDocument } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
 import EditarClienteButton from '@/components/modals/EditarClienteButton';
 import EditarPropostaButton from '@/components/modals/EditarPropostaButton';
-
-function formatDocument(value: string) {
-  const digits = value.replace(/\D/g, '');
-  if (digits.length === 11) return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-  if (digits.length === 14) return digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
-  return value;
-}
 
 function parseJsonField<T>(field: unknown): T {
   if (!field) return {} as T;

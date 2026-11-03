@@ -399,4 +399,14 @@ export function formatPolicyValidity(
   return startStr !== '-' ? startStr : endStr;
 }
 
+export {
+  validarCpf,
+  validarCnpj,
+  somenteDigitos,
+  formatarCpf,
+  formatarCnpj,
+  formatarDocumento,
+  formatDocument,
+} from './documento';
+
 

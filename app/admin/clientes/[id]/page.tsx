@@ -4,20 +4,13 @@ import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { verifyAuth, isInternalUser, isDevUser } from '@/lib/auth';
 import { ensureSchema } from '@/lib/schema';
 import { sql } from '@/lib/pg';
-import { formatCurrency, formatDateTime as formatDate, formatStatusLabel } from '@/lib/format';
+import { formatCurrency, formatDateTime as formatDate, formatStatusLabel, formatDocument } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
 import EditarClienteButton from '@/components/modals/EditarClienteButton';
 import EditarPropostaButton from '@/components/modals/EditarPropostaButton';
 import TransferirParceiroClienteButton from '@/components/modals/TransferirParceiroClienteButton';
 import TransferirParceiroCotacaoButton from '@/components/modals/TransferirParceiroCotacaoButton';
 import { ExcluirClienteButton, ExcluirCotacaoButton, ExcluirBoletoButton } from '@/components/dev';
-
-function formatDocument(value: string) {
-  const digits = value.replace(/\D/g, '');
-  if (digits.length === 11) return digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4');
-  if (digits.length === 14) return digits.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5');
-  return value;
-}
 
 function parseJsonField<T>(field: unknown): T {
   if (!field) return {} as T;
