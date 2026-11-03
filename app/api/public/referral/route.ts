@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { resolvePartnerOrLink } from '@/lib/referral';
+import { getReferralTokenTtlSeconds } from '@/lib/system-settings';
 import { logger } from '@/lib/logger';
 
 export async function GET(req: NextRequest) {
@@ -21,6 +22,9 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    const ttlSeconds = await getReferralTokenTtlSeconds();
+    const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
+
     const response = NextResponse.json({
       ok: true,
       referral: {
@@ -35,11 +39,13 @@ export async function GET(req: NextRequest) {
         directUrl: resolved.directUrl,
         discountPercent: resolved.discountPercent ?? 0,
         token: resolved.token,
+        ttlSeconds,
+        expiresAt,
       },
     });
 
     response.cookies.set('duolife_ref', resolved.partner.code, {
-      maxAge: 2592000,
+      maxAge: ttlSeconds,
       path: '/',
       sameSite: 'lax',
     });

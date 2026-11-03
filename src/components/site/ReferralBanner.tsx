@@ -14,6 +14,8 @@ interface ReferralInfo {
   directUrl: string;
   discountPercent?: number;
   token: string;
+  ttlSeconds?: number;
+  expiresAt?: string;
 }
 
 export default function ReferralBanner() {
@@ -43,6 +45,9 @@ export default function ReferralBanner() {
     }
 
     if (!effectiveRef) {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('duolife:referral', { detail: null }));
+      }
       setLoading(false);
       return;
     }
@@ -53,15 +58,31 @@ export default function ReferralBanner() {
       try {
         const res = await fetch(`/api/public/referral?ref=${encodeURIComponent(effectiveRef)}`);
         if (!res.ok) {
-          if (isMounted) setLoading(false);
+          if (isMounted) {
+            setLoading(false);
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('duolife:referral', { detail: null }));
+            }
+          }
           return;
         }
 
         const data = await res.json();
         if (data.ok && data.referral && isMounted) {
           setReferral(data.referral);
-          // Garante persistência no cookie do cliente por 30 dias
-          document.cookie = `duolife_ref=${encodeURIComponent(effectiveRef)}; path=/; max-age=2592000; SameSite=Lax`;
+          // Persistência com TTL dinâmico configurado (padrão 24h = 86400s)
+          const ttl = data.referral.ttlSeconds || 86400;
+          document.cookie = `duolife_ref=${encodeURIComponent(effectiveRef)}; path=/; max-age=${ttl}; SameSite=Lax`;
+
+          // Emite evento global para que os botões do WhatsApp e outros componentes sincronizem a corretora
+          if (typeof window !== 'undefined') {
+            const detail = {
+              partnerName: data.referral.companyName || data.referral.partnerName,
+              token: data.referral.token,
+              expiresAt: data.referral.expiresAt,
+            };
+            window.dispatchEvent(new CustomEvent('duolife:referral', { detail }));
+          }
         }
       } catch {
         // Silencioso se der erro de rede

@@ -186,11 +186,13 @@ describe('public-referral.test.ts - Resolução de Indicação Pública e Emiss�
           directUrl: 'https://duolife.com.br/contratar/dlk_superdesconto15',
           discountPercent: 15,
           token: 'dlk_superdesconto15',
+          ttlSeconds: 86400,
+          expiresAt: expect.any(String),
         },
       });
     });
 
-    it('deve emitir o cabeçalho Set-Cookie duolife_ref com duração de 30 dias (Max-Age=2592000; Path=/; SameSite=Lax)', async () => {
+    it('deve emitir o cabeçalho Set-Cookie duolife_ref com duração calculada dinamicamente (padrão 24h = 86400s)', async () => {
       (sql as any).mockImplementation(async (strings: TemplateStringsArray) => {
         const query = strings.join('?');
         if (query.includes('FROM public_sale_links pl')) {
@@ -203,12 +205,15 @@ describe('public-referral.test.ts - Resolução de Indicação Pública e Emiss�
       const res = await GET(req);
 
       expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.referral.ttlSeconds).toBe(86400);
+      expect(data.referral.expiresAt).toBeDefined();
 
       // Verificação via response.headers.get('set-cookie')
       const setCookie = res.headers.get('set-cookie');
       expect(setCookie).toBeTruthy();
       expect(setCookie).toContain('duolife_ref=SILVA15');
-      expect(setCookie).toMatch(/Max-Age=2592000/i);
+      expect(setCookie).toMatch(/Max-Age=86400/i);
       expect(setCookie).toMatch(/Path=\//i);
       expect(setCookie).toMatch(/SameSite=lax/i);
 
@@ -216,7 +221,7 @@ describe('public-referral.test.ts - Resolução de Indicação Pública e Emiss�
       const cookieObj = res.cookies.get('duolife_ref');
       expect(cookieObj).toBeDefined();
       expect(cookieObj?.value).toBe('SILVA15');
-      expect(cookieObj?.maxAge).toBe(2592000);
+      expect(cookieObj?.maxAge).toBe(86400);
       expect(cookieObj?.path).toBe('/');
       expect(String(cookieObj?.sameSite).toLowerCase()).toBe('lax');
     });

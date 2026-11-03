@@ -333,3 +333,43 @@ export async function isNet4LifeInfoEnabled(): Promise<boolean> {
 }
 
 
+
+
+export const DEFAULT_REFERRAL_TOKEN_EXPIRATION_VALUE = 24;
+export const DEFAULT_REFERRAL_TOKEN_EXPIRATION_UNIT: 'hours' | 'days' = 'hours';
+
+export interface ReferralTokenTtlConfig {
+  value: number;
+  unit: 'hours' | 'days';
+  ttlSeconds: number;
+}
+
+export function calculateTtlSeconds(value: number, unit: 'hours' | 'days'): number {
+  const safeValue = Number.isFinite(value) && value > 0 ? Math.floor(value) : DEFAULT_REFERRAL_TOKEN_EXPIRATION_VALUE;
+  const safeUnit = unit === 'days' ? 'days' : 'hours';
+  if (safeUnit === 'days') {
+    return safeValue * 24 * 60 * 60;
+  }
+  return safeValue * 60 * 60;
+}
+
+export async function getReferralTokenTtlConfig(): Promise<ReferralTokenTtlConfig> {
+  const settings = await getAllSystemSettings();
+  const rawValue = settings['REFERRAL_TOKEN_EXPIRATION_VALUE'] || process.env.REFERRAL_TOKEN_EXPIRATION_VALUE;
+  const rawUnit = settings['REFERRAL_TOKEN_EXPIRATION_UNIT'] || process.env.REFERRAL_TOKEN_EXPIRATION_UNIT;
+
+  const parsedValue = parseInt(String(rawValue || ''), 10);
+  const value = Number.isFinite(parsedValue) && parsedValue > 0
+    ? parsedValue
+    : DEFAULT_REFERRAL_TOKEN_EXPIRATION_VALUE;
+
+  const unit: 'hours' | 'days' = rawUnit === 'days' ? 'days' : DEFAULT_REFERRAL_TOKEN_EXPIRATION_UNIT;
+  const ttlSeconds = calculateTtlSeconds(value, unit);
+
+  return { value, unit, ttlSeconds };
+}
+
+export async function getReferralTokenTtlSeconds(): Promise<number> {
+  const config = await getReferralTokenTtlConfig();
+  return config.ttlSeconds;
+}

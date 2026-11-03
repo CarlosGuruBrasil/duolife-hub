@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { verifyAuth, unauthorized } from '@/lib/auth';
-import { roleIsDev } from '@/lib/roles';
+import { roleIsPlatformAdmin } from '@/lib/roles';
 import { getAllSystemSettings, updateSystemSettings, sanitizeApiToken } from '@/lib/system-settings';
 import { logger } from '@/lib/logger';
 import { recordActionAudit } from '@/lib/action-audit';
@@ -29,9 +29,9 @@ export async function GET() {
   const user = await verifyAuth();
   if (!user) return unauthorized();
 
-  if (!roleIsDev(user.role)) {
+  if (!roleIsPlatformAdmin(user.role)) {
     return Response.json(
-      { error: 'Acesso permitido exclusivamente a desenvolvedores (duolife_dev).' },
+      { error: 'Acesso permitido exclusivamente a administradores e desenvolvedores da plataforma.' },
       { status: 403 }
     );
   }
@@ -72,6 +72,9 @@ export async function GET() {
       NET4LIFE_INFO_SMTP_USER: dbSettings['NET4LIFE_INFO_SMTP_USER'] || process.env.NET4LIFE_INFO_SMTP_USER || '',
       NET4LIFE_INFO_ENABLED: dbSettings['NET4LIFE_INFO_ENABLED'] || process.env.NET4LIFE_INFO_ENABLED || 'true',
 
+      REFERRAL_TOKEN_EXPIRATION_VALUE: dbSettings['REFERRAL_TOKEN_EXPIRATION_VALUE'] || process.env.REFERRAL_TOKEN_EXPIRATION_VALUE || '24',
+      REFERRAL_TOKEN_EXPIRATION_UNIT: dbSettings['REFERRAL_TOKEN_EXPIRATION_UNIT'] || process.env.REFERRAL_TOKEN_EXPIRATION_UNIT || 'hours',
+
       RENEWAL_WINDOWS: dbSettings['RENEWAL_WINDOWS'] || '60,30,15,0',
       RENEWAL_ENABLED: dbSettings['RENEWAL_ENABLED'] || 'true',
       INADIMPLENCIA_ENABLED: dbSettings['INADIMPLENCIA_ENABLED'] || 'true',
@@ -101,9 +104,9 @@ export async function POST(req: NextRequest) {
   const user = await verifyAuth();
   if (!user) return unauthorized();
 
-  if (!roleIsDev(user.role)) {
+  if (!roleIsPlatformAdmin(user.role)) {
     return Response.json(
-      { error: 'Acesso permitido exclusivamente a desenvolvedores (duolife_dev).' },
+      { error: 'Acesso permitido exclusivamente a administradores e desenvolvedores da plataforma.' },
       { status: 403 }
     );
   }
@@ -125,13 +128,21 @@ export async function POST(req: NextRequest) {
           // Não alterou o segredo existente, ignora
           continue;
         }
-        sanitizedSettings[key] = (SECRET_KEYS.has(key) || key.includes('TEMPLATE') || key.includes('TOKEN') || key.includes('KEY')) 
-          ? sanitizeApiToken(trimmed) 
-          : trimmed;
+
+        if (key === 'REFERRAL_TOKEN_EXPIRATION_VALUE') {
+          const parsed = parseInt(trimmed, 10);
+          sanitizedSettings[key] = (Number.isFinite(parsed) && parsed > 0) ? String(parsed) : '24';
+        } else if (key === 'REFERRAL_TOKEN_EXPIRATION_UNIT') {
+          sanitizedSettings[key] = trimmed === 'days' ? 'days' : 'hours';
+        } else {
+          sanitizedSettings[key] = (SECRET_KEYS.has(key) || key.includes('TEMPLATE') || key.includes('TOKEN') || key.includes('KEY')) 
+            ? sanitizeApiToken(trimmed) 
+            : trimmed;
+        }
       }
     }
 
-    const updatedBy = user.email || user.name || 'duolife_dev';
+    const updatedBy = user.email || user.name || 'duolife_admin';
     if (Object.keys(sanitizedSettings).length > 0) {
       await updateSystemSettings(sanitizedSettings, updatedBy);
 

@@ -110,7 +110,7 @@ export default function AdminShell({ children, user }: AdminShellProps) {
       ...section,
       items: section.items.filter((item) => item.href !== '/admin/usuarios' || isPlatformAdmin),
     })),
-    ...(isDev
+    ...(isPlatformAdmin
       ? [
           {
             title: 'Desenvolvimento',

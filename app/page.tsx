@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef, Suspense } from 'react';
 import ReferralBanner from '@/components/site/ReferralBanner';
+import HeroWhatsAppButton from '@/components/site/HeroWhatsAppButton';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import TeamMemberCard, { TeamMember } from '@/components/site/TeamMemberCard';
@@ -338,15 +339,7 @@ export default function Home() {
                   Seja Nosso Parceiro
                   <ArrowRight size={16} />
                 </Link>
-                <a
-                  href="https://wa.me/5547996486081?text=Olá! Gostaria de falar com o time comercial da DuoLife."
-                  target="_blank"
-                  rel="noopener"
-                  className="flex items-center justify-center gap-2 bg-transparent border border-white/20 hover:border-white hover:bg-white/5 text-white px-10 py-5 rounded-full font-bold text-sm transition-all duration-300"
-                >
-                  <Phone size={15} />
-                  Falar no WhatsApp
-                </a>
+                <HeroWhatsAppButton />
               </div>
             </div>
           </div>

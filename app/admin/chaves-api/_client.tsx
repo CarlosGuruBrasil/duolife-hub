@@ -29,6 +29,8 @@ import {
   Clock,
   Play,
   Bot,
+  Link2,
+  Timer,
 } from 'lucide-react';
 import McpKeysTab from './_components/McpKeysTab';
 
@@ -68,6 +70,8 @@ interface ApiSettings {
   INADIMPLENCIA_A_VENCER_DAYS: string;
   INADIMPLENCIA_VENCIDAS_DAYS: string;
   CRON_SECRET: string;
+  REFERRAL_TOKEN_EXPIRATION_VALUE: string;
+  REFERRAL_TOKEN_EXPIRATION_UNIT: string;
 }
 
 const DEFAULT_SETTINGS: ApiSettings = {
@@ -98,9 +102,11 @@ const DEFAULT_SETTINGS: ApiSettings = {
   INADIMPLENCIA_A_VENCER_DAYS: '3,1',
   INADIMPLENCIA_VENCIDAS_DAYS: '1,3,7,15',
   CRON_SECRET: '',
+  REFERRAL_TOKEN_EXPIRATION_VALUE: '24',
+  REFERRAL_TOKEN_EXPIRATION_UNIT: 'hours',
 };
 
-type TabType = 'visao-geral' | 'asaas' | 'zapsign' | 'wix' | 'email-marketing' | 'lifecycle' | 'mcp';
+type TabType = 'visao-geral' | 'asaas' | 'zapsign' | 'wix' | 'email-marketing' | 'lifecycle' | 'indicacao' | 'mcp';
 
 export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
   const [settings, setSettings] = useState<ApiSettings>(DEFAULT_SETTINGS);
@@ -405,6 +411,13 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
         settings.RENEWAL_ENABLED !== 'false'
           ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
           : 'bg-amber-50 text-amber-800 border border-amber-200',
+    },
+    {
+      id: 'indicacao',
+      label: 'Links & Indicação',
+      icon: Link2,
+      badge: `${settings.REFERRAL_TOKEN_EXPIRATION_VALUE || '24'} ${settings.REFERRAL_TOKEN_EXPIRATION_UNIT === 'days' ? 'Dias' : 'Horas'}`,
+      badgeColor: 'bg-emerald-50 text-emerald-800 border border-emerald-200',
     },
     {
       id: 'mcp',
@@ -2078,7 +2091,117 @@ export default function DevApiKeysClient({ userEmail }: DevApiKeysClientProps) {
           </div>
         )}
 
-        {/* 7. Agente IA (Protocolo MCP) */}
+        {/* 7. Validade do Link de Indicação & WhatsApp */}
+        {activeTab === 'indicacao' && (
+          <div className="space-y-6">
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 space-y-4 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0 text-emerald-700">
+                    <Link2 className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-gray-900">Validade do Token de Indicação & Links de Venda</h2>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Tempo de retenção da sessão do corretor/vendedor, modal de consultoria e mensagem contextualizada no WhatsApp.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold px-3 py-1.5 rounded-full border bg-emerald-50 text-emerald-800 border-emerald-200">
+                    ● Ativo: {settings.REFERRAL_TOKEN_EXPIRATION_VALUE || '24'} {settings.REFERRAL_TOKEN_EXPIRATION_UNIT === 'days' ? 'Dias' : 'Horas'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="border-t border-gray-100 pt-4 grid sm:grid-cols-3 gap-3 text-xs text-gray-600">
+                <div className="bg-gray-50 p-3 rounded-xl border border-gray-200/80">
+                  <span className="font-bold text-gray-900 block mb-1">1. Modal da Corretora</span>
+                  O aviso de consultoria especializada é mantido na página inicial exclusivamente dentro do período configurado.
+                </div>
+                <div className="bg-gray-50 p-3 rounded-xl border border-gray-200/80">
+                  <span className="font-bold text-gray-900 block mb-1">2. WhatsApp Contextualizado</span>
+                  Ao clicar em falar no WhatsApp, o nome da corretora é inserido na mensagem. Ao expirar o prazo, o botão reverte para o suporte padrão DuoLife.
+                </div>
+                <div className="bg-gray-50 p-3 rounded-xl border border-gray-200/80">
+                  <span className="font-bold text-gray-900 block mb-1">3. Redirecionamento Seguro</span>
+                  Acessos à rota de contratação são vinculados à corretora durante a vigência do token, caindo na tela de solicitação após a expiração.
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-gray-200 bg-white p-6 space-y-6 shadow-xs">
+              <div className="border-b border-gray-100 pb-4">
+                <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <Timer className="h-4 w-4 text-[#0e4a5a]" />
+                  Tempo Limite de Permanência do Token
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  Defina por quanto tempo o vínculo de atendimento deve permanecer no navegador do cliente após o primeiro acesso ao link do parceiro.
+                </p>
+              </div>
+
+              <div className="grid sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">
+                    Valor da Validade (Número)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max={settings.REFERRAL_TOKEN_EXPIRATION_UNIT === 'days' ? 365 : 8760}
+                    value={settings.REFERRAL_TOKEN_EXPIRATION_VALUE || '24'}
+                    onChange={(e) =>
+                      setSettings({ ...settings, REFERRAL_TOKEN_EXPIRATION_VALUE: e.target.value })
+                    }
+                    className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00d4e0] focus:border-transparent bg-white text-gray-900 font-medium"
+                    placeholder="Ex: 24"
+                  />
+                  <span className="text-[11px] text-gray-500 mt-1 block">
+                    Valor padrão recomendado: 24 horas.
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 uppercase mb-1.5">
+                    Unidade de Medida
+                  </label>
+                  <select
+                    value={settings.REFERRAL_TOKEN_EXPIRATION_UNIT || 'hours'}
+                    onChange={(e) =>
+                      setSettings({ ...settings, REFERRAL_TOKEN_EXPIRATION_UNIT: e.target.value })
+                    }
+                    className="w-full px-3.5 py-2.5 text-sm rounded-xl border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#00d4e0] focus:border-transparent bg-white text-gray-900 font-medium"
+                  >
+                    <option value="hours">Horas (Ex: 24h, 48h, 72h)</option>
+                    <option value="days">Dias (Ex: 1 dia, 7 dias, 30 dias)</option>
+                  </select>
+                  <span className="text-[11px] text-gray-500 mt-1 block">
+                    Define a escala temporal de expiração do cookie e da sessão.
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200/80 text-xs text-emerald-900 flex items-start gap-3">
+                <Info className="h-5 w-5 text-emerald-700 shrink-0 mt-0.5" />
+                <div className="space-y-1">
+                  <p className="font-bold">Regra Ativa Aplicada:</p>
+                  <p>
+                    O token permanecerá ativo por exatamente{' '}
+                    <strong>
+                      {settings.REFERRAL_TOKEN_EXPIRATION_VALUE || '24'}{' '}
+                      {settings.REFERRAL_TOKEN_EXPIRATION_UNIT === 'days' ? 'dia(s)' : 'hora(s)'}
+                    </strong>{' '}
+                    a partir do momento em que o visitante acessar o link de indicação do consultor. Após este tempo, o modal e a mensagem do WhatsApp voltam para o padrão DuoLife automaticamente.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 8. Agente IA (Protocolo MCP) */}
         {activeTab === 'mcp' && <McpKeysTab />}
 
         {/* Botão de Salvar Alterações Unificado no Rodapé */}
