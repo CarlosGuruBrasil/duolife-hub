@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { verifyAuth, unauthorized, isInternalUser } from '@/lib/auth';
+import { verifyAuth, unauthorized, isInternalUser, canApplyManualDiscount } from '@/lib/auth';
 import { getAccessibleQuoteById } from '@/lib/access';
 import { upsertInsuranceClient } from '@/lib/insurance-ops';
 import { parseJsonbField } from '@/lib/json-safe';
@@ -336,14 +336,14 @@ export async function PATCH(
           tipoDePlano: planoCodigo,
           qtdParcelasSolicitada: parcela,
           cupomCodigo,
-          descontoManualPercent: Number(
-            proposal.descontoManualPercent ??
-            payload.descontoManualPercent ??
-            sanitizedInputClientData.descontoManualPercent ??
-            sanitizedInputClientData.descontoPercentual ??
-            currentClientData.descontoManualPercent ??
-            currentClientData.descontoPercentual
-          ) || 0,
+          descontoManualPercent: canApplyManualDiscount(user)
+            ? (Number(
+                proposal.descontoManualPercent ??
+                payload.descontoManualPercent ??
+                sanitizedInputClientData.descontoManualPercent ??
+                currentClientData.descontoManualPercent
+              ) || 0)
+            : 0,
           flowKey: resolvedFlowKey ? String(resolvedFlowKey) : null,
           productId: cotacao.product_id,
           grupoTarifario: resolvedGrupoTarifario,

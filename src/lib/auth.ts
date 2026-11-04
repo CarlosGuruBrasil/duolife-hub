@@ -216,6 +216,12 @@ export function canManageCorretoraWide(user: AuthUser): boolean {
   return roleIsCorretoraManagement(user.role) || isInternalUser(user);
 }
 
+// Permissão para conceder descontos manuais discricionários comerciais
+export function canApplyManualDiscount(user?: AuthUser | null): boolean {
+  if (!user) return false;
+  return isInternalUser(user) || roleIsCorretoraManagement(user.role) || user.partnerRole === 'director';
+}
+
 // Diretor/Gerente de um Parceiro Individual: restrito estritamente ao seu próprio user.partnerId
 export function isIndividualPartnerManager(user: AuthUser): boolean {
   return (

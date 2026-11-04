@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
-import { getPartnerAccessContext, isPlatformAdmin, isInternalUser, isDevUser, roleIsCorretora, verifyAuth, unauthorized } from '@/lib/auth';
+import { getPartnerAccessContext, isPlatformAdmin, isInternalUser, isDevUser, roleIsCorretora, canApplyManualDiscount, verifyAuth, unauthorized } from '@/lib/auth';
 import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { ensureSchema, seedInitialData } from '@/lib/schema';
@@ -468,9 +468,11 @@ export async function POST(req: NextRequest) {
     // Se a cotação veio por link público de autocadastro do cliente (publicToken),
     // o desconto é estritamente o determinado pelo vendedor na criação do link exclusivo.
     // Cupons e descontos manuais enviados no corpo da requisição são ignorados para prevenir fraudes.
+    const rawManualDiscount = Number(clientDataInput.descontoManualPercent) || 0;
+    const isDiscountAuthorized = canApplyManualDiscount(user);
     const effectiveDescontoPercent = publicToken
       ? publicLinkDiscountPercent
-      : (Number(clientDataInput.descontoManualPercent) || 0);
+      : (isDiscountAuthorized ? rawManualDiscount : 0);
     const effectiveCupomCodigo = publicToken ? null : (clientDataInput.cupomCodigo as string | null | undefined);
 
     const preco = await calcularPrecoServidor({
