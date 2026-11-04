@@ -143,7 +143,8 @@ export async function getCorretoraParaContrato(cotacaoId: string): Promise<Corre
   // 1. cotacoes.corretora_id
   // 2. partners.corretora_id (via cotacoes.partner_id)
   // 3. Primeira corretora ativa no sistema
-  const [row] = await sql<{
+  try {
+    const [row] = await sql<{
     corretora_id: string | null;
     partner_id: string | null;
     partner_corretora_id: string | null;
@@ -160,9 +161,9 @@ export async function getCorretoraParaContrato(cotacaoId: string): Promise<Corre
       c.partner_id,
       p.corretora_id as partner_corretora_id,
       p.metadata as partner_metadata,
-      p.name as partner_name,
-      p.company_name as partner_company_name,
-      p.document as partner_document,
+      COALESCE(p.nome_fantasia, p.razao_social) as partner_name,
+      p.razao_social as partner_company_name,
+      COALESCE(p.cnpj, p.cpf) as partner_document,
       p.email as partner_email,
       p.phone as partner_phone,
       p.address as partner_address
@@ -339,4 +340,30 @@ export async function getCorretoraParaContrato(cotacaoId: string): Promise<Corre
     primaryColor: primaryColorResolvida,
     isWhiteLabel: isWhiteLabelActive,
   };
+  } catch (err) {
+    logger.error({ err, cotacaoId }, 'corretora_resolver.query_failed_fallback_default');
+    const { buffer, mime } = await loadLogoBuffer('/images/corretoras/net4life-logo.png');
+    return {
+      id: 'default',
+      razaoSocial: 'NETFORLIFE TECNOLOGIA EM GESTÃO E CORRETAGEM DE SEGUROS LTDA',
+      nomeFantasia: 'NET4LIFE',
+      cnpj: '34.567.890/0001-12',
+      susep: '202058392',
+      email: 'contato@net4life.com.br',
+      phone: '(48) 99139-4912',
+      enderecoFormatado: 'Rod. José Carlos Daux, 8600, Bloco 03, Sala 05, Santo Antônio de Lisboa, Florianópolis/SC, CEP: 88050-000',
+      endereco: 'Rod. José Carlos Daux, 8600, Bloco 03, Sala 05',
+      bairro: 'Santo Antônio de Lisboa',
+      cep: '88050-000',
+      cidade: 'Florianópolis',
+      uf: 'SC',
+      logoBuffer: buffer,
+      logoMimeType: mime,
+      isNet4Life: true,
+      website: 'net4life.com.br',
+      footerText: 'Rod. José Carlos Daux, 8600, Bloco 03, Sala 05, Santo Antônio de Lisboa, Florianópolis/SC, CEP: 88050-000',
+      primaryColor: '#0e4a5a',
+      isWhiteLabel: false,
+    };
+  }
 }

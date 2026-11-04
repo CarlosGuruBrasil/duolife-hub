@@ -108,8 +108,25 @@ export async function GET(req: Request) {
         planos = [];
       }
 
-      // Fallback em caso de Wix vazio ou erro de banco
-      if (planos.length === 0) {
+      // Se houver itens do Wix, mescla com rcAdvogadosConfig para garantir completude das opções de parcelamento
+      if (planos.length > 0) {
+        planos = rcAdvogadosConfig.planos.map((basePlano) => {
+          const foundWix = planos.find(
+            (wp) => String(wp.tipoDePlano || '').toLowerCase().trim() === basePlano.tipoDePlano.toLowerCase().trim()
+          );
+          if (!foundWix) return basePlano;
+          return {
+            ...basePlano,
+            ...foundWix,
+            parcela2X: foundWix.parcela2X || (basePlano as any).parcela2X,
+            parcela3X: foundWix.parcela3X || (basePlano as any).parcela3X,
+            parcela4X: foundWix.parcela4X || (basePlano as any).parcela4X,
+            parcela6X: foundWix.parcela6X || (basePlano as any).parcela6X,
+            maxParcelas: foundWix.maxParcelas || basePlano.maxParcelas,
+          };
+        }).sort((a, b) => (Number(a.ordem) || 0) - (Number(b.ordem) || 0));
+      } else {
+        // Fallback em caso de Wix vazio ou erro de banco
         planos = [...rcAdvogadosConfig.planos].sort(
           (a, b) => (Number(a.ordem) || 0) - (Number(b.ordem) || 0)
         );

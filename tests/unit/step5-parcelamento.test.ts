@@ -1,72 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { parseCurrencyToNumber } from '@/lib/format';
+import {
+  calcularOpcoesParcelamentoForm as calcularOpcoesParcelamento,
+  resolverSelecaoParcela,
+  type Plano,
+} from '@/lib/plan-resolution';
 
-function parseMoneyToFloat(val?: string | number | null): number {
-  return parseCurrencyToNumber(val, 0);
-}
-
-interface TestPlano {
-  tipoDePlano: string;
-  cobertura: string;
-  parcela: string;
-  parcela2X?: string;
-  parcela3X?: string;
-  parcela4X?: string;
-  parcela5X?: string;
-  parcela6X?: string;
-}
-
-function calcularOpcoesParcelamento(
-  plano: TestPlano,
-  descontoPercentual: number = 0,
-  cupomDesconto: number = 0
-) {
-  const valorOriginal = parseMoneyToFloat(plano.parcela);
-  const maiorDesconto = Math.max(descontoPercentual, cupomDesconto);
-  const fatorDesconto = 1 - maiorDesconto / 100;
-  const valorComDesconto = Math.round(valorOriginal * fatorDesconto * 100) / 100;
-
-  const parseParcela = (parcStr?: string) => {
-    if (!parcStr) return 0;
-    return Math.round(parseMoneyToFloat(parcStr) * fatorDesconto * 100) / 100;
-  };
-
-  const opcoes = [
-    { qtd: 1, valor: valorComDesconto },
-    { qtd: 2, valor: parseParcela(plano.parcela2X) || Math.round((valorComDesconto / 2) * 100) / 100 },
-    { qtd: 3, valor: parseParcela(plano.parcela3X) || Math.round((valorComDesconto / 3) * 100) / 100 },
-    { qtd: 4, valor: parseParcela(plano.parcela4X) || Math.round((valorComDesconto / 4) * 100) / 100 },
-    { qtd: 5, valor: parseParcela(plano.parcela5X) || Math.round((valorComDesconto / 5) * 100) / 100 },
-    { qtd: 6, valor: parseParcela(plano.parcela6X) || Math.round((valorComDesconto / 6) * 100) / 100 },
-  ];
-
-  if (String(plano.tipoDePlano || '').toLowerCase() === '100k') {
-    return [opcoes[0]];
-  }
-
-  const validKeys: (keyof TestPlano)[] = ['parcela', 'parcela2X', 'parcela3X', 'parcela4X', 'parcela5X', 'parcela6X'];
-  return opcoes.filter((op, i) => {
-    const key = validKeys[i];
-    return plano[key] && plano[key] !== '' && plano[key] !== 'R$ 0,00';
-  });
-}
-
-function resolverSelecaoParcela(
-  opcoes: { qtd: number; valor: number }[],
-  parcelaAtual: { qtd: number; valor: number } | null
-): { qtd: number; valor: number } | null {
-  if (opcoes.length === 1) {
-    const opUnica = opcoes[0];
-    return { qtd: opUnica.qtd, valor: opUnica.valor };
-  }
-  if (parcelaAtual) {
-    const opCorrespondente = opcoes.find((op) => op.qtd === parcelaAtual.qtd);
-    if (opCorrespondente) {
-      return { qtd: opCorrespondente.qtd, valor: opCorrespondente.valor };
-    }
-  }
-  return parcelaAtual;
-}
+type TestPlano = Partial<Plano>;
 
 describe('step5-parcelamento.test.ts - Regras do Passo 5 de Condições de Pagamento', () => {
   const plano100k: TestPlano = {

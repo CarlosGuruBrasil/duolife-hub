@@ -57,22 +57,16 @@ import {
   getClientSessionToken,
   setClientSessionToken,
 } from '@/lib/client-draft-storage';
+import {
+  findMatchingPlanoInLists,
+  reconciliarPlanoComCatalogo,
+  calcularOpcoesParcelamentoForm,
+  resolverSelecaoParcela,
+  buildFallbackPlanoFromClientData,
+  type Plano,
+} from '@/lib/plan-resolution';
 
-export interface Plano {
-  tipoDePlano: string;
-  nomeExibido: string;
-  cobertura: string;
-  franquia: string;
-  ordem: number;
-  parcela: string;
-  parcela2X?: string;
-  parcela3X?: string;
-  parcela4X?: string;
-  parcela5X?: string;
-  parcela6X?: string;
-  valorPagoKovr?: number;
-  planoFranquia?: string;
-}
+export type { Plano };
 
 export interface DynamicCotacaoFormProps {
   adminSelectedPartnerId?: string;
@@ -444,7 +438,7 @@ export default function DynamicCotacaoForm({
     const draft = loadLocalDraft(publicToken);
     if (draft && draft.form) {
       setForm((prev) => ({ ...prev, ...draft.form }));
-      if (draft.step && draft.step > 1 && draft.step <= 4) {
+      if (draft.step && draft.step > 1 && draft.step <= 5) {
         setStep(draft.step);
       }
       if (draft.planoSel) setPlanoSel(draft.planoSel);
@@ -456,7 +450,7 @@ export default function DynamicCotacaoForm({
 
   // Auto-save contínuo em LocalStorage durante o preenchimento pelo cliente
   useEffect(() => {
-    if (!publicToken || step >= 5) return;
+    if (!publicToken || step > 5) return;
     const timer = setTimeout(() => {
       saveLocalDraft(publicToken, {
         step,
@@ -576,8 +570,8 @@ export default function DynamicCotacaoForm({
           setPlanos(planosCorrigidos);
           setPlanoSel((current) => {
             if (!current) return null;
-            const fullPlano = planosCorrigidos.find((p) => p.tipoDePlano === current.tipoDePlano);
-            return fullPlano ? { ...fullPlano, ...current } : current;
+            const fullPlano = findMatchingPlanoInLists(current.tipoDePlano || current.nomeExibido, [planosCorrigidos]);
+            return fullPlano ? reconciliarPlanoComCatalogo(current, fullPlano) : current;
           });
           return;
         }
@@ -585,19 +579,27 @@ export default function DynamicCotacaoForm({
 
       // Fallback: planos do ramoConfig
       const currentRamoConfig = resolvedRamoConfigRef.current;
-      if (currentRamoConfig && Array.isArray(currentRamoConfig.planos) && currentRamoConfig.planos.length > 0) {
-        setPlanos(currentRamoConfig.planos as Plano[]);
-      } else {
-        setPlanos(rcAdvogadosConfig.planos as Plano[]);
-      }
+      const fallbackList = (currentRamoConfig && Array.isArray(currentRamoConfig.planos) && currentRamoConfig.planos.length > 0)
+        ? (currentRamoConfig.planos as Plano[])
+        : (rcAdvogadosConfig.planos as Plano[]);
+      setPlanos(fallbackList);
+      setPlanoSel((current) => {
+        if (!current) return null;
+        const fullPlano = findMatchingPlanoInLists(current.tipoDePlano || current.nomeExibido, [fallbackList]);
+        return fullPlano ? reconciliarPlanoComCatalogo(current, fullPlano) : current;
+      });
     } catch (err) {
       console.error('Erro ao buscar planos da API, usando fallback do ramo:', err);
       const currentRamoConfig = resolvedRamoConfigRef.current;
-      if (currentRamoConfig && Array.isArray(currentRamoConfig.planos) && currentRamoConfig.planos.length > 0) {
-        setPlanos(currentRamoConfig.planos as Plano[]);
-      } else {
-        setPlanos(rcAdvogadosConfig.planos as Plano[]);
-      }
+      const fallbackList = (currentRamoConfig && Array.isArray(currentRamoConfig.planos) && currentRamoConfig.planos.length > 0)
+        ? (currentRamoConfig.planos as Plano[])
+        : (rcAdvogadosConfig.planos as Plano[]);
+      setPlanos(fallbackList);
+      setPlanoSel((current) => {
+        if (!current) return null;
+        const fullPlano = findMatchingPlanoInLists(current.tipoDePlano || current.nomeExibido, [fallbackList]);
+        return fullPlano ? reconciliarPlanoComCatalogo(current, fullPlano) : current;
+      });
     } finally {
       setLoadingPlanos(false);
     }
@@ -625,8 +627,8 @@ export default function DynamicCotacaoForm({
 
         setPlanoSel((current) => {
           if (!current) return null;
-          const matchingPlano = novosPlanos.find((p) => p.tipoDePlano === current.tipoDePlano);
-          return matchingPlano || null;
+          const matchingPlano = findMatchingPlanoInLists(current.tipoDePlano || current.nomeExibido, [novosPlanos]);
+          return matchingPlano ? reconciliarPlanoComCatalogo(current, matchingPlano) : null;
         });
         setParcelaSel(null);
       }
@@ -786,40 +788,42 @@ export default function DynamicCotacaoForm({
             setDescontoPercentual(Math.min(40, Math.max(0, desc)));
           }
 
-          const activePlansList = (cd.grupoTarifario && resolvedRamoConfig.planosPorGrupo?.[cd.grupoTarifario])
-            ? resolvedRamoConfig.planosPorGrupo[cd.grupoTarifario]
-            : planos;
+          const candidatePlanLists: (Plano[] | undefined | null)[] = [
+            (cd.grupoTarifario && resolvedRamoConfig.planosPorGrupo?.[cd.grupoTarifario])
+              ? (resolvedRamoConfig.planosPorGrupo[cd.grupoTarifario] as Plano[])
+              : null,
+            planos.length > 0 ? planos : null,
+            Array.isArray(resolvedRamoConfig.planos) ? (resolvedRamoConfig.planos as Plano[]) : null,
+            rcAdvogadosConfig.planos as Plano[],
+          ];
+
           if (cd.grupoTarifario && resolvedRamoConfig.planosPorGrupo?.[cd.grupoTarifario]) {
             setPlanos(resolvedRamoConfig.planosPorGrupo[cd.grupoTarifario]);
           }
 
-          if (cd.tipo) {
-            const planoEncontrado = activePlansList.find((p) => p.tipoDePlano === cd.tipo);
+          if (cd.tipo || cd.nomePlano) {
+            const planoEncontrado = findMatchingPlanoInLists(cd.tipo || cd.nomePlano, candidatePlanLists);
             if (planoEncontrado) {
-              setPlanoSel(planoEncontrado);
-            } else {
-              const { cobertura: sanitizedCob } = sanitizePlanFinancials({
-                planoNome: cd.nomePlano || cd.tipo,
-                cobertura: cd.valorCobertura || c.importancia_segurada,
-              });
-              const cobDisplay = sanitizedCob > 0
-                ? formatCurrencyBRL(sanitizedCob)
-                : (cd.valorCobertura || (c.importancia_segurada ? formatCurrencyBRL(c.importancia_segurada) : 'R$ 100.000,00'));
-
-              setPlanoSel({
-                tipoDePlano: cd.tipo,
-                nomeExibido: cd.nomePlano || cd.tipo,
-                cobertura: cobDisplay,
-                franquia: cd.planoFranquia || 'R$ 1.000,00',
-                ordem: 1,
-                parcela: String(cd.valor || '0'),
+              setPlanoSel(reconciliarPlanoComCatalogo({
+                tipoDePlano: cd.tipo || planoEncontrado.tipoDePlano,
+                nomeExibido: cd.nomePlano || planoEncontrado.nomeExibido,
+                cobertura: cd.valorCobertura || c.importancia_segurada || planoEncontrado.cobertura,
+                franquia: cd.planoFranquia || planoEncontrado.franquia,
+                ordem: planoEncontrado.ordem || 1,
+                parcela: String(cd.valor || planoEncontrado.parcela),
                 parcela2X: cd.parcela2X,
                 parcela3X: cd.parcela3X,
                 parcela4X: cd.parcela4X,
                 parcela5X: cd.parcela5X,
                 parcela6X: cd.parcela6X,
-                valorPagoKovr: 0,
-              });
+                maxParcelas: cd.maxParcelas ? Number(cd.maxParcelas) : planoEncontrado.maxParcelas,
+              } as Plano, planoEncontrado));
+            } else {
+              const fallbackPlano = buildFallbackPlanoFromClientData({
+                ...cd,
+                cobertura: cd.valorCobertura || c.importancia_segurada,
+              }, resolvedRamoConfig);
+              setPlanoSel(fallbackPlano);
             }
           }
 
@@ -1113,37 +1117,14 @@ export default function DynamicCotacaoForm({
 
   const getOpcoesParcelamento = useCallback(
     (plano: Plano) => {
-      const valorOriginal = parseMoneyToFloat(plano.parcela);
-      const maiorDesconto = Math.max(descontoPercentual, cupomDesconto);
-      const fatorDesconto = 1 - maiorDesconto / 100;
-      const valorComDesconto = Math.round(valorOriginal * fatorDesconto * 100) / 100;
-
-      const parseParcela = (parcStr?: string) => {
-        if (!parcStr) return 0;
-        return Math.round(parseMoneyToFloat(parcStr) * fatorDesconto * 100) / 100;
-      };
-
-      const opcoes = [
-        { qtd: 1, valor: valorComDesconto },
-        { qtd: 2, valor: parseParcela(plano.parcela2X) || Math.round((valorComDesconto / 2) * 100) / 100 },
-        { qtd: 3, valor: parseParcela(plano.parcela3X) || Math.round((valorComDesconto / 3) * 100) / 100 },
-        { qtd: 4, valor: parseParcela(plano.parcela4X) || Math.round((valorComDesconto / 4) * 100) / 100 },
-        { qtd: 5, valor: parseParcela(plano.parcela5X) || Math.round((valorComDesconto / 5) * 100) / 100 },
-        { qtd: 6, valor: parseParcela(plano.parcela6X) || Math.round((valorComDesconto / 6) * 100) / 100 },
-      ];
-
-      // Plano 100k somente permite 1x (à vista)
-      if (String(plano.tipoDePlano || '').toLowerCase() === '100k') {
-        return [opcoes[0]];
-      }
-
-      const validKeys: (keyof Plano)[] = ['parcela', 'parcela2X', 'parcela3X', 'parcela4X', 'parcela5X', 'parcela6X'];
-      return opcoes.filter((op, i) => {
-        const key = validKeys[i];
-        return plano[key] && plano[key] !== '' && plano[key] !== 'R$ 0,00';
-      });
+      return calcularOpcoesParcelamentoForm(
+        plano,
+        descontoPercentual,
+        cupomDesconto,
+        resolvedRamoConfig.ramoId
+      );
     },
-    [descontoPercentual, cupomDesconto]
+    [descontoPercentual, cupomDesconto, resolvedRamoConfig.ramoId]
   );
 
   // ------------------------------------------------------------------
@@ -1153,17 +1134,10 @@ export default function DynamicCotacaoForm({
   useEffect(() => {
     if (!planoSel || step < 5) return;
     const opcoes = getOpcoesParcelamento(planoSel);
-    if (opcoes.length === 1) {
-      // Se só existe uma opção (à vista / 1x), mantém sempre selecionada por padrão
-      const opUnica = opcoes[0];
-      if (!parcelaSel || parcelaSel.qtd !== opUnica.qtd || Math.abs(parcelaSel.valor - opUnica.valor) > 0.001) {
-        setParcelaSel({ qtd: opUnica.qtd, valor: opUnica.valor });
-      }
-    } else if (parcelaSel) {
-      // Se já havia uma parcela selecionada e o valor mudou devido a cupom/desconto, atualiza o valor
-      const opCorrespondente = opcoes.find((op) => op.qtd === parcelaSel.qtd);
-      if (opCorrespondente && Math.abs(parcelaSel.valor - opCorrespondente.valor) > 0.001) {
-        setParcelaSel({ qtd: opCorrespondente.qtd, valor: opCorrespondente.valor });
+    const novaSelecao = resolverSelecaoParcela(opcoes, parcelaSel);
+    if (novaSelecao) {
+      if (!parcelaSel || parcelaSel.qtd !== novaSelecao.qtd || Math.abs(parcelaSel.valor - novaSelecao.valor) > 0.001) {
+        setParcelaSel(novaSelecao);
       }
     }
   }, [step, planoSel, getOpcoesParcelamento, parcelaSel]);
@@ -1416,6 +1390,12 @@ export default function DynamicCotacaoForm({
         valor: valorTotal,
         valorParcela: valorParcela,
         parcela: parcelaSel.qtd,
+        parcela2X: planoSel.parcela2X,
+        parcela3X: planoSel.parcela3X,
+        parcela4X: planoSel.parcela4X,
+        parcela5X: planoSel.parcela5X,
+        parcela6X: planoSel.parcela6X,
+        maxParcelas: planoSel.maxParcelas,
         formaPagamento: formaPagamento,
         billingType: formaPagamento,
         descontoManualPercent: descontoPercentual,

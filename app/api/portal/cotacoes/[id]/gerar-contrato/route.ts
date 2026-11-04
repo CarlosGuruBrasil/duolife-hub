@@ -882,6 +882,10 @@ export async function POST(
 
   } catch (err: unknown) {
     logger.error({ err, cotacaoId: id }, 'api.portal.gerar-contrato.failed');
-    return Response.json({ error: 'Erro interno ao gerar contrato' }, { status: 500 });
+    const msg = err instanceof Error ? err.message : '';
+    const userMessage = msg && !msg.toLowerCase().includes('database') && !msg.toLowerCase().includes('select ') && !msg.toLowerCase().includes('syntax error')
+      ? msg
+      : 'Erro interno ao gerar contrato. Por favor, tente novamente ou verifique as configurações.';
+    return Response.json({ error: userMessage }, { status: 500 });
   }
 }

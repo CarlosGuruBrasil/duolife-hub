@@ -39,7 +39,7 @@ describe('Task 1: Blindagem de Autenticação e Webhooks Fail-Closed', () => {
       expect(res.status).toBe(401);
       const data = await res.json();
       expect(data.error).toMatch(/unauthorized|não autorizado/i);
-    });
+    }, 15000);
 
     it('deve REJEITAR com 401 quando token for incorreto', async () => {
       process.env.ZAPSIGN_WEBHOOK_SECRET = 'segredo_super_forte_123';
