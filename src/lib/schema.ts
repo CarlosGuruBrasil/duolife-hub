@@ -915,6 +915,22 @@ async function runRuntimeSchemaSetup(): Promise<void> {
   await sql`ALTER TABLE webhook_events ADD COLUMN IF NOT EXISTS request_headers JSONB`;
   await sql`CREATE INDEX IF NOT EXISTS idx_webhook_events_processed ON webhook_events (processed)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_webhook_events_created_at ON webhook_events (created_at DESC)`;
+  await sql`
+    DELETE FROM webhook_events
+    WHERE id IN (
+      SELECT id
+      FROM (
+        SELECT id,
+               ROW_NUMBER() OVER (
+                 PARTITION BY provider, external_id
+                 ORDER BY created_at DESC, id DESC
+               ) as rnum
+        FROM webhook_events
+        WHERE external_id IS NOT NULL
+      ) t
+      WHERE t.rnum > 1
+    )
+  `;
   await sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_webhook_events_provider_external_id ON webhook_events (provider, external_id) WHERE external_id IS NOT NULL`;
 
   // Usuários admin internos da DuoLife
