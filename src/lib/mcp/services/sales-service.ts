@@ -809,12 +809,24 @@ export async function confirmQuote(input: {
   let cotacaoId = `cot_${crypto.randomUUID().slice(0, 12)}`;
 
   try {
-    // Identifica parceiro e produto
-    let partnerId: string | null = null;
-    const [partnerRow] = await sql<any[]>`
-      SELECT id FROM partners WHERE status = 'active' ORDER BY created_at ASC LIMIT 1
-    `;
-    partnerId = partnerRow?.id || 'partner_default';
+    // Identifica parceiro e produto respeitando contexto multi-tenant
+    let partnerId: string | null = currentData.partnerId || session.collected_data?.partnerId || null;
+    if (!partnerId && (currentData.partnerCode || session.collected_data?.partnerCode)) {
+      const pCode = currentData.partnerCode || session.collected_data?.partnerCode;
+      try {
+        const [partnerRow] = await sql<any[]>`
+          SELECT id FROM partners
+          WHERE (id = ${pCode} OR code = ${pCode} OR metadata->>'slug' = ${pCode})
+            AND status = 'active'
+          LIMIT 1
+        `;
+        if (partnerRow) {
+          partnerId = partnerRow.id;
+        }
+      } catch {
+        // Ignora erro de lookup
+      }
+    }
 
     let productId = session.product_id;
     if (!productId) {

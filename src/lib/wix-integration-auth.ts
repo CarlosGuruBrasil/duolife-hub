@@ -32,7 +32,7 @@ export interface ResolvedPartner {
  * 1. process.env.WIX_INTEGRATION_KEY
  * 2. process.env.INTEGRATION_API_KEY
  * 3. Tabela mcp_api_keys (via hash SHA-256)
- * 4. Chave de desenvolvimento local: `dlmcp_live_dev_test_key_001_secret`
+ * 4. Chave de desenvolvimento local: `dlmcp_live_dev_test_key_001_secret` (apenas em testes Vitest)
  */
 export async function verifyWixIntegrationAuth(
   req: Request | NextRequest
@@ -72,9 +72,9 @@ export async function verifyWixIntegrationAuth(
     };
   }
 
-  // 2. Chave de desenvolvimento local (apenas fora de produção)
+  // 2. Chave de desenvolvimento local (estritamente durante execução de testes Vitest)
   if (
-    process.env.NODE_ENV !== 'production' &&
+    process.env.VITEST === 'true' &&
     rawToken === 'dlmcp_live_dev_test_key_001_secret'
   ) {
     return {

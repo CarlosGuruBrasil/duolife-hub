@@ -46,9 +46,9 @@ export async function verifyMcpApiKey(authHeader: string | null): Promise<McpCli
     `;
 
     if (!row) {
-      // Fallback em desenvolvimento: se não houver chave no banco mas a chave for a de teste local
+      // Permitido estritamente durante a execução da suíte de testes unitários automatizados (Vitest)
       if (
-        process.env.NODE_ENV !== 'production' &&
+        process.env.VITEST === 'true' &&
         rawToken === 'dlmcp_live_dev_test_key_001_secret'
       ) {
         return {
@@ -86,9 +86,9 @@ export async function verifyMcpApiKey(authHeader: string | null): Promise<McpCli
       rateLimitPerMinute: Number(row.rate_limit_per_minute) || 120,
     };
   } catch {
-    // Se o banco estiver indisponível em ambiente de teste e for a chave de teste local
+    // Se o banco estiver indisponível estritamente em ambiente de teste unitário Vitest
     if (
-      process.env.NODE_ENV !== 'production' &&
+      process.env.VITEST === 'true' &&
       rawToken === 'dlmcp_live_dev_test_key_001_secret'
     ) {
       return {
