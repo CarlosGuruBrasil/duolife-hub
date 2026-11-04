@@ -42,7 +42,7 @@ export default async function PortalVendaDetailPage({
         JOIN cotacoes c ON c.id = s.cotacao_id
         WHERE (s.id = ${id} OR s.cotacao_id = ${id})
           AND s.partner_id = ${access.partnerId}
-          AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
+          AND c.partner_user_id IN ${sql(access.visibleUserIds)}
         LIMIT 1
       `;
 

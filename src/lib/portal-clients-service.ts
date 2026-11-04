@@ -107,14 +107,9 @@ export async function getPortalClientsList(
         SELECT 1 FROM cotacoes c_scope
         WHERE c_scope.client_id = ic.id
           AND c_scope.partner_id = ${access.partnerId}
-          AND (c_scope.partner_user_id IN ${sql(access.visibleUserIds)} OR c_scope.partner_user_id IS NULL)
+          AND c_scope.partner_user_id IN ${sql(access.visibleUserIds)}
       )`
-    : sql`EXISTS (
-        SELECT 1 FROM cotacoes c_scope
-        WHERE c_scope.client_id = ic.id
-          AND c_scope.partner_id = ${access.partnerId}
-          AND c_scope.partner_user_id IS NULL
-      )`;
+    : sql`1 = 0`;
 
   const conditions = [scopeCondition];
 
@@ -166,16 +161,10 @@ export async function getPortalClientsList(
         WHERE c_p.client_id = ic.id
           AND c_p.product_id = ${rawParams.productId}
           AND c_p.partner_id = ${access.partnerId}
-          AND (c_p.partner_user_id IN ${sql(access.visibleUserIds)} OR c_p.partner_user_id IS NULL)
+          AND c_p.partner_user_id IN ${sql(access.visibleUserIds)}
       )`);
     } else {
-      conditions.push(sql`EXISTS (
-        SELECT 1 FROM cotacoes c_p
-        WHERE c_p.client_id = ic.id
-          AND c_p.product_id = ${rawParams.productId}
-          AND c_p.partner_id = ${access.partnerId}
-          AND c_p.partner_user_id IS NULL
-      )`);
+      conditions.push(sql`1 = 0`);
     }
   }
 
@@ -425,7 +414,7 @@ export async function getPortalClientsList(
             FROM cotacoes c2
             WHERE c2.client_id = ic.id
               AND c2.partner_id = ${access.partnerId}
-              AND (c2.partner_user_id IN ${sql(access.visibleUserIds)} OR c2.partner_user_id IS NULL)
+              AND c2.partner_user_id IN ${sql(access.visibleUserIds)}
             ORDER BY c2.created_at DESC
             LIMIT 1
           ) AS last_quote_status,
@@ -442,7 +431,7 @@ export async function getPortalClientsList(
             JOIN cotacoes c3 ON c3.id = po.cotacao_id
             WHERE po.client_id = ic.id
               AND po.partner_id = ${access.partnerId}
-              AND (c3.partner_user_id IN ${sql(access.visibleUserIds)} OR c3.partner_user_id IS NULL)
+              AND c3.partner_user_id IN ${sql(access.visibleUserIds)}
             ORDER BY po.created_at DESC
             LIMIT 1
           ) AS last_payment_status,
@@ -453,7 +442,7 @@ export async function getPortalClientsList(
         JOIN cotacoes c
           ON c.client_id = ic.id
          AND c.partner_id = ${access.partnerId}
-         AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
+         AND c.partner_user_id IN ${sql(access.visibleUserIds)}
         LEFT JOIN payment_orders po
           ON po.client_id = ic.id
          AND po.partner_id = ${access.partnerId}
@@ -463,59 +452,7 @@ export async function getPortalClientsList(
         ORDER BY ${sortExpression}
         LIMIT ${pageSize} OFFSET ${offset}
       `
-    : await sql<PortalClientRow[]>`
-        SELECT
-          ic.id,
-          ic.full_name,
-          ic.document_number,
-          ic.email,
-          ic.phone,
-          ic.created_at::text,
-          COUNT(DISTINCT c.product_id)::int AS products_count,
-          COUNT(DISTINCT c.id)::int AS cotacoes_count,
-          (
-            SELECT c2.status
-            FROM cotacoes c2
-            WHERE c2.client_id = ic.id
-              AND c2.partner_id = ${access.partnerId}
-              AND c2.partner_user_id IS NULL
-            ORDER BY c2.created_at DESC
-            LIMIT 1
-          ) AS last_quote_status,
-          (
-            SELECT sd.status
-            FROM signature_documents sd
-            WHERE sd.client_id = ic.id
-            ORDER BY sd.created_at DESC
-            LIMIT 1
-          ) AS last_signature_status,
-          (
-            SELECT po.status
-            FROM payment_orders po
-            JOIN cotacoes c3 ON c3.id = po.cotacao_id
-            WHERE po.client_id = ic.id
-              AND po.partner_id = ${access.partnerId}
-              AND c3.partner_user_id IS NULL
-            ORDER BY po.created_at DESC
-            LIMIT 1
-          ) AS last_payment_status,
-          COALESCE(SUM(po.paid_installments), 0)::int AS paid_installments,
-          COALESCE(SUM(po.installment_count), 0)::int AS total_installments,
-          MAX(COALESCE(po.updated_at, c.updated_at, ic.updated_at))::text AS updated_at
-        FROM insurance_clients ic
-        JOIN cotacoes c
-          ON c.client_id = ic.id
-         AND c.partner_id = ${access.partnerId}
-         AND c.partner_user_id IS NULL
-        LEFT JOIN payment_orders po
-          ON po.client_id = ic.id
-         AND po.partner_id = ${access.partnerId}
-         AND po.cotacao_id = c.id
-        WHERE ${whereClause}
-        GROUP BY ic.id, ic.full_name, ic.document_number, ic.email, ic.phone, ic.created_at
-        ORDER BY ${sortExpression}
-        LIMIT ${pageSize} OFFSET ${offset}
-      `;
+    : [];
 
   return {
     items,

@@ -130,24 +130,10 @@ export default async function PortalCotacaoDetailPage({
         JOIN partners part ON part.id = c.partner_id
         WHERE c.id = ${id}
           AND c.partner_id = ${access.partnerId}
-          AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
+          AND c.partner_user_id IN ${sql(access.visibleUserIds)}
         LIMIT 1
       `
-    : await sql`
-        SELECT
-          c.id, c.client_id, c.client_name, c.client_cpf_cnpj, c.client_email, c.client_phone,
-          c.status, c.importancia_segurada, c.premio_final, c.premio_calculado, c.client_data, c.created_at, c.updated_at,
-          c.notes, c.product_id, c.partner_id, c.cadastral_conflict,
-          p.name AS product_name, p.flow_key AS product_flow_key, p.code AS product_code, p.insurer_name AS product_insurer_name,
-          part.nome_fantasia AS partner_name
-        FROM cotacoes c
-        JOIN products p ON p.id = c.product_id
-        JOIN partners part ON part.id = c.partner_id
-        WHERE c.id = ${id}
-          AND c.partner_id = ${access.partnerId}
-          AND c.partner_user_id IS NULL
-        LIMIT 1
-      `;
+    : [];
 
   if (!cotacao) notFound();
 

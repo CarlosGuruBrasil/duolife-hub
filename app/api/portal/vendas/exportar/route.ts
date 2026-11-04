@@ -62,10 +62,10 @@ export async function GET(request: NextRequest) {
     conditions.push(sql`s.partner_id = ${access.partnerId}`);
   } else if (access.visibleUserIds.length > 0) {
     conditions.push(
-      sql`(s.partner_id = ${access.partnerId} AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL))`
+      sql`(s.partner_id = ${access.partnerId} AND c.partner_user_id IN ${sql(access.visibleUserIds)})`
     );
   } else {
-    conditions.push(sql`(s.partner_id = ${access.partnerId} AND c.partner_user_id IS NULL)`);
+    conditions.push(sql`1 = 0`);
   }
 
   // Filtros dinâmicos

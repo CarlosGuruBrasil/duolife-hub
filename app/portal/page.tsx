@@ -30,8 +30,8 @@ export default async function PortalDashboard() {
       : access.visibleUserIds === null
       ? sql`SELECT COUNT(*) as total FROM cotacoes WHERE partner_id = ${access.partnerId}`
       : hasVisibleUsers
-      ? sql`SELECT COUNT(*) as total FROM cotacoes WHERE partner_id = ${access.partnerId} AND (partner_user_id IN ${sql(access.visibleUserIds)} OR partner_user_id IS NULL)`
-      : sql`SELECT COUNT(*) as total FROM cotacoes WHERE partner_id = ${access.partnerId} AND partner_user_id IS NULL`,
+      ? sql`SELECT COUNT(*) as total FROM cotacoes WHERE partner_id = ${access.partnerId} AND partner_user_id IN ${sql(access.visibleUserIds)}`
+      : sql`SELECT 0 as total`,
 
     isCorretora
       ? sql`
@@ -51,15 +51,9 @@ export default async function PortalDashboard() {
           FROM sales s
           JOIN cotacoes c ON c.id = s.cotacao_id
           WHERE s.partner_id = ${access.partnerId}
-            AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
+            AND c.partner_user_id IN ${sql(access.visibleUserIds)}
         `
-      : sql`
-          SELECT COUNT(*) as total, COALESCE(SUM(s.premio_total), 0) as volume
-          FROM sales s
-          JOIN cotacoes c ON c.id = s.cotacao_id
-          WHERE s.partner_id = ${access.partnerId}
-            AND c.partner_user_id IS NULL
-        `,
+      : sql`SELECT 0 as total, 0 as volume`,
 
     isCorretora
       ? sql`
@@ -78,14 +72,9 @@ export default async function PortalDashboard() {
           SELECT COUNT(DISTINCT c.client_id) as total
           FROM cotacoes c
           WHERE c.partner_id = ${access.partnerId}
-            AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
+            AND c.partner_user_id IN ${sql(access.visibleUserIds)}
         `
-      : sql`
-          SELECT COUNT(DISTINCT c.client_id) as total
-          FROM cotacoes c
-          WHERE c.partner_id = ${access.partnerId}
-            AND c.partner_user_id IS NULL
-        `,
+      : sql`SELECT 0 as total`,
 
     access.partnerId ? getOrCreatePartnerSaleLink(access.partnerId) : Promise.resolve(null),
   ]);

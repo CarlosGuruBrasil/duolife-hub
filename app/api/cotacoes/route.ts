@@ -166,7 +166,7 @@ export async function GET(req: NextRequest) {
             FROM cotacoes c
             JOIN products p ON p.id = c.product_id
             WHERE c.partner_id = ${targetPartnerId}
-              AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
+              AND c.partner_user_id IN ${sql(access.visibleUserIds)}
             ORDER BY c.created_at DESC
             LIMIT 100
           `;
@@ -570,7 +570,7 @@ export async function POST(req: NextRequest) {
                   SELECT id, status FROM cotacoes
                   WHERE id = ${existingId}
                     AND partner_id = ${targetPartnerId}
-                    AND (partner_user_id IN ${sql(access.visibleUserIds)} OR partner_user_id IS NULL)
+                    AND partner_user_id IN ${sql(access.visibleUserIds)}
                   LIMIT 1
                 `
               : await sql`

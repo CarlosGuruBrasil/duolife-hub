@@ -81,13 +81,13 @@ async function hasClientScopeAccess(clientId: string, access: PartnerAccessConte
             SELECT 1 FROM cotacoes c
             WHERE c.client_id = ic.id
               AND c.partner_id = ${access.partnerId}
-              AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
+              AND c.partner_user_id IN ${sql(access.visibleUserIds)}
           )
           OR EXISTS (
             SELECT 1 FROM sales s
             WHERE s.client_id = ic.id
               AND s.partner_id = ${access.partnerId}
-              AND (s.partner_user_id IN ${sql(access.visibleUserIds)} OR s.partner_user_id IS NULL)
+              AND s.partner_user_id IN ${sql(access.visibleUserIds)}
           )
         )
       LIMIT 1
@@ -181,7 +181,7 @@ export async function GET(
               FROM cotacoes
               WHERE client_id = ${id}
                 AND partner_id = ${access!.partnerId}
-                AND (partner_user_id IN ${sql(access!.visibleUserIds || [])} OR partner_user_id IS NULL)
+                AND partner_user_id IN ${sql(access!.visibleUserIds || [])}
               ORDER BY created_at DESC
               LIMIT 1
             `;
@@ -258,7 +258,7 @@ export async function GET(
           LEFT JOIN partners part ON part.id = c.partner_id
           WHERE c.client_id = ${id}
             AND c.partner_id = ${access.partnerId}
-            AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
+            AND c.partner_user_id IN ${sql(access.visibleUserIds)}
           ORDER BY c.created_at DESC
         `;
       }

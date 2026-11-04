@@ -82,7 +82,7 @@ flowchart TD
 Para gerentes de vendas (`partner_manager`), o sistema executa uma consulta que busca recursivamente todos os corretores subordinados vinculados através da coluna `manager_user_id` na tabela `partner_users`. O array resultante é injetado na cláusula SQL:
 ```sql
 WHERE partner_id = ${access.partnerId}
-  AND (partner_user_id IN ${sql(access.visibleUserIds)} OR partner_user_id IS NULL)
+  AND partner_user_id IN ${sql(access.visibleUserIds)}
 ```
 
 ---

@@ -48,7 +48,7 @@ export async function POST(
           FROM cotacoes c
           WHERE c.id = ${id}
             AND c.partner_id = ${access.partnerId}
-            AND (c.partner_user_id IN ${sql(access.visibleUserIds)} OR c.partner_user_id IS NULL)
+            AND c.partner_user_id IN ${sql(access.visibleUserIds)}
           LIMIT 1
         `
       : await sql`
