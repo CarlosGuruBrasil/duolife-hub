@@ -16,6 +16,7 @@ export type UserRole =
 
 export const INTERNAL_ROLES: string[] = ['duolife_dev', 'duolife_admin', 'duolife_staff'];
 export const CORRETORA_ROLES: string[] = ['corretora_admin', 'corretora_manager', 'corretora_staff'];
+export const CORRETORA_MANAGEMENT_ROLES: string[] = ['corretora_admin', 'corretora_manager'];
 
 export const INTERNAL_ROLE_LABEL: Record<string, string> = {
   duolife_dev: 'Desenvolvedor',
@@ -37,6 +38,11 @@ export function roleIsInternal(role: string): boolean {
 // Usuários da Corretora: gerenciam seus próprios parceiros e corretores.
 export function roleIsCorretora(role: string): boolean {
   return CORRETORA_ROLES.includes(role);
+}
+
+// Liderança e Gestão da Corretora: permissão para gerenciar parceiros, membros e equipes
+export function roleIsCorretoraManagement(role: string): boolean {
+  return CORRETORA_MANAGEMENT_ROLES.includes(role);
 }
 
 // Administra a plataforma: cadastra e ativa corretora, define produtos, planos e repasses,

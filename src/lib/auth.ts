@@ -1,5 +1,5 @@
 import { cookies } from 'next/headers';
-import { INTERNAL_ROLES, CORRETORA_ROLES, roleIsDev, roleIsInternal, roleIsPlatformAdmin, roleIsCorretora, type UserRole } from './roles';
+import { INTERNAL_ROLES, CORRETORA_ROLES, roleIsDev, roleIsInternal, roleIsPlatformAdmin, roleIsCorretora, roleIsCorretoraManagement, type UserRole } from './roles';
 import jwt from 'jsonwebtoken';
 import { sql } from './pg';
 import { getJwtSecret } from './secrets';
@@ -8,7 +8,7 @@ export type { UserRole } from './roles';
 
 export type PartnerRole = 'director' | 'manager' | 'broker' | 'partner';
 
-export { INTERNAL_ROLES, INTERNAL_ROLE_LABEL, CORRETORA_ROLES, CORRETORA_ROLE_LABEL, roleIsCorretora } from './roles';
+export { INTERNAL_ROLES, INTERNAL_ROLE_LABEL, CORRETORA_ROLES, CORRETORA_ROLE_LABEL, roleIsCorretora, roleIsCorretoraManagement } from './roles';
 
 export interface AuthUser {
   userId:         string;
@@ -204,16 +204,16 @@ export function isPlatformAdmin(user: AuthUser): boolean {
 }
 
 export function canManageOwnCompany(user: AuthUser): boolean {
-  return isInternalUser(user) || roleIsCorretora(user.role) || user.partnerRole === 'director';
+  return isInternalUser(user) || roleIsCorretoraManagement(user.role) || user.partnerRole === 'director';
 }
 
 export function canManageTeam(user: AuthUser): boolean {
-  return isInternalUser(user) || roleIsCorretora(user.role) || user.partnerRole === 'director' || user.partnerRole === 'manager';
+  return isInternalUser(user) || roleIsCorretoraManagement(user.role) || user.partnerRole === 'director' || user.partnerRole === 'manager';
 }
 
 // Gestor da Corretora ou Admin Interno: tem visão de toda a corretoraId (todos os parceiros e membros da corretora)
 export function canManageCorretoraWide(user: AuthUser): boolean {
-  return roleIsCorretora(user.role) || isInternalUser(user);
+  return roleIsCorretoraManagement(user.role) || isInternalUser(user);
 }
 
 // Diretor/Gerente de um Parceiro Individual: restrito estritamente ao seu próprio user.partnerId
