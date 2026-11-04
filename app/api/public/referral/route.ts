@@ -9,7 +9,10 @@ export async function GET(req: NextRequest) {
     const clientIp = getClientIp(req);
     const rl = rateLimit(`referral:${clientIp}`, 60, 60_000);
     if (!rl.ok) {
-      return rateLimitResponse(rl.retryAfter);
+      return NextResponse.json(
+        { error: 'Muitas tentativas. Aguarde antes de tentar novamente.' },
+        { status: 429, headers: { 'Retry-After': String(rl.retryAfter) } }
+      );
     }
 
     const ref = req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('code');

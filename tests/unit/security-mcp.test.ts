@@ -20,14 +20,14 @@ describe('Task 9: Isolamento Multi-Tenant MCP e Limpeza de Backdoors de Teste (V
 
   afterEach(() => {
     process.env.VITEST = originalVitestEnv;
-    process.env.NODE_ENV = originalNodeEnv;
+    (process.env as any).NODE_ENV = originalNodeEnv;
   });
 
   describe('1. Rejeição de chave estática dev fora do ambiente de teste Vitest', () => {
     it('deve rejeitar dlmcp_live_dev_test_key_001_secret em verifyMcpApiKey se VITEST !== "true"', async () => {
       // Simula ambiente de desenvolvimento ativo (fora do executor Vitest)
       process.env.VITEST = 'false';
-      process.env.NODE_ENV = 'development';
+      (process.env as any).NODE_ENV = 'development';
 
       const result = await verifyMcpApiKey('Bearer dlmcp_live_dev_test_key_001_secret');
       expect(result).toBeNull();
@@ -35,7 +35,7 @@ describe('Task 9: Isolamento Multi-Tenant MCP e Limpeza de Backdoors de Teste (V
 
     it('deve rejeitar dlmcp_live_dev_test_key_001_secret em verifyWixIntegrationAuth se VITEST !== "true"', async () => {
       process.env.VITEST = 'false';
-      process.env.NODE_ENV = 'development';
+      (process.env as any).NODE_ENV = 'development';
 
       const mockReq = {
         headers: new Headers({

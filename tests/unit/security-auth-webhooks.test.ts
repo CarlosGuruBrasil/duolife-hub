@@ -82,7 +82,7 @@ describe('Task 1: Blindagem de Autenticação e Webhooks Fail-Closed', () => {
     });
 
     it('deve REJEITAR header x-dev-test fora de ambiente de teste controlado (401)', async () => {
-      process.env.NODE_ENV = 'development';
+      (process.env as any).NODE_ENV = 'development';
       const origVitest = process.env.VITEST;
       delete process.env.VITEST;
       vi.mocked(verifyAuth).mockRejectedValue(new Error('No session'));

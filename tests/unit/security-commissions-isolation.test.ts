@@ -68,7 +68,7 @@ describe('Task 7: Isolamento Horizontal de Comissões e Vendas (VULN-08)', () =>
       ]);
 
       const req = new NextRequest('http://localhost:3000/api/comissoes');
-      const res = await getComissoes(req);
+      const res = await (getComissoes as any)(req);
 
       expect(res.status).toBe(200);
       const data = await res.json();
@@ -108,7 +108,7 @@ describe('Task 7: Isolamento Horizontal de Comissões e Vendas (VULN-08)', () =>
       ]);
 
       const req = new NextRequest('http://localhost:3000/api/vendas');
-      const res = await getVendas(req);
+      const res = await (getVendas as any)(req);
 
       expect(res.status).toBe(200);
       const data = await res.json();

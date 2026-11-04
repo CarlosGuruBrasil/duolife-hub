@@ -11,27 +11,42 @@ import { roleIsCorretoraManagement } from '@/lib/roles';
 describe('Task 4: Segregação de Funções de corretora_staff (VULN-05)', () => {
   const staffUser: AuthUser = {
     userId: 'staff-01',
+    partnerId: null,
+    name: 'Staff User',
+    email: 'staff@test.com',
     corretoraId: 'corr-01',
     role: 'corretora_staff',
+    permissions: {},
   };
 
   const adminCorretoraUser: AuthUser = {
     userId: 'admin-corr-01',
+    partnerId: null,
+    name: 'Admin User',
+    email: 'admin@test.com',
     corretoraId: 'corr-01',
     role: 'corretora_admin',
+    permissions: {},
   };
 
   const managerCorretoraUser: AuthUser = {
     userId: 'manager-corr-01',
+    partnerId: null,
+    name: 'Manager User',
+    email: 'manager@test.com',
     corretoraId: 'corr-01',
     role: 'corretora_manager',
+    permissions: {},
   };
 
   const partnerDirectorUser: AuthUser = {
     userId: 'director-01',
     partnerId: 'partner-01',
+    name: 'Director User',
+    email: 'director@test.com',
     partnerRole: 'director',
     role: 'partner_director',
+    permissions: {},
   };
 
   describe('1. Verificação de permissões do papel corretora_staff', () => {
