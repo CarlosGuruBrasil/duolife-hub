@@ -148,6 +148,8 @@ describe('Resolução de Duplicidade Cadastral (POST /api/portal/cotacoes/[id]/r
     mockSql.mockResolvedValueOnce([sampleConflictQuote]);
     // 2. SELECT sales (sem apólice ativa)
     mockSql.mockResolvedValueOnce([]);
+    // 2.1. SELECT cotacoes de outro tenant (nenhuma encontrada - mesmo tenant)
+    mockSql.mockResolvedValueOnce([]);
     // 3. UPDATE insurance_clients
     mockSql.mockResolvedValueOnce([{ id: 'client-orig-01' }]);
     // 4. UPDATE cotacoes

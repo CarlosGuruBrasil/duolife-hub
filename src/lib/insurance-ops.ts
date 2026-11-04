@@ -155,6 +155,27 @@ export interface ClientRegistrationIntegrityResult {
   cadastralConflict?: CadastralConflictSnapshot;
 }
 
+function maskEmail(email?: string | null): string | null {
+  if (!email) return null;
+  const parts = email.split('@');
+  if (parts.length !== 2) return '***@***';
+  const name = parts[0];
+  const domain = parts[1];
+  const first = name.slice(0, 1);
+  return `${first}***@${domain}`;
+}
+
+function maskPhone(phone?: string | null): string | null {
+  if (!phone) return null;
+  const clean = phone.replace(/\D/g, '');
+  if (clean.length >= 10) {
+    const ddd = clean.slice(0, 2);
+    const last4 = clean.slice(-4);
+    return `(${ddd}) *****-${last4}`;
+  }
+  return '(**) *****-****';
+}
+
 export async function handleClientRegistrationIntegrity(input: {
   documentNumber: string;
   fullName: string;
@@ -286,10 +307,10 @@ export async function handleClientRegistrationIntegrity(input: {
     originalClientId: existing.id,
     originalData: {
       fullName: existing.full_name,
-      email: existing.email,
-      phone: existing.phone,
+      email: maskEmail(existing.email),
+      phone: maskPhone(existing.phone),
       birthDate: existing.birth_date ? String(existing.birth_date).slice(0, 10) : null,
-      metadata: existing.metadata,
+      metadata: {},
     },
     submittedData: {
       fullName: input.fullName,

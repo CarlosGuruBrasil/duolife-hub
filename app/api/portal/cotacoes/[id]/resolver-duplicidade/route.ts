@@ -91,6 +91,26 @@ export async function POST(
           { status: 422 }
         );
       }
+
+      // Bloqueio Trans-Tenant: se o cliente possui vínculo cadastral com outra corretora ou outro parceiro
+      const [otherTenantQuote] = await sql<{ id: string }[]>`
+        SELECT id FROM cotacoes
+        WHERE client_id = ${cotacao.client_id}
+          AND id != ${cotacao.id}
+          AND (
+            (corretora_id IS NOT NULL AND corretora_id IS DISTINCT FROM ${user.corretoraId || cotacao.corretora_id})
+            OR (partner_id IS NOT NULL AND partner_id IS DISTINCT FROM ${user.partnerId || cotacao.partner_id})
+          )
+        LIMIT 1
+      `;
+      if (otherTenantQuote) {
+        return NextResponse.json(
+          {
+            error: 'Não é permitido sobrescrever o cadastro mestre com USAR_NOVOS porque este cliente possui vínculo cadastral com outra corretora/parceiro. Utilize MANTER_ORIGINAL.',
+          },
+          { status: 403 }
+        );
+      }
     }
 
     const updatedConflict = {
@@ -103,22 +123,32 @@ export async function POST(
 
     await sql.begin(async (tx) => {
       if (choice === 'MANTER_ORIGINAL') {
-        const orig = conflict.originalData || {};
+        const [clientRecord] = await tx<{ full_name: string; email: string | null; phone: string | null; birth_date: string | null }[]>`
+          SELECT full_name, email, phone, birth_date
+          FROM insurance_clients
+          WHERE id = ${cotacao.client_id}
+          LIMIT 1
+        `;
+        const origName = clientRecord?.full_name || conflict.originalData?.fullName || cotacao.client_name;
+        const origEmail = clientRecord?.email || cotacao.client_email;
+        const origPhone = clientRecord?.phone || cotacao.client_phone;
+        const origBirth = clientRecord?.birth_date ? String(clientRecord.birth_date).slice(0, 10) : conflict.originalData?.birthDate;
+
         const clientData = (typeof cotacao.client_data === 'string' ? JSON.parse(cotacao.client_data) : cotacao.client_data) || {};
         const updatedClientData = {
           ...clientData,
-          nome: orig.fullName || cotacao.client_name,
-          email: orig.email || cotacao.client_email,
-          celular: orig.phone || cotacao.client_phone,
-          dataNascto: orig.birthDate || clientData.dataNascto,
+          nome: origName,
+          email: origEmail,
+          celular: origPhone,
+          dataNascto: origBirth || clientData.dataNascto,
         };
 
         await tx`
           UPDATE cotacoes
           SET
-            client_name = ${orig.fullName || cotacao.client_name},
-            client_email = ${orig.email || cotacao.client_email || null},
-            client_phone = ${orig.phone || cotacao.client_phone || null},
+            client_name = ${origName},
+            client_email = ${origEmail || null},
+            client_phone = ${origPhone || null},
             client_data = ${JSON.stringify(updatedClientData)}::jsonb,
             cadastral_conflict = ${JSON.stringify(updatedConflict)}::jsonb,
             status = 'rascunho',
