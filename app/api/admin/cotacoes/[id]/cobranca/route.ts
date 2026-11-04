@@ -304,7 +304,7 @@ function toIsoDateString(val: unknown): string {
     return Response.json(
       {
         ok: false,
-        error: err instanceof Error ? err.message : 'Erro interno ao atualizar cobrança',
+        error: 'Erro interno ao atualizar cobrança',
       },
       { status: 500 }
     );

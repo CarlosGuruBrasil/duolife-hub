@@ -7,7 +7,7 @@ import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { logger } from '@/lib/logger';
 import { getJwtSecret } from '@/lib/secrets';
-import { rateLimit, rateLimitResponse } from '@/lib/rate-limit';
+import { rateLimit, rateLimitResponse, getClientIp } from '@/lib/rate-limit';
 import { createRefreshToken } from '@/lib/refresh-token';
 import { normalizePartnerRole, normalizePermissions, toPartnerUserRole, type AuthUser } from '@/lib/auth';
 
@@ -25,7 +25,7 @@ function isDatabaseUnavailableError(error: unknown) {
 }
 
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? 'unknown';
+  const ip = getClientIp(req);
   const { ok, retryAfter } = rateLimit(`login:${ip}`, 10, 60_000); // 10 tentativas/min por IP
   if (!ok) return rateLimitResponse(retryAfter);
 

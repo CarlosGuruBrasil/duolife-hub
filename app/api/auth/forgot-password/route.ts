@@ -2,11 +2,11 @@ import { NextResponse } from 'next/server';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
 import { issuePasswordResetEmail } from '@/lib/password-reset';
-import { rateLimit, rateLimitResponse } from '@/lib/rate-limit';
+import { rateLimit, rateLimitResponse, getClientIp } from '@/lib/rate-limit';
 
 export async function POST(req: Request) {
   try {
-    const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'unknown';
+    const clientIp = getClientIp(req);
     const ipLimit = rateLimit(`forgot-password:ip:${clientIp}`, 5, 15 * 60 * 1000); // 5 requisições por IP a cada 15 min
     if (!ipLimit.ok) return rateLimitResponse(ipLimit.retryAfter);
 

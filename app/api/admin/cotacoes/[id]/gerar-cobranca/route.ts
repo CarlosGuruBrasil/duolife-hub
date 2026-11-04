@@ -100,7 +100,7 @@ export async function POST(
     return Response.json(
       {
         ok: false,
-        error: err instanceof Error ? err.message : 'Erro interno ao processar cobrança Asaas',
+        error: 'Erro interno ao processar cobrança',
       },
       { status: 500 }
     );
