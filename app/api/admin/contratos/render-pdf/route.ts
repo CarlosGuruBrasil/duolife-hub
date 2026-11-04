@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyAuth } from '@/lib/auth';
 import { roleIsInternal } from '@/lib/roles';
 import { logger } from '@/lib/logger';
+import { verifyWebhookToken } from '@/lib/webhook-auth';
 import {
   convertHtmlToPdf,
   isGotenbergAvailable,
@@ -40,13 +41,17 @@ async function authorizeRequest(req: NextRequest): Promise<{ authorized: boolean
   const authHeader = req.headers.get('authorization') || '';
   const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
   const internalSecret = req.headers.get('x-internal-secret');
-  const expectedSecret = process.env.INTERNAL_SERVICE_KEY || process.env.CRON_SECRET || process.env.JWT_SECRET;
+  const tokenCandidate = bearerToken || internalSecret;
 
-  if (expectedSecret && (bearerToken === expectedSecret || internalSecret === expectedSecret)) {
+  // Aceita apenas chave interna dedicada ou segredo de cron, nunca o segredo de assinatura JWT
+  const expectedSecret = process.env.INTERNAL_SERVICE_KEY || process.env.CRON_SECRET;
+
+  if (expectedSecret && tokenCandidate && verifyWebhookToken(tokenCandidate, expectedSecret)) {
     return { authorized: true };
   }
 
-  if (process.env.NODE_ENV !== 'production') {
+  // Bypass de teste restrito exclusivamente a suites Vitest em execucao explicita
+  if (process.env.VITEST === 'true') {
     if (req.headers.get('x-dev-test') === 'true') {
       return { authorized: true };
     }

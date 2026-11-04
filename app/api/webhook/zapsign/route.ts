@@ -36,9 +36,11 @@ async function isAuthorized(req: NextRequest) {
   const zapConfig = await getZapSignConfig();
   const secret = (zapConfig.webhookSecret || process.env.ZAPSIGN_WEBHOOK_SECRET || '').trim();
 
-  // Se nenhum segredo foi configurado no sistema ou no ambiente, o endpoint opera
-  // no modo público padrão do painel da ZapSign
-  if (!secret) return true;
+  // Fail-Closed: Sem segredo configurado no sistema ou no ambiente, rejeita qualquer requisicao
+  if (!secret) {
+    logger.error('zapsign.webhook.secret_not_configured: Webhook ZapSign rejeitado por ausencia de segredo configurado (Fail-Closed)');
+    return false;
+  }
 
   // 1. Cabeçalho HTTP customizado
   const headerSecret =
