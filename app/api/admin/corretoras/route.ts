@@ -131,6 +131,14 @@ function processDocumentUpload(
   };
 }
 
+const safeDocumentMimeSchema = z.preprocess(
+  emptyToUndefined,
+  z.string().trim().toLowerCase().refine(
+    (val) => !val || ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'].includes(val),
+    { message: 'Formato de documento inválido. Apenas PDF, PNG e JPEG são permitidos.' }
+  ).optional()
+);
+
 const createCorretoraSchema = z.object({
   razao_social: z.string().trim().min(2, 'Informe a Razão Social'),
   nome_fantasia: z.string().trim().min(2, 'Informe o Nome Fantasia'),
@@ -178,16 +186,16 @@ const createCorretoraSchema = z.object({
   }),
   pix_chave: z.string().trim().min(1, 'Informe a chave PIX'),
   contrato_social_base64: z.string().trim().min(1, 'O upload do Contrato Social é obrigatório'),
-  contrato_social_mime_type: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+  contrato_social_mime_type: safeDocumentMimeSchema,
   contrato_social_nome_arquivo: z.preprocess(emptyToUndefined, z.string().trim().optional()),
   cartao_cnpj_base64: z.string().trim().min(1, 'O upload do Cartão CNPJ é obrigatório'),
-  cartao_cnpj_mime_type: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+  cartao_cnpj_mime_type: safeDocumentMimeSchema,
   cartao_cnpj_nome_arquivo: z.preprocess(emptyToUndefined, z.string().trim().optional()),
   socio_documento_base64: z.string().trim().min(1, 'O upload do Documento do Sócio é obrigatório'),
-  socio_documento_mime_type: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+  socio_documento_mime_type: safeDocumentMimeSchema,
   socio_documento_nome_arquivo: z.preprocess(emptyToUndefined, z.string().trim().optional()),
   comprovante_bancario_base64: z.string().trim().min(1, 'O upload do Comprovante Bancário é obrigatório'),
-  comprovante_bancario_mime_type: z.preprocess(emptyToUndefined, z.string().trim().optional()),
+  comprovante_bancario_mime_type: safeDocumentMimeSchema,
   comprovante_bancario_nome_arquivo: z.preprocess(emptyToUndefined, z.string().trim().optional()),
   admin_name: z.preprocess(emptyToUndefined, z.string().trim().min(2, 'Informe o nome do administrador').optional()),
   admin_email: z.preprocess(emptyToUndefined, z.string().trim().email('E-mail do administrador inválido').optional()),

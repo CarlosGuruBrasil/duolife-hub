@@ -4,6 +4,23 @@ import { sql } from '@/lib/pg';
 import { ensureSchema } from '@/lib/schema';
 import { logger } from '@/lib/logger';
 
+export const ALLOWED_DOCUMENT_MIME_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+];
+
+export function sanitizeDocumentMime(rawMime?: string | null): string {
+  if (!rawMime) return 'application/pdf';
+  const clean = String(rawMime).trim().toLowerCase();
+  if (ALLOWED_DOCUMENT_MIME_TYPES.includes(clean)) {
+    return clean;
+  }
+  // Bloqueia qualquer MIME type perigoso (text/html, image/svg+xml, etc.) forçando binário seguro
+  return 'application/octet-stream';
+}
+
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string; tipo: string }> }) {
   const admin = await verifyAdminAuth();
   if (!admin) return unauthorized();
@@ -73,13 +90,20 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
     const buffer = Buffer.from(cleanBase64, 'base64');
     const finalFilename = filename || `documento-${tipo}-${corretora.nome_fantasia || id}.pdf`;
 
+    const safeMime = sanitizeDocumentMime(mime);
+    const isPdf = safeMime === 'application/pdf';
+
     return new Response(buffer, {
       status: 200,
       headers: {
-        'Content-Type': mime || 'application/pdf',
-        'Content-Disposition': `inline; filename="${encodeURIComponent(finalFilename)}"`,
+        'Content-Type': safeMime,
+        'Content-Disposition': isPdf
+          ? `inline; filename="${encodeURIComponent(finalFilename)}"`
+          : `attachment; filename="${encodeURIComponent(finalFilename)}"`,
         'Content-Length': buffer.length.toString(),
         'Cache-Control': 'private, no-cache, no-store, must-revalidate',
+        'X-Content-Type-Options': 'nosniff',
+        'Content-Security-Policy': "default-src 'none'; sandbox",
       },
     });
   } catch (err) {
