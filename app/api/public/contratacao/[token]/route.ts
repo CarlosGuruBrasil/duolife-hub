@@ -5,6 +5,7 @@ import { logger } from '@/lib/logger';
 import { resolveHierarchicalWhiteLabel } from '@/lib/white-label';
 import { resolveContratoSignUrl } from '@/lib/contrato-link-resolver';
 import { extractClientAccessData, trackSaleLinkAccess } from '@/lib/link-tracker';
+import { rateLimit, rateLimitResponse, getClientIp } from '@/lib/rate-limit';
 
 function appBaseUrl() {
   return process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') || 'https://duolife.com.br';
@@ -34,6 +35,12 @@ async function resolveLink(token: string) {
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ token: string }> }) {
   try {
+    const clientIp = getClientIp(_req);
+    const rl = rateLimit(`contratacao:${clientIp}`, 60, 60_000);
+    if (!rl.ok) {
+      return rateLimitResponse(rl.retryAfter);
+    }
+
     await ensureSchema();
     const { token } = await params;
 
@@ -101,8 +108,3 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ tok
     return Response.json({ error: 'Erro interno' }, { status: 500 });
   }
 }
-
-// ponytail: só existia um handler POST aqui, nunca chamado por nenhum client — o fluxo real de
-// criação de cotação/contrato/pagamento passa inteiro por /api/cotacoes + gerar-contrato +
-// gerar-pagamento (ver CotacaoFormRC.tsx). Removido pra não manter uma segunda implementação
-// divergente e nunca testada — reintroduzir só se um caller real vier a precisar dele.

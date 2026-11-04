@@ -2,9 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { resolvePartnerOrLink } from '@/lib/referral';
 import { getReferralTokenTtlSeconds } from '@/lib/system-settings';
 import { logger } from '@/lib/logger';
+import { rateLimit, rateLimitResponse, getClientIp } from '@/lib/rate-limit';
 
 export async function GET(req: NextRequest) {
   try {
+    const clientIp = getClientIp(req);
+    const rl = rateLimit(`referral:${clientIp}`, 60, 60_000);
+    if (!rl.ok) {
+      return rateLimitResponse(rl.retryAfter);
+    }
+
     const ref = req.nextUrl.searchParams.get('ref') || req.nextUrl.searchParams.get('code');
 
     if (!ref || !ref.trim()) {
@@ -48,6 +55,7 @@ export async function GET(req: NextRequest) {
       maxAge: ttlSeconds,
       path: '/',
       sameSite: 'lax',
+      secure: process.env.NODE_ENV === 'production',
     });
 
     return response;

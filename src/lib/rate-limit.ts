@@ -17,8 +17,6 @@ function purgeExpired(now: number) {
     let deleted = 0;
     for (const key of store.keys()) {
       store.delete(key);
-      deleted++;
-      if (deleted >= toDelete) break;
     }
   }
 }
@@ -52,4 +50,18 @@ export function rateLimitResponse(retryAfter: number) {
     { error: 'Muitas tentativas. Aguarde antes de tentar novamente.' },
     { status: 429, headers: { 'Retry-After': String(retryAfter) } }
   );
+}
+
+export function getClientIp(req: Request | { headers: Headers }): string {
+  const headers = req.headers;
+  const cfIp = headers.get('cf-connecting-ip');
+  if (cfIp) return cfIp.trim();
+  const realIp = headers.get('x-real-ip');
+  if (realIp) return realIp.trim();
+  const forwarded = headers.get('x-forwarded-for');
+  if (forwarded) {
+    const first = forwarded.split(',')[0].trim();
+    if (first) return first;
+  }
+  return '127.0.0.1';
 }
