@@ -266,6 +266,10 @@ export async function POST(
 
           if (!resultado) {
             logger.warn({ cupomCodigo, cotacaoId: cotacao.id }, 'api.portal.gerar-contrato.cupom_limite_excedido');
+            return Response.json(
+              { error: 'Cupom promocional esgotado ou limite de utilizações atingido.' },
+              { status: 409 }
+            );
           }
         }
       } catch (err) {

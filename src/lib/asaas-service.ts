@@ -369,7 +369,7 @@ async function executeGenerateAsaasPayment(
         tipoDePlano,
         qtdParcelasSolicitada: Number(options?.customValues?.qtdParcelas || clientData.parcelasPreferidas || clientData.parcela) || 1,
         cupomCodigo: clientData.cupomCodigo || null,
-        descontoManualPercent: Number(clientData.descontoManualPercent ?? clientData.descontoPercentual) || 0,
+        descontoManualPercent: Number(clientData.descontoManualPercent) || 0,
         flowKey: String(clientData.flowKey || (cotacao as any).flow_key || '') || null,
         productId: cotacao.product_id || null,
         grupoTarifario: isHealthQuote(cotacao, clientData)
