@@ -12,10 +12,13 @@ export async function getAccessibleQuoteById(quoteId: string, user: AuthUser) {
 
   if (access.isCorretoraUser && access.corretoraId) {
     const rows = await sql`
-      SELECT *
-      FROM cotacoes
-      WHERE id = ${quoteId}
-        AND corretora_id = ${access.corretoraId}
+      SELECT c.*
+      FROM cotacoes c
+      WHERE c.id = ${quoteId}
+        AND (
+          c.corretora_id = ${access.corretoraId}
+          OR c.partner_id IN (SELECT id FROM partners WHERE corretora_id = ${access.corretoraId})
+        )
       LIMIT 1
     `;
     return rows[0] ?? null;
@@ -41,7 +44,7 @@ export async function getAccessibleQuoteById(quoteId: string, user: AuthUser) {
     FROM cotacoes
     WHERE id = ${quoteId}
       AND partner_id = ${access.partnerId}
-      AND (partner_user_id IN ${sql(access.visibleUserIds)} OR partner_user_id IS NULL)
+      AND partner_user_id IN ${sql(access.visibleUserIds)}
     LIMIT 1
   `;
   return rows[0] ?? null;
