@@ -108,23 +108,32 @@ export async function GET(req: Request) {
         planos = [];
       }
 
-      // Se houver itens do Wix, mescla com rcAdvogadosConfig para garantir completude das opções de parcelamento
+      // Se houver itens do Wix, mescla com rcAdvogadosConfig preservando TODOS os planos da base e completando parcelamentos
       if (planos.length > 0) {
-        planos = rcAdvogadosConfig.planos.map((basePlano) => {
-          const foundWix = planos.find(
-            (wp) => String(wp.tipoDePlano || '').toLowerCase().trim() === basePlano.tipoDePlano.toLowerCase().trim()
+        const wixMapped = planos.map((wixPlano) => {
+          const matchingBase = rcAdvogadosConfig.planos.find(
+            (bp) => String(bp.tipoDePlano || '').toLowerCase().trim() === String(wixPlano.tipoDePlano || '').toLowerCase().trim()
           );
-          if (!foundWix) return basePlano;
+          if (!matchingBase) return wixPlano;
           return {
-            ...basePlano,
-            ...foundWix,
-            parcela2X: foundWix.parcela2X || (basePlano as any).parcela2X,
-            parcela3X: foundWix.parcela3X || (basePlano as any).parcela3X,
-            parcela4X: foundWix.parcela4X || (basePlano as any).parcela4X,
-            parcela6X: foundWix.parcela6X || (basePlano as any).parcela6X,
-            maxParcelas: foundWix.maxParcelas || basePlano.maxParcelas,
+            ...matchingBase,
+            ...wixPlano,
+            parcela2X: wixPlano.parcela2X || (matchingBase as any).parcela2X,
+            parcela3X: wixPlano.parcela3X || (matchingBase as any).parcela3X,
+            parcela4X: wixPlano.parcela4X || (matchingBase as any).parcela4X,
+            parcela6X: wixPlano.parcela6X || (matchingBase as any).parcela6X,
+            maxParcelas: wixPlano.maxParcelas || matchingBase.maxParcelas || (String(wixPlano.tipoDePlano || '').toLowerCase().trim() === '100k' ? 1 : 6),
           };
-        }).sort((a, b) => (Number(a.ordem) || 0) - (Number(b.ordem) || 0));
+        });
+
+        // Inclui planos do catálogo que não estejam explicitamente no banco
+        const missingFromWix = rcAdvogadosConfig.planos.filter(
+          (bp) => !planos.some((wp) => String(wp.tipoDePlano || '').toLowerCase().trim() === String(bp.tipoDePlano || '').toLowerCase().trim())
+        );
+
+        planos = [...wixMapped, ...missingFromWix].sort(
+          (a, b) => (Number(a.ordem) || 0) - (Number(b.ordem) || 0)
+        );
       } else {
         // Fallback em caso de Wix vazio ou erro de banco
         planos = [...rcAdvogadosConfig.planos].sort(

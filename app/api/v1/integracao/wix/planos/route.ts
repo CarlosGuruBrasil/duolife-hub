@@ -41,14 +41,19 @@ async function getPlanosEfetivos(): Promise<PlanoRaw[]> {
       .filter((p): p is PlanoRaw => Boolean(p && p.tipoDePlano));
 
     if (wixPlanos.length > 0) {
-      // Mescla com a base de rcAdvogadosConfig para garantir completude dos campos
-      return rcAdvogadosConfig.planos.map((basePlano) => {
-        const foundWix = wixPlanos.find((wp) => wp.tipoDePlano === basePlano.tipoDePlano);
+      const wixMapped = wixPlanos.map((wp) => {
+        const matchingBase = rcAdvogadosConfig.planos.find(
+          (bp) => bp.tipoDePlano.toLowerCase().trim() === wp.tipoDePlano.toLowerCase().trim()
+        );
         return {
-          ...basePlano,
-          ...(foundWix || {}),
+          ...(matchingBase || {}),
+          ...wp,
         };
       });
+      const missingFromWix = rcAdvogadosConfig.planos.filter(
+        (bp) => !wixPlanos.some((wp) => wp.tipoDePlano.toLowerCase().trim() === bp.tipoDePlano.toLowerCase().trim())
+      );
+      return [...wixMapped, ...missingFromWix].sort((a, b) => (Number(a.ordem) || 0) - (Number(b.ordem) || 0));
     }
   } catch (err) {
     logger.warn({ err }, 'wix.planos.fetch_from_wix_items_failed_fallback_to_config');
