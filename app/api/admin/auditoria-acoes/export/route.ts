@@ -144,7 +144,7 @@ export async function GET(req: NextRequest) {
   } catch (err: any) {
     logger.error({ err }, 'api.admin.auditoria-acoes.export_failed');
     return Response.json(
-      { error: 'Erro ao exportar auditoria de ações para CSV', details: err?.message },
+      { error: 'Erro ao exportar auditoria de ações para CSV' },
       { status: 500 }
     );
   }

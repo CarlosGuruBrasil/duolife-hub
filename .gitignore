@@ -43,4 +43,5 @@ next-env.d.ts
 query-users.mjs
 scratch/
 *.zip
+.superpowers/
 

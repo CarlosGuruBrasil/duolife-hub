@@ -33,7 +33,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     return Response.json({ ok: true, trigger });
   } catch (err: any) {
     logger.error({ err, id }, 'api.admin.gatilhos.id.get.failed');
-    return Response.json({ error: 'Erro ao buscar árvore de decisão', details: err?.message }, { status: 500 });
+    return Response.json({ error: 'Erro ao buscar árvore de decisão' }, { status: 500 });
   }
 }
 
@@ -83,7 +83,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
     return Response.json({ ok: true, trigger: updated });
   } catch (err: any) {
     logger.error({ err, id }, 'api.admin.gatilhos.id.put.failed');
-    return Response.json({ error: 'Erro ao atualizar árvore de decisão', details: err?.message }, { status: 500 });
+    return Response.json({ error: 'Erro ao atualizar árvore de decisão' }, { status: 500 });
   }
 }
 
@@ -110,6 +110,6 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
     return Response.json({ ok: true, message: 'Árvore de decisão removida com sucesso.' });
   } catch (err: any) {
     logger.error({ err, id }, 'api.admin.gatilhos.id.delete.failed');
-    return Response.json({ error: 'Erro ao excluir árvore de decisão', details: err?.message }, { status: 500 });
+    return Response.json({ error: 'Erro ao excluir árvore de decisão' }, { status: 500 });
   }
 }

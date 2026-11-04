@@ -235,7 +235,7 @@ export async function POST(
     return NextResponse.json(
       {
         assinado: false,
-        error: err?.message || 'Erro interno ao verificar assinatura do contrato.',
+        error: 'Erro interno ao verificar assinatura do contrato.',
       },
       { status: 500 }
     );

@@ -390,6 +390,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
   } catch (err: any) {
     logger.error({ err, corretoraId: id }, 'admin.corretora.update.failed');
-    return Response.json({ error: err.message || 'Erro interno ao atualizar corretora' }, { status: 500 });
+    return Response.json({ error: 'Erro interno ao atualizar corretora' }, { status: 500 });
   }
 }

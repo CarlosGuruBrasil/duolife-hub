@@ -34,7 +34,7 @@ export async function GET() {
     });
   } catch (err: any) {
     logger.error({ err }, 'api.admin.emails.templates.get.failed');
-    return Response.json({ error: 'Erro ao listar templates de e-mail', details: err?.message }, { status: 500 });
+    return Response.json({ error: 'Erro ao listar templates de e-mail' }, { status: 500 });
   }
 }
 
@@ -127,6 +127,6 @@ export async function POST(req: NextRequest) {
     if (err?.code === '23505') {
       return Response.json({ error: 'Já existe um template com este código/identificador.' }, { status: 409 });
     }
-    return Response.json({ error: 'Erro ao cadastrar template', details: err?.message }, { status: 500 });
+    return Response.json({ error: 'Erro ao cadastrar template' }, { status: 500 });
   }
 }

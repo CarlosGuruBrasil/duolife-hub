@@ -98,7 +98,7 @@ export async function GET() {
     });
   } catch (err: any) {
     logger.error({ err }, 'api.admin.gatilhos.get.failed');
-    return Response.json({ error: 'Erro ao buscar árvores de automação', details: err?.message }, { status: 500 });
+    return Response.json({ error: 'Erro ao buscar árvores de automação' }, { status: 500 });
   }
 }
 
@@ -170,6 +170,6 @@ export async function POST(req: NextRequest) {
     if (err?.code === '23505') {
       return Response.json({ error: 'Já existe um gatilho cadastrado com este identificador/código.' }, { status: 409 });
     }
-    return Response.json({ error: 'Erro ao cadastrar árvore de decisão', details: err?.message }, { status: 500 });
+    return Response.json({ error: 'Erro ao cadastrar árvore de decisão' }, { status: 500 });
   }
 }

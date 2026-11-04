@@ -114,6 +114,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: any) {
     logger.error({ err }, 'api.admin.emails.test.failed');
-    return Response.json({ error: 'Erro ao enviar e-mail de teste', details: err?.message }, { status: 500 });
+    return Response.json({ error: 'Erro ao enviar e-mail de teste' }, { status: 500 });
   }
 }

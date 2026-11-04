@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
   } catch (err: any) {
     logger.error({ err }, 'emails.templates.sync_all_failed');
     return Response.json(
-      { error: err?.message || 'Falha ao sincronizar templates com o servidor de e-mail marketing.' },
+      { error: 'Erro interno ao sincronizar templates' },
       { status: 500 }
     );
   }

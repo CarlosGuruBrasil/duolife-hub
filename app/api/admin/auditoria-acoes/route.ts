@@ -106,7 +106,7 @@ export async function GET(req: NextRequest) {
   } catch (err: any) {
     logger.error({ err }, 'api.admin.auditoria-acoes.get_failed');
     return Response.json(
-      { error: 'Erro ao carregar registros de auditoria de ações', details: err?.message },
+      { error: 'Erro ao carregar registros de auditoria de ações' },
       { status: 500 }
     );
   }

@@ -36,6 +36,6 @@ export async function GET(req: NextRequest) {
     });
   } catch (err: any) {
     logger.error({ err }, 'api.admin.gatilhos.logs.get.failed');
-    return Response.json({ error: 'Erro ao buscar logs de automação', details: err?.message }, { status: 500 });
+    return Response.json({ error: 'Erro ao buscar logs de automação' }, { status: 500 });
   }
 }

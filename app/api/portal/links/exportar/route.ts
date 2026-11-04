@@ -192,6 +192,6 @@ export async function GET(req: NextRequest) {
     });
   } catch (err: any) {
     logger.error({ err: err?.message || err, stack: err?.stack }, 'portal.links.exportar.failed');
-    return NextResponse.json({ error: 'Erro ao gerar relatório de links', details: err?.message }, { status: 500 });
+    return NextResponse.json({ error: 'Erro ao gerar relatório de links' }, { status: 500 });
   }
 }

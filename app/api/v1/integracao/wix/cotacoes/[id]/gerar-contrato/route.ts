@@ -178,7 +178,7 @@ export async function POST(
     return NextResponse.json(
       {
         success: false,
-        error: err?.message || 'Erro interno ao gerar contrato e registrar documento no ZapSign.',
+        error: 'Erro interno ao gerar contrato e registrar documento no ZapSign.',
       },
       { status: 500 }
     );

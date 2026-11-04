@@ -34,6 +34,6 @@ export async function GET(req: NextRequest) {
     });
   } catch (err: any) {
     logger.error({ err }, 'api.admin.emails.logs.get.failed');
-    return Response.json({ error: 'Erro ao buscar logs de e-mail', details: err?.message }, { status: 500 });
+    return Response.json({ error: 'Erro ao buscar logs de e-mail' }, { status: 500 });
   }
 }

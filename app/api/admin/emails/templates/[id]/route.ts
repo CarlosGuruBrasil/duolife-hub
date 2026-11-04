@@ -38,7 +38,7 @@ export async function GET(req: NextRequest, { params }: RouteParams) {
     return Response.json({ ok: true, template });
   } catch (err: any) {
     logger.error({ err, id }, 'api.admin.emails.templates.id.get.failed');
-    return Response.json({ error: 'Erro ao buscar template', details: err?.message }, { status: 500 });
+    return Response.json({ error: 'Erro ao buscar template' }, { status: 500 });
   }
 }
 
@@ -119,7 +119,7 @@ export async function PUT(req: NextRequest, { params }: RouteParams) {
     return Response.json({ ok: true, template: updated });
   } catch (err: any) {
     logger.error({ err, id }, 'api.admin.emails.templates.id.put.failed');
-    return Response.json({ error: 'Erro ao atualizar template', details: err?.message }, { status: 500 });
+    return Response.json({ error: 'Erro ao atualizar template' }, { status: 500 });
   }
 }
 
@@ -161,6 +161,6 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
     return Response.json({ ok: true, message: 'Template excluído com sucesso.' });
   } catch (err: any) {
     logger.error({ err, id }, 'api.admin.emails.templates.id.delete.failed');
-    return Response.json({ error: 'Erro ao excluir template', details: err?.message }, { status: 500 });
+    return Response.json({ error: 'Erro ao excluir template' }, { status: 500 });
   }
 }

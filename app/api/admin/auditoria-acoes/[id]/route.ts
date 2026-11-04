@@ -50,7 +50,7 @@ export async function GET(_req: NextRequest, context: RouteContext) {
   } catch (err: any) {
     logger.error({ err }, 'api.admin.auditoria-acoes.get_by_id_failed');
     return Response.json(
-      { error: 'Erro ao buscar registro de auditoria', details: err?.message },
+      { error: 'Erro ao buscar registro de auditoria' },
       { status: 500 }
     );
   }
