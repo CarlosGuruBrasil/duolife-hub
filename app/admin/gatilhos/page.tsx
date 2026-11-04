@@ -29,6 +29,8 @@ import {
   X,
   Layers,
   ArrowRight,
+  Eye,
+  ExternalLink,
 } from 'lucide-react';
 import type {
   TipoNo,
@@ -49,6 +51,93 @@ interface TemplateOption {
   id: string;
   code: string;
   name: string;
+  subject?: string;
+  body_html?: string;
+  body_text?: string;
+  updated_at?: string;
+}
+
+function getDestinatarioInfo(config: any): { label: string; detail?: string } {
+  if (!config) return { label: 'Cliente Segurado' };
+  const tipo =
+    config.destinatario_tipo ||
+    config.destinatarios?.[0]?.destinatario_tipo ||
+    'CLIENTE';
+
+  switch (tipo) {
+    case 'CLIENTE':
+      return { label: 'Cliente Segurado', detail: 'E-mail cadastrado' };
+    case 'VENDEDOR':
+      return { label: 'Vendedor / Consultor', detail: 'E-mail do vendedor' };
+    case 'PARCEIRO':
+      return { label: 'Corretora Parceira', detail: 'E-mail da parceira' };
+    case 'ADMIN':
+      return { label: 'Operação DuoLife', detail: 'E-mail interno' };
+    case 'PERSONALIZADO':
+      const customEmail =
+        config.destinatario_email || config.destinatarios?.[0]?.destinatario_email;
+      return {
+        label: customEmail || 'Personalizado',
+        detail: 'Destinatário fixo',
+      };
+    default:
+      return { label: tipo };
+  }
+}
+
+function getPreviewHtml(html: string) {
+  if (!html) return '<div style="padding: 20px; color: #64748b; font-family: sans-serif;">Nenhum conteúdo para exibir.</div>';
+
+  const now = new Date();
+  const dataHoje = now.toLocaleDateString('pt-BR');
+  const horaHoje = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+
+  const previewData: Record<string, string> = {
+    '-data-': dataHoje,
+    '-hora-': horaHoje,
+    '-data_hora-': `${dataHoje} ${horaHoje}`,
+    '-ano-': String(now.getFullYear()),
+    '-aplicativo-': 'DuoLife Hub',
+    nome: 'Dr. Carlos Eduardo',
+    cliente_nome: 'Dr. Carlos Eduardo',
+    email: 'carlos@exemplo.com.br',
+    cliente_email: 'carlos@exemplo.com.br',
+    cliente_documento: '123.456.789-00',
+    documento: '123.456.789-00',
+    cliente_telefone: '(47) 99123-4567',
+    telefone: '(47) 99123-4567',
+    vendedor_nome: 'Consultor DuoLife',
+    vendedor_email: 'consultor@duolife.com.br',
+    cotacao_id: 'COT-2026-8942',
+    apolice_numero: 'DL-RC-8942',
+    produto_nome: 'Seguro RC Profissional Advogado',
+    cobertura: '200.000,00',
+    valor: '1.250,00',
+    valor_parcela: '104,17',
+    premio_atual: '1.250,00',
+    parcela_info: '1 de 12',
+    data_vencimento: '25/09/2026',
+    vencimento: '25/09/2026',
+    dias_vencimento: '3',
+    dias_atraso: '5',
+    data_expiracao: '30/10/2026',
+    dias_restantes: '30',
+    janela_label: 'D-30',
+    parceiro_nome: 'Harmonia Corretora de Seguros',
+    codigo_venda: 'HARMONIA_VIP',
+    link_proposta: 'https://duolife.com.br/contratar/demo',
+    link_fatura: 'https://duolife.com.br/pagamento/demo',
+    link_renovacao: 'https://duolife.com.br/portal/cotacoes/nova?renovacao=true',
+    link_reset: 'https://duolife.com.br/login/redefinir-senha?token=demo',
+    reset_url: 'https://duolife.com.br/login/redefinir-senha?token=demo',
+    tempo_expiracao: '1 hora',
+  };
+
+  return html.replace(/\{\{([a-zA-Z0-9_.-]+)(?:\|([^}]+))?\}\}/g, (_, key: string, fallback?: string) => {
+    if (previewData[key] !== undefined) return previewData[key];
+    if (fallback) return fallback;
+    return `[${key}]`;
+  });
 }
 
 export default function AdminGatilhosPage() {
@@ -83,6 +172,11 @@ export default function AdminGatilhosPage() {
 
   const [modalAdicionarPaiId, setModalAdicionarPaiId] = useState<string | null>(null);
   const [noEmEdicao, setNoEmEdicao] = useState<NoArvore | null>(null);
+  const [previewEmailModal, setPreviewEmailModal] = useState<{
+    template: TemplateOption;
+    destinatarioLabel: string;
+    nodeTitle: string;
+  } | null>(null);
 
   // Estado do Canvas (Pan & Zoom)
   const [zoom, setZoom] = useState(1);
@@ -233,6 +327,7 @@ export default function AdminGatilhosPage() {
       subtitulo = 'Dispara template de e-mail formatado';
       configuracao = {
         template_id: templatesDisponiveis[0]?.code || 'boas_vindas',
+        destinatario_tipo: 'CLIENTE',
         destinatarios: [
           { destinatario_tipo: 'CLIENTE', destinatario_email: '', destinatario_nome: '' },
         ],
@@ -258,7 +353,7 @@ export default function AdminGatilhosPage() {
       parentId,
       ativo: true,
       posicaoX: parentPos.x,
-      posicaoY: parentPos.y + 160,
+      posicaoY: parentPos.y + 180,
       configuracao,
     };
 
@@ -267,6 +362,38 @@ export default function AdminGatilhosPage() {
     );
 
     setModalAdicionarPaiId(null);
+  }
+
+  function handleVisualizarEmailPorCodigo(
+    templateCodeOrId?: string,
+    destLabel?: string,
+    nodeTitle?: string
+  ) {
+    const code = templateCodeOrId || 'boas_vindas';
+    const tpl = templatesDisponiveis.find((t) => t.code === code || t.id === code);
+
+    const templateFinal: TemplateOption = tpl || {
+      id: code,
+      code: code,
+      name: `Modelo: ${code}`,
+      subject: `Notificação DuoLife — ${code}`,
+      body_html: `<div style="padding: 30px; font-family: sans-serif; color: #1e293b; text-align: center;">
+        <h2 style="color: #0e4a5a; font-size: 20px;">Modelo de E-mail: ${code}</h2>
+        <p style="margin-top: 10px; color: #64748b; font-size: 14px;">Este modelo ainda não possui layout customizado gravado no banco de dados.</p>
+      </div>`,
+    };
+
+    setPreviewEmailModal({
+      template: templateFinal,
+      destinatarioLabel: destLabel || 'Cliente Segurado',
+      nodeTitle: nodeTitle || 'Ação: Enviar E-mail',
+    });
+  }
+
+  function handleAbrirVisualizacaoEmail(no: NoArvore) {
+    const tplCode = no.configuracao?.template_id || 'boas_vindas';
+    const destInfo = getDestinatarioInfo(no.configuracao);
+    handleVisualizarEmailPorCodigo(tplCode, destInfo.label, no.titulo);
   }
 
   // Remoção de Nó e Filhos em Cascata
@@ -366,9 +493,15 @@ export default function AdminGatilhosPage() {
     });
 
     const LARGURA_NO = 280;
-    const ALTURA_NO = 110;
     const ESPACAMENTO_X = 50;
-    const ESPACAMENTO_Y = 160;
+    const ESPACAMENTO_Y = 180;
+
+    function getNodeHeight(node?: NoArvore): number {
+      if (!node) return 110;
+      if (node.tipo === 'ACAO_EMAIL') return 155;
+      if (node.tipo === 'CONDICAO_SE') return 125;
+      return 110;
+    }
 
     function getSubtreeWidth(nodeId: string): number {
       const children = mapaFilhos.get(nodeId) || [];
@@ -404,8 +537,9 @@ export default function AdminGatilhosPage() {
           const childPosX = childNodeObj && childNodeObj.posicaoX !== undefined ? childNodeObj.posicaoX : childCenterX;
           const childPosY = childNodeObj && childNodeObj.posicaoY !== undefined ? childNodeObj.posicaoY : childY;
 
+          const parentH = getNodeHeight(nodeObj);
           conexoes.push({
-            from: { x: posX + LARGURA_NO / 2, y: posY + ALTURA_NO },
+            from: { x: posX + LARGURA_NO / 2, y: posY + parentH },
             to: { x: childPosX + LARGURA_NO / 2, y: childPosY },
             fromId: nodeId,
             toId: child.id,
@@ -875,10 +1009,37 @@ export default function AdminGatilhosPage() {
                               </div>
                             )}
 
-                            {no.tipo === 'ACAO_EMAIL' && no.configuracao?.template_id && (
-                              <div className="mt-1 flex items-center gap-1 text-[10px] font-mono bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-1 rounded-md">
-                                <Mail className="size-3 shrink-0" />
-                                <span className="truncate">Tpl: {no.configuracao.template_id}</span>
+                            {no.tipo === 'ACAO_EMAIL' && (
+                              <div className="mt-1 flex flex-col gap-1.5">
+                                {/* Destinatário */}
+                                <div className="flex items-center gap-1.5 text-[10px] bg-slate-50 text-slate-700 border border-slate-200 px-2 py-1 rounded-md">
+                                  <Users className="size-3 text-slate-500 shrink-0" />
+                                  <span className="text-slate-500 font-medium">Destinatário:</span>
+                                  <span className="font-semibold text-slate-900 truncate">
+                                    {getDestinatarioInfo(no.configuracao).label}
+                                  </span>
+                                </div>
+
+                                {/* Template + Botão Visualizar */}
+                                <div className="flex items-center justify-between gap-1 text-[10px] font-mono bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-1 rounded-md">
+                                  <div className="flex items-center gap-1 truncate min-w-0">
+                                    <Mail className="size-3 shrink-0 text-emerald-600" />
+                                    <span className="truncate">Tpl: {no.configuracao?.template_id || 'boas_vindas'}</span>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleAbrirVisualizacaoEmail(no);
+                                    }}
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-sans text-[10px] font-semibold transition shrink-0 shadow-2xs cursor-pointer"
+                                    title="Visualizar modelo de e-mail"
+                                  >
+                                    <Eye className="size-3" />
+                                    <span>Visualizar</span>
+                                  </button>
+                                </div>
                               </div>
                             )}
                           </div>
@@ -1206,7 +1367,21 @@ export default function AdminGatilhosPage() {
 
               {noEmEdicao.tipo === 'ACAO_EMAIL' && (
                 <div className="flex flex-col gap-3 p-3 bg-emerald-50/50 border border-emerald-200 rounded-xl">
-                  <span className="font-bold text-emerald-800 uppercase">Configuração do E-mail:</span>
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-emerald-800 uppercase">Configuração do E-mail:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const code = noEmEdicao.configuracao?.template_id;
+                        const dest = getDestinatarioInfo(noEmEdicao.configuracao).label;
+                        handleVisualizarEmailPorCodigo(code, dest, noEmEdicao.titulo);
+                      }}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 hover:underline cursor-pointer"
+                    >
+                      <Eye className="size-3" />
+                      Visualizar Prévia
+                    </button>
+                  </div>
 
                   <div className="flex flex-col gap-1">
                     <label className="text-gray-700 font-semibold">Modelo de E-mail (Template)</label>
@@ -1231,13 +1406,24 @@ export default function AdminGatilhosPage() {
                   <div className="flex flex-col gap-1">
                     <label className="text-gray-700 font-semibold">Destinatário Principal</label>
                     <select
-                      value={noEmEdicao.configuracao?.destinatario_tipo || 'CLIENTE'}
+                      value={
+                        noEmEdicao.configuracao?.destinatario_tipo ||
+                        noEmEdicao.configuracao?.destinatarios?.[0]?.destinatario_tipo ||
+                        'CLIENTE'
+                      }
                       onChange={(e) =>
                         setNoEmEdicao({
                           ...noEmEdicao,
                           configuracao: {
                             ...noEmEdicao.configuracao,
                             destinatario_tipo: e.target.value,
+                            destinatarios: [
+                              {
+                                destinatario_tipo: e.target.value as any,
+                                destinatario_email: noEmEdicao.configuracao?.destinatario_email || '',
+                                destinatario_nome: noEmEdicao.configuracao?.destinatario_nome || '',
+                              },
+                            ],
                           },
                         })
                       }
@@ -1247,8 +1433,42 @@ export default function AdminGatilhosPage() {
                       <option value="VENDEDOR">Vendedor / Consultor da Proposta (E-mail do vendedor)</option>
                       <option value="PARCEIRO">Corretora Parceira (E-mail da empresa parceira)</option>
                       <option value="ADMIN">Operação DuoLife (E-mail interno)</option>
+                      <option value="PERSONALIZADO">Personalizado (Digitar e-mail fixo)</option>
                     </select>
                   </div>
+
+                  {(noEmEdicao.configuracao?.destinatario_tipo === 'PERSONALIZADO' ||
+                    noEmEdicao.configuracao?.destinatarios?.[0]?.destinatario_tipo === 'PERSONALIZADO') && (
+                    <div className="flex flex-col gap-1">
+                      <label className="text-gray-700 font-semibold">E-mail Personalizado</label>
+                      <input
+                        type="email"
+                        value={
+                          noEmEdicao.configuracao?.destinatario_email ||
+                          noEmEdicao.configuracao?.destinatarios?.[0]?.destinatario_email ||
+                          ''
+                        }
+                        onChange={(e) =>
+                          setNoEmEdicao({
+                            ...noEmEdicao,
+                            configuracao: {
+                              ...noEmEdicao.configuracao,
+                              destinatario_email: e.target.value,
+                              destinatarios: [
+                                {
+                                  destinatario_tipo: 'PERSONALIZADO',
+                                  destinatario_email: e.target.value,
+                                  destinatario_nome: noEmEdicao.configuracao?.destinatario_nome || '',
+                                },
+                              ],
+                            },
+                          })
+                        }
+                        placeholder="ex: contato@exemplo.com.br"
+                        className="rounded-lg border border-gray-300 p-2 bg-white text-xs"
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1267,6 +1487,98 @@ export default function AdminGatilhosPage() {
                 className="px-4 py-2 text-xs font-bold text-white bg-primary hover:bg-[#0b3b48] rounded-xl shadow-xs"
               >
                 Aplicar Alterações
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Visualizar E-mail */}
+      {previewEmailModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-in fade-in">
+          <div className="w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-gray-200 overflow-hidden flex flex-col max-h-[92vh]">
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-gray-200 flex items-center justify-between bg-gray-50/70">
+              <div className="flex items-center gap-3">
+                <div className="size-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 shrink-0">
+                  <Mail className="size-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-base text-gray-900">
+                      {previewEmailModal.template.name || 'Visualização do E-mail'}
+                    </h3>
+                    <span className="font-mono text-[11px] px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-semibold">
+                      {previewEmailModal.template.code}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Prévia do e-mail disparado pela ação: <span className="font-medium text-gray-700">{previewEmailModal.nodeTitle}</span>
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setPreviewEmailModal(null)}
+                className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition cursor-pointer"
+                title="Fechar"
+              >
+                <X className="size-5" />
+              </button>
+            </div>
+
+            {/* Metadados: De / Para / Assunto */}
+            <div className="p-4 bg-gray-50/60 border-b border-gray-200 text-xs flex flex-col gap-2">
+              <div className="flex items-center gap-2 text-gray-600">
+                <span className="font-bold text-gray-700 w-16">De:</span>
+                <span className="font-mono text-gray-800">DuoLife Hub &lt;noreply@duolife.com.br&gt;</span>
+              </div>
+              <div className="flex items-center gap-2 text-gray-600">
+                <span className="font-bold text-gray-700 w-16">Para:</span>
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 bg-white border border-gray-200 rounded-md font-semibold text-gray-800">
+                  <Users className="size-3.5 text-gray-500" />
+                  {previewEmailModal.destinatarioLabel}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-gray-600">
+                <span className="font-bold text-gray-700 w-16">Assunto:</span>
+                <span className="font-medium text-gray-900 bg-white border border-gray-200 px-2 py-1 rounded-md flex-1">
+                  {getPreviewHtml(previewEmailModal.template.subject || '(Sem assunto definido)')}
+                </span>
+              </div>
+            </div>
+
+            {/* Visualização HTML no iFrame */}
+            <div className="flex-1 min-h-[420px] max-h-[550px] bg-gray-100 p-4 overflow-hidden flex flex-col items-center justify-center">
+              <div className="w-full h-full bg-white rounded-xl shadow-xs border border-gray-200 overflow-hidden">
+                <iframe
+                  srcDoc={getPreviewHtml(previewEmailModal.template.body_html || '<div style="padding:20px;font-family:sans-serif;color:#64748b;text-align:center;">Nenhum conteúdo HTML configurado para este modelo.</div>')}
+                  title={`Prévia do e-mail ${previewEmailModal.template.name}`}
+                  className="w-full h-full min-h-[420px] border-0"
+                  sandbox="allow-same-origin"
+                />
+              </div>
+            </div>
+
+            {/* Rodapé com Ações */}
+            <div className="px-6 py-3 border-t border-gray-200 bg-gray-50 flex items-center justify-between">
+              <a
+                href="/admin/emails"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+              >
+                <ExternalLink className="size-3.5" />
+                Gerenciar Templates no Painel de E-mails
+              </a>
+
+              <button
+                type="button"
+                onClick={() => setPreviewEmailModal(null)}
+                className="px-4 py-2 text-xs font-bold text-gray-700 bg-white border border-gray-300 rounded-xl hover:bg-gray-100 transition shadow-2xs cursor-pointer"
+              >
+                Fechar
               </button>
             </div>
           </div>
