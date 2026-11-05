@@ -18,6 +18,7 @@ import type {
 import { PendenciasKpiCards } from './PendenciasKpiCards';
 import { PendenciasFiltrosBar } from './PendenciasFiltrosBar';
 import { PendenciasTabela } from './PendenciasTabela';
+import { toast } from '@/components/ui/toast';
 
 export interface PendenciasCancelamentosViewProps {
   initialData: PendenciasPaginadasResult;
@@ -40,6 +41,7 @@ export function PendenciasCancelamentosView({
     orderDir: initialTab === 'canceladas' ? 'desc' : 'asc',
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [isSyncingAsaas, setIsSyncingAsaas] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -99,6 +101,38 @@ export function PendenciasCancelamentosView({
     },
     []
   );
+
+  // Atualização com Sincronização Direta no Asaas
+  const handleAtualizarComAsaas = async () => {
+    setIsSyncingAsaas(true);
+    setErrorMessage(null);
+
+    try {
+      // 1. Sincroniza em lote com o gateway Asaas
+      const syncResponse = await fetch('/api/pendencias-cancelamentos/sync', {
+        method: 'POST',
+      });
+
+      if (syncResponse.ok) {
+        const syncData = await syncResponse.json().catch(() => ({}));
+        if (syncData.updatedToPaid && syncData.updatedToPaid > 0) {
+          toast.success(
+            `Sincronizado com o Asaas! ${syncData.updatedToPaid} pagamento(s) confirmado(s) e baixado(s).`
+          );
+        } else {
+          toast.success('Dados atualizados e sincronizados com o Asaas com sucesso!');
+        }
+      } else {
+        toast.info('Sincronização externa temporariamente indisponível. Recarregando dados locais.');
+      }
+    } catch {
+      toast.info('Sincronização externa temporariamente indisponível. Recarregando dados locais.');
+    } finally {
+      setIsSyncingAsaas(false);
+      // 2. Recarrega os dados da central e indicadores (KPIs)
+      await fetchData(filtros, tab);
+    }
+  };
 
   // Troca de aba
   const handleTabChange = (novaTab: PendenciaTab) => {
@@ -198,17 +232,23 @@ export function PendenciasCancelamentosView({
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => fetchData(filtros, tab)}
-            disabled={isLoading}
-            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] text-sm font-semibold rounded-xl text-primary bg-primary/10 border border-primary/20 hover:bg-primary/15 transition-all focus:outline-none focus:ring-2 focus:ring-primary/20"
+            onClick={handleAtualizarComAsaas}
+            disabled={isLoading || isSyncingAsaas}
+            className="inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] text-sm font-semibold rounded-xl text-primary bg-primary/10 border border-primary/20 hover:bg-primary/15 transition-all focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed shadow-xs"
             data-testid="btn-atualizar-dados"
-            title="Recarregar dados da central"
+            title="Sincronizar com o Asaas e atualizar dados da central"
           >
             <RefreshCw
-              className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`}
+              className={`w-4 h-4 ${isSyncingAsaas || isLoading ? 'animate-spin' : ''}`}
               aria-hidden="true"
             />
-            <span>{isLoading ? 'Atualizando...' : 'Atualizar Dados'}</span>
+            <span>
+              {isSyncingAsaas
+                ? 'Sincronizando Asaas...'
+                : isLoading
+                ? 'Atualizando...'
+                : 'Atualizar Dados'}
+            </span>
           </button>
         </div>
       </div>

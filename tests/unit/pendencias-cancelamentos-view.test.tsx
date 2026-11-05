@@ -596,11 +596,53 @@ describe('Central de Pendências e Cancelamentos — Componentes de Interface', 
       );
     });
 
+    it('deve disparar sincronização com Asaas e recarregar dados ao clicar em Atualizar Dados', async () => {
+      const fetchCalls: string[] = [];
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any, opts: any) => {
+        const urlStr = String(url);
+        fetchCalls.push(urlStr);
+        if (urlStr.includes('/sync')) {
+          return {
+            ok: true,
+            json: async () => ({ ok: true, totalProcessed: 5, updatedToPaid: 2 }),
+          } as any;
+        }
+        return {
+          ok: true,
+          json: async () => mockPaginadasResult,
+        } as any;
+      });
+
+      act(() => {
+        root.render(
+          <PendenciasCancelamentosView
+            initialData={mockPaginadasResult}
+            initialTab="em_atraso"
+            baseRoute="/portal"
+          />
+        );
+      });
+
+      const btnAtualizar = container.querySelector('[data-testid="btn-atualizar-dados"]') as HTMLButtonElement;
+      await act(async () => {
+        btnAtualizar.click();
+      });
+
+      expect(fetchCalls[0]).toContain('/api/pendencias-cancelamentos/sync');
+      expect(fetchCalls[1]).toContain('/api/pendencias-cancelamentos?tab=em_atraso');
+    });
+
     it('deve exibir alerta de erro quando fetch falha', async () => {
-      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce({
-        ok: false,
-        json: async () => ({ error: 'Falha de conexão com o banco de dados' }),
-      } as any);
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (url: any) => {
+        const urlStr = String(url);
+        if (urlStr.includes('/sync')) {
+          return { ok: true, json: async () => ({ ok: true }) } as any;
+        }
+        return {
+          ok: false,
+          json: async () => ({ error: 'Falha de conexão com o banco de dados' }),
+        } as any;
+      });
 
       act(() => {
         root.render(
