@@ -335,3 +335,76 @@ export function calculateBillingDueDate(
     reason: 'admin_override',
   };
 }
+
+/**
+ * Garante que a data seja um dia útil. Se cair em sábado, domingo ou feriado nacional,
+ * avança sucessivamente até o primeiro dia útil subsequente.
+ */
+export function ensureNextBusinessDay(baseDate: Date | string): string {
+  const date = parseDateSafe(baseDate);
+  if (!date) return '';
+  const current = new Date(date.getTime());
+  while (!isBusinessDay(current)) {
+    current.setDate(current.getDate() + 1);
+  }
+  return formatToISODate(current);
+}
+
+export interface CancellationDeadlineResult {
+  deadlineDate: string;
+  installmentNumber: number;
+  dueDateIso: string;
+}
+
+/**
+ * Calcula a data limite de tolerância para cancelamento por inadimplência:
+ * - Parcela 1: 2 dias úteis após o vencimento (via addBusinessDays).
+ * - Parcelas > 1: 30 dias corridos após o vencimento, prorrogados para o próximo dia útil
+ *   se o 30º dia recair em sábado, domingo ou feriado nacional.
+ */
+export function calculateCancellationDeadline(
+  dueDate: Date | string,
+  installmentNumber: number = 1
+): CancellationDeadlineResult {
+  const parsedDue = parseDateSafe(dueDate) || parseDateSafe(getTodayISODate())!;
+  const dueDateIso = formatToISODate(parsedDue);
+
+  if (installmentNumber <= 1) {
+    // Parcela 1: 2 dias úteis
+    const deadlineDate = addBusinessDays(parsedDue, 2);
+    return {
+      deadlineDate,
+      installmentNumber: 1,
+      dueDateIso,
+    };
+  }
+
+  // Parcelas > 1: 30 dias corridos com prorrogação do termo final
+  const rawTarget = new Date(parsedDue.getTime());
+  rawTarget.setDate(rawTarget.getDate() + 30);
+
+  const deadlineDate = ensureNextBusinessDay(rawTarget);
+  return {
+    deadlineDate,
+    installmentNumber,
+    dueDateIso,
+  };
+}
+
+/**
+ * Verifica se uma parcela já ultrapassou o prazo limite de cancelamento.
+ * Retorna true apenas se a data de verificação (currentDate) for ESTRITAMENTE POSTERIOR
+ * à deadlineDate (ou seja, se deadlineDate for hoje, o segurado ainda tem até o fim do dia para pagar).
+ */
+export function isInstallmentPastCancellationDeadline(
+  dueDate: Date | string,
+  installmentNumber: number,
+  currentDate?: Date | string
+): boolean {
+  const { deadlineDate } = calculateCancellationDeadline(dueDate, installmentNumber);
+  const nowSafe = currentDate ? parseDateSafe(currentDate) : parseDateSafe(getTodayISODate());
+  if (!nowSafe) return false;
+  const nowStr = formatToISODate(nowSafe);
+  return compareDatesOnly(nowStr, deadlineDate) > 0;
+}
+
