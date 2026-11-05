@@ -4,6 +4,8 @@ import { getSystemSetting } from './system-settings';
 import { sendTemplatedEmail } from './email-service';
 import { dispatchDomainEvent } from './triggers/dispatcher';
 import { parseCurrencyToNumber } from './format';
+import { isInstallmentPastCancellationDeadline } from './business-days';
+import { cancelSaleAndQuoteForDelinquency } from './insurance-ops';
 
 export interface LifecycleConfig {
   renewalWindows: number[];
@@ -22,6 +24,13 @@ export interface ScanResult {
   errors: string[];
 }
 
+export interface CancellationScanResult {
+  scanned: number;
+  canceled: number;
+  skipped: number;
+  errors: string[];
+}
+
 export interface FullLifecycleResult {
   ok: boolean;
   timestamp: string;
@@ -30,6 +39,7 @@ export interface FullLifecycleResult {
   durationMs: number;
   renewals: ScanResult;
   delinquency: ScanResult;
+  cancellations?: CancellationScanResult;
   errors: string[];
 }
 
@@ -677,12 +687,122 @@ export async function runDelinquencyScan(options?: {
 }
 
 /**
- * 3. Execução Consolidada da Régua de Lifecycle (Renovação + Inadimplência)
+ * 3. Módulo de Cancelamento Automático por Inadimplência
+ * - Parcela 1: Cancelamento se atraso > 2 dias úteis
+ * - Parcelas 2+: Cancelamento se atraso > 30 dias corridos (prorrogados até o próximo dia útil se recair em dia não útil)
+ */
+export async function runDelinquencyCancellationScan(options?: {
+  targetDate?: string;
+  dryRun?: boolean;
+}): Promise<CancellationScanResult> {
+  const dryRun = Boolean(options?.dryRun);
+  const targetDateStr = options?.targetDate || new Date().toISOString().slice(0, 10);
+
+  const result: CancellationScanResult = {
+    scanned: 0,
+    canceled: 0,
+    skipped: 0,
+    errors: [],
+  };
+
+  try {
+    const overdueInstallments = await sql<
+      {
+        installment_id: string;
+        cotacao_id: string;
+        installment_number: number;
+        due_date: string;
+        amount: number | null;
+        external_payment_id: string | null;
+        policy_number: string | null;
+      }[]
+    >`
+      SELECT
+        pi.id AS installment_id,
+        pi.cotacao_id,
+        pi.installment_number,
+        pi.due_date::text AS due_date,
+        pi.amount,
+        pi.external_payment_id,
+        s.policy_number
+      FROM payment_installments pi
+      JOIN cotacoes c ON c.id = pi.cotacao_id
+      LEFT JOIN sales s ON s.cotacao_id = c.id
+      WHERE pi.status NOT IN ('paid', 'received', 'confirmed', 'RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH', 'cancelled')
+        AND c.status NOT IN ('cancelada', 'recusada')
+        AND (s.id IS NULL OR s.status = 'ativa')
+        AND pi.due_date < ${targetDateStr}::date
+      ORDER BY pi.installment_number ASC, pi.due_date ASC
+    `;
+
+    result.scanned = overdueInstallments.length;
+
+    const processedQuotes = new Set<string>();
+
+    for (const inst of overdueInstallments) {
+      if (processedQuotes.has(inst.cotacao_id)) {
+        result.skipped++;
+        continue;
+      }
+
+      const isPastDeadline = isInstallmentPastCancellationDeadline(
+        inst.due_date,
+        inst.installment_number,
+        targetDateStr
+      );
+
+      if (!isPastDeadline) {
+        result.skipped++;
+        continue;
+      }
+
+      processedQuotes.add(inst.cotacao_id);
+
+      const reason =
+        inst.installment_number === 1
+          ? `Inadimplência da 1ª parcela (atraso superior a 2 dias úteis da data de vencimento ${inst.due_date})`
+          : `Inadimplência da parcela ${inst.installment_number} (atraso superior a 30 dias corridos da data de vencimento ${inst.due_date})`;
+
+      if (dryRun) {
+        logger.info(
+          { cotacaoId: inst.cotacao_id, reason, dryRun: true },
+          'lifecycle: simulação de cancelamento por inadimplência'
+        );
+        result.canceled++;
+      } else {
+        const cancelRes = await cancelSaleAndQuoteForDelinquency({
+          cotacaoId: inst.cotacao_id,
+          installmentId: inst.installment_id,
+          installmentNumber: inst.installment_number,
+          dueDate: inst.due_date,
+          reason,
+        });
+
+        if (cancelRes.success) {
+          result.canceled++;
+        } else {
+          result.errors.push(
+            `Erro ao cancelar cotação ${inst.cotacao_id}: ${cancelRes.error || 'Erro desconhecido'}`
+          );
+        }
+      }
+    }
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    logger.error({ err }, 'Falha na varredura de cancelamentos por inadimplência');
+    result.errors.push(`Falha no banco / varredura de cancelamentos: ${msg}`);
+  }
+
+  return result;
+}
+
+/**
+ * 4. Execução Consolidada da Régua de Lifecycle (Renovação + Inadimplência + Cancelamentos)
  */
 export async function runFullLifecycleScan(options?: {
   targetDate?: string;
   dryRun?: boolean;
-  module?: 'all' | 'renewal' | 'delinquency';
+  module?: 'all' | 'renewal' | 'delinquency' | 'cancellation';
   triggeredBy?: string;
 }): Promise<FullLifecycleResult> {
   const startTime = Date.now();
@@ -693,6 +813,7 @@ export async function runFullLifecycleScan(options?: {
 
   let renewals: ScanResult = { scanned: 0, notified: 0, skipped: 0, errors: [] };
   let delinquency: ScanResult = { scanned: 0, notified: 0, skipped: 0, errors: [] };
+  let cancellations: CancellationScanResult = { scanned: 0, canceled: 0, skipped: 0, errors: [] };
 
   if (selectedModule === 'all' || selectedModule === 'renewal') {
     renewals = await runRenewalScan({ targetDate, dryRun });
@@ -702,13 +823,17 @@ export async function runFullLifecycleScan(options?: {
     delinquency = await runDelinquencyScan({ targetDate, dryRun });
   }
 
+  if (selectedModule === 'all' || selectedModule === 'delinquency' || selectedModule === 'cancellation') {
+    cancellations = await runDelinquencyCancellationScan({ targetDate, dryRun });
+  }
+
   const durationMs = Date.now() - startTime;
-  const allErrors = [...renewals.errors, ...delinquency.errors];
+  const allErrors = [...renewals.errors, ...delinquency.errors, ...cancellations.errors];
 
   const status: 'success' | 'partial' | 'failed' =
     allErrors.length === 0
       ? 'success'
-      : renewals.notified > 0 || delinquency.notified > 0
+      : renewals.notified > 0 || delinquency.notified > 0 || cancellations.canceled > 0
       ? 'partial'
       : 'failed';
 
@@ -725,9 +850,9 @@ export async function runFullLifecycleScan(options?: {
           ${renewals.scanned},
           ${renewals.notified},
           ${renewals.skipped},
-          ${delinquency.scanned},
-          ${delinquency.notified},
-          ${delinquency.skipped},
+          ${delinquency.scanned + cancellations.scanned},
+          ${delinquency.notified + cancellations.canceled},
+          ${delinquency.skipped + cancellations.skipped},
           ${sql.json(allErrors)},
           ${durationMs},
           ${triggeredBy}
@@ -746,6 +871,7 @@ export async function runFullLifecycleScan(options?: {
     durationMs,
     renewals,
     delinquency,
+    cancellations,
     errors: allErrors,
   };
 }

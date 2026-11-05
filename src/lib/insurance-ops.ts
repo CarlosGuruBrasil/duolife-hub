@@ -2,6 +2,7 @@ import { sql } from './pg';
 import { isHealthQuote } from './product-schemas';
 import { logger } from './logger';
 import { generateClientSessionToken } from './client-draft-storage';
+import { deleteAsaasPayment } from './asaas-charges';
 
 function normalizeDocument(value: string) {
   return value.replace(/\D/g, '');
@@ -617,5 +618,111 @@ export async function handleAsaasPaymentRefund(
     return { success: true, updated: true };
   });
 }
+
+export interface CancelDelinquencyParams {
+  cotacaoId: string;
+  installmentId?: string;
+  installmentNumber?: number;
+  dueDate?: string;
+  reason?: string;
+}
+
+/**
+ * Cancela atomicamente uma venda, proposta e faturas pendentes por inadimplência crítica.
+ * Cancela também as cobranças pendentes na API do Asaas e estorna as comissões.
+ */
+export async function cancelSaleAndQuoteForDelinquency(
+  params: CancelDelinquencyParams
+): Promise<{ success: boolean; canceled: boolean; error?: string }> {
+  if (!params.cotacaoId || !params.cotacaoId.trim()) {
+    return { success: false, canceled: false, error: 'ID da cotação não informado' };
+  }
+
+  const cleanId = params.cotacaoId.trim();
+
+  try {
+    // 1. Busca todas as cobranças/parcelas pendentes não pagas no Asaas
+    const pendingInstallments = await sql<Array<{ id: string; external_payment_id: string | null }>>`
+      SELECT id, external_payment_id
+      FROM payment_installments
+      WHERE cotacao_id = ${cleanId}
+        AND status NOT IN ('paid', 'received', 'confirmed', 'RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH', 'cancelled')
+    `;
+
+    for (const inst of pendingInstallments) {
+      if (inst.external_payment_id) {
+        try {
+          await deleteAsaasPayment(inst.external_payment_id);
+        } catch (asaasErr) {
+          logger.warn(
+            { asaasErr, externalPaymentId: inst.external_payment_id, cotacaoId: cleanId },
+            'insurance-ops: aviso ao cancelar parcela no Asaas por inadimplência'
+          );
+        }
+      }
+    }
+
+    // 2. Transação atômica no PostgreSQL
+    return await sql.begin(async (tx) => {
+      // a) Estorna comissões geradas para a venda
+      await tx`
+        UPDATE commissions
+        SET status = 'estornada',
+            notes = COALESCE(notes || ' | ', '') || ${'Estornado por Inadimplência (' + (params.reason || 'Decurso de prazo') + ')'},
+            updated_at = NOW()
+        WHERE sale_id IN (SELECT id FROM sales WHERE cotacao_id = ${cleanId})
+          AND status != 'estornada'
+      `;
+
+      // b) Cancela a apólice/venda
+      await tx`
+        UPDATE sales
+        SET status = 'cancelada',
+            updated_at = NOW()
+        WHERE cotacao_id = ${cleanId}
+          AND status != 'cancelada'
+      `;
+
+      // c) Cancela a proposta/cotação
+      await tx`
+        UPDATE cotacoes
+        SET status = 'cancelada',
+            updated_at = NOW()
+        WHERE id = ${cleanId}
+          AND status != 'cancelada'
+      `;
+
+      // d) Atualiza parcelas pendentes locais para 'cancelled'
+      await tx`
+        UPDATE payment_installments
+        SET status = 'cancelled',
+            updated_at = NOW()
+        WHERE cotacao_id = ${cleanId}
+          AND status NOT IN ('paid', 'received', 'confirmed', 'RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH')
+      `;
+
+      // e) Atualiza ordem de pagamento para 'cancelled'
+      await tx`
+        UPDATE payment_orders
+        SET status = 'cancelled',
+            updated_at = NOW()
+        WHERE cotacao_id = ${cleanId}
+          AND status NOT IN ('paid', 'received', 'confirmed', 'RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH')
+      `;
+
+      logger.warn(
+        { cotacaoId: cleanId, reason: params.reason, installmentNumber: params.installmentNumber },
+        'insurance-ops: cancelamento por inadimplencia executado com sucesso'
+      );
+
+      return { success: true, canceled: true };
+    });
+  } catch (err: any) {
+    const errorMsg = err?.message || String(err);
+    logger.error({ err, cotacaoId: cleanId }, 'insurance-ops: falha ao cancelar por inadimplencia');
+    return { success: false, canceled: false, error: errorMsg };
+  }
+}
+
 
 
