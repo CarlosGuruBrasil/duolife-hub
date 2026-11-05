@@ -875,3 +875,66 @@ export async function runFullLifecycleScan(options?: {
     errors: allErrors,
   };
 }
+
+const LIFECYCLE_ADVISORY_LOCK_ID = 884729103;
+let lastVerifiedDate: string | null = null;
+
+/**
+ * Gatilho de contingência do primeiro login do dia (Fallback ao Cron).
+ * Se o cron de madrugada não tiver rodado hoje, executa a varredura protegida
+ * por advisory lock do PostgreSQL para garantir que múltiplas sessões simultâneas
+ * não executem a rotina em duplicidade.
+ */
+export async function triggerLifecycleScanIfPending(userContext?: {
+  userId?: string;
+  email?: string;
+}): Promise<{ triggered: boolean; reason: string }> {
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  if (lastVerifiedDate === todayStr) {
+    return { triggered: false, reason: 'cached_already_ran_today' };
+  }
+
+  try {
+    // 1. Verifica se já existe execução bem-sucedida para o dia de hoje
+    const [existing] = await sql<{ id: string }[]>`
+      SELECT id FROM lifecycle_cron_logs
+      WHERE created_at::date = CURRENT_DATE
+        AND status IN ('success', 'partial')
+      LIMIT 1
+    `;
+
+    if (existing) {
+      lastVerifiedDate = todayStr;
+      return { triggered: false, reason: 'already_ran_today' };
+    }
+
+    // 2. Tenta adquirir o advisory lock não-bloqueante
+    const [lockRes] = await sql<{ acquired: boolean }[]>`
+      SELECT pg_try_advisory_lock(${LIFECYCLE_ADVISORY_LOCK_ID}) AS acquired
+    `;
+
+    if (!lockRes || !lockRes.acquired) {
+      return { triggered: false, reason: 'locked_by_another_process' };
+    }
+
+    const triggerUser = userContext?.email ? `login_fallback:${userContext.email}` : 'login_fallback';
+    logger.info({ user: triggerUser }, 'Disparando varredura de contingência de lifecycle no primeiro login do dia');
+
+    try {
+      await runFullLifecycleScan({
+        triggeredBy: triggerUser,
+      });
+      lastVerifiedDate = todayStr;
+    } finally {
+      await sql`SELECT pg_advisory_unlock(${LIFECYCLE_ADVISORY_LOCK_ID})`.catch(() => {});
+    }
+
+    return { triggered: true, reason: 'executed_successfully' };
+  } catch (err: any) {
+    const msg = err?.message || String(err);
+    logger.warn({ err }, 'Gatilho de contingência de lifecycle encontrou erro ou banco indisponível');
+    return { triggered: false, reason: `failed: ${msg}` };
+  }
+}
+

@@ -10,6 +10,7 @@ import { getJwtSecret } from '@/lib/secrets';
 import { rateLimit, rateLimitResponse, getClientIp } from '@/lib/rate-limit';
 import { createRefreshToken } from '@/lib/refresh-token';
 import { normalizePartnerRole, normalizePermissions, toPartnerUserRole, type AuthUser } from '@/lib/auth';
+import { triggerLifecycleScanIfPending } from '@/lib/lifecycle-service';
 
 const loginSchema = z.object({
   email: z.string().trim().email(),
@@ -64,6 +65,8 @@ export async function POST(req: NextRequest) {
         httpOnly: true, secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax', maxAge: 60 * 60 * 8, path: '/',
       });
+      // Contingência de lifecycle no primeiro login do dia (fire-and-forget)
+      triggerLifecycleScanIfPending({ userId: payload.userId, email: payload.email }).catch(() => {});
       return Response.json({ ok: true, user: { ...payload } });
     }
 
@@ -109,6 +112,8 @@ export async function POST(req: NextRequest) {
         httpOnly: true, secure: isProduction, sameSite: 'lax',
         maxAge: Number(process.env.REFRESH_TOKEN_EXPIRES_DAYS ?? 30) * 86_400, path: '/api/auth',
       });
+      // Contingência de lifecycle no primeiro login do dia (fire-and-forget)
+      triggerLifecycleScanIfPending({ userId: payload.userId, email: payload.email }).catch(() => {});
       return Response.json({ ok: true, user: { ...payload } });
     }
 
@@ -156,7 +161,9 @@ export async function POST(req: NextRequest) {
       httpOnly: true, secure: isProduction, sameSite: 'lax',
       maxAge: Number(process.env.REFRESH_TOKEN_EXPIRES_DAYS ?? 30) * 86_400, path: '/api/auth',
     });
-    return Response.json({ ok: true, user: { ...payload } });
+    // Contingência de lifecycle no primeiro login do dia (fire-and-forget)
+      triggerLifecycleScanIfPending({ userId: payload.userId, email: payload.email }).catch(() => {});
+      return Response.json({ ok: true, user: { ...payload } });
 
   } catch (err) {
     logger.error({ err }, 'auth.login.failed');
