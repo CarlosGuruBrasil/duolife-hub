@@ -350,3 +350,18 @@ As regras de negócio do DuoLife Hub governam a precificação atuarial, travas 
 - **Origem no Código:** `src/lib/business-days.ts` (`calculateCancellationDeadline`, `ensureNextBusinessDay`), `src/lib/lifecycle-service.ts` (`runDelinquencyCancellationScan`), `src/lib/insurance-ops.ts` (`cancelSaleAndQuoteForDelinquency`) e `src/lib/status-matrix.ts`.
 - **Status:** `CONFIRMADO`
 
+---
+
+### BR-032 — Central de Pendências e Cancelamentos
+- **Descrição:** Painel unificado e consultivo para acompanhamento de cotações, propostas e apólices que possuem parcelas vencidas em aberto ou que foram canceladas.
+- **Condição:** Acesso pelas rotas `/portal/pendencias-cancelamentos` (para parceiros e corretoras) e `/admin/pendencias-cancelamentos` (para administradores internos).
+- **Comportamento:**
+  - **Aba 1 (Em Atraso):** Exibe exclusivamente contratações com parcelas vencidas e não pagas (`due_date < CURRENT_DATE`) que ainda não foram canceladas. Classifica os registros entre `em_atraso_tolerancia` (dentro dos prazos da BR-031) e `em_atraso_critico` (prazo extrapolado, aguardando cancelamento).
+  - **Aba 2 (Canceladas):** Exibe contratações formalmente canceladas ou recusadas, preservando o histórico de pagamentos anteriores e identificando os motivos do cancelamento (Inadimplência, Recusa de Assinatura, Desistência, Cancelamento Administrativo).
+  - **Aba 3 (Visão Geral):** Consolida ambos os recortes com badges de severidade visualmente distintos.
+  - **Deduplicação Obrigatória:** A cotação é a âncora relacional única (`cotacoes.id`). Quando há apólice emitida (`sales.cotacao_id`), os dados de ambos são unificados em uma única linha principal no grid e nos KPIs.
+  - **Isolamento Hierárquico Multi-tenant:** Vendedores visualizam estritamente seus dados; gestores visualizam sua equipe subordinada recursiva; corretoras visualizam sua rede; administradores têm visão global. Filtros aplicados no SQL do backend.
+- **Origem no Código:** `src/lib/pendencias-cancelamentos-service.ts`, `app/api/pendencias-cancelamentos/route.ts`, `app/portal/pendencias-cancelamentos/page.tsx`, `app/admin/pendencias-cancelamentos/page.tsx` e `src/components/pendencias/`.
+- **Status:** `CONFIRMADO`
+
+
