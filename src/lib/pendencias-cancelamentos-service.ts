@@ -1,5 +1,6 @@
 import { sql } from '@/lib/pg';
 import type { PartnerAccessContext } from '@/lib/auth';
+import { roleIsInternal, roleIsCorretora } from '@/lib/roles';
 import {
   calculateCancellationDeadline,
   isInstallmentPastCancellationDeadline,
@@ -106,6 +107,95 @@ export function enrichItemWithBR031Rules(
   return item;
 }
 
+export interface ResolvedRbacScope {
+  corretoraId: string | null;
+  partnerId: string | null;
+  visibleUserIds: string[] | null;
+  vendedorUserId: string | null;
+}
+
+/**
+ * Sanitiza e intersecta estritamente os filtros fornecidos pelo cliente com o escopo
+ * autorizado de PartnerAccessContext, prevenindo qualquer tentativa de escalada de privilégios
+ * ou vazamento de dados horizontal/vertical entre corretoras, parceiros e vendedores.
+ */
+export function resolveRbacScope(
+  access: PartnerAccessContext,
+  filtros: PendenciasFiltros = {}
+): ResolvedRbacScope {
+  const isInternal = Boolean(access.isInternal || (access.role && roleIsInternal(access.role)));
+  const isCorretora = Boolean(!isInternal && (access.isCorretoraUser || (access.role && roleIsCorretora(access.role))));
+
+  // 1. Administradores e Desenvolvedores internos: escopo corporativo irrestrito
+  if (isInternal) {
+    return {
+      corretoraId: filtros.corretoraId || null,
+      partnerId: filtros.partnerId || null,
+      visibleUserIds: null,
+      vendedorUserId: filtros.vendedorUserId || null,
+    };
+  }
+
+  // 2. Usuários de Corretora (corretora_admin, corretora_manager, corretora_staff)
+  if (isCorretora) {
+    return {
+      corretoraId: access.corretoraId || null,
+      partnerId: filtros.partnerId || null,
+      visibleUserIds: null,
+      vendedorUserId: filtros.vendedorUserId || null,
+    };
+  }
+
+  // 3. Usuários de Parceiro
+  const isBroker = Boolean(
+    access.partnerRole === 'broker' ||
+    access.role === 'partner_broker' ||
+    (Array.isArray(access.visibleUserIds) && access.visibleUserIds.length === 1 && access.partnerRole !== 'manager')
+  );
+
+  const isManager = Boolean(
+    !isBroker &&
+    (access.partnerRole === 'manager' || access.role === 'partner_manager' || Array.isArray(access.visibleUserIds))
+  );
+
+  if (isBroker) {
+    const authorizedUserId = (access.visibleUserIds && access.visibleUserIds[0]) || null;
+    return {
+      corretoraId: access.corretoraId || null,
+      partnerId: access.partnerId || null,
+      visibleUserIds: authorizedUserId ? [authorizedUserId] : [],
+      vendedorUserId: authorizedUserId,
+    };
+  }
+
+  if (isManager) {
+    const visibleUsers = access.visibleUserIds || [];
+    let vendedorUserId: string | null = null;
+    if (filtros.vendedorUserId) {
+      if (Array.isArray(visibleUsers) && visibleUsers.includes(filtros.vendedorUserId)) {
+        vendedorUserId = filtros.vendedorUserId;
+      } else {
+        // Tentativa de bypass barrada: sanitiza revertendo para null (mantendo o escopo visibleUserIds)
+        vendedorUserId = null;
+      }
+    }
+    return {
+      corretoraId: access.corretoraId || null,
+      partnerId: access.partnerId || null,
+      visibleUserIds: visibleUsers,
+      vendedorUserId,
+    };
+  }
+
+  // 4. Diretor de Parceiro (partner_director): restrito ao partnerId do parceiro
+  return {
+    corretoraId: access.corretoraId || null,
+    partnerId: access.partnerId || null,
+    visibleUserIds: null,
+    vendedorUserId: filtros.vendedorUserId || null,
+  };
+}
+
 /**
  * Consulta unificada para a Central de Pendências e Cancelamentos
  * Reúne cotações e apólices em atraso ou canceladas com deduplicação,
@@ -124,20 +214,17 @@ export async function getPendenciasCancelamentosList(
   const rawPage = Math.max(1, Number(filtros.page) || 1);
   const offset = (rawPage - 1) * pageSize;
 
-  // 2. Parâmetros de Segurança
-  const isInternal = Boolean(access.isInternal);
-  const isCorretora = Boolean(access.isCorretoraUser && access.corretoraId);
-  const corretoraIdParam = isCorretora ? access.corretoraId : filtros.corretoraId || null;
-  const partnerIdParam = !isInternal && !isCorretora ? access.partnerId : filtros.partnerId || null;
-  const visibleUserIds = !isInternal && !isCorretora && access.visibleUserIds !== null
-    ? access.visibleUserIds
-    : null;
+  // 2. Parâmetros de Segurança e RBAC Multi-tenant
+  const rbac = resolveRbacScope(access, filtros);
+  const corretoraIdParam = rbac.corretoraId;
+  const partnerIdParam = rbac.partnerId;
+  const visibleUserIds = rbac.visibleUserIds;
+  const vendedorUserId = rbac.vendedorUserId;
 
   // 3. Parâmetros de Busca e Filtros
   const q = (filtros.q || '').trim();
   const digitsOnly = q.replace(/\D/g, '');
   const managerUserId = filtros.managerUserId || null;
-  const vendedorUserId = filtros.vendedorUserId || null;
   const productId = filtros.productId || null;
   const tipoRegistro = filtros.tipoRegistro && filtros.tipoRegistro !== 'todos' ? filtros.tipoRegistro : null;
   const diasAtrasoMin = typeof filtros.diasAtrasoMin === 'number' ? filtros.diasAtrasoMin : null;
