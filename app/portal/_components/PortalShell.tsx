@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, createContext, useContext } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
@@ -18,10 +18,26 @@ import {
   Menu,
   ChevronLeft,
   ChevronRight,
+  ClockAlert,
 } from 'lucide-react';
 import type { AuthUser } from '@/lib/auth';
 import { roleIsCorretora } from '@/lib/roles';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
+
+const InsidePortalShellContext = createContext(false);
+
+export function getPortalNav(isCorretoraOrManager = false) {
+  return [
+    { href: '/portal', label: 'Dashboard', icon: BarChart3 },
+    { href: '/portal/cotacoes', label: 'Cotações', icon: ClipboardList },
+    { href: '/portal/clientes', label: 'Clientes', icon: Users },
+    { href: '/portal/vendas', label: 'Vendas', icon: FileText },
+    { href: '/portal/pendencias-cancelamentos', label: 'Pendências e Cancelamentos', icon: ClockAlert },
+    // Oculto temporariamente: { href: '/portal/comissoes', label: 'Comissões', icon: WalletCards },
+    ...(isCorretoraOrManager ? [{ href: '/portal/equipe', label: 'Minha Equipe', icon: UserCheck }] : []),
+    { href: '/portal/perfil', label: 'Perfil', icon: UserRound },
+  ];
+}
 
 interface PortalShellProps {
   children: React.ReactNode;
@@ -29,6 +45,11 @@ interface PortalShellProps {
 }
 
 export default function PortalShell({ children, user }: PortalShellProps) {
+  const isInside = useContext(InsidePortalShellContext);
+  if (isInside) {
+    return <>{children}</>;
+  }
+
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -39,15 +60,7 @@ export default function PortalShell({ children, user }: PortalShellProps) {
     ? (roleIsCorretora(user.role) || user.partnerRole === 'director' || user.partnerRole === 'manager')
     : false;
 
-  const nav = [
-    { href: '/portal', label: 'Dashboard', icon: BarChart3 },
-    { href: '/portal/cotacoes', label: 'Cotações', icon: ClipboardList },
-    { href: '/portal/clientes', label: 'Clientes', icon: Users },
-    { href: '/portal/vendas', label: 'Vendas', icon: FileText },
-    // Oculto temporariamente: { href: '/portal/comissoes', label: 'Comissões', icon: WalletCards },
-    ...(isCorretoraOrManager ? [{ href: '/portal/equipe', label: 'Minha Equipe', icon: UserCheck }] : []),
-    { href: '/portal/perfil', label: 'Perfil', icon: UserRound },
-  ];
+  const nav = getPortalNav(isCorretoraOrManager);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -74,197 +87,201 @@ export default function PortalShell({ children, user }: PortalShellProps) {
 
   const currentPathLabel = pathname === '/portal' 
     ? 'Dashboard' 
+    : pathname === '/portal/pendencias-cancelamentos'
+    ? 'Pendências e Cancelamentos'
     : pathname.replace('/portal/', '').replace('-', ' ');
 
   return (
-    <div className="w-full flex-1 h-screen flex flex-col bg-[#f7faf9] overflow-hidden">
-      {/* 1. Full-Width Top Header Bar (100% Tela Cheia no topo com Logo DuoLife Oficial) */}
-      <header className="fixed top-0 left-0 right-0 z-50 flex h-16 w-full items-center justify-between border-b border-gray-200/80 bg-white/95 px-6 backdrop-blur-md shadow-xs">
-        {/* Left Side: Logo + Sidebar Toggle + Breadcrumb */}
-        <div className="flex items-center gap-5">
-          <button
-            type="button"
-            aria-label="Abrir menu mobile"
-            className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center p-2 rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-100 lg:hidden"
-            onClick={() => setOpen((prev) => !prev)}
-          >
-            <Menu className="h-5 w-5" />
-          </button>
-
-          <Link href="/" className="flex items-center shrink-0" aria-label="DuoLife Hub de Negócios">
-            <Image
-              src="/logo-horizontal.png"
-              alt="DuoLife Hub de Negócios"
-              width={160}
-              height={40}
-              className="h-8 w-auto object-contain"
-              priority
-            />
-          </Link>
-
-          <button
-            type="button"
-            aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}
-            onClick={() => setCollapsed((v) => !v)}
-            className="hidden lg:flex h-8 w-8 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all"
-            title={collapsed ? 'Expandir menu' : 'Recolher menu'}
-          >
-            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-          </button>
-
-          <div className="hidden items-center gap-2.5 text-xs font-semibold text-gray-400 sm:flex pl-2 border-l border-gray-200">
-            <span className="flex items-center gap-1.5 text-[#0e4a5a] font-bold">
-              <Sparkles className="h-3.5 w-3.5 text-primary" /> Portal do Parceiro
-            </span>
-            <span>/</span>
-            <span className="capitalize font-bold text-gray-800">{currentPathLabel}</span>
-          </div>
-        </div>
-
-        {/* Right Side: User Profile Widget - Top Right (Apple HIG standard) */}
-        <div className="relative" ref={dropdownRef}>
-          {user ? (
+    <InsidePortalShellContext.Provider value={true}>
+      <div className="w-full flex-1 h-screen flex flex-col bg-[#f7faf9] overflow-hidden">
+        {/* 1. Full-Width Top Header Bar (100% Tela Cheia no topo com Logo DuoLife Oficial) */}
+        <header className="fixed top-0 left-0 right-0 z-50 flex h-16 w-full items-center justify-between border-b border-gray-200/80 bg-white/95 px-6 backdrop-blur-md shadow-xs">
+          {/* Left Side: Logo + Sidebar Toggle + Breadcrumb */}
+          <div className="flex items-center gap-5">
             <button
               type="button"
-              onClick={() => setProfileDropdownOpen((prev) => !prev)}
-              className="flex items-center gap-3 rounded-full border border-gray-200 bg-gray-50/90 py-1 pl-1.5 pr-3 transition-all hover:bg-gray-100 hover:border-gray-300 focus:outline-none"
+              aria-label="Abrir menu mobile"
+              className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center p-2 rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-100 lg:hidden"
+              onClick={() => setOpen((prev) => !prev)}
             >
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0e4a5a] text-xs font-extrabold text-[#00d4e0] shadow-sm">
-                {initials}
-              </div>
-              <div className="hidden text-left sm:block">
-                <div className="text-xs font-bold leading-tight text-gray-900">{user.name}</div>
-                <div className="text-[10px] font-medium leading-none text-gray-500 truncate max-w-[140px]">
-                  {roleIsCorretora(user.role)
-                    ? (user.corretoraNome || 'Gestão da Corretora')
-                    : (user.corretoraNome || 'Parceiro DuoLife')}
-                </div>
-              </div>
-              <ChevronDown className={`h-3.5 w-3.5 text-gray-400 transition-transform duration-200 ${profileDropdownOpen ? 'rotate-180' : ''}`} />
+              <Menu className="h-5 w-5" />
             </button>
-          ) : (
-            <Link href="/login" className="btn-primary text-xs px-4 py-2">
-              Entrar
+
+            <Link href="/" className="flex items-center shrink-0" aria-label="DuoLife Hub de Negócios">
+              <Image
+                src="/logo-horizontal.png"
+                alt="DuoLife Hub de Negócios"
+                width={160}
+                height={40}
+                className="h-8 w-auto object-contain"
+                priority
+              />
             </Link>
-          )}
 
-          {/* Profile Dropdown Menu */}
-          {profileDropdownOpen && user && (
-            <div className="absolute right-0 mt-2 w-64 rounded-2xl border border-gray-200 bg-white p-2 shadow-xl ring-1 ring-black/5 animate-in fade-in zoom-in-95 duration-150 z-50">
-              <div className="border-b border-gray-100 p-3">
-                <p className="text-xs font-bold text-gray-900 truncate">{user.name}</p>
-                <p className="text-[11px] text-gray-500 truncate">{user.email}</p>
-                <span className="mt-1.5 inline-block rounded-full bg-cyan-50 px-2 py-0.5 text-[10px] font-bold text-[#0e4a5a] border border-cyan-200">
-                  {roleIsCorretora(user.role)
-                    ? `Corretora: ${user.corretoraNome || 'Gestão'}`
-                    : user.corretoraNome
-                    ? `${user.corretoraNome}`
-                    : 'Parceiro DuoLife'}
-                </span>
-              </div>
+            <button
+              type="button"
+              aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}
+              onClick={() => setCollapsed((v) => !v)}
+              className="hidden lg:flex h-8 w-8 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all"
+              title={collapsed ? 'Expandir menu' : 'Recolher menu'}
+            >
+              {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            </button>
 
-              <div className="py-1">
-                {isCorretoraOrManager && (
+            <div className="hidden items-center gap-2.5 text-xs font-semibold text-gray-400 sm:flex pl-2 border-l border-gray-200">
+              <span className="flex items-center gap-1.5 text-[#0e4a5a] font-bold">
+                <Sparkles className="h-3.5 w-3.5 text-primary" /> Portal do Parceiro
+              </span>
+              <span>/</span>
+              <span className="capitalize font-bold text-gray-800">{currentPathLabel}</span>
+            </div>
+          </div>
+
+          {/* Right Side: User Profile Widget - Top Right (Apple HIG standard) */}
+          <div className="relative" ref={dropdownRef}>
+            {user ? (
+              <button
+                type="button"
+                onClick={() => setProfileDropdownOpen((prev) => !prev)}
+                className="flex items-center gap-3 rounded-full border border-gray-200 bg-gray-50/90 py-1 pl-1.5 pr-3 transition-all hover:bg-gray-100 hover:border-gray-300 focus:outline-none"
+              >
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0e4a5a] text-xs font-extrabold text-[#00d4e0] shadow-sm">
+                  {initials}
+                </div>
+                <div className="hidden text-left sm:block">
+                  <div className="text-xs font-bold leading-tight text-gray-900">{user.name}</div>
+                  <div className="text-[10px] font-medium leading-none text-gray-500 truncate max-w-[140px]">
+                    {roleIsCorretora(user.role)
+                      ? (user.corretoraNome || 'Gestão da Corretora')
+                      : (user.corretoraNome || 'Parceiro DuoLife')}
+                  </div>
+                </div>
+                <ChevronDown className={`h-3.5 w-3.5 text-gray-400 transition-transform duration-200 ${profileDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+            ) : (
+              <Link href="/login" className="btn-primary text-xs px-4 py-2">
+                Entrar
+              </Link>
+            )}
+
+            {/* Profile Dropdown Menu */}
+            {profileDropdownOpen && user && (
+              <div className="absolute right-0 mt-2 w-64 rounded-2xl border border-gray-200 bg-white p-2 shadow-xl ring-1 ring-black/5 animate-in fade-in zoom-in-95 duration-150 z-50">
+                <div className="border-b border-gray-100 p-3">
+                  <p className="text-xs font-bold text-gray-900 truncate">{user.name}</p>
+                  <p className="text-[11px] text-gray-500 truncate">{user.email}</p>
+                  <span className="mt-1.5 inline-block rounded-full bg-cyan-50 px-2 py-0.5 text-[10px] font-bold text-[#0e4a5a] border border-cyan-200">
+                    {roleIsCorretora(user.role)
+                      ? `Corretora: ${user.corretoraNome || 'Gestão'}`
+                      : user.corretoraNome
+                      ? `${user.corretoraNome}`
+                      : 'Parceiro DuoLife'}
+                  </span>
+                </div>
+
+                <div className="py-1">
+                  {isCorretoraOrManager && (
+                    <Link
+                      href="/portal/equipe"
+                      onClick={() => setProfileDropdownOpen(false)}
+                      className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900"
+                    >
+                      <UserCheck className="h-4 w-4 text-emerald-600" />
+                      <span>Minha Equipe</span>
+                    </Link>
+                  )}
                   <Link
-                    href="/portal/equipe"
+                    href="/portal/perfil"
                     onClick={() => setProfileDropdownOpen(false)}
                     className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900"
                   >
-                    <UserCheck className="h-4 w-4 text-emerald-600" />
-                    <span>Minha Equipe</span>
+                    <UserRound className="h-4 w-4 text-primary" />
+                    <span>Meu Perfil</span>
                   </Link>
-                )}
-                <Link
-                  href="/portal/perfil"
-                  onClick={() => setProfileDropdownOpen(false)}
-                  className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900"
-                >
-                  <UserRound className="h-4 w-4 text-primary" />
-                  <span>Meu Perfil</span>
-                </Link>
-                <Link
-                  href="/portal/cotacoes/nova"
-                  onClick={() => setProfileDropdownOpen(false)}
-                  className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900"
-                >
-                  <ClipboardList className="h-4 w-4 text-gray-400" />
-                  <span>Nova Operação</span>
-                </Link>
-              </div>
-
-              <div className="border-t border-gray-100 pt-1">
-                <form action="/api/auth/logout" method="POST">
-                  <button
-                    type="submit"
-                    className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-base font-semibold text-red-600 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+                  <Link
+                    href="/portal/cotacoes/nova"
+                    onClick={() => setProfileDropdownOpen(false)}
+                    className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900"
                   >
-                    <LogOut className="h-4 w-4 text-red-500" />
-                    <span>Sair da conta</span>
-                  </button>
-                </form>
+                    <ClipboardList className="h-4 w-4 text-gray-400" />
+                    <span>Nova Operação</span>
+                  </Link>
+                </div>
+
+                <div className="border-t border-gray-100 pt-1">
+                  <form action="/api/auth/logout" method="POST">
+                    <button
+                      type="submit"
+                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-base font-semibold text-red-600 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+                    >
+                      <LogOut className="h-4 w-4 text-red-500" />
+                      <span>Sair da conta</span>
+                    </button>
+                  </form>
+                </div>
               </div>
-            </div>
-          )}
-        </div>
-      </header>
+            )}
+          </div>
+        </header>
 
-      {/* Backdrop para mobile */}
-      {open && (
-        <button
-          aria-label="Fechar menu"
-          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden"
-          onClick={() => setOpen(false)}
-          type="button"
-        />
-      )}
+        {/* Backdrop para mobile */}
+        {open && (
+          <button
+            aria-label="Fechar menu"
+            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden"
+            onClick={() => setOpen(false)}
+            type="button"
+          />
+        )}
 
-      {/* 2. Sidebar de Navegação (Escala de Fontes Recalibrada para 13.5px / Apple HIG) */}
-      <aside
-        className={`fixed left-0 top-16 bottom-0 z-40 flex flex-col shadow-xl transition-all duration-300 bg-[#072a33] text-white ${
-          open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-        } ${collapsed ? 'w-20' : 'w-64'}`}
-      >
-        <nav className="flex-1 p-3.5 space-y-1.5 overflow-y-auto">
-          {nav.map((n) => {
-            const Icon = n.icon;
-            const active = pathname === n.href || (n.href !== '/portal' && pathname.startsWith(`${n.href}/`));
-            return (
-              <Link
-                key={n.href}
-                href={n.href}
-                onClick={() => setOpen(false)}
-                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-base transition-all ${
-                  active
-                    ? 'bg-[#0e4a5a] text-white font-extrabold border border-[#00d4e0]/60 shadow-md'
-                    : 'text-white hover:bg-white/15 font-semibold'
-                }`}
-                title={n.label}
+        {/* 2. Sidebar de Navegação (Escala de Fontes Recalibrada para 13.5px / Apple HIG) */}
+        <aside
+          className={`fixed left-0 top-16 bottom-0 z-40 flex flex-col shadow-xl transition-all duration-300 bg-[#072a33] text-white ${
+            open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+          } ${collapsed ? 'w-20' : 'w-64'}`}
+        >
+          <nav className="flex-1 p-3.5 space-y-1.5 overflow-y-auto">
+            {nav.map((n) => {
+              const Icon = n.icon;
+              const active = pathname === n.href || (n.href !== '/portal' && pathname.startsWith(`${n.href}/`));
+              return (
+                <Link
+                  key={n.href}
+                  href={n.href}
+                  onClick={() => setOpen(false)}
+                  className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-base transition-all ${
+                    active
+                      ? 'bg-[#0e4a5a] text-white font-extrabold border border-[#00d4e0]/60 shadow-md'
+                      : 'text-white hover:bg-white/15 font-semibold'
+                  }`}
+                  title={n.label}
+                >
+                  <Icon className="h-5 w-5 shrink-0 text-[#00d4e0]" />
+                  {!collapsed && <span className="text-white font-bold text-base truncate">{n.label}</span>}
+                </Link>
+              );
+            })}
+          </nav>
+
+          {/* Footer do Sidebar no Padrão Apple HIG com Font-Size 13.5px e Margem de Segurança */}
+          <div className="p-3.5 pb-8 border-t border-white/10 mt-auto">
+            <form action="/api/auth/logout" method="POST">
+              <button
+                type="submit"
+                className="flex w-full items-center gap-3 px-3.5 py-2.5 rounded-xl text-left text-base font-bold transition-all bg-red-500/15 border border-red-500/30 text-red-300 hover:bg-red-600 hover:text-white hover:border-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
               >
-                <Icon className="h-5 w-5 shrink-0 text-[#00d4e0]" />
-                {!collapsed && <span className="text-white font-bold text-base truncate">{n.label}</span>}
-              </Link>
-            );
-          })}
-        </nav>
+                <LogOut className="h-4.5 w-4.5 shrink-0 text-red-300" />
+                {!collapsed && <span>Sair da conta</span>}
+              </button>
+            </form>
+          </div>
+        </aside>
 
-        {/* Footer do Sidebar no Padrão Apple HIG com Font-Size 13.5px e Margem de Segurança */}
-        <div className="p-3.5 pb-8 border-t border-white/10 mt-auto">
-          <form action="/api/auth/logout" method="POST">
-            <button
-              type="submit"
-              className="flex w-full items-center gap-3 px-3.5 py-2.5 rounded-xl text-left text-base font-bold transition-all bg-red-500/15 border border-red-500/30 text-red-300 hover:bg-red-600 hover:text-white hover:border-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
-            >
-              <LogOut className="h-4.5 w-4.5 shrink-0 text-red-300" />
-              {!collapsed && <span>Sair da conta</span>}
-            </button>
-          </form>
+        {/* 3. Conteúdo Principal */}
+        <div className={`pt-16 h-full overflow-y-auto transition-all duration-300 ${collapsed ? 'lg:pl-20' : 'lg:pl-64'}`}>
+          <main className="p-6 md:p-8 pb-24">{children}</main>
         </div>
-      </aside>
-
-      {/* 3. Conteúdo Principal */}
-      <div className={`pt-16 h-full overflow-y-auto transition-all duration-300 ${collapsed ? 'lg:pl-20' : 'lg:pl-64'}`}>
-        <main className="p-6 md:p-8 pb-24">{children}</main>
       </div>
-    </div>
+    </InsidePortalShellContext.Provider>
   );
 }

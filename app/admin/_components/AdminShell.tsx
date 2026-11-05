@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, createContext, useContext } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
@@ -32,24 +32,27 @@ import {
   Webhook,
   Activity,
   FileCheck2,
+  ClockAlert,
 } from 'lucide-react';
 import type { AuthUser } from '@/lib/auth';
 import { roleIsDev, roleIsPlatformAdmin } from '@/lib/roles';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
+
+const InsideAdminShellContext = createContext(false);
 
 interface AdminShellProps {
   children: React.ReactNode;
   user?: AuthUser | null;
 }
 
-interface NavItem {
+export interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
   description: string;
 }
 
-const navSections: Array<{ title: string; items: NavItem[] }> = [
+export const navSections: Array<{ title: string; items: NavItem[] }> = [
   {
     title: 'Operação',
     items: [
@@ -57,6 +60,12 @@ const navSections: Array<{ title: string; items: NavItem[] }> = [
       { href: '/admin/relatorios', label: 'Relatórios', icon: BarChart3, description: 'Financeiro e indicadores.' },
       { href: '/admin/cotacoes', label: 'Cotações', icon: Briefcase, description: 'Propostas e cobrança.' },
       { href: '/admin/vendas', label: 'Vendas', icon: Shield, description: 'Apólices e prêmio total.' },
+      {
+        href: '/admin/pendencias-cancelamentos',
+        label: 'Pendências e Cancelamentos',
+        icon: ClockAlert,
+        description: 'Inadimplência, tolerâncias e cancelados.',
+      },
       // Oculto temporariamente: { href: '/admin/comissoes', label: 'Comissões', icon: WalletCards, description: 'Pendências e extrato.' },
       { href: '/admin/produtos', label: 'Produtos', icon: Package, description: 'Catálogo e fluxos.' },
       { href: '/admin/emails', label: 'E-mails', icon: Mail, description: 'Modelos e templates.' },
@@ -96,6 +105,11 @@ function getRoleLabel(role?: string) {
 }
 
 export default function AdminShell({ children, user }: AdminShellProps) {
+  const isInside = useContext(InsideAdminShellContext);
+  if (isInside) {
+    return <>{children}</>;
+  }
+
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
@@ -189,6 +203,8 @@ export default function AdminShell({ children, user }: AdminShellProps) {
   let currentPathLabel = 'Visão geral';
   if (pathname === '/admin') {
     currentPathLabel = 'Visão geral';
+  } else if (pathname === '/admin/pendencias-cancelamentos') {
+    currentPathLabel = 'Pendências e Cancelamentos';
   } else if (pathname === '/admin/comparativo-wix') {
     currentPathLabel = 'Comparativo Wix (Teste)';
   } else if (pathname === '/admin/importar-csv') {
@@ -209,191 +225,193 @@ export default function AdminShell({ children, user }: AdminShellProps) {
   }
 
   return (
-    <div className="w-full flex-1 h-screen flex flex-col bg-[#f7faf9] overflow-hidden">
-      {/* 1. Full-Width Top Header Bar (100% Tela Cheia no topo com Logo DuoLife Oficial) */}
-      <header className="fixed top-0 left-0 right-0 z-50 flex h-16 w-full items-center justify-between border-b border-gray-200/80 bg-white/95 px-6 backdrop-blur-md shadow-xs">
-        {/* Left Side: Logo + Sidebar Toggle + Breadcrumb */}
-        <div className="flex items-center gap-5">
-          <button
-            type="button"
-            aria-label="Abrir menu mobile"
-            className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center p-2 rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-100 lg:hidden"
-            onClick={() => setOpen((prev) => !prev)}
-          >
-            <Menu className="h-5 w-5" />
-          </button>
-
-          <Link href="/" className="flex items-center shrink-0" aria-label="DuoLife Hub de Negócios">
-            <Image
-              src="/logo-horizontal.png"
-              alt="DuoLife Hub de Negócios"
-              width={160}
-              height={40}
-              className="h-8 w-auto object-contain"
-              priority
-            />
-          </Link>
-
-          <button
-            type="button"
-            aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}
-            onClick={() => setCollapsed((v) => !v)}
-            className="hidden lg:flex h-8 w-8 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all"
-            title={collapsed ? 'Expandir menu' : 'Recolher menu'}
-          >
-            {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
-          </button>
-
-          <div className="hidden items-center gap-2.5 text-xs font-semibold text-gray-400 sm:flex pl-2 border-l border-gray-200">
-            <span className="flex items-center gap-1.5 text-[#0e4a5a] font-bold">
-              <Sparkles className="h-3.5 w-3.5 text-primary" /> Painel Administrativo
-            </span>
-            <span>/</span>
-            <span className="capitalize font-bold text-gray-800">{currentPathLabel}</span>
-          </div>
-        </div>
-
-        {/* Right Side: User Profile Widget - Top Right (Apple HIG standard) */}
-        <div className="relative" ref={dropdownRef}>
-          {user ? (
+    <InsideAdminShellContext.Provider value={true}>
+      <div className="w-full flex-1 h-screen flex flex-col bg-[#f7faf9] overflow-hidden">
+        {/* 1. Full-Width Top Header Bar (100% Tela Cheia no topo com Logo DuoLife Oficial) */}
+        <header className="fixed top-0 left-0 right-0 z-50 flex h-16 w-full items-center justify-between border-b border-gray-200/80 bg-white/95 px-6 backdrop-blur-md shadow-xs">
+          {/* Left Side: Logo + Sidebar Toggle + Breadcrumb */}
+          <div className="flex items-center gap-5">
             <button
               type="button"
-              onClick={() => setProfileDropdownOpen((prev) => !prev)}
-              className="flex items-center gap-3 rounded-full border border-gray-200 bg-gray-50/90 py-1 pl-1.5 pr-3 transition-all hover:bg-gray-100 hover:border-gray-300 focus:outline-none"
+              aria-label="Abrir menu mobile"
+              className="min-h-[44px] min-w-[44px] inline-flex items-center justify-center p-2 rounded-xl border border-gray-200 text-gray-700 hover:bg-gray-100 lg:hidden"
+              onClick={() => setOpen((prev) => !prev)}
             >
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0e4a5a] text-xs font-extrabold text-[#00d4e0] shadow-sm">
-                {initials}
-              </div>
-              <div className="hidden text-left sm:block">
-                <div className="text-xs font-bold leading-tight text-gray-900">{user.name}</div>
-                <div className="text-[10px] font-medium leading-none text-gray-500">{getRoleLabel(user.role)}</div>
-              </div>
-              <ChevronDown className={`h-3.5 w-3.5 text-gray-400 transition-transform duration-200 ${profileDropdownOpen ? 'rotate-180' : ''}`} />
+              <Menu className="h-5 w-5" />
             </button>
-          ) : (
-            <Link href="/login" className="btn-primary text-xs px-4 py-2">
-              Entrar
+
+            <Link href="/" className="flex items-center shrink-0" aria-label="DuoLife Hub de Negócios">
+              <Image
+                src="/logo-horizontal.png"
+                alt="DuoLife Hub de Negócios"
+                width={160}
+                height={40}
+                className="h-8 w-auto object-contain"
+                priority
+              />
             </Link>
-          )}
 
-          {/* Profile Dropdown Menu */}
-          {profileDropdownOpen && user && (
-            <div className="absolute right-0 mt-2 w-64 rounded-2xl border border-gray-200 bg-white p-2 shadow-xl ring-1 ring-black/5 animate-in fade-in zoom-in-95 duration-150 z-50">
-              <div className="border-b border-gray-100 p-3">
-                <p className="text-xs font-bold text-gray-900 truncate">{user.name}</p>
-                <p className="text-[11px] text-gray-500 truncate">{user.email}</p>
-                <span className="mt-1.5 inline-block rounded-full bg-cyan-50 px-2 py-0.5 text-[10px] font-bold text-[#0e4a5a] border border-cyan-200">
-                  {getRoleLabel(user.role)}
-                </span>
-              </div>
+            <button
+              type="button"
+              aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}
+              onClick={() => setCollapsed((v) => !v)}
+              className="hidden lg:flex h-8 w-8 items-center justify-center rounded-xl border border-gray-200 bg-gray-50 text-gray-600 hover:bg-gray-100 hover:text-gray-900 transition-all"
+              title={collapsed ? 'Expandir menu' : 'Recolher menu'}
+            >
+              {collapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            </button>
 
-              <div className="py-1">
-                <Link
-                  href="/admin/perfil"
-                  onClick={() => setProfileDropdownOpen(false)}
-                  className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900"
-                >
-                  <User className="h-4 w-4 text-primary" />
-                  <span>Meu Perfil</span>
-                </Link>
-                {isPlatformAdmin && (
+            <div className="hidden items-center gap-2.5 text-xs font-semibold text-gray-400 sm:flex pl-2 border-l border-gray-200">
+              <span className="flex items-center gap-1.5 text-[#0e4a5a] font-bold">
+                <Sparkles className="h-3.5 w-3.5 text-primary" /> Painel Administrativo
+              </span>
+              <span>/</span>
+              <span className="capitalize font-bold text-gray-800">{currentPathLabel}</span>
+            </div>
+          </div>
+
+          {/* Right Side: User Profile Widget - Top Right (Apple HIG standard) */}
+          <div className="relative" ref={dropdownRef}>
+            {user ? (
+              <button
+                type="button"
+                onClick={() => setProfileDropdownOpen((prev) => !prev)}
+                className="flex items-center gap-3 rounded-full border border-gray-200 bg-gray-50/90 py-1 pl-1.5 pr-3 transition-all hover:bg-gray-100 hover:border-gray-300 focus:outline-none"
+              >
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#0e4a5a] text-xs font-extrabold text-[#00d4e0] shadow-sm">
+                  {initials}
+                </div>
+                <div className="hidden text-left sm:block">
+                  <div className="text-xs font-bold leading-tight text-gray-900">{user.name}</div>
+                  <div className="text-[10px] font-medium leading-none text-gray-500">{getRoleLabel(user.role)}</div>
+                </div>
+                <ChevronDown className={`h-3.5 w-3.5 text-gray-400 transition-transform duration-200 ${profileDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
+            ) : (
+              <Link href="/login" className="btn-primary text-xs px-4 py-2">
+                Entrar
+              </Link>
+            )}
+
+            {/* Profile Dropdown Menu */}
+            {profileDropdownOpen && user && (
+              <div className="absolute right-0 mt-2 w-64 rounded-2xl border border-gray-200 bg-white p-2 shadow-xl ring-1 ring-black/5 animate-in fade-in zoom-in-95 duration-150 z-50">
+                <div className="border-b border-gray-100 p-3">
+                  <p className="text-xs font-bold text-gray-900 truncate">{user.name}</p>
+                  <p className="text-[11px] text-gray-500 truncate">{user.email}</p>
+                  <span className="mt-1.5 inline-block rounded-full bg-cyan-50 px-2 py-0.5 text-[10px] font-bold text-[#0e4a5a] border border-cyan-200">
+                    {getRoleLabel(user.role)}
+                  </span>
+                </div>
+
+                <div className="py-1">
                   <Link
-                    href="/admin/usuarios"
+                    href="/admin/perfil"
                     onClick={() => setProfileDropdownOpen(false)}
                     className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900"
                   >
-                    <Settings className="h-4 w-4 text-gray-400" />
-                    <span>Gerenciar Usuários</span>
+                    <User className="h-4 w-4 text-primary" />
+                    <span>Meu Perfil</span>
                   </Link>
-                )}
-              </div>
-
-              <div className="border-t border-gray-100 pt-1">
-                <form action="/api/auth/logout" method="POST">
-                  <button
-                    type="submit"
-                    className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-base font-semibold text-red-600 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
-                  >
-                    <LogOut className="h-4 w-4 text-red-500" />
-                    <span>Sair da operação</span>
-                  </button>
-                </form>
-              </div>
-            </div>
-          )}
-        </div>
-      </header>
-
-      {/* Backdrop para mobile */}
-      {open && (
-        <button
-          aria-label="Fechar menu"
-          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden"
-          onClick={() => setOpen(false)}
-          type="button"
-        />
-      )}
-
-      {/* 2. Sidebar de Navegação (Escala de Fontes Recalibrada para 13.5px / Apple HIG) */}
-      <aside
-        className={`fixed left-0 top-16 bottom-0 z-40 flex flex-col shadow-xl transition-all duration-300 bg-[#072a33] text-white ${
-          open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-        } ${collapsed ? 'w-20' : 'w-64'}`}
-      >
-        <nav className="flex-1 p-3.5 space-y-6 overflow-y-auto">
-          {dynamicNavSections.map((section) => (
-            <div key={section.title} className="space-y-1.5">
-              {!collapsed && (
-                <div className="px-3 pt-2 text-xs font-black uppercase tracking-wider text-[#00d4e0]">
-                  {section.title}
+                  {isPlatformAdmin && (
+                    <Link
+                      href="/admin/usuarios"
+                      onClick={() => setProfileDropdownOpen(false)}
+                      className="flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-900"
+                    >
+                      <Settings className="h-4 w-4 text-gray-400" />
+                      <span>Gerenciar Usuários</span>
+                    </Link>
+                  )}
                 </div>
-              )}
-              {section.items.map((item) => {
-                const Icon = item.icon;
-                const active = isActive(pathname, item.href);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setOpen(false)}
-                    className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-base transition-all ${
-                      active
-                        ? 'bg-[#0e4a5a] text-white font-extrabold border border-[#00d4e0]/60 shadow-md'
-                        : 'text-white hover:bg-white/15 font-semibold'
-                    }`}
-                    title={item.label}
-                  >
-                    <Icon className={`h-5 w-5 shrink-0 ${active ? 'text-[#00d4e0]' : 'text-[#00d4e0]'}`} />
-                    {!collapsed && (
-                      <span className="min-w-0 leading-tight truncate text-white font-bold text-sm">
-                        {item.label}
-                      </span>
-                    )}
-                  </Link>
-                );
-              })}
-            </div>
-          ))}
-        </nav>
 
-        {/* Footer do Sidebar no Padrão Apple HIG com Font-Size 13.5px e Margem de Segurança */}
-        <div className="p-3.5 pb-8 border-t border-white/10 mt-auto">
-          <form action="/api/auth/logout" method="POST">
-            <button
-              type="submit"
-              className="flex w-full items-center gap-3 px-3.5 py-2.5 rounded-xl text-left text-base font-bold transition-all bg-red-500/15 border border-red-500/30 text-red-300 hover:bg-red-600 hover:text-white hover:border-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
-            >
-              <LogOut className="h-4.5 w-4.5 shrink-0 text-red-300" />
-              {!collapsed && <span>Sair da operação</span>}
-            </button>
-          </form>
+                <div className="border-t border-gray-100 pt-1">
+                  <form action="/api/auth/logout" method="POST">
+                    <button
+                      type="submit"
+                      className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-base font-semibold text-red-600 hover:bg-red-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500"
+                    >
+                      <LogOut className="h-4 w-4 text-red-500" />
+                      <span>Sair da operação</span>
+                    </button>
+                  </form>
+                </div>
+              </div>
+            )}
+          </div>
+        </header>
+
+        {/* Backdrop para mobile */}
+        {open && (
+          <button
+            aria-label="Fechar menu"
+            className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm lg:hidden"
+            onClick={() => setOpen(false)}
+            type="button"
+          />
+        )}
+
+        {/* 2. Sidebar de Navegação (Escala de Fontes Recalibrada para 13.5px / Apple HIG) */}
+        <aside
+          className={`fixed left-0 top-16 bottom-0 z-40 flex flex-col shadow-xl transition-all duration-300 bg-[#072a33] text-white ${
+            open ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+          } ${collapsed ? 'w-20' : 'w-64'}`}
+        >
+          <nav className="flex-1 p-3.5 space-y-6 overflow-y-auto">
+            {dynamicNavSections.map((section) => (
+              <div key={section.title} className="space-y-1.5">
+                {!collapsed && (
+                  <div className="px-3 pt-2 text-xs font-black uppercase tracking-wider text-[#00d4e0]">
+                    {section.title}
+                  </div>
+                )}
+                {section.items.map((item) => {
+                  const Icon = item.icon;
+                  const active = isActive(pathname, item.href);
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setOpen(false)}
+                      className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-base transition-all ${
+                        active
+                          ? 'bg-[#0e4a5a] text-white font-extrabold border border-[#00d4e0]/60 shadow-md'
+                          : 'text-white hover:bg-white/15 font-semibold'
+                      }`}
+                      title={item.label}
+                    >
+                      <Icon className={`h-5 w-5 shrink-0 ${active ? 'text-[#00d4e0]' : 'text-[#00d4e0]'}`} />
+                      {!collapsed && (
+                        <span className="min-w-0 leading-tight truncate text-white font-bold text-sm">
+                          {item.label}
+                        </span>
+                      )}
+                    </Link>
+                  );
+                })}
+              </div>
+            ))}
+          </nav>
+
+          {/* Footer do Sidebar no Padrão Apple HIG com Font-Size 13.5px e Margem de Segurança */}
+          <div className="p-3.5 pb-8 border-t border-white/10 mt-auto">
+            <form action="/api/auth/logout" method="POST">
+              <button
+                type="submit"
+                className="flex w-full items-center gap-3 px-3.5 py-2.5 rounded-xl text-left text-base font-bold transition-all bg-red-500/15 border border-red-500/30 text-red-300 hover:bg-red-600 hover:text-white hover:border-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+              >
+                <LogOut className="h-4.5 w-4.5 shrink-0 text-red-300" />
+                {!collapsed && <span>Sair da operação</span>}
+              </button>
+            </form>
+          </div>
+        </aside>
+
+        {/* 3. Conteúdo Principal */}
+        <div className={`pt-16 h-full overflow-y-auto transition-all duration-300 ${collapsed ? 'lg:pl-20' : 'lg:pl-64'}`}>
+          <main className="p-6 md:p-8 pb-24">{children}</main>
         </div>
-      </aside>
-
-      {/* 3. Conteúdo Principal */}
-      <div className={`pt-16 h-full overflow-y-auto transition-all duration-300 ${collapsed ? 'lg:pl-20' : 'lg:pl-64'}`}>
-        <main className="p-6 md:p-8 pb-24">{children}</main>
       </div>
-    </div>
+    </InsideAdminShellContext.Provider>
   );
 }
