@@ -581,17 +581,25 @@ export async function getPendenciasCancelamentosList(
         )
       )
       ORDER BY
-        CASE WHEN ${orderBy === 'vencimento' && orderDir === 'asc'}::boolean THEN cb.data_vencimento_mais_antiga END ASC NULLS LAST,
-        CASE WHEN ${orderBy === 'vencimento' && orderDir === 'desc'}::boolean THEN cb.data_vencimento_mais_antiga END DESC NULLS LAST,
-        CASE WHEN ${orderBy === 'dias_atraso' && orderDir === 'asc'}::boolean THEN cb.maior_dias_atraso END ASC,
-        CASE WHEN ${orderBy === 'dias_atraso' && orderDir === 'desc'}::boolean THEN cb.maior_dias_atraso END DESC,
+        CASE WHEN ${orderBy === 'cliente' && orderDir === 'asc'}::boolean THEN cb.client_name END ASC,
+        CASE WHEN ${orderBy === 'cliente' && orderDir === 'desc'}::boolean THEN cb.client_name END DESC,
+        CASE WHEN ${orderBy === 'contratacao' && orderDir === 'asc'}::boolean THEN COALESCE(cb.policy_number, cb.id) END ASC,
+        CASE WHEN ${orderBy === 'contratacao' && orderDir === 'desc'}::boolean THEN COALESCE(cb.policy_number, cb.id) END DESC,
+        CASE WHEN ${orderBy === 'produto' && orderDir === 'asc'}::boolean THEN cb.product_name END ASC,
+        CASE WHEN ${orderBy === 'produto' && orderDir === 'desc'}::boolean THEN cb.product_name END DESC,
+        CASE WHEN ${orderBy === 'corretora' && orderDir === 'asc'}::boolean THEN COALESCE(cb.corretora_nome, cb.partner_nome) END ASC,
+        CASE WHEN ${orderBy === 'corretora' && orderDir === 'desc'}::boolean THEN COALESCE(cb.corretora_nome, cb.partner_nome) END DESC,
         CASE WHEN ${orderBy === 'valor' && orderDir === 'asc'}::boolean THEN cb.valor_total_contratacao END ASC,
         CASE WHEN ${orderBy === 'valor' && orderDir === 'desc'}::boolean THEN cb.valor_total_contratacao END DESC,
+        CASE WHEN ${orderBy === 'dias_atraso' && orderDir === 'asc'}::boolean THEN cb.maior_dias_atraso END ASC,
+        CASE WHEN ${orderBy === 'dias_atraso' && orderDir === 'desc'}::boolean THEN cb.maior_dias_atraso END DESC,
+        CASE WHEN ${orderBy === 'vencimento' && orderDir === 'asc'}::boolean THEN cb.data_vencimento_mais_antiga END ASC NULLS LAST,
+        CASE WHEN ${orderBy === 'vencimento' && orderDir === 'desc'}::boolean THEN cb.data_vencimento_mais_antiga END DESC NULLS LAST,
         CASE WHEN ${orderBy === 'data_cancelamento' && orderDir === 'asc'}::boolean THEN cb.data_cancelamento END ASC NULLS LAST,
         CASE WHEN ${orderBy === 'data_cancelamento' && orderDir === 'desc'}::boolean THEN cb.data_cancelamento END DESC NULLS LAST,
-        -- Default: aba canceladas por data de cancelamento DESC; outras abas por maior_dias_atraso DESC, vencimento ASC
+        -- Padrão: crescente de atraso para atraso/visão geral; decrescente de data_cancelamento para canceladas
         CASE WHEN ${!orderBy && tab === 'canceladas'}::boolean THEN cb.data_cancelamento END DESC NULLS LAST,
-        CASE WHEN ${!orderBy && tab !== 'canceladas'}::boolean THEN cb.maior_dias_atraso END DESC,
+        CASE WHEN ${!orderBy && tab !== 'canceladas'}::boolean THEN cb.maior_dias_atraso END ASC,
         CASE WHEN ${!orderBy && tab !== 'canceladas'}::boolean THEN cb.data_vencimento_mais_antiga END ASC NULLS LAST,
         cb.cotacao_created_at DESC
       LIMIT ${pageSize} OFFSET ${offset}

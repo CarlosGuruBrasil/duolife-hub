@@ -80,6 +80,17 @@ export interface PendenciasKPIs {
   valorOriginalTotalCanceladas: number;
 }
 
+/** Campos ordenáveis disponíveis em todas as colunas da tabela */
+export type PendenciasSortField =
+  | 'cliente'
+  | 'contratacao'
+  | 'produto'
+  | 'corretora'
+  | 'valor'
+  | 'dias_atraso'
+  | 'vencimento'
+  | 'data_cancelamento';
+
 /**
  * Filtros de busca e paginação para a central
  */
@@ -102,7 +113,7 @@ export interface PendenciasFiltros {
   cancelamentoAte?: string;
   page?: number;
   pageSize?: number;
-  orderBy?: 'vencimento' | 'dias_atraso' | 'valor' | 'data_cancelamento';
+  orderBy?: PendenciasSortField;
   orderDir?: 'asc' | 'desc';
 }
 

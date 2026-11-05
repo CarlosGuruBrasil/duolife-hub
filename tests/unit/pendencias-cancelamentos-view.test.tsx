@@ -493,7 +493,7 @@ describe('Central de Pendências e Cancelamentos — Componentes de Interface', 
       expect(empty?.textContent).toContain('Nenhuma contratação em atraso!');
     });
 
-    it('deve disparar onSort ao clicar nos cabeçalhos ordenáveis', () => {
+    it('deve disparar onSort ao clicar em cada um dos cabeçalhos ordenáveis', () => {
       const handleSort = vi.fn();
       act(() => {
         root.render(
@@ -506,12 +506,41 @@ describe('Central de Pendências e Cancelamentos — Componentes de Interface', 
         );
       });
 
-      const btnSortValor = container.querySelector('button[aria-label="Ordenar por valor total"]') as HTMLButtonElement;
-      act(() => {
-        btnSortValor.click();
-      });
+      // 1. Cliente
+      const btnCliente = container.querySelector('button[aria-label="Ordenar por nome do cliente"]') as HTMLButtonElement;
+      expect(btnCliente).not.toBeNull();
+      act(() => { btnCliente.click(); });
+      expect(handleSort).toHaveBeenCalledWith('cliente');
 
+      // 2. Contratação
+      const btnContratacao = container.querySelector('button[aria-label="Ordenar por código de contratação ou apólice"]') as HTMLButtonElement;
+      expect(btnContratacao).not.toBeNull();
+      act(() => { btnContratacao.click(); });
+      expect(handleSort).toHaveBeenCalledWith('contratacao');
+
+      // 3. Situação / Atraso
+      const btnAtraso = container.querySelector('button[aria-label="Ordenar por dias de atraso"]') as HTMLButtonElement;
+      expect(btnAtraso).not.toBeNull();
+      act(() => { btnAtraso.click(); });
+      expect(handleSort).toHaveBeenCalledWith('dias_atraso');
+
+      // 4. Valor
+      const btnValor = container.querySelector('button[aria-label="Ordenar por valor total"]') as HTMLButtonElement;
+      expect(btnValor).not.toBeNull();
+      act(() => { btnValor.click(); });
       expect(handleSort).toHaveBeenCalledWith('valor');
+
+      // 5. Parceiro / Corretora
+      const btnCorretora = container.querySelector('button[aria-label="Ordenar por corretora ou parceiro"]') as HTMLButtonElement;
+      expect(btnCorretora).not.toBeNull();
+      act(() => { btnCorretora.click(); });
+      expect(handleSort).toHaveBeenCalledWith('corretora');
+
+      // 6. Vencimento
+      const btnVencimento = container.querySelector('button[aria-label="Ordenar por data de vencimento mais antiga"]') as HTMLButtonElement;
+      expect(btnVencimento).not.toBeNull();
+      act(() => { btnVencimento.click(); });
+      expect(handleSort).toHaveBeenCalledWith('vencimento');
     });
   });
 

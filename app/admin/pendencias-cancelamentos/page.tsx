@@ -8,6 +8,7 @@ import type {
   PendenciasFiltros,
   PendenciaTab,
   TipoRegistro,
+  PendenciasSortField,
 } from '@/types/pendencias-cancelamentos';
 
 export const dynamic = 'force-dynamic';
@@ -46,20 +47,27 @@ export function parsePendenciasFiltros(
       ? rawTipo
       : undefined;
 
+  const validSortFields: PendenciasSortField[] = [
+    'cliente',
+    'contratacao',
+    'produto',
+    'corretora',
+    'valor',
+    'dias_atraso',
+    'vencimento',
+    'data_cancelamento',
+  ];
   const rawOrderBy = parseSearchParamString(rawParams.orderBy);
   const orderBy: PendenciasFiltros['orderBy'] =
-    rawOrderBy === 'vencimento' ||
-    rawOrderBy === 'dias_atraso' ||
-    rawOrderBy === 'valor' ||
-    rawOrderBy === 'data_cancelamento'
-      ? rawOrderBy
-      : undefined;
+    rawOrderBy && validSortFields.includes(rawOrderBy as PendenciasSortField)
+      ? (rawOrderBy as PendenciasSortField)
+      : (tab === 'canceladas' ? 'data_cancelamento' : 'dias_atraso');
 
   const rawOrderDir = parseSearchParamString(rawParams.orderDir);
   const orderDir: PendenciasFiltros['orderDir'] =
     rawOrderDir === 'asc' || rawOrderDir === 'desc'
       ? rawOrderDir
-      : undefined;
+      : (tab === 'canceladas' && (!rawOrderBy || rawOrderBy === 'data_cancelamento') ? 'desc' : 'asc');
 
   const pageNum = parseSearchParamNumber(rawParams.page);
   const page = pageNum && pageNum > 0 ? pageNum : 1;

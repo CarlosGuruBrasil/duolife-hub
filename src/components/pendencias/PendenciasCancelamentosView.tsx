@@ -36,8 +36,8 @@ export function PendenciasCancelamentosView({
     tab: initialTab,
     page: initialData.page || 1,
     pageSize: initialData.pageSize || 25,
-    orderBy: initialTab === 'canceladas' ? 'data_cancelamento' : 'vencimento',
-    orderDir: 'asc',
+    orderBy: initialTab === 'canceladas' ? 'data_cancelamento' : 'dias_atraso',
+    orderDir: initialTab === 'canceladas' ? 'desc' : 'asc',
   });
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -109,8 +109,8 @@ export function PendenciasCancelamentosView({
       ...filtros,
       tab: novaTab,
       page: 1,
-      orderBy: novaTab === 'canceladas' ? 'data_cancelamento' : 'vencimento',
-      orderDir: 'asc',
+      orderBy: novaTab === 'canceladas' ? 'data_cancelamento' : 'dias_atraso',
+      orderDir: novaTab === 'canceladas' ? 'desc' : 'asc',
       // Reseta filtros específicos ao mudar de aba para evitar estados inconsistentes
       diasAtrasoMin: novaTab === 'canceladas' ? undefined : filtros.diasAtrasoMin,
       diasAtrasoMax: novaTab === 'canceladas' ? undefined : filtros.diasAtrasoMax,
@@ -138,8 +138,8 @@ export function PendenciasCancelamentosView({
       tab,
       page: 1,
       pageSize: filtros.pageSize || 25,
-      orderBy: tab === 'canceladas' ? 'data_cancelamento' : 'vencimento',
-      orderDir: 'asc',
+      orderBy: tab === 'canceladas' ? 'data_cancelamento' : 'dias_atraso',
+      orderDir: tab === 'canceladas' ? 'desc' : 'asc',
     };
     setFiltros(limpos);
     fetchData(limpos, tab);
