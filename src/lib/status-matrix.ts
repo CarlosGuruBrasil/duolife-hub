@@ -1,3 +1,5 @@
+import { isInstallmentPastCancellationDeadline, parseDateSafe } from './business-days';
+
 /**
  * Matriz de Status Unificada da DuoLife
  *
@@ -103,6 +105,9 @@ export interface MatrixStatusInput {
   isExpired?: boolean | null;
 
   // Dados de pagamento / cobrança
+  installmentNumber?: number | null;
+  dueDate?: string | Date | null;
+  isPastCancellationDeadline?: boolean | null;
   daysOverdue?: number | null; // Maior atraso em dias entre as parcelas vencidas
   maxDaysOverdue?: number | null;
   overdueCount?: number | null;
@@ -457,18 +462,7 @@ export function normalizeStatusPagamento(raw: unknown): StatusPagamento | null {
 }
 
 function parseDateSafely(val: unknown): Date | null {
-  if (!val) return null;
-  if (val instanceof Date) {
-    return isNaN(val.getTime()) ? null : val;
-  }
-  try {
-    const s = String(val).trim();
-    if (!s) return null;
-    const d = new Date(s);
-    return isNaN(d.getTime()) ? null : d;
-  } catch {
-    return null;
-  }
+  return parseDateSafe(val as any);
 }
 
 // ============================================================================
@@ -573,7 +567,15 @@ export function calculateMatrixStatus(input: MatrixStatusInput): MatrixStatusRes
 
   // 3. Regra de Inadimplência Crítica: Atraso > 50 dias cancela a apólice
   // CRÍTICO: SOMENTE pode ser acionado se NÃO estiver pago/quitado E não for zero atraso explícito!
-  if (!isPaidOrQuitado && !isExplicitlyZeroOverdue && input.daysOverdue !== 0 && (maxOverdue > 50 || input.cancelReason === 'delinquency' || input.cancelReason === 'overdue_gt_50')) {
+  const isDelinquent = Boolean(
+    input.isPastCancellationDeadline === true ||
+    (input.dueDate && input.installmentNumber && isInstallmentPastCancellationDeadline(input.dueDate, input.installmentNumber, input.referenceDate || now)) ||
+    maxOverdue > 50 ||
+    input.cancelReason === 'delinquency' ||
+    input.cancelReason === 'overdue_gt_50'
+  );
+
+  if (!isPaidOrQuitado && !isExplicitlyZeroOverdue && (input.daysOverdue !== 0 || input.isPastCancellationDeadline === true) && isDelinquent) {
     if (hasSale || cotacaoStatusClean === 'emitida' || cotacaoStatusClean === 'aprovada' || normRawGeral === 'Negócio Fechado') {
       return buildResult(getRule('CANCELADO_INADIMPLENCIA_GT_50'));
     }

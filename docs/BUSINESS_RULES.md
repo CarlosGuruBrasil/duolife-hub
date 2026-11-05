@@ -338,3 +338,15 @@ As regras de negócio do DuoLife Hub governam a precificação atuarial, travas 
 - **Exceções:** Nenhuma.
 - **Origem no Código:** `src/lib/refresh-token.ts` e `app/api/auth/refresh/route.ts`.
 - **Status:** `CONFIRMADO`
+
+---
+
+### BR-031 — Cancelamento de Venda e Cobrança por Inadimplência
+- **Descrição:** Rescisão automática de propostas e apólices por falta de pagamento dentro dos prazos legais e contratuais de tolerância.
+- **Condição:** Varredura diária no cron de lifecycle (`/api/cron/lifecycle`) com contingência híbrida no primeiro login do dia (`triggerLifecycleScanIfPending` em `src/lib/lifecycle-service.ts`).
+- **Comportamento:**
+  - **Primeira Parcela (Entrada/Ativação):** Tolerância máxima de **2 dias úteis** após a data de vencimento. Se não quitada, cancela o boleto/Pix no Asaas, marca a proposta e a venda como canceladas e estorna comissões.
+  - **Demais Parcelas (Recorrentes > 1):** Tolerância máxima de **30 dias corridos** contados a partir do vencimento. Se o 30º dia recair em sábado, domingo ou feriado nacional, o prazo limite é prorrogado para o 1º dia útil subsequente. Vencido o prazo prorrogado sem pagamento, cancela as cobranças pendentes no Asaas, cancela a apólice e estorna as comissões.
+- **Origem no Código:** `src/lib/business-days.ts` (`calculateCancellationDeadline`, `ensureNextBusinessDay`), `src/lib/lifecycle-service.ts` (`runDelinquencyCancellationScan`), `src/lib/insurance-ops.ts` (`cancelSaleAndQuoteForDelinquency`) e `src/lib/status-matrix.ts`.
+- **Status:** `CONFIRMADO`
+
