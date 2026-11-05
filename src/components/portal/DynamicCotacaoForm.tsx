@@ -1362,8 +1362,9 @@ export default function DynamicCotacaoForm({
         dataAtividade: formatDateForIso(form.dataAtividade),
         dataInicioVigencia: formatDateForIso(form.dataInicioVigencia || getTodayIsoDate()),
         fimVigencia: calculatePolicyExpiryDate(form.dataInicioVigencia || getTodayIsoDate()),
-        vigencia: form.vigencia ? formatDateForIso(form.vigencia) : formatDateForIso(form.dataInicioVigencia || getTodayIsoDate()),
-        dataRetroativa: form.dataRetroativa ? formatDateForIso(form.dataRetroativa) : null,
+        vigencia: form.isRenovacao === 'Sim' && form.vigencia ? formatDateForIso(form.vigencia) : null,
+        vigenciaAnterior: form.isRenovacao === 'Sim' && form.vigencia ? formatDateForIso(form.vigencia) : null,
+        dataRetroativa: form.isRenovacao === 'Sim' && form.dataRetroativa ? formatDateForIso(form.dataRetroativa) : null,
         renovacao: form.isRenovacao === 'Sim',
         isRenovacao: form.isRenovacao,
         // Associação a escritório / clínica / hospital
@@ -2495,9 +2496,6 @@ export default function DynamicCotacaoForm({
                 onChange={(e) => {
                   const val = e.target.value;
                   updateField('dataInicioVigencia', val);
-                  if (form.isRenovacao === 'Sim' && !form.vigencia) {
-                    updateField('vigencia', val);
-                  }
                 }}
                 className="form-input mt-2"
               />

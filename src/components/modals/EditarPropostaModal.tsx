@@ -874,7 +874,8 @@ export default function EditarPropostaModal({
         // Proposta & Vigência
         dataInicioVigencia: dataInicioVigencia || existingClientData.dataInicioVigencia,
         fimVigencia: calculatePolicyExpiryDate(dataInicioVigencia || existingClientData.dataInicioVigencia),
-        vigencia: dataInicioVigencia || existingClientData.vigencia,
+        dataVigencia: dataInicioVigencia || existingClientData.dataVigencia,
+        vigencia: isRenovacao === 'Sim' ? existingClientData.vigencia : null,
         nomePlano: nomePlano.trim() || existingClientData.nomePlano,
         tipoDePlano:
           selectedPlanoTipo !== 'custom'

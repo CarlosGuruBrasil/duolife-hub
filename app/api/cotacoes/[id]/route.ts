@@ -758,7 +758,6 @@ export async function PATCH(
       ...(dataInicioVigencia !== undefined ? {
         dataInicioVigencia,
         fimVigencia: calculatePolicyExpiryDate(dataInicioVigencia),
-        vigencia: dataInicioVigencia,
         dataVigencia: dataInicioVigencia,
       } : {}),
 
@@ -901,6 +900,19 @@ export async function PATCH(
         updated_at = NOW()
       WHERE id = ${id}
     `;
+
+    // Se a cotação possuir apólice/venda gerada, sincroniza compulsoriamente issue_date e expiry_date
+    if (dataInicioVigencia) {
+      const newExpiry = calculatePolicyExpiryDate(dataInicioVigencia);
+      await sql`
+        UPDATE sales
+        SET
+          issue_date = ${dataInicioVigencia}::date,
+          expiry_date = ${newExpiry}::date,
+          updated_at = NOW()
+        WHERE cotacao_id = ${id}
+      `;
+    }
 
     // Se existir ordem de pagamento pendente/não paga para esta cotação em edição, sincroniza o valor total
     if (isFinancialMutable && premioFinal !== null) {

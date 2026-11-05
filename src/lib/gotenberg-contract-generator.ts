@@ -10,6 +10,8 @@ import {
   buildHtmlDocument,
 } from './gotenberg-client';
 import type { ContractData } from '@/types/contract';
+import { calculatePolicyExpiryDate } from './format';
+import { parseVigenciaDate } from './insurance-ops';
 import {
   gerarContratoPdfBuffer,
   determinarTipoContrato,
@@ -478,6 +480,17 @@ export async function buildContractDataForQuote(cotacaoId: string): Promise<{
     ? `data:${corretora.logoMimeType || 'image/png'};base64,${corretora.logoBuffer.toString('base64')}`
     : undefined;
 
+  const rawInicioVigencia =
+    clientData.dataInicioVigencia ||
+    clientData.dataVigencia ||
+    clientData.inicioVigencia ||
+    (cotacao.created_at ? new Date(cotacao.created_at).toISOString().slice(0, 10) : null);
+  const inicioVigenciaIso = parseVigenciaDate(rawInicioVigencia) || (cotacao.created_at ? new Date(cotacao.created_at).toISOString().slice(0, 10) : null);
+  const fimVigenciaIso = inicioVigenciaIso ? calculatePolicyExpiryDate(inicioVigenciaIso) : null;
+  const vigenciaPeriodoTexto = inicioVigenciaIso && fimVigenciaIso
+    ? `${formatData(inicioVigenciaIso)} a ${formatData(fimVigenciaIso)} (1 ano)`
+    : '1 ano';
+
   const contractData: ContractData = {
     proponente: {
       nome: cotacao.client_name,
@@ -494,7 +507,7 @@ export async function buildContractDataForQuote(cotacaoId: string): Promise<{
       franquia: franquiaStr,
       valorPremio: formatMoeda(valorTotal),
       formaPagamento: formaPagamentoTexto,
-      vigencia: '1 ano',
+      vigencia: vigenciaPeriodoTexto,
       estipulante: 'DUOLIFE PLATAFORMA DE NEGÓCIOS',
       corretora: corretora.nomeFantasia || corretora.razaoSocial,
       seguradora: 'AKAD SEGUROS S.A.',

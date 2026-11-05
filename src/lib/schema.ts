@@ -675,6 +675,78 @@ async function runRuntimeSchemaSetup(): Promise<void> {
     WHERE expiry_date = (issue_date + interval '1 year')::date
   `;
 
+  // Alinha vigência de sales com a data estipulada na proposta ou data de inclusão no sistema (created_at da cotação)
+  // Nunca mantendo datas erradas de vencimento ou pagamento de boleto/Pix
+  await sql`
+    UPDATE sales s
+    SET
+      issue_date = COALESCE(
+        CASE
+          WHEN c.client_data->>'dataInicioVigencia' ~ '^\\d{4}-\\d{2}-\\d{2}' THEN (c.client_data->>'dataInicioVigencia')::date
+          WHEN c.client_data->>'dataInicioVigencia' ~ '^\\d{2}/\\d{2}/\\d{4}' THEN to_date(c.client_data->>'dataInicioVigencia', 'DD/MM/YYYY')
+          WHEN c.client_data->>'dataVigencia' ~ '^\\d{4}-\\d{2}-\\d{2}' THEN (c.client_data->>'dataVigencia')::date
+          WHEN c.client_data->>'dataVigencia' ~ '^\\d{2}/\\d{2}/\\d{4}' THEN to_date(c.client_data->>'dataVigencia', 'DD/MM/YYYY')
+          WHEN c.client_data->>'inicioVigencia' ~ '^\\d{4}-\\d{2}-\\d{2}' THEN (c.client_data->>'inicioVigencia')::date
+          WHEN c.client_data->>'inicioVigencia' ~ '^\\d{2}/\\d{2}/\\d{4}' THEN to_date(c.client_data->>'inicioVigencia', 'DD/MM/YYYY')
+          WHEN c.client_data->>'vigencia' ~ '^\\d{4}-\\d{2}-\\d{2}' THEN (c.client_data->>'vigencia')::date
+          WHEN c.client_data->>'vigencia' ~ '^\\d{2}/\\d{2}/\\d{4}' THEN to_date(c.client_data->>'vigencia', 'DD/MM/YYYY')
+          ELSE NULL
+        END,
+        c.created_at::date
+      ),
+      expiry_date = (
+        COALESCE(
+          CASE
+            WHEN c.client_data->>'dataInicioVigencia' ~ '^\\d{4}-\\d{2}-\\d{2}' THEN (c.client_data->>'dataInicioVigencia')::date
+            WHEN c.client_data->>'dataInicioVigencia' ~ '^\\d{2}/\\d{2}/\\d{4}' THEN to_date(c.client_data->>'dataInicioVigencia', 'DD/MM/YYYY')
+            WHEN c.client_data->>'dataVigencia' ~ '^\\d{4}-\\d{2}-\\d{2}' THEN (c.client_data->>'dataVigencia')::date
+            WHEN c.client_data->>'dataVigencia' ~ '^\\d{2}/\\d{2}/\\d{4}' THEN to_date(c.client_data->>'dataVigencia', 'DD/MM/YYYY')
+            WHEN c.client_data->>'inicioVigencia' ~ '^\\d{4}-\\d{2}-\\d{2}' THEN (c.client_data->>'inicioVigencia')::date
+            WHEN c.client_data->>'inicioVigencia' ~ '^\\d{2}/\\d{2}/\\d{4}' THEN to_date(c.client_data->>'inicioVigencia', 'DD/MM/YYYY')
+            WHEN c.client_data->>'vigencia' ~ '^\\d{4}-\\d{2}-\\d{2}' THEN (c.client_data->>'vigencia')::date
+            WHEN c.client_data->>'vigencia' ~ '^\\d{2}/\\d{2}/\\d{4}' THEN to_date(c.client_data->>'vigencia', 'DD/MM/YYYY')
+            ELSE NULL
+          END,
+          c.created_at::date
+        ) + interval '1 year' - interval '1 day'
+      )::date,
+      updated_at = NOW()
+    FROM cotacoes c
+    WHERE c.id = s.cotacao_id
+      AND (
+        s.issue_date <> COALESCE(
+          CASE
+            WHEN c.client_data->>'dataInicioVigencia' ~ '^\\d{4}-\\d{2}-\\d{2}' THEN (c.client_data->>'dataInicioVigencia')::date
+            WHEN c.client_data->>'dataInicioVigencia' ~ '^\\d{2}/\\d{2}/\\d{4}' THEN to_date(c.client_data->>'dataInicioVigencia', 'DD/MM/YYYY')
+            WHEN c.client_data->>'dataVigencia' ~ '^\\d{4}-\\d{2}-\\d{2}' THEN (c.client_data->>'dataVigencia')::date
+            WHEN c.client_data->>'dataVigencia' ~ '^\\d{2}/\\d{2}/\\d{4}' THEN to_date(c.client_data->>'dataVigencia', 'DD/MM/YYYY')
+            WHEN c.client_data->>'inicioVigencia' ~ '^\\d{4}-\\d{2}-\\d{2}' THEN (c.client_data->>'inicioVigencia')::date
+            WHEN c.client_data->>'inicioVigencia' ~ '^\\d{2}/\\d{2}/\\d{4}' THEN to_date(c.client_data->>'inicioVigencia', 'DD/MM/YYYY')
+            WHEN c.client_data->>'vigencia' ~ '^\\d{4}-\\d{2}-\\d{2}' THEN (c.client_data->>'vigencia')::date
+            WHEN c.client_data->>'vigencia' ~ '^\\d{2}/\\d{2}/\\d{4}' THEN to_date(c.client_data->>'vigencia', 'DD/MM/YYYY')
+            ELSE NULL
+          END,
+          c.created_at::date
+        )
+        OR s.expiry_date <> (
+          COALESCE(
+            CASE
+              WHEN c.client_data->>'dataInicioVigencia' ~ '^\\d{4}-\\d{2}-\\d{2}' THEN (c.client_data->>'dataInicioVigencia')::date
+              WHEN c.client_data->>'dataInicioVigencia' ~ '^\\d{2}/\\d{2}/\\d{4}' THEN to_date(c.client_data->>'dataInicioVigencia', 'DD/MM/YYYY')
+              WHEN c.client_data->>'dataVigencia' ~ '^\\d{4}-\\d{2}-\\d{2}' THEN (c.client_data->>'dataVigencia')::date
+              WHEN c.client_data->>'dataVigencia' ~ '^\\d{2}/\\d{2}/\\d{4}' THEN to_date(c.client_data->>'dataVigencia', 'DD/MM/YYYY')
+              WHEN c.client_data->>'inicioVigencia' ~ '^\\d{4}-\\d{2}-\\d{2}' THEN (c.client_data->>'inicioVigencia')::date
+              WHEN c.client_data->>'inicioVigencia' ~ '^\\d{2}/\\d{2}/\\d{4}' THEN to_date(c.client_data->>'inicioVigencia', 'DD/MM/YYYY')
+              WHEN c.client_data->>'vigencia' ~ '^\\d{4}-\\d{2}-\\d{2}' THEN (c.client_data->>'vigencia')::date
+              WHEN c.client_data->>'vigencia' ~ '^\\d{2}/\\d{2}/\\d{4}' THEN to_date(c.client_data->>'vigencia', 'DD/MM/YYYY')
+              ELSE NULL
+            END,
+            c.created_at::date
+          ) + interval '1 year' - interval '1 day'
+        )::date
+      )
+  `;
+
   // Comissões a pagar
   await sql`
     CREATE TABLE IF NOT EXISTS commissions (

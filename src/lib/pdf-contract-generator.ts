@@ -8,6 +8,8 @@ import { getCorretoraParaContrato, CorretoraContratoInfo } from './corretora-res
 import { parseAtuacaoList } from './atuacao';
 import { logger } from './logger';
 import { getRamoConfig, rcAdvogadosConfig, rcMedicosConfig, GRUPOS_TARIFARIOS_SAUDE, type RamoConfig } from './product-schemas';
+import { calculatePolicyExpiryDate } from './format';
+import { parseVigenciaDate } from './insurance-ops';
 
 export interface ContratoPdfResult {
   buffer: Buffer;
@@ -45,6 +47,7 @@ export interface RenderContratoPdfParams {
     is_renewal?: boolean | null;
     importancia_segurada?: number | string | null;
     premio_final?: number | string | null;
+    created_at?: string | Date | null;
   };
   clientData: Record<string, any>;
   corretora: CorretoraContratoInfo;
@@ -2360,11 +2363,23 @@ export async function renderContratoPdf(params: RenderContratoPdfParams): Promis
     ? `${parcelasQtd} parcelas de ${formatMoeda(parcelaValor)}`
     : `1 parcela de ${formatMoeda(valorTotal)} à vista`;
 
+  // Vigência do Seguro (Nova Apólice)
+  const rawInicioVigencia =
+    clientData.dataInicioVigencia ||
+    clientData.dataVigencia ||
+    clientData.inicioVigencia ||
+    (cotacao.created_at ? new Date(cotacao.created_at).toISOString().slice(0, 10) : null);
+  const inicioVigenciaIso = parseVigenciaDate(rawInicioVigencia) || (cotacao.created_at ? new Date(cotacao.created_at).toISOString().slice(0, 10) : hoje.toISOString().slice(0, 10));
+  const fimVigenciaIso = calculatePolicyExpiryDate(inicioVigenciaIso);
+  const vigenciaTexto = inicioVigenciaIso && fimVigenciaIso
+    ? `${formatData(inicioVigenciaIso)} a ${formatData(fimVigenciaIso)} (1 ano)`
+    : '1 ano';
+
   // Condições de Comercialização
   const condicoes = {
     importanciaSegurada: coberturaStr,
     valorPremio: formatMoeda(valorTotal),
-    vigencia: '1 ano',
+    vigencia: vigenciaTexto,
     corretora: corretora.nomeFantasia || corretora.razaoSocial,
     franquia: franquiaStr,
     formaPagamento: formaPagamentoTexto,
@@ -2373,11 +2388,12 @@ export async function renderContratoPdf(params: RenderContratoPdfParams): Promis
   };
 
   // Seguro Anterior (Últimos 2 anos)
+  const isRenovacao = Boolean(clientData.isRenovacao === 'Sim' || clientData.renovacao === true);
   const seguroAnterior = {
-    seguradora: clientData.seguradora || 'Não informada',
-    limite: clientData.limite || clientData.lmiAnterior || coberturaStr,
-    vigencia: formatData(clientData.vigencia) || 'Não informada',
-    dataRetroativa: formatData(clientData.dataRetroativa || clientData.retroatividade) || formatData(hoje),
+    seguradora: isRenovacao ? (clientData.seguradora || 'Não informada') : 'Não se aplica',
+    limite: isRenovacao ? (clientData.limite || clientData.lmiAnterior || coberturaStr) : 'Não se aplica',
+    vigencia: isRenovacao ? (formatData(clientData.vigenciaAnterior || (clientData.vigencia !== clientData.dataInicioVigencia ? clientData.vigencia : null)) || 'Não informada') : 'Não se aplica',
+    dataRetroativa: isRenovacao ? (formatData(clientData.dataRetroativa || clientData.retroatividade) || formatData(hoje)) : 'Início de Vigência',
   };
 
   // --- SELEÇÃO DO MODELO DE CONTRATO ---

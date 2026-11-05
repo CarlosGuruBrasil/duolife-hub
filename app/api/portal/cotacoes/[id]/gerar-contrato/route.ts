@@ -15,6 +15,8 @@ import { getCorretoraParaContrato, isNet4LifeCorretora } from '@/lib/corretora-r
 import { GRUPOS_TARIFARIOS_SAUDE } from '@/lib/product-schemas';
 import { criarDocumentoZapSignDireto, cancelarDocumentoZapSign } from '@/lib/zapsign-direct-docs';
 import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
+import { calculatePolicyExpiryDate } from '@/lib/format';
+import { parseVigenciaDate } from '@/lib/insurance-ops';
 
 export async function POST(
   req: NextRequest,
@@ -425,6 +427,18 @@ export async function POST(
 
     const valorFranquiaPlano = clientData.planoFranquia || clientData.franquia || 'R$ 1.000,00';
 
+    const rawInicioVigencia =
+      clientData.dataInicioVigencia ||
+      clientData.dataVigencia ||
+      clientData.inicioVigencia ||
+      (cotacao.created_at ? new Date(cotacao.created_at).toISOString().slice(0, 10) : null);
+    const inicioVigenciaIso = parseVigenciaDate(rawInicioVigencia) || (cotacao.created_at ? new Date(cotacao.created_at).toISOString().slice(0, 10) : hoje.toISOString().slice(0, 10));
+    const fimVigenciaIso = calculatePolicyExpiryDate(inicioVigenciaIso);
+    const vigenciaPeriodoTexto = inicioVigenciaIso && fimVigenciaIso
+      ? `${formatData(inicioVigenciaIso)} a ${formatData(fimVigenciaIso)} (1 ano)`
+      : '1 ano';
+    const isRenovacaoBool = Boolean(cotacao.is_renewal || clientData.isRenovacao === 'Sim' || clientData.renovacao === true);
+
     const variaveis: Record<string, string> = {
       // Dados Pessoais / Proponente (Novas tags + Legadas)
       "nome": cotacao.client_name,
@@ -495,13 +509,21 @@ export async function POST(
       "ppeCargoSelect": ppeDescricao || ' ',
       "cargos_ppe": ppeDescricao || ' ',
 
-      // Informações do Seguro de Responsabilidade Civil Anterior
-      "seguradora": clientData.seguradora || ' ',
-      "limite": clientData.limite || clientData.lmiAnterior || ' ',
-      "vigencia": clientData.vigencia ? formatData(clientData.vigencia) : ' ',
-      "premio": clientData.premio || ' ',
-      "dataRetroativa": clientData.dataRetroativa ? formatData(clientData.dataRetroativa) : 'Início de Vigência',
-      "franquiaAnterior": clientData.franquiaAnterior || ' ',
+      // Vigência do Seguro Contratado
+      "vigencia": vigenciaPeriodoTexto,
+      "vigencia_seguro": vigenciaPeriodoTexto,
+      "vigencia_periodo": vigenciaPeriodoTexto,
+      "inicio_vigencia": formatData(inicioVigenciaIso),
+      "fim_vigencia": formatData(fimVigenciaIso),
+
+      // Informações do Seguro de Responsabilidade Civil Anterior (Renovação)
+      "seguradora": isRenovacaoBool ? (clientData.seguradora || 'Não informada') : 'Não se aplica',
+      "limite": isRenovacaoBool ? (clientData.limite || clientData.lmiAnterior || 'Não informado') : 'Não se aplica',
+      "vigencia_anterior": isRenovacaoBool ? (formatData(clientData.vigenciaAnterior || (clientData.vigencia !== clientData.dataInicioVigencia ? clientData.vigencia : null)) || 'Não informada') : 'Não se aplica',
+      "vigencia_apolice_atual": isRenovacaoBool ? (formatData(clientData.vigenciaAnterior || (clientData.vigencia !== clientData.dataInicioVigencia ? clientData.vigencia : null)) || 'Não informada') : 'Não se aplica',
+      "premio": isRenovacaoBool ? (clientData.premio || 'Não informado') : 'Não se aplica',
+      "dataRetroativa": isRenovacaoBool ? (clientData.dataRetroativa ? formatData(clientData.dataRetroativa) : formatData(hoje)) : 'Início de Vigência',
+      "franquiaAnterior": isRenovacaoBool ? (clientData.franquiaAnterior || 'Não informada') : 'Não se aplica',
 
       // Questionário de Risco / Histórico de Reclamação (Novas tags + Legadas)
       "propostaRecusada": propostaRecusada,

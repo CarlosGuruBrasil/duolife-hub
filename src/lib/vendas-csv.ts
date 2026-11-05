@@ -1,4 +1,4 @@
-import { formatCurrency, parseCurrencyToNumber, formatStatusLabel, formatPlanLabel, resolvePolicyExpiryDate } from './format';
+import { formatCurrency, parseCurrencyToNumber, formatStatusLabel, formatPlanLabel, resolvePolicyExpiryDate, formatPolicyValidity } from './format';
 import { sql } from './pg';
 import { logger } from './logger';
 import { calculateMatrixStatus } from './status-matrix';
@@ -339,15 +339,16 @@ export function gerarVendasCSV(
       clientData.documento;
     const cpfFormatado = formatCpfCnpjCsv(rawCpf);
 
-    // 6. Vigência: prioridade expiry_date, fimVigencia, vigencia, issue_date
-    const rawExpiry = venda.expiry_date ?? clientData.fimVigencia;
-    const rawVigencia =
-      resolvePolicyExpiryDate(venda.issue_date, rawExpiry) ??
-      rawExpiry ??
-      clientData.vigencia ??
+    // 6. Vigência: período completo de vigência da apólice (ex.: 06/10/2026 — 05/10/2027)
+    // Sincronizado compulsoriamente com a visualização em tabela e as datas estipuladas no contrato
+    const rawIssueDate =
       venda.issue_date ??
-      clientData.inicioVigencia;
-    const vigenciaFormatada = formatarDataCsv(rawVigencia);
+      clientData.dataInicioVigencia ??
+      clientData.inicioVigencia ??
+      clientData.dataVigencia ??
+      (venda.created_at ? String(venda.created_at).slice(0, 10) : null);
+    const rawExpiry = venda.expiry_date ?? clientData.fimVigencia;
+    const vigenciaFormatada = formatPolicyValidity(rawIssueDate, rawExpiry);
 
     // 7. Retroatividade: client_data.dataRetroativa
     const rawRetro = clientData.dataRetroativa ?? clientData.data_retroativa;

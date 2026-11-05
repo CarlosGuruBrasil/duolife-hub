@@ -125,6 +125,19 @@ describe('gotenberg-contract-generator.test.ts - Integração do Motor Gotenberg
       expect(result.contractData.corretora?.cnpj).toBe('07.351.909/0001-33');
     });
 
+    it('deve formatar o período completo de vigência quando dataInicioVigencia estiver presente', async () => {
+      (sql as any).mockResolvedValueOnce([{
+        ...mockCotacao,
+        client_data: JSON.stringify({
+          ...JSON.parse(mockCotacao.client_data),
+          dataInicioVigencia: '2026-10-06',
+        }),
+      }]);
+
+      const result = await buildContractDataForQuote('cot_test_gotenberg_001');
+      expect(result.contractData.condicoes?.vigencia).toBe('06/10/2026 a 05/10/2027 (1 ano)');
+    });
+
     it('deve formatar o nome do documento com padrão canônico seguro', async () => {
       const result = await buildContractDataForQuote('cot_test_gotenberg_001');
 

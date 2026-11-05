@@ -65,6 +65,10 @@ export const SPREADSHEET_EXACT_MATRIX_SAUDE: Record<
 };
 
 export function parseVigenciaDate(value: unknown): string | null {
+  if (value instanceof Date) {
+    if (isNaN(value.getTime())) return null;
+    return value.toISOString().slice(0, 10);
+  }
   if (typeof value !== 'string' || !value.trim()) return null;
   const str = value.trim();
   // Formato ISO YYYY-MM-DD
@@ -392,8 +396,8 @@ export async function ensureSaleForPaidQuote(input: {
 }) {
   return await sql.begin(async (tx) => {
     // 1. Lock de linha na cotação para garantir que concorrência não processe duas vezes
-    const [quote] = await tx<{ id: string; client_data: Record<string, any> | null; corretora_id: string | null }[]>`
-      SELECT id, client_data, corretora_id
+    const [quote] = await tx<{ id: string; client_data: Record<string, any> | null; corretora_id: string | null; created_at: Date }[]>`
+      SELECT id, client_data, corretora_id, created_at
       FROM cotacoes
       WHERE id = ${input.cotacaoId}
       FOR UPDATE
@@ -411,10 +415,16 @@ export async function ensureSaleForPaidQuote(input: {
       return { saleId: existing[0].id, created: false };
     }
 
-    // Extrai data de início da vigência indicada na proposta, com fallback para data atual
+    // Extrai data de início da vigência indicada na proposta, com fallback obrigatório para a data de inclusão no sistema (created_at).
+    // NUNCA utilizar data de vencimento da cobrança ou data de pagamento do segurado.
     const clientData = (quote?.client_data || {}) as Record<string, any>;
-    const rawInicioVigencia = clientData.dataInicioVigencia || clientData.vigencia || clientData.dataVigencia || clientData.inicioVigencia;
-    const inicioVigenciaIso = parseVigenciaDate(rawInicioVigencia);
+    const rawInicioVigencia =
+      clientData.dataInicioVigencia ||
+      clientData.dataVigencia ||
+      clientData.inicioVigencia ||
+      clientData.vigencia;
+    const quoteCreatedAtIso = quote?.created_at ? parseVigenciaDate(quote.created_at) : null;
+    const inicioVigenciaIso = parseVigenciaDate(rawInicioVigencia) || quoteCreatedAtIso || new Date().toISOString().slice(0, 10);
 
     // 3. Taxa de comissão e Split Financeiro Oficial
     const isHealthProduct = isHealthQuote(
@@ -497,8 +507,8 @@ export async function ensureSaleForPaidQuote(input: {
         ${commissionRate},
         ${commissionAmount},
         'ativa',
-        COALESCE(${inicioVigenciaIso}::date, CURRENT_DATE),
-        (COALESCE(${inicioVigenciaIso}::date, CURRENT_DATE) + interval '1 year' - interval '1 day')::date,
+        ${inicioVigenciaIso}::date,
+        (${inicioVigenciaIso}::date + interval '1 year' - interval '1 day')::date,
         ${JSON.stringify({ ...((quote as any)?.metadata || {}), financialSplit: split })}::jsonb
       )
       RETURNING id
