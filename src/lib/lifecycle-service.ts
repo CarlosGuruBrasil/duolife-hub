@@ -732,15 +732,19 @@ export async function runDelinquencyCancellationScan(options?: {
         AND c.status NOT IN ('cancelada', 'recusada')
         AND (s.id IS NULL OR s.status = 'ativa')
         AND pi.due_date < ${targetDateStr}::date
+        AND NOT (COALESCE(c.metadata->>'isento_cancelamento', 'false') = 'true')
+        AND NOT (COALESCE(c.metadata->>'reativado_manualmente', 'false') = 'true')
+        AND NOT (COALESCE(s.metadata->>'isento_cancelamento', 'false') = 'true')
+        AND NOT (COALESCE(s.metadata->>'reativado_manualmente', 'false') = 'true')
       ORDER BY pi.installment_number ASC, pi.due_date ASC
     `;
 
     result.scanned = overdueInstallments.length;
 
-    const processedQuotes = new Set<string>();
+    const processedInstallments = new Set<string>();
 
     for (const inst of overdueInstallments) {
-      if (processedQuotes.has(inst.cotacao_id)) {
+      if (processedInstallments.has(inst.installment_id)) {
         result.skipped++;
         continue;
       }
@@ -756,7 +760,7 @@ export async function runDelinquencyCancellationScan(options?: {
         continue;
       }
 
-      processedQuotes.add(inst.cotacao_id);
+      processedInstallments.add(inst.installment_id);
 
       const reason =
         inst.installment_number === 1
@@ -765,8 +769,8 @@ export async function runDelinquencyCancellationScan(options?: {
 
       if (dryRun) {
         logger.info(
-          { cotacaoId: inst.cotacao_id, reason, dryRun: true },
-          'lifecycle: simulação de cancelamento por inadimplência'
+          { cotacaoId: inst.cotacao_id, installmentId: inst.installment_id, reason, dryRun: true },
+          'lifecycle: simulação de cancelamento pontual da parcela por inadimplência'
         );
         result.canceled++;
       } else {

@@ -33,6 +33,7 @@ import {
   Activity,
   FileCheck2,
   ClockAlert,
+  RotateCcw,
 } from 'lucide-react';
 import type { AuthUser } from '@/lib/auth';
 import { roleIsDev, roleIsPlatformAdmin } from '@/lib/roles';
@@ -134,6 +135,12 @@ export default function AdminShell({ children, user }: AdminShellProps) {
                 label: 'Contratos & Minutas',
                 icon: FileCheck2,
                 description: 'Modelos, editor e preview A4.',
+              },
+              {
+                href: '/admin/cancelamentos-indevidos',
+                label: 'Cancelamentos Indevidos',
+                icon: RotateCcw,
+                description: 'Levantamento e reativação de faturas residuais.',
               },
               {
                 href: '/admin/chaves-api',

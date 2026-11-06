@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
 
     let valorTotal = parseNumero(rawBody.valor || rawBody.valorTotal || rawBody.premio);
     if (!valorTotal && planoDef) {
-      valorTotal = parseCurrencyToNumber(planoDef.premioAnual, 310);
+      valorTotal = parseCurrencyToNumber(planoDef.parcela, 310);
     }
     const valorParcela = parseNumero(rawBody.valorParcela) || Number((valorTotal / qtdParcelas).toFixed(2));
 

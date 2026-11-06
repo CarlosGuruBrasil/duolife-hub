@@ -23,6 +23,17 @@ describe('Rotina de Cancelamento por Inadimplência', () => {
       expect(res.success).toBe(false);
       expect(res.canceled).toBe(false);
     });
+
+    it('deve aceitar parâmetros de cancelamento pontual com installmentId', async () => {
+      // Como não há banco configurado neste teste unitário, chamamos com ID fictício para testar validação de entrada
+      const res = await cancelSaleAndQuoteForDelinquency({
+        cotacaoId: '   ',
+        installmentId: 'inst_123',
+        reason: 'Cancelamento pontual',
+      });
+      expect(res.success).toBe(false);
+      expect(res.error).toBe('ID da cotação não informado');
+    });
   });
 
   describe('runDelinquencyCancellationScan', () => {

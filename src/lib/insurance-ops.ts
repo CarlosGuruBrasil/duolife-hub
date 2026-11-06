@@ -635,11 +635,14 @@ export interface CancelDelinquencyParams {
   installmentNumber?: number;
   dueDate?: string;
   reason?: string;
+  onlyOverdueCharge?: boolean;
 }
 
 /**
- * Cancela atomicamente uma venda, proposta e faturas pendentes por inadimplência crítica.
- * Cancela também as cobranças pendentes na API do Asaas e estorna as comissões.
+ * Cancela atomicamente APENAS a cobrança/parcela atrasada por inadimplência.
+ * - Cancela no Asaas apenas a cobrança vencida que extrapolou a tolerância.
+ * - JAMAIS cancela parcelas futuras não vencidas.
+ * - JAMAIS cancela a apólice (sales) ou comissões caso o cliente tenha parcelas pagas ou em dia.
  */
 export async function cancelSaleAndQuoteForDelinquency(
   params: CancelDelinquencyParams
@@ -651,85 +654,154 @@ export async function cancelSaleAndQuoteForDelinquency(
   const cleanId = params.cotacaoId.trim();
 
   try {
-    // 1. Busca todas as cobranças/parcelas pendentes não pagas no Asaas
-    const pendingInstallments = await sql<Array<{ id: string; external_payment_id: string | null }>>`
-      SELECT id, external_payment_id
-      FROM payment_installments
-      WHERE cotacao_id = ${cleanId}
-        AND status NOT IN ('paid', 'received', 'confirmed', 'RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH', 'cancelled')
+    // 0. Verifica se a proposta ou venda possui flag de proteção/imunidade contra cancelamento automático
+    const [protectionCheck] = await sql<Array<{
+      cotacao_metadata: any;
+      sale_metadata: any;
+    }>>`
+      SELECT
+        c.metadata AS cotacao_metadata,
+        s.metadata AS sale_metadata
+      FROM cotacoes c
+      LEFT JOIN sales s ON s.cotacao_id = c.id
+      WHERE c.id = ${cleanId}
+      LIMIT 1
     `;
 
-    for (const inst of pendingInstallments) {
+    const cotMeta = (protectionCheck?.cotacao_metadata || {}) as Record<string, any>;
+    const saleMeta = (protectionCheck?.sale_metadata || {}) as Record<string, any>;
+
+    if (
+      cotMeta.isento_cancelamento === true ||
+      cotMeta.reativado_manualmente === true ||
+      saleMeta.isento_cancelamento === true ||
+      saleMeta.reativado_manualmente === true
+    ) {
+      logger.info(
+        { cotacaoId: cleanId, reason: params.reason },
+        'insurance-ops: cancelamento ignorado pois contrato possui imunidade/reativacao manual'
+      );
+      return { success: true, canceled: false };
+    }
+
+    // 1. Busca APENAS a cobrança específica ou cobranças estritamente vencidas
+    let targetInstallments: Array<{ id: string; external_payment_id: string | null; installment_number: number }>;
+
+    if (params.installmentId) {
+      targetInstallments = await sql<Array<{ id: string; external_payment_id: string | null; installment_number: number }>>`
+        SELECT id, external_payment_id, installment_number
+        FROM payment_installments
+        WHERE id = ${params.installmentId}
+          AND cotacao_id = ${cleanId}
+          AND status NOT IN ('paid', 'received', 'confirmed', 'RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH', 'cancelled')
+      `;
+    } else {
+      // Se não especificou ID, busca estritamente parcelas cujo vencimento já expirou (passado)
+      targetInstallments = await sql<Array<{ id: string; external_payment_id: string | null; installment_number: number }>>`
+        SELECT id, external_payment_id, installment_number
+        FROM payment_installments
+        WHERE cotacao_id = ${cleanId}
+          AND status NOT IN ('paid', 'received', 'confirmed', 'RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH', 'cancelled')
+          AND due_date < CURRENT_DATE
+      `;
+    }
+
+    if (targetInstallments.length === 0) {
+      return { success: true, canceled: false };
+    }
+
+    // Cancela no Asaas APENAS a(s) cobrança(s) atrasada(s) localizada(s)
+    for (const inst of targetInstallments) {
       if (inst.external_payment_id) {
         try {
           await deleteAsaasPayment(inst.external_payment_id);
         } catch (asaasErr) {
           logger.warn(
             { asaasErr, externalPaymentId: inst.external_payment_id, cotacaoId: cleanId },
-            'insurance-ops: aviso ao cancelar parcela no Asaas por inadimplência'
+            'insurance-ops: aviso ao cancelar parcela atrasada no Asaas'
           );
         }
       }
     }
 
+    const targetIds = targetInstallments.map((i) => i.id);
+
     // 2. Transação atômica no PostgreSQL
     return await sql.begin(async (tx) => {
-      // a) Estorna comissões geradas para a venda
+      // a) Atualiza APENAS a(s) parcela(s) atrasada(s) para 'cancelled'
       await tx`
-        UPDATE commissions
-        SET status = 'estornada',
-            notes = COALESCE(notes || ' | ', '') || ${'Estornado por Inadimplência (' + (params.reason || 'Decurso de prazo') + ')'},
+        UPDATE payment_installments
+        SET status = 'cancelled',
+            notes = COALESCE(notes || ' | ', '') || ${'Cancelada por Inadimplência (' + (params.reason || 'Decurso de prazo') + ')'},
             updated_at = NOW()
-        WHERE sale_id IN (SELECT id FROM sales WHERE cotacao_id = ${cleanId})
-          AND status != 'estornada'
+        WHERE id IN ${sql(targetIds)}
       `;
 
-      // b) Cancela a apólice/venda
-      await tx`
-        UPDATE sales
-        SET status = 'cancelada',
-            updated_at = NOW()
-        WHERE cotacao_id = ${cleanId}
-          AND status != 'cancelada'
+      // b) Verifica a saúde geral do contrato:
+      // - Quantas parcelas estão pagas?
+      // - Quantas parcelas futuras ainda existem (a vencer)?
+      const [healthCheck] = await tx<Array<{
+        paid_count: number;
+        future_pending_count: number;
+        has_active_sale: boolean;
+      }>>`
+        SELECT
+          COUNT(*) FILTER (WHERE LOWER(pi.status) IN ('paid', 'received', 'confirmed', 'received_in_cash'))::int AS paid_count,
+          COUNT(*) FILTER (WHERE pi.status NOT IN ('cancelled', 'paid', 'received', 'confirmed', 'received_in_cash') AND pi.due_date >= CURRENT_DATE)::int AS future_pending_count,
+          EXISTS(SELECT 1 FROM sales s WHERE s.cotacao_id = ${cleanId} AND s.status = 'ativa') AS has_active_sale
+        FROM payment_installments pi
+        WHERE pi.cotacao_id = ${cleanId}
       `;
 
-      // c) Cancela a proposta/cotação
+      const hasPaid = (healthCheck?.paid_count || 0) > 0;
+      const hasFuture = (healthCheck?.future_pending_count || 0) > 0;
+      const hasSale = healthCheck?.has_active_sale === true;
+
+      // REGRA DE OURO: O cancelamento deve ser feito APENAS na cobrança atrasada.
+      // Se o cliente tem parcelas pagas, parcelas futuras ou uma apólice emitida ativa,
+      // A APÓLICE NÃO É CANCELADA, A COTAÇÃO NÃO É CANCELADA E AS COMISSÕES NÃO SÃO ESTORNADAS!
+      if (hasPaid || hasFuture || hasSale) {
+        logger.info(
+          {
+            cotacaoId: cleanId,
+            canceledInstallments: targetIds,
+            hasPaid,
+            hasFuture,
+            hasSale,
+          },
+          'insurance-ops: parcela atrasada cancelada pontualmente; apolice e contrato mantidos ativos'
+        );
+
+        return { success: true, canceled: true };
+      }
+
+      // Se e somente se NÃO houver apólice ativa, NÃO houver nenhuma parcela paga e NÃO houver parcelas futuras
+      // (exemplo: proposta em rascunho/aberta cuja 1ª parcela de entrada foi abandonada):
       await tx`
         UPDATE cotacoes
         SET status = 'cancelada',
             updated_at = NOW()
         WHERE id = ${cleanId}
-          AND status != 'cancelada'
+          AND status NOT IN ('aprovada', 'emitida', 'ativa')
       `;
 
-      // d) Atualiza parcelas pendentes locais para 'cancelled'
-      await tx`
-        UPDATE payment_installments
-        SET status = 'cancelled',
-            updated_at = NOW()
-        WHERE cotacao_id = ${cleanId}
-          AND status NOT IN ('paid', 'received', 'confirmed', 'RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH')
-      `;
-
-      // e) Atualiza ordem de pagamento para 'cancelled'
       await tx`
         UPDATE payment_orders
         SET status = 'cancelled',
             updated_at = NOW()
         WHERE cotacao_id = ${cleanId}
-          AND status NOT IN ('paid', 'received', 'confirmed', 'RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH')
       `;
 
       logger.warn(
         { cotacaoId: cleanId, reason: params.reason, installmentNumber: params.installmentNumber },
-        'insurance-ops: cancelamento por inadimplencia executado com sucesso'
+        'insurance-ops: proposta sem entrada/pagamento cancelada por decurso de prazo'
       );
 
       return { success: true, canceled: true };
     });
   } catch (err: any) {
     const errorMsg = err?.message || String(err);
-    logger.error({ err, cotacaoId: cleanId }, 'insurance-ops: falha ao cancelar por inadimplencia');
+    logger.error({ err, cotacaoId: cleanId }, 'insurance-ops: falha ao cancelar cobranca por inadimplencia');
     return { success: false, canceled: false, error: errorMsg };
   }
 }
