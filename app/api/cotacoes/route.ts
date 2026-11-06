@@ -197,6 +197,9 @@ export async function POST(req: NextRequest) {
     let access: Awaited<ReturnType<typeof getPartnerAccessContext>> = null;
 
     let publicLinkData: any = null;
+    // Link já esgotado (status 'used' ou limite de usos atingido): só permite continuar
+    // a cotação criada por ele mesmo; nunca criar uma nova.
+    let publicLinkExhausted = false;
 
     if (publicToken) {
       const [link] = await sql`
@@ -207,15 +210,15 @@ export async function POST(req: NextRequest) {
           target_document, target_name, max_uses, COALESCE(used_count, 0) AS used_count
         FROM public_sale_links
         WHERE token = ${publicToken}
-          AND status = 'active'
+          AND status IN ('active', 'used')
           AND (expires_at IS NULL OR expires_at > NOW())
         LIMIT 1
       `;
       if (!link) return Response.json({ error: 'Token público inválido ou expirado' }, { status: 401 });
 
-      if (link.max_uses && Number(link.used_count || 0) >= Number(link.max_uses)) {
-        return Response.json({ error: 'Este link de contratação já atingiu o limite de utilizações permitidas' }, { status: 404 });
-      }
+      publicLinkExhausted =
+        link.status !== 'active' ||
+        Boolean(link.max_uses && Number(link.used_count || 0) >= Number(link.max_uses));
 
       publicLinkData = link;
       publicLinkId = link.id;
@@ -249,6 +252,10 @@ export async function POST(req: NextRequest) {
       );
     }
     const data = parsed.data as any;
+
+    if (publicLinkExhausted && !(data.cotacaoId || data.id)) {
+      return Response.json({ error: 'Este link de contratação já atingiu o limite de utilizações permitidas' }, { status: 404 });
+    }
 
     if (publicLinkData?.is_exclusive && publicLinkData?.target_document) {
       if (somenteDigitos(data.clientCpfCnpj) !== somenteDigitos(publicLinkData.target_document)) {
@@ -613,6 +620,10 @@ export async function POST(req: NextRequest) {
       if (updatedCotacao) {
         return Response.json({ ok: true, cotacao: updatedCotacao }, { status: 200 });
       }
+    }
+
+    if (publicLinkExhausted) {
+      return Response.json({ error: 'Este link de contratação já atingiu o limite de utilizações permitidas' }, { status: 404 });
     }
 
     const [cotacao] = await sql`

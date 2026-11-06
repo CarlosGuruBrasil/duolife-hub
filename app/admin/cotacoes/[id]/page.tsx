@@ -16,6 +16,7 @@ import { VerificarZapSignButton } from '../_verificar-zapsign-button';
 import { CopiarLinkAssinaturaButton } from '@/components/cotacao/CopiarLinkAssinaturaButton';
 import { EnviarPropostaEmailButton } from '@/components/cotacao/EnviarPropostaEmailButton';
 import RegerarMinutaButton from '@/components/cotacao/RegerarMinutaButton';
+import { podeCorrigirFinanceiroPosAssinatura } from '@/lib/contrato-correcao';
 import CotacaoInformacoesProfissionaisCard from '@/components/cotacao/CotacaoInformacoesProfissionaisCard';
 import { GerenciarCobrancaButton } from '@/components/admin/GerenciarCobrancaButton';
 import { DesvincularCobrancaButton } from '@/components/admin/DesvincularCobrancaButton';
@@ -79,6 +80,7 @@ export default async function AdminCotacaoDetailPage({
   if (!user || !isInternalUser(user)) {
     redirect('/login');
   }
+  const podeCorrigirFinanceiro = podeCorrigirFinanceiroPosAssinatura(user);
 
   const isDev = isDevUser(user);
 
@@ -635,6 +637,7 @@ export default async function AdminCotacaoDetailPage({
               />
             )}
             <EditarPropostaButton
+              podeCorrigirFinanceiro={podeCorrigirFinanceiro}
               cotacao={{
                 id: cotacao.id,
                 status: cotacao.status,
@@ -768,6 +771,7 @@ export default async function AdminCotacaoDetailPage({
               <FileText size={16} className="text-cyan-600" /> Detalhes do Plano Contratado
             </h2>
             <EditarPropostaButton
+              podeCorrigirFinanceiro={podeCorrigirFinanceiro}
               cotacao={{
                 id: cotacao.id,
                 status: cotacao.status,
@@ -1896,6 +1900,7 @@ export default async function AdminCotacaoDetailPage({
                     isExpired={isMinutaExpired}
                     docToken={docToken}
                     prazoLimite={prazoLimiteFormatado}
+                    isContratoAssinado={isProponenteAssinado || ['assinado', 'pagamento_gerado'].includes(String(cotacao.status))}
                   />
                   {signUrl && !isMinutaExpired && (
                     <>

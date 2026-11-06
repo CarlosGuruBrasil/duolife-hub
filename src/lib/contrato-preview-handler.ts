@@ -19,7 +19,7 @@ export async function handlePreviewContratoPdf(
     if (publicToken) {
       const [link] = await sql`
         SELECT partner_id FROM public_sale_links
-        WHERE token = ${publicToken} AND status = 'active' AND (expires_at IS NULL OR expires_at > NOW())
+        WHERE token = ${publicToken} AND status IN ('active', 'used') AND (expires_at IS NULL OR expires_at > NOW())
       `;
       if (!link) {
         return new Response('Token público inválido ou expirado', { status: 401 });

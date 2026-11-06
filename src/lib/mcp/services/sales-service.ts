@@ -7,6 +7,13 @@ import { calcularPrecoServidor } from '@/lib/pricing';
 import { determinarTipoContrato } from '@/lib/pdf-contract-generator';
 import { gerarContratoPdfGotenberg } from '@/lib/gotenberg-contract-generator';
 import { criarDocumentoZapSignDireto } from '@/lib/zapsign-direct-docs';
+import { getCorretoraParaContrato, isNet4LifeCorretora } from '@/lib/corretora-resolver';
+import {
+  determinarTemplateZapSignNet4Life,
+  montarVariaveisTemplateZapSign,
+  criarDocumentoZapSignPorModelo,
+} from '@/lib/zapsign-template-service';
+import { parseJsonbField } from '@/lib/json-safe';
 import { generateAsaasPaymentForQuote } from '@/lib/asaas-service';
 import { upsertInsuranceClient } from '@/lib/insurance-ops';
 import { evaluateUnderwriting } from './underwriting-service';
@@ -990,44 +997,69 @@ export async function createContract(saleSessionId: string) {
     `;
 
     if (cotacao) {
-      const pdfData = await gerarContratoPdfGotenberg(cotacao.id);
-      const directDoc = await criarDocumentoZapSignDireto({
-        base64Pdf: pdfData.base64,
-        docName: pdfData.docName,
-        externalId: cotacao.id,
-        deadlineAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-        signatarios: [
-          {
-            nome: pdfData.signatarioProponente?.nome || cotacao.client_name,
-            email: pdfData.signatarioProponente?.email || cotacao.client_email || 'suporte@duolife.net.br',
-            phone: pdfData.signatarioProponente?.phone || cotacao.client_phone || null,
-            order: undefined,
-            signaturePattern: '{{assinatura_proponente}}',
-            sendAutomaticEmail: false,
-          },
-          {
-            nome: pdfData.signatarioCorretora?.nome || 'Corretora',
-            email: pdfData.signatarioCorretora?.email || 'contato@net4life.com.br',
-            phone: pdfData.signatarioCorretora?.phone || null,
-            order: undefined,
-            signaturePattern: '{{assinatura_corretora}}',
-            sendAutomaticEmail: true,
-          },
-        ],
-      });
+      const corretoraInfo = await getCorretoraParaContrato(cotacao.id);
+      const isNet4Life = isNet4LifeCorretora(corretoraInfo);
 
-      if (directDoc.docToken) {
-        externalDocId = directDoc.docToken;
-        const proponenteSigner =
-          directDoc.signers?.find(
-            (s) =>
-              (cotacao.client_email && s.email?.toLowerCase() === cotacao.client_email.toLowerCase()) ||
-              (cotacao.client_name && s.name?.toLowerCase().includes(cotacao.client_name.toLowerCase()))
-          ) || directDoc.signers?.[0];
-        signUrl =
-          proponenteSigner?.signUrl ||
-          directDoc.signUrl ||
-          `https://app.zapsign.com.br/verificar/${externalDocId}`;
+      if (isNet4Life) {
+        const clientData = parseJsonbField<Record<string, any>>(cotacao.client_data);
+        const templateRes = determinarTemplateZapSignNet4Life(clientData, cotacao);
+        const { dataArray } = montarVariaveisTemplateZapSign(clientData, cotacao, {
+          corretoraInfo,
+          valorTotal: Number(cotacao.premio_final || clientData.valor || 0),
+          qtdParcelas: Math.max(1, Number(clientData.parcela || clientData.parcelas || 1)),
+          valorParcela: Number(clientData.valorParcela || cotacao.premio_final || 0),
+        });
+
+        const docResult = await criarDocumentoZapSignPorModelo({
+          templateId: templateRes.templateId,
+          signerName: cotacao.client_name,
+          signerEmail: cotacao.client_email || 'suporte@duolife.net.br',
+          externalId: cotacao.id,
+          dataArray,
+        });
+
+        externalDocId = docResult.docToken;
+        signUrl = docResult.signUrl;
+      } else {
+        const pdfData = await gerarContratoPdfGotenberg(cotacao.id);
+        const directDoc = await criarDocumentoZapSignDireto({
+          base64Pdf: pdfData.base64,
+          docName: pdfData.docName,
+          externalId: cotacao.id,
+          deadlineAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+          signatarios: [
+            {
+              nome: pdfData.signatarioProponente?.nome || cotacao.client_name,
+              email: pdfData.signatarioProponente?.email || cotacao.client_email || 'suporte@duolife.net.br',
+              phone: pdfData.signatarioProponente?.phone || cotacao.client_phone || null,
+              order: undefined,
+              signaturePattern: '{{assinatura_proponente}}',
+              sendAutomaticEmail: false,
+            },
+            {
+              nome: pdfData.signatarioCorretora?.nome || 'Corretora',
+              email: pdfData.signatarioCorretora?.email || 'contato@net4life.com.br',
+              phone: pdfData.signatarioCorretora?.phone || null,
+              order: undefined,
+              signaturePattern: '{{assinatura_corretora}}',
+              sendAutomaticEmail: true,
+            },
+          ],
+        });
+
+        if (directDoc.docToken) {
+          externalDocId = directDoc.docToken;
+          const proponenteSigner =
+            directDoc.signers?.find(
+              (s) =>
+                (cotacao.client_email && s.email?.toLowerCase() === cotacao.client_email.toLowerCase()) ||
+                (cotacao.client_name && s.name?.toLowerCase().includes(cotacao.client_name.toLowerCase()))
+            ) || directDoc.signers?.[0];
+          signUrl =
+            proponenteSigner?.signUrl ||
+            directDoc.signUrl ||
+            `https://app.zapsign.com.br/verificar/${externalDocId}`;
+        }
       }
 
       await sql`

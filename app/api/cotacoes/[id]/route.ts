@@ -9,6 +9,17 @@ import { parseAtuacaoList } from '@/lib/atuacao';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
 import { isHealthQuote } from '@/lib/product-schemas';
+import {
+  isContratoAssinadoPeloCliente,
+  normalizarMotivoCorrecao,
+  podeCorrigirFinanceiroPosAssinatura,
+  possuiPagamentoRecebido,
+  cancelarCobrancasPendentes,
+  anexarHistoricoCorrecao,
+  auditarCorrecaoContrato,
+  MENSAGEM_MOTIVO_OBRIGATORIO,
+  type RegistroCorrecaoContrato,
+} from '@/lib/contrato-correcao';
 
 export async function GET(
   req: NextRequest,
@@ -21,7 +32,7 @@ export async function GET(
     if (publicToken) {
       const [link] = await sql`
         SELECT partner_id FROM public_sale_links
-        WHERE token = ${publicToken} AND status = 'active' AND (expires_at IS NULL OR expires_at > NOW())
+        WHERE token = ${publicToken} AND status IN ('active', 'used') AND (expires_at IS NULL OR expires_at > NOW())
       `;
       if (!link) return Response.json({ error: 'Token público inválido' }, { status: 401 });
 
@@ -204,6 +215,10 @@ export async function PATCH(
       'signUrl',
       'sign_url',
       'contratoGeradoEm',
+      'clienteAssinou',
+      'corretoraAssinou',
+      'statusAssinatura',
+      'historicoCorrecoesContrato',
       'checkoutId',
       'asaasCustomerId',
       'asaasPaymentId',
@@ -230,7 +245,34 @@ export async function PATCH(
     // minuta gerada, a alteração marcará a minuta como desatualizada para que o operador possa regerá-la na ZapSign.
     // Status assinado, pagamento_gerado, aprovada, emitida:
     // Preserva os valores financeiros originais da cotação para integridade com os títulos já assinados/gerados.
-    const isFinancialMutable = ['rascunho', 'enviada', 'contrato_gerado'].includes(cotacao.status);
+    let isFinancialMutable = ['rascunho', 'enviada', 'contrato_gerado'].includes(cotacao.status);
+
+    // Correção financeira após assinatura (ex.: desconto esquecido). Permitida ao gestor do
+    // vendedor, diretor, gestão da corretora e admin, com motivo obrigatório e sem nenhum
+    // pagamento recebido. Cancela a cobrança pendente e o contrato volta a aguardar assinatura.
+    const correcaoSolicitada = (payload.correcaoPosAssinatura || null) as { tipo?: string; motivo?: unknown } | null;
+    const contratoAssinadoAtual = isContratoAssinadoPeloCliente(cotacao.status, currentClientData as Record<string, any>);
+    let correcaoFinanceira: { motivo: string } | null = null;
+    if (correcaoSolicitada?.tipo === 'financeira' && contratoAssinadoAtual) {
+      if (!podeCorrigirFinanceiroPosAssinatura(user)) {
+        return Response.json(
+          { error: 'Correção de valores após a assinatura só pode ser feita pelo gestor do vendedor, diretor ou administrador.' },
+          { status: 403 }
+        );
+      }
+      const motivo = normalizarMotivoCorrecao(correcaoSolicitada.motivo);
+      if (!motivo) {
+        return Response.json({ error: MENSAGEM_MOTIVO_OBRIGATORIO, requiresMotivo: true }, { status: 422 });
+      }
+      if (await possuiPagamentoRecebido(cotacao.id)) {
+        return Response.json(
+          { error: 'Esta proposta já possui pagamento recebido. A correção de valores deve ser encaminhada ao administrador.' },
+          { status: 409 }
+        );
+      }
+      correcaoFinanceira = { motivo };
+      isFinancialMutable = true;
+    }
 
     const proposal = (payload.proposalData || {}) as Record<string, unknown>;
 
@@ -268,7 +310,8 @@ export async function PATCH(
       : (currentClientData.planoFranquia || currentClientData.franquia || 'R$ 1.000,00');
 
     const rawParcela = proposal.parcela ?? payload.parcela ?? sanitizedInputClientData.parcela;
-    const parcela = rawParcela !== undefined
+    // Quantidade de parcelas é valor financeiro: após a assinatura só muda via correção financeira.
+    const parcela = isFinancialMutable && rawParcela !== undefined
       ? (Number(rawParcela) || 1)
       : (Number(currentClientData.parcela) || 1);
 
@@ -336,7 +379,7 @@ export async function PATCH(
           tipoDePlano: planoCodigo,
           qtdParcelasSolicitada: parcela,
           cupomCodigo,
-          descontoManualPercent: canApplyManualDiscount(user)
+          descontoManualPercent: canApplyManualDiscount(user) || correcaoFinanceira
             ? (Number(
                 proposal.descontoManualPercent ??
                 payload.descontoManualPercent ??
@@ -741,7 +784,7 @@ export async function PATCH(
       ...(premioFinal !== null ? { valor: premioFinal, premioFinal } : {}),
       ...(valorParcelaCalculada !== null ? { valorParcela: valorParcelaCalculada } : {}),
       ...(importanciaSegurada !== null ? { valorCobertura: `R$ ${importanciaSegurada.toLocaleString('pt-BR')}` } : {}),
-      ...(payload.descontoManualPercent !== undefined || sanitizedInputClientData.descontoManualPercent !== undefined || payload.descontoPercentual !== undefined || sanitizedInputClientData.descontoPercentual !== undefined ? {
+      ...(isFinancialMutable && (payload.descontoManualPercent !== undefined || sanitizedInputClientData.descontoManualPercent !== undefined || payload.descontoPercentual !== undefined || sanitizedInputClientData.descontoPercentual !== undefined) ? {
         descontoManualPercent: Math.min(40, Math.max(0, Number(payload.descontoManualPercent ?? sanitizedInputClientData.descontoManualPercent ?? payload.descontoPercentual ?? sanitizedInputClientData.descontoPercentual) || 0)),
         descontoPercentual: Math.min(40, Math.max(0, Number(payload.descontoPercentual ?? sanitizedInputClientData.descontoPercentual ?? payload.descontoManualPercent ?? sanitizedInputClientData.descontoManualPercent) || 0)),
       } : {}),
@@ -866,6 +909,34 @@ export async function PATCH(
       mergedClientData.minutaDesatualizadaMotivo = 'Informações da proposta, escritório ou declarações de risco foram alteradas';
     }
 
+    // Correção financeira: cancela a cobrança pendente ANTES de gravar os novos valores
+    // (falha fechada — se o Asaas recusar, nada é alterado).
+    let registroCorrecaoFinanceira: RegistroCorrecaoContrato | null = null;
+    let pedidosCancelados: string[] = [];
+    if (correcaoFinanceira) {
+      const cancelamento = await cancelarCobrancasPendentes(cotacao.id);
+      if (!cancelamento.ok) {
+        return Response.json({ error: cancelamento.error }, { status: 502 });
+      }
+      pedidosCancelados = cancelamento.pedidosCancelados;
+      for (const key of ['checkoutId', 'linkBoleto', 'dataVencimento', 'faturaId', 'externalInstallmentId']) {
+        delete mergedClientData[key];
+      }
+      registroCorrecaoFinanceira = {
+        tipo: 'financeira',
+        motivo: correcaoFinanceira.motivo,
+        em: new Date().toISOString(),
+        porUserId: user.userId,
+        porNome: user.name,
+        documentoAnterior: currentClientData.contratoToken ? String(currentClientData.contratoToken) : null,
+        statusAnterior: cotacao.status,
+      };
+      anexarHistoricoCorrecao(mergedClientData as Record<string, any>, registroCorrecaoFinanceira);
+      mergedClientData.minutaDesatualizada = true;
+      mergedClientData.minutaAlteradaEm = new Date().toISOString();
+      mergedClientData.minutaDesatualizadaMotivo = `Correção financeira: ${correcaoFinanceira.motivo}`;
+    }
+
     // Sincroniza o cliente em insurance_clients
     const insuranceClient = await upsertInsuranceClient({
       documentNumber: clientCpfCnpj,
@@ -897,9 +968,26 @@ export async function PATCH(
         premio_final = ${premioFinal},
         is_renewal = ${isRenewalDb},
         notes = ${notes},
+        status = CASE WHEN ${Boolean(correcaoFinanceira)} THEN 'contrato_gerado' ELSE status END,
         updated_at = NOW()
       WHERE id = ${id}
     `;
+
+    if (registroCorrecaoFinanceira) {
+      await auditarCorrecaoContrato({
+        user,
+        cotacaoId: id,
+        clientName,
+        action: 'correcao_financeira_pos_assinatura',
+        registro: registroCorrecaoFinanceira,
+        extra: {
+          premioAnterior: cotacao.premio_final !== null ? Number(cotacao.premio_final) : null,
+          premioNovo: premioFinal,
+          pedidosCancelados,
+        },
+        req,
+      });
+    }
 
     // Se a cotação possuir apólice/venda gerada, sincroniza compulsoriamente issue_date e expiry_date
     if (dataInicioVigencia) {

@@ -36,7 +36,26 @@ function isOverdueEvent(event: string) {
 }
 
 function isRefundedEvent(event: string) {
-  return event === 'PAYMENT_REFUNDED' || event === 'PAYMENT_DELETED';
+  return event === 'PAYMENT_REFUNDED';
+}
+
+// PAYMENT_DELETED não é estorno: o próprio sistema exclui cobranças no Asaas ao regerar a
+// fatura, ao cancelar apenas a parcela vencida (inadimplência) ou pelo painel de boletos.
+// Tratar como estorno cancelava a apólice inteira, estornava comissões e cancelava a cotação.
+function isDeletedEvent(event: string): boolean {
+  return event === 'PAYMENT_DELETED';
+}
+
+// Recalcula o pedido após exclusão de uma cobrança, ignorando parcelas canceladas.
+// Retorna null para manter o status atual do pedido.
+function resolveOrderStatusAfterDeletion(
+  summary: { active_count: number; paid_count: number } | null | undefined
+): string | null {
+  if (!summary) return null;
+  if (summary.active_count === 0) return 'cancelled';
+  if (summary.paid_count >= summary.active_count) return 'paid';
+  if (summary.paid_count > 0) return 'partially_paid';
+  return null;
 }
 
 // payment.pixTransaction vem como objeto ({ encodedImage, payload, expirationDate, ... }) na
@@ -222,7 +241,11 @@ export async function POST(req: NextRequest) {
       await sql`
         UPDATE payment_installments
         SET
-          status = ${paymentStatus || normalizeAsaasStatus(event)},
+          status = CASE
+            WHEN ${isDeletedEvent(event)} AND LOWER(COALESCE(status, '')) IN ('received', 'confirmed', 'received_in_cash', 'paid') THEN status
+            WHEN ${isDeletedEvent(event)} THEN 'cancelled'
+            ELSE ${paymentStatus || normalizeAsaasStatus(event)}
+          END,
           net_amount = COALESCE(${Number(payment.netValue) || null}, net_amount),
           due_date = COALESCE(${payment.dueDate || null}, due_date),
           paid_at = CASE
@@ -239,12 +262,14 @@ export async function POST(req: NextRequest) {
 
       const [summary] = await sql<{
         total_count: number;
+        active_count: number;
         paid_count: number;
         paid_amount: number;
         latest_due_date: string | null;
       }[]>`
         SELECT
           COUNT(*)::int AS total_count,
+          COUNT(*) FILTER (WHERE LOWER(COALESCE(status, '')) NOT IN ('cancelled', 'canceled', 'deleted'))::int AS active_count,
           COUNT(*) FILTER (WHERE LOWER(status) IN ('received', 'confirmed', 'received_in_cash', 'paid'))::int AS paid_count,
           COALESCE(SUM(amount) FILTER (WHERE LOWER(status) IN ('received', 'confirmed', 'received_in_cash', 'paid')), 0)::numeric AS paid_amount,
           MAX(due_date)::text AS latest_due_date
@@ -252,7 +277,9 @@ export async function POST(req: NextRequest) {
         WHERE payment_order_id = ${installment.payment_order_id}
       `;
 
-      const orderStatus = isRefundedEvent(event)
+      const orderStatus: string | null = isDeletedEvent(event)
+        ? resolveOrderStatusAfterDeletion(summary)
+        : isRefundedEvent(event)
         ? 'refunded'
         : isOverdueEvent(event)
           ? 'overdue'
@@ -265,7 +292,7 @@ export async function POST(req: NextRequest) {
       await sql`
         UPDATE payment_orders
         SET
-          status = ${orderStatus},
+          status = COALESCE(${orderStatus}, status),
           paid_installments = ${summary.paid_count},
           paid_amount = ${Number(summary.paid_amount) || 0},
           due_date = COALESCE(${payment.dueDate || summary.latest_due_date || null}, due_date),
@@ -278,7 +305,7 @@ export async function POST(req: NextRequest) {
       `;
     }
 
-    // Tratamento prioritário de estorno/devolução (PAYMENT_REFUNDED / PAYMENT_DELETED)
+    // Tratamento prioritário de estorno/devolução (somente PAYMENT_REFUNDED; PAYMENT_DELETED não cancela a apólice)
     if (isRefundedEvent(event)) {
       const refundCotacaoId =
         installment?.cotacao_id ||

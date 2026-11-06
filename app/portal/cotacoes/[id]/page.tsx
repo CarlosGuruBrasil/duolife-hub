@@ -14,6 +14,7 @@ import { EnviarFaturaEmailButton } from '@/components/cotacao/EnviarFaturaEmailB
 import { EnviarPropostaEmailButton } from '@/components/cotacao/EnviarPropostaEmailButton';
 import { VerificarZapSignButton } from '@/components/cotacao/VerificarZapSignButton';
 import RegerarMinutaButton from '@/components/cotacao/RegerarMinutaButton';
+import { podeCorrigirFinanceiroPosAssinatura } from '@/lib/contrato-correcao';
 import { SincronizarAsaasButton } from '@/components/cotacao/SincronizarAsaasButton';
 import CotacaoInformacoesProfissionaisCard from '@/components/cotacao/CotacaoInformacoesProfissionaisCard';
 import ResolverDuplicidadeButton from '@/components/portal/ResolverDuplicidadeButton';
@@ -78,6 +79,7 @@ export default async function PortalCotacaoDetailPage({
   if (!user) redirect('/login');
   const access = await getPartnerAccessContext(user);
   if (!access) redirect('/login');
+  const podeCorrigirFinanceiro = podeCorrigirFinanceiroPosAssinatura(user);
 
   await ensureSchema();
   const { id } = await params;
@@ -679,6 +681,7 @@ export default async function PortalCotacaoDetailPage({
               />
             )}
             <EditarPropostaButton
+              podeCorrigirFinanceiro={podeCorrigirFinanceiro}
               cotacao={{
                 id: cotacao.id,
                 status: cotacao.status,
@@ -785,6 +788,7 @@ export default async function PortalCotacaoDetailPage({
                 <FileText size={16} className="text-cyan-600" /> Detalhes do Plano Contratado
               </h2>
               <EditarPropostaButton
+                podeCorrigirFinanceiro={podeCorrigirFinanceiro}
                 cotacao={{
                   id: cotacao.id,
                   status: cotacao.status,
@@ -1799,6 +1803,7 @@ export default async function PortalCotacaoDetailPage({
                     isExpired={isMinutaExpired}
                     docToken={docToken}
                     prazoLimite={prazoLimiteFormatado}
+                    isContratoAssinado={isProponenteAssinado || ['assinado', 'pagamento_gerado'].includes(String(cotacao.status))}
                   />
                   {signUrl && !isMinutaExpired && (
                     <>

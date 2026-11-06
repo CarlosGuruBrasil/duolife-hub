@@ -3,9 +3,15 @@ import { authenticateWixRequest } from '@/lib/wix-integration-auth';
 import { sql } from '@/lib/pg';
 import { parseJsonbField } from '@/lib/json-safe';
 import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
-import { gerarContratoPdfGotenberg } from '@/lib/gotenberg-contract-generator';
-import { criarDocumentoZapSignDireto } from '@/lib/zapsign-direct-docs';
+import { getZapSignConfig } from '@/lib/system-settings';
+import { cancelarDocumentoZapSign } from '@/lib/zapsign-direct-docs';
+import {
+  determinarTemplateZapSignNet4Life,
+  montarVariaveisTemplateZapSign,
+  criarDocumentoZapSignPorModelo,
+} from '@/lib/zapsign-template-service';
 import { logger } from '@/lib/logger';
+import { isContratoAssinadoPeloCliente } from '@/lib/contrato-correcao';
 
 export async function POST(
   req: NextRequest,
@@ -29,7 +35,7 @@ export async function POST(
     const body = await req.json().catch(() => ({}));
     const forceRecreate = Boolean(body?.forceRecreate);
 
-    // 1. Busca a cotação no banco
+    // 1. Busca a cotação no banco de dados
     const [cotacao] = await sql<any[]>`
       SELECT * FROM cotacoes WHERE id = ${id} LIMIT 1
     `;
@@ -64,6 +70,21 @@ export async function POST(
       LIMIT 1
     `;
 
+    // Contrato já assinado nunca é refeito pela integração (não há operador para informar o motivo).
+    // A correção deve ser feita no painel, com motivo obrigatório.
+    const contratoAssinado =
+      existingDoc?.status === 'signed' ||
+      (isContratoAssinadoPeloCliente(cotacao.status, clientData) && Boolean(clientData.contratoToken));
+    if (contratoAssinado && (forceRecreate || !existingDoc)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Contrato já assinado. A correção deve ser solicitada ao corretor responsável.',
+        },
+        { status: 409 }
+      );
+    }
+
     if (existingDoc && !forceRecreate) {
       return NextResponse.json({
         success: true,
@@ -74,54 +95,104 @@ export async function POST(
       });
     }
 
-    // 3. Gera PDF vetorial oficial via motor Gotenberg (com fallback transparente para PDF-Lib)
-    logger.info({ cotacaoId: cotacao.id }, 'wix.contrato.gerando_pdf');
-    const pdfData = await gerarContratoPdfGotenberg(cotacao.id);
+    // 3. Se for regeração e houver documento anterior, cancela na ZapSign
+    if (clientData.contratoToken) {
+      try {
+        await cancelarDocumentoZapSign(clientData.contratoToken);
+      } catch (cancelErr) {
+        logger.warn({ cancelErr, docToken: clientData.contratoToken }, 'wix.contrato.cancel_old_warn');
+      }
 
-    // 4. Configura signatários: Proponente assina imediatamente no checkout web
-    const signatarioProponente = {
-      nome: pdfData.signatarioProponente?.nome || cotacao.client_name,
-      email: pdfData.signatarioProponente?.email || cotacao.client_email || 'suporte@duolife.net.br',
-      phone: pdfData.signatarioProponente?.phone || cotacao.client_phone || null,
-      order: undefined, // Sem restrição sequencial: proponente assina imediatamente no checkout
-      signaturePattern: '{{assinatura_proponente}}',
-      sendAutomaticEmail: false, // Cliente já está na tela assinando
-    };
+      await sql`
+        UPDATE signature_documents
+        SET status = 'cancelled', updated_at = NOW()
+        WHERE cotacao_id = ${cotacao.id} AND status NOT IN ('cancelled', 'refused', 'expired')
+      `;
+    }
 
-    const signatarioCorretora = {
-      nome: pdfData.signatarioCorretora?.nome || 'Corretora Net4Life',
-      email: pdfData.signatarioCorretora?.email || 'contato@net4life.com.br',
-      phone: pdfData.signatarioCorretora?.phone || null,
-      order: undefined, // Sem restrição sequencial: ambos assinam de forma independente
-      signaturePattern: '{{assinatura_corretora}}',
-      sendAutomaticEmail: true,
-    };
+    // 4. Determina as configurações ativas do ZapSign e o Modelo a ser utilizado
+    const zapConfig = await getZapSignConfig();
+    const templateResolution = determinarTemplateZapSignNet4Life(clientData, cotacao, zapConfig);
+
+    logger.info(
+      {
+        cotacaoId: cotacao.id,
+        templateId: templateResolution.templateId,
+        tipoContrato: templateResolution.tipoContrato,
+        isRenovacao: templateResolution.isRenovacao,
+        is100k: templateResolution.is100k,
+      },
+      'wix.contrato.template_resolvido'
+    );
+
+    // 5. Busca descrição textual de cargos PPE se aplicável
+    let ppeDescricao = '';
+    const arrayCargoSelect = clientData.ppeCargoSelect
+      ? String(clientData.ppeCargoSelect).split(',').map((x) => x.trim()).filter(Boolean)
+      : [];
+
+    if (arrayCargoSelect.length > 0) {
+      try {
+        const rows = await sql`
+          SELECT payload FROM wix_items
+          WHERE wix_collection_id IN (
+            SELECT id FROM wix_collections WHERE collection_id = 'PPECARGOS'
+          )
+          AND is_active = true
+        `;
+        const cargos = rows
+          .map((r) => {
+            try {
+              const parsed = typeof r.payload === 'string' ? JSON.parse(r.payload) : r.payload;
+              return parsed?.item?.data || null;
+            } catch {
+              return null;
+            }
+          })
+          .filter((c) => c && arrayCargoSelect.includes(String(c.id_)));
+
+        ppeDescricao = cargos.map((c) => c.text).join('\n');
+      } catch (err) {
+        logger.warn({ err }, 'wix.contrato.fetch_ppe_failed');
+      }
+    }
+
+    // 6. Monta todas as variáveis/tokens para substituição na minuta da ZapSign (SEM ENVIO DE PDF)
+    const { dataArray } = montarVariaveisTemplateZapSign(clientData, cotacao, {
+      ppeDescricao,
+      corretoraInfo: {
+        cidade: 'Florianópolis',
+        nomeFantasia: 'NET4LIFE CORRETORA DE SEGUROS',
+      },
+      valorTotal: Number(cotacao.premio_final || clientData.valor || 0),
+      qtdParcelas: Math.max(1, Number(clientData.parcela || clientData.parcelas || 1)),
+      valorParcela: Number(clientData.valorParcela || cotacao.premio_final || 0),
+    });
 
     const deadlineZapSign = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
       .toISOString()
       .slice(0, 10);
 
-    // 5. Registra o documento na API oficial da ZapSign (Proponente em primeiro lugar)
-    logger.info({ cotacaoId: cotacao.id, docName: pdfData.docName }, 'wix.contrato.enviando_zapsign');
-    const directDoc = await criarDocumentoZapSignDireto({
-      base64Pdf: pdfData.base64,
-      docName: pdfData.docName,
+    // 7. Criação do documento via Endpoint oficial de Modelos (/models/create-doc/)
+    logger.info(
+      { cotacaoId: cotacao.id, templateId: templateResolution.templateId, tokensCount: dataArray.length },
+      'wix.contrato.criando_documento_modelo'
+    );
+
+    const docResult = await criarDocumentoZapSignPorModelo({
+      templateId: templateResolution.templateId,
+      signerName: cotacao.client_name,
+      signerEmail: cotacao.client_email || 'suporte@duolife.net.br',
       externalId: cotacao.id,
       deadlineAt: deadlineZapSign,
-      signatarios: [signatarioProponente, signatarioCorretora],
+      dataArray,
+      zapConfig,
     });
 
-    const docToken = directDoc.docToken;
-    const proponenteSigner =
-      directDoc.signers?.find(
-        (s) => s.email?.toLowerCase() === signatarioProponente.email.toLowerCase()
-      ) ||
-      directDoc.signers?.find((s) => s.name === signatarioProponente.nome) ||
-      directDoc.signers?.[0];
+    const docToken = docResult.docToken;
+    const signUrl = docResult.signUrl;
 
-    const signUrl = proponenteSigner?.signUrl || directDoc.signUrl || '';
-
-    // 6. Registra em signature_documents
+    // 8. Registra em signature_documents
     await sql`
       INSERT INTO signature_documents (
         cotacao_id,
@@ -145,10 +216,22 @@ export async function POST(
       )
     `;
 
-    // 7. Atualiza client_data e o status da cotação para 'contrato_gerado'
+    // 9. Atualiza client_data e o status da cotação para 'contrato_gerado'
     clientData.contratoToken = docToken;
     clientData.signUrl = signUrl;
+    clientData.signUrlProponente = signUrl;
+    clientData.contratoModo = 'template';
+    clientData.contratoTemplateId = templateResolution.templateId;
+    clientData.contratoTipo = templateResolution.tipoContrato;
     clientData.contratoGeradoEm = new Date().toISOString();
+    clientData.contratoPrazoLimite = deadlineZapSign;
+    clientData.totalAssinaturas = 1;
+    clientData.assinaturasNecessarias = ['cliente'];
+    clientData.statusAssinatura = 'falta_cliente';
+    clientData.clienteAssinou = false;
+    clientData.corretoraAssinou = true;
+    clientData.minutaDesatualizada = false;
+    delete clientData.signUrlCorretora;
 
     await sql`
       UPDATE cotacoes
@@ -163,8 +246,10 @@ export async function POST(
         cotacaoId: cotacao.id,
         docToken,
         signUrl,
+        templateId: templateResolution.templateId,
+        tipoContrato: templateResolution.tipoContrato,
       },
-      'wix.contrato.gerado_com_sucesso'
+      'wix.contrato.gerado_com_sucesso_via_modelo'
     );
 
     return NextResponse.json({
@@ -178,7 +263,7 @@ export async function POST(
     return NextResponse.json(
       {
         success: false,
-        error: 'Erro interno ao gerar contrato e registrar documento no ZapSign.',
+        error: err?.message || 'Erro interno ao gerar contrato e registrar documento no ZapSign.',
       },
       { status: 500 }
     );

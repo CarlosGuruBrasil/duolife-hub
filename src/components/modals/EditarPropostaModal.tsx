@@ -70,7 +70,11 @@ export interface EditarPropostaModalProps {
   };
   readOnlyFinancials?: boolean; // Se true ou se status for assinado/pagamento_gerado/aprovada, bloqueia edição de prêmio/cobertura
   initialTab?: 'cliente' | 'proposta' | 'escritorio' | 'risco';
+  /** Gestor do vendedor, diretor, gestão da corretora ou admin: pode corrigir valores após a assinatura. */
+  podeCorrigirFinanceiro?: boolean;
 }
+
+const MOTIVO_CORRECAO_MIN = 10;
 
 export interface PlanoDisponivel {
   tipoDePlano: string;
@@ -189,6 +193,7 @@ export default function EditarPropostaModal({
   cotacao,
   readOnlyFinancials,
   initialTab,
+  podeCorrigirFinanceiro = false,
 }: EditarPropostaModalProps) {
   const router = useRouter();
   const numeroInputRef = useRef<HTMLInputElement>(null);
@@ -295,13 +300,23 @@ export default function EditarPropostaModal({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // Regra de bloqueio financeiro estrita
-  const isFinancialLocked = Boolean(
-    readOnlyFinancials ||
-      ['assinado', 'pagamento_gerado', 'aprovada', 'emitida'].includes(
-        String(cotacao?.status || '').toLowerCase()
-      )
-  );
+  // Correção de contrato já assinado pelo cliente (motivo obrigatório)
+  const statusAtual = String(cotacao?.status || '').toLowerCase();
+  const isApoliceEmitida = ['aprovada', 'emitida'].includes(statusAtual);
+  const isContratoAssinado =
+    !isApoliceEmitida &&
+    (['assinado', 'pagamento_gerado'].includes(statusAtual) ||
+      Boolean(parseRawClientData(cotacao?.client_data)?.clienteAssinou));
+  const [tipoCorrecao, setTipoCorrecao] = useState<'cadastral' | 'financeira'>('cadastral');
+  const [motivoCorrecao, setMotivoCorrecao] = useState('');
+  const correcaoFinanceiraAtiva = isContratoAssinado && podeCorrigirFinanceiro && tipoCorrecao === 'financeira';
+
+  // Regra de bloqueio financeiro estrita (liberada apenas na correção financeira autorizada)
+  const isFinancialLocked =
+    Boolean(
+      readOnlyFinancials ||
+        ['assinado', 'pagamento_gerado', 'aprovada', 'emitida'].includes(statusAtual)
+    ) && !correcaoFinanceiraAtiva;
 
   // Identificação do Ramo de Atuação
   const rawClientData = useMemo(() => parseRawClientData(cotacao?.client_data), [cotacao?.client_data]);
@@ -828,6 +843,12 @@ export default function EditarPropostaModal({
       }
     }
 
+    const motivoLimpo = motivoCorrecao.replace(/\s+/g, ' ').trim();
+    if (isContratoAssinado && (forceRegerarMinuta || correcaoFinanceiraAtiva) && motivoLimpo.length < MOTIVO_CORRECAO_MIN) {
+      setErrorMessage(`Informe o motivo da correção (mínimo de ${MOTIVO_CORRECAO_MIN} caracteres).`);
+      return;
+    }
+
     if (forceRegerarMinuta) {
       setRegerandoMinuta(true);
     } else {
@@ -1079,6 +1100,10 @@ export default function EditarPropostaModal({
           premioBase > 0 ? premioBase : parsedPremio > 0 ? parsedPremio : 0;
       }
 
+      if (correcaoFinanceiraAtiva) {
+        payload.correcaoPosAssinatura = { tipo: 'financeira', motivo: motivoLimpo };
+      }
+
       // 1. Atualiza proposta via PATCH
       const res = await fetch(`/api/cotacoes/${cotacao.id}`, {
         method: 'PATCH',
@@ -1102,7 +1127,11 @@ export default function EditarPropostaModal({
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ forceRecreate: true }),
+            body: JSON.stringify(
+              isContratoAssinado
+                ? { forceRecreate: true, motivoCorrecao: motivoLimpo, tipoCorrecao }
+                : { forceRecreate: true }
+            ),
           }
         );
 
@@ -1114,7 +1143,11 @@ export default function EditarPropostaModal({
           );
         }
 
-        setSuccessMessage('Proposta atualizada e nova Minuta gerada no ZapSign com sucesso!');
+        setSuccessMessage(
+          isContratoAssinado
+            ? 'Proposta corrigida e novo contrato gerado. Envie o novo link ao cliente — não há aviso automático.'
+            : 'Proposta atualizada e nova Minuta gerada no ZapSign com sucesso!'
+        );
       } else {
         setSuccessMessage('Proposta atualizada com sucesso!');
       }
@@ -1208,6 +1241,72 @@ export default function EditarPropostaModal({
               </span>
               <p className="text-amber-800 leading-relaxed break-words whitespace-normal m-0">
                 Esta proposta possui contrato assinado ou cobrança gerada. Os dados cadastrais, escritório, declarações de risco e vigência podem ser alterados livremente. Os valores financeiros (cobertura e prêmio) estão preservados para manter a conformidade legal.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Correção de contrato já assinado */}
+        {isContratoAssinado && (
+          <div className="mx-6 mt-4 bg-white border border-rose-200 rounded-xl p-3.5 space-y-3 text-xs">
+            <div className="flex items-start gap-2 text-rose-800">
+              <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" aria-hidden="true" />
+              <p className="m-0 leading-relaxed">
+                <strong className="text-rose-900">Contrato já assinado pelo cliente.</strong> Ao regerar a minuta, o
+                contrato assinado é cancelado e o cliente precisa assinar de novo. O aviso ao cliente fica a cargo do vendedor.
+              </p>
+            </div>
+
+            {podeCorrigirFinanceiro && (
+              <fieldset className="space-y-1.5">
+                <legend className="font-semibold text-gray-900 mb-1">Tipo de correção</legend>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <label className="flex items-center gap-2 min-h-[44px] px-3 rounded-lg border border-gray-300 cursor-pointer text-gray-800 focus-within:ring-2 focus-within:ring-teal-500">
+                    <input
+                      type="radio"
+                      name="tipo-correcao"
+                      value="cadastral"
+                      checked={tipoCorrecao === 'cadastral'}
+                      onChange={() => setTipoCorrecao('cadastral')}
+                    />
+                    <span>Cadastral (valores e cobrança mantidos)</span>
+                  </label>
+                  <label className="flex items-center gap-2 min-h-[44px] px-3 rounded-lg border border-gray-300 cursor-pointer text-gray-800 focus-within:ring-2 focus-within:ring-teal-500">
+                    <input
+                      type="radio"
+                      name="tipo-correcao"
+                      value="financeira"
+                      checked={tipoCorrecao === 'financeira'}
+                      onChange={() => setTipoCorrecao('financeira')}
+                    />
+                    <span>Financeira (cancela a cobrança pendente)</span>
+                  </label>
+                </div>
+                {correcaoFinanceiraAtiva && (
+                  <p className="m-0 text-amber-800">
+                    Valores liberados para edição. A cobrança não paga será cancelada no Asaas e uma nova deverá ser
+                    gerada após a nova assinatura. Se já houver pagamento recebido, a correção é bloqueada e deve ir ao administrador.
+                  </p>
+                )}
+              </fieldset>
+            )}
+
+            <div className="space-y-1">
+              <label htmlFor="motivo-correcao-contrato" className="block font-semibold text-gray-900">
+                Motivo da correção <span className="text-rose-700">*</span>
+              </label>
+              <textarea
+                id="motivo-correcao-contrato"
+                value={motivoCorrecao}
+                onChange={(e) => setMotivoCorrecao(e.target.value)}
+                rows={2}
+                maxLength={500}
+                aria-describedby="motivo-correcao-contrato-ajuda"
+                placeholder="Ex.: desconto negociado não aplicado na proposta assinada."
+                className="w-full text-xs text-gray-900 bg-white border border-gray-300 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+              <p id="motivo-correcao-contrato-ajuda" className="m-0 text-gray-600">
+                Obrigatório para regerar a minuta{podeCorrigirFinanceiro ? ' ou corrigir valores' : ''} (mínimo de {MOTIVO_CORRECAO_MIN} caracteres). Fica registrado na auditoria.
               </p>
             </div>
           </div>

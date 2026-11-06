@@ -12,7 +12,11 @@ export interface RegerarMinutaButtonProps {
   prazoLimite?: string | null;
   onSuccess?: () => void;
   disabled?: boolean;
+  /** Cliente já assinou: refazer exige motivo e cancela o contrato assinado. */
+  isContratoAssinado?: boolean;
 }
+
+const MOTIVO_MIN = 10;
 
 export default function RegerarMinutaButton({
   cotacaoId,
@@ -22,24 +26,35 @@ export default function RegerarMinutaButton({
   prazoLimite,
   onSuccess,
   disabled = false,
+  isContratoAssinado = false,
 }: RegerarMinutaButtonProps) {
   const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [motivo, setMotivo] = useState('');
+  const motivoValido = motivo.trim().length >= MOTIVO_MIN;
+  const motivoId = `motivo-correcao-${cotacaoId}`;
 
   // O botão só é ativo se a minuta estiver desatualizada por alteração de cadastro/proposta OU se tiver expirado
-  const isActionRequired = isOutdated || isExpired;
+  // Contrato assinado não expira para fins de regeração: só refaz se houver alteração de dados.
+  const isActionRequired = isContratoAssinado ? isOutdated : isOutdated || isExpired;
   const isButtonDisabled = disabled || !isActionRequired;
 
-  const tooltipText = isExpired
+  const tooltipText = isContratoAssinado && isOutdated
+    ? 'Contrato já assinado e dados alterados. Clique para cancelar o contrato assinado e gerar um novo (motivo obrigatório).'
+    : isExpired && !isContratoAssinado
     ? 'O prazo de assinatura de 7 dias expirou. Clique para regerar a minuta e emitir novo link.'
     : isOutdated
     ? 'Dados da proposta ou cliente foram alterados. Clique para cancelar a minuta anterior e gerar uma nova.'
     : 'A minuta está sincronizada com os dados atuais da proposta. Para regerar, altere algum dado no botão "Editar Proposta".';
 
   async function handleRegerarMinuta() {
+    if (isContratoAssinado && !motivoValido) {
+      setErrorMsg(`Informe o motivo da correção (mínimo de ${MOTIVO_MIN} caracteres).`);
+      return;
+    }
     setLoading(true);
     setErrorMsg(null);
     setSuccessMsg(null);
@@ -50,7 +65,11 @@ export default function RegerarMinutaButton({
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ forceRecreate: true }),
+        body: JSON.stringify(
+          isContratoAssinado
+            ? { forceRecreate: true, motivoCorrecao: motivo.trim() }
+            : { forceRecreate: true }
+        ),
       });
 
       const data = await res.json();
@@ -59,7 +78,12 @@ export default function RegerarMinutaButton({
         throw new Error(data.error || 'Falha ao regerar minuta de contrato na ZapSign.');
       }
 
-      setSuccessMsg('Nova minuta gerada com sucesso! O contrato anterior foi cancelado e o novo link tem 7 dias de validade.');
+      setSuccessMsg(
+        isContratoAssinado
+          ? 'Novo contrato gerado. O contrato assinado anterior foi cancelado. Envie o novo link ao cliente — não há aviso automático.'
+          : 'Nova minuta gerada com sucesso! O contrato anterior foi cancelado e o novo link tem 7 dias de validade.'
+      );
+      setMotivo('');
       if (onSuccess) onSuccess();
 
       setTimeout(() => {
@@ -168,7 +192,38 @@ export default function RegerarMinutaButton({
                 </ul>
               </div>
 
-              {isExpired && (
+              {isContratoAssinado && (
+                <div className="space-y-2">
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-[11.5px] flex items-start gap-2 font-medium">
+                    <ShieldAlert size={15} className="shrink-0 mt-0.5 text-rose-600" />
+                    <span>
+                      <strong>Este contrato já foi assinado pelo cliente.</strong> Ao confirmar, o contrato assinado será
+                      cancelado e o cliente precisará assinar novamente. A cobrança já emitida é mantida.
+                    </span>
+                  </div>
+                  <label htmlFor={motivoId} className="block text-xs font-semibold text-gray-900">
+                    Motivo da correção <span className="text-rose-700">*</span>
+                  </label>
+                  <textarea
+                    id={motivoId}
+                    value={motivo}
+                    onChange={(e) => setMotivo(e.target.value)}
+                    disabled={loading}
+                    rows={3}
+                    maxLength={500}
+                    required
+                    aria-required="true"
+                    aria-describedby={`${motivoId}-ajuda`}
+                    placeholder="Ex.: CPF do cliente digitado errado no contrato assinado."
+                    className="w-full text-xs text-gray-900 bg-white border border-gray-300 rounded-xl p-2.5 focus:outline-none focus:ring-2 focus:ring-amber-400"
+                  />
+                  <p id={`${motivoId}-ajuda`} className="text-[11px] text-slate-600">
+                    Mínimo de {MOTIVO_MIN} caracteres. Fica registrado na auditoria.
+                  </p>
+                </div>
+              )}
+
+              {isExpired && !isContratoAssinado && (
                 <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-[11.5px] flex items-center gap-2 font-medium">
                   <Clock size={15} className="shrink-0 text-rose-600" />
                   <span>O prazo anterior de 7 dias expirou sem assinatura.</span>
@@ -204,7 +259,7 @@ export default function RegerarMinutaButton({
               <button
                 type="button"
                 onClick={handleRegerarMinuta}
-                disabled={loading}
+                disabled={loading || (isContratoAssinado && !motivoValido)}
                 className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 rounded-xl shadow-xs transition-colors cursor-pointer disabled:opacity-50"
               >
                 {loading ? (

@@ -155,6 +155,12 @@ export async function getAsaasConfig(): Promise<AsaasConfig> {
   };
 }
 
+export const DEFAULT_ZAPSIGN_TEMPLATES = {
+  OFICIAL: '0ba7013e-3550-4f1d-92d8-2582810a3a9e',
+  PLANO_100K: '22efcc24-aa53-4c84-9946-e81ef2e0c197',
+  RENOVACAO: '3718fe53-33f1-47c6-80c3-d7adccc09db7',
+} as const;
+
 /**
  * Retorna as configurações ativas do ZapSign (API Token, Base URL, templates e modo Sandbox).
  */
@@ -163,9 +169,15 @@ export async function getZapSignConfig(): Promise<ZapSignConfig> {
 
   const apiToken = sanitizeApiToken(dbSettings['ZAPSIGN_API_TOKEN'] || process.env.ZAPSIGN_API_TOKEN || '');
   const webhookSecret = sanitizeApiToken(dbSettings['ZAPSIGN_WEBHOOK_SECRET'] || process.env.ZAPSIGN_WEBHOOK_SECRET || '');
-  const templateOficial = sanitizeApiToken(dbSettings['ZAPSIGN_TEMPLATE_OFICIAL'] || process.env.ZAPSIGN_TEMPLATE_OFICIAL || '');
-  const template100k = sanitizeApiToken(dbSettings['ZAPSIGN_TEMPLATE_100K'] || process.env.ZAPSIGN_TEMPLATE_100K || '');
-  const templateRenovacao = sanitizeApiToken(dbSettings['ZAPSIGN_TEMPLATE_RENOVACAO'] || process.env.ZAPSIGN_TEMPLATE_RENOVACAO || '');
+  const templateOficial = sanitizeApiToken(
+    dbSettings['ZAPSIGN_TEMPLATE_OFICIAL'] || process.env.ZAPSIGN_TEMPLATE_OFICIAL || DEFAULT_ZAPSIGN_TEMPLATES.OFICIAL
+  );
+  const template100k = sanitizeApiToken(
+    dbSettings['ZAPSIGN_TEMPLATE_100K'] || process.env.ZAPSIGN_TEMPLATE_100K || DEFAULT_ZAPSIGN_TEMPLATES.PLANO_100K
+  );
+  const templateRenovacao = sanitizeApiToken(
+    dbSettings['ZAPSIGN_TEMPLATE_RENOVACAO'] || process.env.ZAPSIGN_TEMPLATE_RENOVACAO || DEFAULT_ZAPSIGN_TEMPLATES.RENOVACAO
+  );
 
   let envSetting = (dbSettings['ZAPSIGN_ENVIRONMENT'] || '').trim().toLowerCase();
   if (!envSetting) {

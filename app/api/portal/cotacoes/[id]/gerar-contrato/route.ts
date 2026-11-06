@@ -4,6 +4,7 @@ import { logger } from '@/lib/logger';
 import { sql } from '@/lib/pg';
 import { getAccessibleQuoteById } from '@/lib/access';
 import { parseJsonbField } from '@/lib/json-safe';
+import { determinarTemplateZapSignNet4Life } from '@/lib/zapsign-template-service';
 import { calcularPrecoServidor } from '@/lib/pricing';
 import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
 import { getZapSignConfig, sanitizeApiToken } from '@/lib/system-settings';
@@ -16,6 +17,15 @@ import { GRUPOS_TARIFARIOS_SAUDE } from '@/lib/product-schemas';
 import { criarDocumentoZapSignDireto, cancelarDocumentoZapSign } from '@/lib/zapsign-direct-docs';
 import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
 import { calculatePolicyExpiryDate } from '@/lib/format';
+import {
+  isContratoAssinadoPeloCliente,
+  normalizarMotivoCorrecao,
+  anexarHistoricoCorrecao,
+  auditarCorrecaoContrato,
+  MENSAGEM_MOTIVO_OBRIGATORIO,
+  STATUS_PEDIDO_INATIVO,
+  type RegistroCorrecaoContrato,
+} from '@/lib/contrato-correcao';
 import { parseVigenciaDate } from '@/lib/insurance-ops';
 
 export async function POST(
@@ -31,7 +41,7 @@ export async function POST(
     const [link] = await sql`
       SELECT partner_id
       FROM public_sale_links
-      WHERE token = ${publicToken} AND status = 'active' AND (expires_at IS NULL OR expires_at > NOW())
+      WHERE token = ${publicToken} AND status IN ('active', 'used') AND (expires_at IS NULL OR expires_at > NOW())
     `;
     if (!link) return Response.json({ error: 'Token público inválido ou expirado' }, { status: 401 });
     targetPartnerId = link.partner_id;
@@ -78,6 +88,26 @@ export async function POST(
 
     const clientData = parseJsonbField<Record<string, any>>(cotacao.client_data);
 
+    // Contrato já assinado pelo cliente: só é refeito por ação explícita de um usuário
+    // autenticado, com motivo obrigatório. O cliente (link público) nunca refaz.
+    const contratoAssinado = isContratoAssinadoPeloCliente(cotacao.status, clientData) && Boolean(clientData.contratoToken);
+    let motivoCorrecao: string | null = null;
+    if (contratoAssinado && forceRecreate) {
+      if (publicToken || !user) {
+        return Response.json(
+          { error: 'Este contrato já foi assinado. Para corrigir algum dado, fale com o seu corretor.' },
+          { status: 409 }
+        );
+      }
+      motivoCorrecao = normalizarMotivoCorrecao(requestBody?.motivoCorrecao);
+      if (!motivoCorrecao) {
+        return Response.json({ error: MENSAGEM_MOTIVO_OBRIGATORIO, requiresMotivo: true }, { status: 422 });
+      }
+    }
+    const isCorrecaoAssinado = contratoAssinado && forceRecreate && Boolean(motivoCorrecao);
+    const previousDocToken: string | null = clientData.contratoToken ? String(clientData.contratoToken) : null;
+    const statusAnterior: string = cotacao.status;
+
     const flowKey = clientData.flowKey || cotacao.flow_key || null;
     const productId = clientData.productId || cotacao.product_id || null;
     const isMedico =
@@ -111,6 +141,28 @@ export async function POST(
       return Response.json({ error: 'Cotação sem valor de prêmio calculado — não é possível gerar contrato' }, { status: 422 });
     }
 
+    // Em correção de contrato assinado, se existir cobrança ativa ela é mantida: o novo contrato
+    // precisa ter o mesmo valor. Divergência exige correção financeira (que cancela a cobrança).
+    let manterCobrancaAtiva = false;
+    if (isCorrecaoAssinado) {
+      const [pedidoAtivo] = await sql<{ id: string }[]>`
+        SELECT id FROM payment_orders
+        WHERE cotacao_id = ${cotacao.id}
+          AND LOWER(COALESCE(status, '')) NOT IN ${sql(STATUS_PEDIDO_INATIVO)}
+        LIMIT 1
+      `;
+      manterCobrancaAtiva = Boolean(pedidoAtivo);
+      const premioCobrado = Number(cotacao.premio_final || 0);
+      if (manterCobrancaAtiva && premioCobrado > 0 && Math.abs(Math.round(valorTotal * 100) / 100 - premioCobrado) > 0.01) {
+        return Response.json(
+          {
+            error: `O valor recalculado (${valorTotal.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}) difere do valor da cobrança já emitida (${premioCobrado.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}). Faça uma correção financeira antes de refazer o contrato.`,
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     // Prazo de validade universal: exatamente 7 dias corridos a partir da geração
     const PRAZO_DIAS_ASSINATURA = 7;
     const deadlineDate = new Date(Date.now() + PRAZO_DIAS_ASSINATURA * 24 * 60 * 60 * 1000);
@@ -118,7 +170,7 @@ export async function POST(
     const deadlineZapSign = deadlineIso.slice(0, 10); // YYYY-MM-DD aceito pelo ZapSign
 
     const contratoGeradoEm = clientData.contratoGeradoEm ? new Date(clientData.contratoGeradoEm) : null;
-    const signUrlExpirado = contratoGeradoEm
+    const signUrlExpirado = !contratoAssinado && contratoGeradoEm
       ? (Date.now() - contratoGeradoEm.getTime()) > PRAZO_DIAS_ASSINATURA * 24 * 60 * 60 * 1000
       : false;
 
@@ -130,18 +182,15 @@ export async function POST(
     // Regra de Negócio:
     // Apenas propostas vinculadas à corretora Net4life podem utilizar o modo por 'template' da ZapSign (quando habilitado).
     // Para todas as demais corretoras parceiras, força OBRIGATORIAMENTE 'dynamic_pdf' (layout timbrado com logo e dados da corretora).
-    const isDynamicPdf =
-      !isNet4Life ||
-      isMedico ||
-      zapConfig.docGenerationMode === 'dynamic_pdf' ||
-      req.nextUrl.searchParams.get('modo') === 'dynamic_pdf';
+    // Regra de Negócio:
+    // Propostas da corretora Net4Life DEVEM OBRIGATORIAMENTE utilizar o modo por 'template' com tokens da ZapSign.
+    // Jamais gerar ou enviar PDF para propostas da Net4Life.
+    // Demais corretoras parceiras sempre utilizarão 'dynamic_pdf' (layout timbrado com logo e dados da corretora).
+    const isDynamicPdf = !isNet4Life || isMedico;
 
-    const tipoContrato = determinarTipoContrato(clientData, cotacao);
-    const templateId = tipoContrato === '100k_renovacao'
-      ? zapConfig.templateRenovacao
-      : tipoContrato === '100k'
-        ? zapConfig.template100k
-        : zapConfig.templateOficial;
+    const templateResolution = determinarTemplateZapSignNet4Life(clientData, cotacao, zapConfig);
+    const tipoContrato = templateResolution.tipoContrato;
+    const templateId = templateResolution.templateId;
 
     logger.info(
       {
@@ -170,13 +219,14 @@ export async function POST(
     const isTipoMismatch = Boolean(clientData.contratoTipo) && clientData.contratoTipo !== tipoContrato;
     const isModoMismatch = Boolean(clientData.contratoModo) && clientData.contratoModo !== desiredContratoModo;
 
-    const needsRecreation =
-      forceRecreate ||
-      signUrlExpirado ||
-      isMinutaOutdated ||
-      isTemplateMismatch ||
-      isTipoMismatch ||
-      isModoMismatch;
+    const needsRecreation = contratoAssinado
+      ? isCorrecaoAssinado
+      : (forceRecreate ||
+        signUrlExpirado ||
+        isMinutaOutdated ||
+        isTemplateMismatch ||
+        isTipoMismatch ||
+        isModoMismatch);
 
     // Se NÃO for solicitação explícita de regeração nem houver divergência de modelo/dados, e o contrato anterior existir e não estiver expirado:
     if (!needsRecreation && clientData.contratoToken) {
@@ -199,23 +249,6 @@ export async function POST(
         corretoraAssinou: totalAssinaturas === 1 ? true : Boolean(clientData.corretoraAssinou),
         alreadyExisted: true,
       });
-    }
-
-    // Se for regeração (forceRecreate, expiração ou divergência de modelo), e houver um token anterior na ZapSign:
-    // 1. Cancela o documento anterior na ZapSign para invalidar o link antigo imediatamente
-    // 2. Marca o documento anterior em signature_documents como 'cancelled' ou 'expired'
-    if (clientData.contratoToken) {
-      try {
-        await cancelarDocumentoZapSign(clientData.contratoToken);
-      } catch (cancelErr) {
-        logger.warn({ cancelErr, docToken: clientData.contratoToken }, 'api.portal.gerar-contrato.cancel_old_warn');
-      }
-
-      await sql`
-        UPDATE signature_documents
-        SET status = ${signUrlExpirado ? 'expired' : 'cancelled'}, updated_at = NOW()
-        WHERE cotacao_id = ${cotacao.id} AND status NOT IN ('cancelled', 'refused', 'expired')
-      `;
     }
 
     // 2b. Consome o uso do cupom promocional (se houver) de forma atômica e idempotente por cotação.
@@ -744,14 +777,61 @@ export async function POST(
     delete clientData.minutaDesatualizadaMotivo;
     delete clientData.minutaAlteradaEm;
 
+    let registroCorrecao: RegistroCorrecaoContrato | null = null;
+    if (isCorrecaoAssinado && motivoCorrecao) {
+      registroCorrecao = {
+        tipo: manterCobrancaAtiva ? 'cadastral' : (requestBody?.tipoCorrecao === 'financeira' ? 'financeira' : 'cadastral'),
+        motivo: motivoCorrecao,
+        em: new Date().toISOString(),
+        porUserId: user?.userId || null,
+        porNome: user?.name || null,
+        documentoAnterior: previousDocToken,
+        statusAnterior,
+      };
+      anexarHistoricoCorrecao(clientData, registroCorrecao);
+    }
+
+    // Mantém 'pagamento_gerado' quando a cobrança emitida continua válida (correção cadastral);
+    // nos demais casos o contrato volta a aguardar assinatura.
+    const novoStatus = statusAnterior === 'pagamento_gerado' && manterCobrancaAtiva ? 'pagamento_gerado' : 'contrato_gerado';
+
     await sql`
       UPDATE cotacoes
       SET
-        status = 'contrato_gerado',
+        status = ${novoStatus},
         client_data = ${JSON.stringify(clientData)}::jsonb,
         updated_at = NOW()
       WHERE id = ${cotacao.id}
     `;
+
+    // Só agora, com o novo documento criado e gravado, cancela o anterior na ZapSign.
+    if (previousDocToken && previousDocToken !== docToken) {
+      try {
+        await cancelarDocumentoZapSign(previousDocToken);
+      } catch (cancelErr) {
+        logger.warn({ cancelErr, docToken: previousDocToken }, 'api.portal.gerar-contrato.cancel_old_warn');
+      }
+
+      await sql`
+        UPDATE signature_documents
+        SET status = ${signUrlExpirado ? 'expired' : 'cancelled'}, updated_at = NOW()
+        WHERE cotacao_id = ${cotacao.id}
+          AND external_document_id = ${previousDocToken}
+          AND status NOT IN ('cancelled', 'refused', 'expired')
+      `;
+    }
+
+    if (registroCorrecao && user) {
+      await auditarCorrecaoContrato({
+        user,
+        cotacaoId: cotacao.id,
+        clientName: cotacao.client_name,
+        action: 'contrato_assinado_refeito',
+        registro: registroCorrecao,
+        extra: { novoDocumento: docToken, novoStatus },
+        req,
+      });
+    }
 
     // Garante que qualquer outro documento anterior não cancelado saia do estado ativo
     await sql`
@@ -796,8 +876,9 @@ export async function POST(
         updated_at = NOW()
     `;
 
-    // 8. Disparo do Gatilho PROPOSTA_CRIADA para envio automático do e-mail com contrato para assinatura
-    try {
+    // 8. Disparo do Gatilho PROPOSTA_CRIADA para envio automático do e-mail com contrato para assinatura.
+    // Em correção de contrato já assinado não há envio automático: o vendedor avisa o cliente.
+    if (!isCorrecaoAssinado) try {
       const [clientRow] = cotacao.client_id
         ? await sql<{ full_name: string; email: string; document_number: string; phone: string }[]>`
             SELECT full_name, email, document_number, phone FROM insurance_clients WHERE id = ${cotacao.client_id} LIMIT 1
