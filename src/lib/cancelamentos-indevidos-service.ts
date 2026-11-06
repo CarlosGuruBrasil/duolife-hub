@@ -421,13 +421,23 @@ export async function reativarCobrancaFaltante(
       await sql`
         UPDATE sales
         SET status = 'ativa',
-            metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{reativado_manualmente}', 'true'),
+            metadata = CASE
+              WHEN metadata IS NULL THEN '{"reativado_manualmente": true, "isento_cancelamento": true}'::jsonb
+              WHEN jsonb_typeof(metadata) = 'object' THEN metadata || '{"reativado_manualmente": true, "isento_cancelamento": true}'::jsonb
+              WHEN jsonb_typeof(metadata) = 'array' THEN jsonb_build_object('history', metadata, 'reativado_manualmente', true, 'isento_cancelamento', true)
+              ELSE '{"reativado_manualmente": true, "isento_cancelamento": true}'::jsonb
+            END,
             updated_at = NOW()
         WHERE cotacao_id = ${cleanId};
 
         UPDATE cotacoes
         SET status = 'aprovada',
-            metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{reativado_manualmente}', 'true'),
+            metadata = CASE
+              WHEN metadata IS NULL THEN '{"reativado_manualmente": true, "isento_cancelamento": true}'::jsonb
+              WHEN jsonb_typeof(metadata) = 'object' THEN metadata || '{"reativado_manualmente": true, "isento_cancelamento": true}'::jsonb
+              WHEN jsonb_typeof(metadata) = 'array' THEN jsonb_build_object('history', metadata, 'reativado_manualmente', true, 'isento_cancelamento', true)
+              ELSE '{"reativado_manualmente": true, "isento_cancelamento": true}'::jsonb
+            END,
             updated_at = NOW()
         WHERE id = ${cleanId};
       `;
@@ -567,10 +577,12 @@ export async function reativarCobrancaFaltante(
       await tx`
         UPDATE sales
         SET status = 'ativa',
-            metadata = jsonb_set(
-              jsonb_set(COALESCE(metadata, '{}'::jsonb), '{reativado_manualmente}', 'true'),
-              '{isento_cancelamento}', 'true'
-            ),
+            metadata = CASE
+              WHEN metadata IS NULL THEN '{"reativado_manualmente": true, "isento_cancelamento": true}'::jsonb
+              WHEN jsonb_typeof(metadata) = 'object' THEN metadata || '{"reativado_manualmente": true, "isento_cancelamento": true}'::jsonb
+              WHEN jsonb_typeof(metadata) = 'array' THEN jsonb_build_object('history', metadata, 'reativado_manualmente', true, 'isento_cancelamento', true)
+              ELSE '{"reativado_manualmente": true, "isento_cancelamento": true}'::jsonb
+            END,
             updated_at = NOW()
         WHERE cotacao_id = ${cleanId}
       `;
@@ -579,10 +591,12 @@ export async function reativarCobrancaFaltante(
       await tx`
         UPDATE cotacoes
         SET status = 'aprovada',
-            metadata = jsonb_set(
-              jsonb_set(COALESCE(metadata, '{}'::jsonb), '{reativado_manualmente}', 'true'),
-              '{isento_cancelamento}', 'true'
-            ),
+            metadata = CASE
+              WHEN metadata IS NULL THEN '{"reativado_manualmente": true, "isento_cancelamento": true}'::jsonb
+              WHEN jsonb_typeof(metadata) = 'object' THEN metadata || '{"reativado_manualmente": true, "isento_cancelamento": true}'::jsonb
+              WHEN jsonb_typeof(metadata) = 'array' THEN jsonb_build_object('history', metadata, 'reativado_manualmente', true, 'isento_cancelamento', true)
+              ELSE '{"reativado_manualmente": true, "isento_cancelamento": true}'::jsonb
+            END,
             updated_at = NOW()
         WHERE id = ${cleanId}
       `;
@@ -591,8 +605,7 @@ export async function reativarCobrancaFaltante(
       await tx`
         UPDATE commissions
         SET status = 'pendente',
-            notes = COALESCE(notes || ' | ', '') || 'Comissão reativada com retomada das faturas',
-            updated_at = NOW()
+            notes = COALESCE(notes || ' | ', '') || 'Comissão reativada com retomada das faturas'
         WHERE sale_id IN (SELECT id FROM sales WHERE cotacao_id = ${cleanId})
           AND status = 'estornada'
       `;
