@@ -2,6 +2,7 @@ import { sql } from './pg';
 import { logger } from './logger';
 import { getAsaasConfig } from './system-settings';
 import { calcularVencimentosRestantes, ParcelaProjetada } from './vencimento-sequencial';
+import crypto from 'node:crypto';
 
 export interface CanceladoIndevidoItem {
   cotacaoId: string;
@@ -38,6 +39,7 @@ export interface CanceladoIndevidoItem {
   }>;
   datasProjetadasRestantes: ParcelaProjetada[];
   statusReativacao: 'pendente' | 'reativado';
+  isDaListaOficial: boolean;
   ultimoCancelamentoMotivo?: string | null;
   ultimoCancelamentoData?: string | null;
 }
@@ -86,10 +88,14 @@ export const LISTA_NOMES_AFETADOS_OFICIAL = [
  */
 export async function listarCanceladosIndevidos(): Promise<CanceladoIndevidoItem[]> {
   try {
-    // 1. Busca cotações que possuem parcelas canceladas OU status cancelada
-    // Priorizando os nomes informados e qualquer contrato com parcelas canceladas
+    const nomesConditions = LISTA_NOMES_AFETADOS_OFICIAL.map((n) => `%${n.trim()}%`);
+
+    // 1. Busca cotações contemplando:
+    // a) Lista oficial de segurados afetados
+    // b) Cotações ou Vendas canceladas
+    // c) Cotações que contenham parcelas canceladas
     const cotacoesRows = await sql<any[]>`
-      SELECT DISTINCT
+      SELECT DISTINCT ON (c.client_cpf_cnpj, LOWER(TRIM(c.client_name)))
         c.id AS cotacao_id,
         c.client_name,
         c.client_cpf_cnpj,
@@ -101,11 +107,16 @@ export async function listarCanceladosIndevidos(): Promise<CanceladoIndevidoItem
         c.client_data,
         c.metadata AS cotacao_metadata,
         c.updated_at AS cotacao_updated_at,
+        c.created_at AS cotacao_created_at,
+        c.partner_id,
+        c.product_id,
+        c.client_id,
         s.id AS sale_id,
         s.policy_number,
         s.status AS sale_status,
         s.premio_total AS sale_premio_total,
         s.metadata AS sale_metadata,
+        po.id AS payment_order_id,
         po.installment_count AS order_installment_count,
         po.amount_total AS order_amount_total
       FROM cotacoes c
@@ -118,8 +129,17 @@ export async function listarCanceladosIndevidos(): Promise<CanceladoIndevidoItem
           SELECT 1 FROM payment_installments pi
           WHERE pi.cotacao_id = c.id AND pi.status = 'cancelled'
         )
+        OR EXISTS (
+          SELECT 1 FROM unnest(${nomesConditions}::text[]) AS pattern
+          WHERE c.client_name ILIKE pattern
+        )
       )
-      ORDER BY c.client_name ASC
+      ORDER BY
+        c.client_cpf_cnpj,
+        LOWER(TRIM(c.client_name)),
+        (SELECT count(*) FROM payment_installments pi WHERE pi.cotacao_id = c.id AND pi.status IN ('paid', 'received', 'confirmed', 'received_in_cash')) DESC,
+        (CASE WHEN s.id IS NOT NULL THEN 1 WHEN c.status = 'aprovada' THEN 2 ELSE 3 END) ASC,
+        c.created_at DESC
     `;
 
     if (!cotacoesRows || cotacoesRows.length === 0) {
@@ -128,7 +148,7 @@ export async function listarCanceladosIndevidos(): Promise<CanceladoIndevidoItem
 
     const cotacaoIds = cotacoesRows.map((r) => r.cotacao_id);
 
-    // 2. Busca todas as parcelas dessas cotações
+    // 2. Busca todas as parcelas dessas cotações (sem coluna notes inexistente)
     const installmentsRows = await sql<any[]>`
       SELECT
         id,
@@ -141,7 +161,6 @@ export async function listarCanceladosIndevidos(): Promise<CanceladoIndevidoItem
         external_payment_id,
         invoice_url,
         bank_slip_url,
-        notes,
         updated_at
       FROM payment_installments
       WHERE cotacao_id IN ${sql(cotacaoIds)}
@@ -160,16 +179,27 @@ export async function listarCanceladosIndevidos(): Promise<CanceladoIndevidoItem
     for (const row of cotacoesRows) {
       const allInsts = installmentsByCotacao.get(row.cotacao_id) || [];
 
-      const parcelasPagas = allInsts
-        .filter((i) => ['paid', 'received', 'confirmed', 'received_in_cash'].includes(String(i.status || '').toLowerCase()))
-        .map((i) => ({
-          id: i.id,
-          numero: Number(i.installment_number) || 1,
-          amount: Number(i.amount) || 0,
-          dueDate: String(i.due_date || ''),
-          paidAt: i.paid_at ? String(i.paid_at) : null,
-          status: i.status,
-        }));
+      // Deduplicação de parcelas pagas por número de parcela
+      const paidByNum = new Map<number, any>();
+      for (const i of allInsts) {
+        const st = String(i.status || '').toLowerCase();
+        if (['paid', 'received', 'confirmed', 'received_in_cash'].includes(st)) {
+          const num = Number(i.installment_number) || 1;
+          const existing = paidByNum.get(num);
+          if (!existing || (!existing.due_date && i.due_date)) {
+            paidByNum.set(num, i);
+          }
+        }
+      }
+
+      const parcelasPagas = Array.from(paidByNum.values()).map((i) => ({
+        id: i.id,
+        numero: Number(i.installment_number) || 1,
+        amount: Number(i.amount) || 0,
+        dueDate: String(i.due_date || ''),
+        paidAt: i.paid_at ? String(i.paid_at) : null,
+        status: i.status,
+      }));
 
       const parcelasCanceladas = allInsts
         .filter((i) => String(i.status || '').toLowerCase() === 'cancelled')
@@ -180,7 +210,7 @@ export async function listarCanceladosIndevidos(): Promise<CanceladoIndevidoItem
           dueDate: String(i.due_date || ''),
           status: i.status,
           externalPaymentId: i.external_payment_id || null,
-          notes: i.notes || null,
+          notes: null,
         }));
 
       const clientData = typeof row.client_data === 'string' ? JSON.parse(row.client_data || '{}') : (row.client_data || {});
@@ -188,24 +218,35 @@ export async function listarCanceladosIndevidos(): Promise<CanceladoIndevidoItem
         row.sale_premio_total ?? row.premio_final ?? row.premio_calculado ?? clientData.valor ?? 0
       );
 
-      const totalParcelas = Number(
-        row.order_installment_count ?? clientData.parcela ?? allInsts.length ?? 1
+      const totalParcelasConfig = Number(
+        row.order_installment_count ?? clientData.parcela ?? (allInsts.length > 0 ? Math.max(...allInsts.map((x: any) => Number(x.installment_number) || 1)) : 4)
       );
 
       const totalPago = parcelasPagas.reduce((acc, p) => acc + p.amount, 0);
       const saldoFaltante = Math.max(0, Math.round((totalContratado - totalPago) * 100) / 100);
 
-      // Quantidade de parcelas faltantes
-      const qtdParcelasRestantes = Math.max(
-        0,
-        parcelasCanceladas.length > 0
-          ? parcelasCanceladas.length
-          : totalParcelas - parcelasPagas.length
+      const avgPaid = parcelasPagas.length > 0 ? totalPago / parcelasPagas.length : 0;
+      let qtdParcelasRestantes = 0;
+      if (saldoFaltante > 0) {
+        if (parcelasCanceladas.length > 0) {
+          qtdParcelasRestantes = parcelasCanceladas.length;
+        } else if (avgPaid > 0) {
+          qtdParcelasRestantes = Math.max(1, Math.round(saldoFaltante / avgPaid));
+        } else if (totalParcelasConfig > parcelasPagas.length) {
+          qtdParcelasRestantes = totalParcelasConfig - parcelasPagas.length;
+        } else {
+          qtdParcelasRestantes = 1;
+        }
+      }
+
+      const totalParcelasContratadas = Math.max(
+        totalParcelasConfig,
+        parcelasPagas.length + qtdParcelasRestantes
       );
 
       // Cálculo de vencimentos sequenciais baseado no histórico de parcelas pagas
       const datasProjetadas = calcularVencimentosRestantes({
-        totalParcelas,
+        totalParcelas: totalParcelasContratadas,
         qtdParcelasRestantes: qtdParcelasRestantes > 0 ? qtdParcelasRestantes : 1,
         parcelasPagas: parcelasPagas.map((p) => ({
           numero: p.numero,
@@ -218,12 +259,16 @@ export async function listarCanceladosIndevidos(): Promise<CanceladoIndevidoItem
       });
 
       const isReativado = Boolean(
-        row.sale_status === 'ativa' &&
-        row.cotacao_status === 'aprovada' &&
-        (row.cotacao_metadata?.reativado_manualmente === true || row.sale_metadata?.reativado_manualmente === true)
+        (saldoFaltante <= 0 && parcelasPagas.length > 0) ||
+        (row.sale_status === 'ativa' &&
+          row.cotacao_status === 'aprovada' &&
+          (row.cotacao_metadata?.reativado_manualmente === true || row.sale_metadata?.reativado_manualmente === true))
       );
 
-      const cancelNotes = parcelasCanceladas.find((p: any) => p.notes)?.notes || 'Inadimplência';
+      const isDaListaOficial = LISTA_NOMES_AFETADOS_OFICIAL.some((n) =>
+        (row.client_name || '').toLowerCase().includes(n.toLowerCase().trim()) ||
+        n.toLowerCase().trim().includes((row.client_name || '').toLowerCase())
+      );
 
       items.push({
         cotacaoId: row.cotacao_id,
@@ -236,7 +281,7 @@ export async function listarCanceladosIndevidos(): Promise<CanceladoIndevidoItem
         saleStatus: row.sale_status,
         cotacaoStatus: row.cotacao_status,
         valorTotalContratado: totalContratado,
-        totalParcelasContratadas: totalParcelas,
+        totalParcelasContratadas,
         totalPago,
         parcelasPagasCount: parcelasPagas.length,
         saldoFaltante,
@@ -245,7 +290,8 @@ export async function listarCanceladosIndevidos(): Promise<CanceladoIndevidoItem
         parcelasCanceladas,
         datasProjetadasRestantes: datasProjetadas,
         statusReativacao: isReativado ? 'reativado' : 'pendente',
-        ultimoCancelamentoMotivo: cancelNotes,
+        isDaListaOficial,
+        ultimoCancelamentoMotivo: 'Cancelamento indevido no gateway / faturas pendentes',
         ultimoCancelamentoData: row.cotacao_updated_at,
       });
     }
@@ -311,15 +357,34 @@ export async function reativarCobrancaFaltante(
     }
 
     const allInsts = await sql<any[]>`
-      SELECT *
+      SELECT
+        id,
+        cotacao_id,
+        installment_number,
+        amount,
+        due_date::text AS due_date,
+        paid_at::text AS paid_at,
+        status,
+        external_payment_id
       FROM payment_installments
       WHERE cotacao_id = ${cleanId}
       ORDER BY installment_number ASC, due_date ASC
     `;
 
-    const parcelasPagas = allInsts.filter((i) =>
-      ['paid', 'received', 'confirmed', 'received_in_cash'].includes(String(i.status || '').toLowerCase())
-    );
+    // Deduplicação de parcelas pagas por número
+    const paidByNum = new Map<number, any>();
+    for (const i of allInsts) {
+      const st = String(i.status || '').toLowerCase();
+      if (['paid', 'received', 'confirmed', 'received_in_cash'].includes(st)) {
+        const num = Number(i.installment_number) || 1;
+        const existing = paidByNum.get(num);
+        if (!existing || (!existing.due_date && i.due_date)) {
+          paidByNum.set(num, i);
+        }
+      }
+    }
+
+    const parcelasPagas = Array.from(paidByNum.values());
 
     const clientData = typeof cotacao.client_data === 'string'
       ? JSON.parse(cotacao.client_data || '{}')
@@ -329,20 +394,29 @@ export async function reativarCobrancaFaltante(
       cotacao.premio_total ?? cotacao.premio_final ?? cotacao.premio_calculado ?? clientData.valor ?? 0
     );
 
-    const totalParcelas = Number(
-      cotacao.order_installment_count ?? clientData.parcela ?? allInsts.length ?? 1
+    const totalParcelasConfig = Number(
+      cotacao.order_installment_count ?? clientData.parcela ?? (allInsts.length > 0 ? Math.max(...allInsts.map((x: any) => Number(x.installment_number) || 1)) : 4)
     );
 
     const totalPago = parcelasPagas.reduce((acc, p) => acc + (Number(p.amount) || 0), 0);
     const saldoFaltante = Math.max(0, Math.round((totalContratado - totalPago) * 100) / 100);
 
     const canceladas = allInsts.filter((i) => String(i.status || '').toLowerCase() === 'cancelled');
-    const qtdParcelasRestantes = Math.max(
-      1,
-      canceladas.length > 0 ? canceladas.length : totalParcelas - parcelasPagas.length
-    );
+    const avgPaid = parcelasPagas.length > 0 ? totalPago / parcelasPagas.length : 0;
+    let qtdParcelasRestantes = 0;
+    if (saldoFaltante > 0) {
+      if (canceladas.length > 0) {
+        qtdParcelasRestantes = canceladas.length;
+      } else if (avgPaid > 0) {
+        qtdParcelasRestantes = Math.max(1, Math.round(saldoFaltante / avgPaid));
+      } else if (totalParcelasConfig > parcelasPagas.length) {
+        qtdParcelasRestantes = totalParcelasConfig - parcelasPagas.length;
+      } else {
+        qtdParcelasRestantes = 1;
+      }
+    }
 
-    // Se o cliente já quitou tudo, apenas reativa sem emitir nova cobrança
+    // Se o contrato já foi quitado, apenas reativa sem emitir nova cobrança
     if (saldoFaltante <= 0) {
       await sql`
         UPDATE sales
@@ -368,9 +442,14 @@ export async function reativarCobrancaFaltante(
       };
     }
 
+    const totalParcelasContratadas = Math.max(
+      totalParcelasConfig,
+      parcelasPagas.length + qtdParcelasRestantes
+    );
+
     // Calcula vencimentos sequenciais respeitando as datas pagas
     const datasProjetadas = calcularVencimentosRestantes({
-      totalParcelas,
+      totalParcelas: totalParcelasContratadas,
       qtdParcelasRestantes,
       parcelasPagas: parcelasPagas.map((p) => ({
         numero: Number(p.installment_number) || 1,
@@ -518,8 +597,50 @@ export async function reativarCobrancaFaltante(
           AND status = 'estornada'
       `;
 
-      // d) Atualiza payment_orders
-      if (cotacao.payment_order_id) {
+      // d) Atualiza ou cria payment_orders
+      let orderId = cotacao.payment_order_id;
+      if (!orderId) {
+        orderId = crypto.randomUUID();
+        await tx`
+          INSERT INTO payment_orders (
+            id,
+            cotacao_id,
+            client_id,
+            partner_id,
+            product_id,
+            provider,
+            status,
+            amount_total,
+            installment_count,
+            paid_installments,
+            paid_amount,
+            due_date,
+            invoice_url,
+            bank_slip_url,
+            raw_payload,
+            created_at,
+            updated_at
+          ) VALUES (
+            ${orderId},
+            ${cleanId},
+            ${cotacao.client_id || null},
+            ${cotacao.partner_id || '00000000-0000-0000-0000-000000000000'},
+            ${cotacao.product_id || '00000000-0000-0000-0000-000000000000'},
+            'asaas',
+            'pending',
+            ${saldoFaltante},
+            ${qtdParcelasRestantes},
+            0,
+            0,
+            ${primeiraDataVencimento}::date,
+            ${linkBoleto || null},
+            ${linkBoleto || null},
+            '{}'::jsonb,
+            NOW(),
+            NOW()
+          )
+        `;
+      } else {
         await tx`
           UPDATE payment_orders
           SET status = 'pending',
@@ -531,47 +652,56 @@ export async function reativarCobrancaFaltante(
               bank_slip_url = COALESCE(${linkBoleto || null}, bank_slip_url),
               due_date = ${primeiraDataVencimento}::date,
               updated_at = NOW()
-          WHERE id = ${cotacao.payment_order_id}
+          WHERE id = ${orderId}
         `;
       }
 
       // e) Cria as novas parcelas ativas para o saldo faltante
       const valorPorParcela = Math.round((saldoFaltante / qtdParcelasRestantes) * 100) / 100;
-      const orderId = cotacao.payment_order_id;
 
       for (let idx = 0; idx < datasProjetadas.length; idx++) {
         const proj = datasProjetadas[idx];
         const isFirst = idx === 0;
+        const installmentId = crypto.randomUUID();
+        const extPayId = isFirst && checkoutId
+          ? checkoutId
+          : `${checkoutId || ('RETOMADA-' + cleanId.slice(0, 8))}_${proj.numero}`;
 
         await tx`
           INSERT INTO payment_installments (
+            id,
             payment_order_id,
             cotacao_id,
+            client_id,
+            provider,
+            external_payment_id,
+            external_installment_id,
             installment_number,
+            status,
             amount,
             net_amount,
             due_date,
-            status,
-            external_payment_id,
-            external_installment_id,
             invoice_url,
             bank_slip_url,
-            notes,
+            raw_payload,
             created_at,
             updated_at
           ) VALUES (
+            ${installmentId},
             ${orderId},
             ${cleanId},
+            ${cotacao.client_id || null},
+            'asaas',
+            ${extPayId},
+            ${externalInstallmentId || null},
             ${proj.numero},
+            'pending',
             ${valorPorParcela},
             ${isFirst ? (netValue || valorPorParcela) : valorPorParcela},
             ${proj.dueDate}::date,
-            'pending',
-            ${isFirst && checkoutId ? checkoutId : null},
-            ${externalInstallmentId || null},
             ${isFirst && linkBoleto ? linkBoleto : null},
             ${isFirst && linkBoleto ? linkBoleto : null},
-            'Parcela residual reativada com vencimento sequencial',
+            '{}'::jsonb,
             NOW(),
             NOW()
           )

@@ -46,7 +46,7 @@ export function CanceladosIndevidosView({ user }: CanceladosIndevidosViewProps) 
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<ApiResponse | null>(null);
   const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState<'todos' | 'pendente' | 'reativado'>('todos');
+  const [filterStatus, setFilterStatus] = useState<'todos' | 'oficiais' | 'pendente' | 'reativado'>('todos');
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
   const [batchLoading, setBatchLoading] = useState(false);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -178,7 +178,13 @@ export function CanceladosIndevidosView({ user }: CanceladosIndevidosViewProps) 
     if (!data?.items) return [];
     return data.items.filter((item) => {
       // Filtro de status
-      if (filterStatus !== 'todos' && item.statusReativacao !== filterStatus) {
+      if (filterStatus === 'oficiais' && !item.isDaListaOficial) {
+        return false;
+      }
+      if (filterStatus === 'pendente' && item.statusReativacao !== 'pendente') {
+        return false;
+      }
+      if (filterStatus === 'reativado' && item.statusReativacao !== 'reativado') {
         return false;
       }
 
@@ -330,19 +336,24 @@ export function CanceladosIndevidosView({ user }: CanceladosIndevidosViewProps) 
           />
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap">
           <span className="text-xs font-semibold text-gray-600">Filtrar:</span>
-          {(['todos', 'pendente', 'reativado'] as const).map((st) => (
+          {[
+            { id: 'todos', label: 'Todos' },
+            { id: 'oficiais', label: `36 da Lista Oficial (${data?.items.filter((i) => i.isDaListaOficial).length || 0})` },
+            { id: 'pendente', label: 'Pendentes' },
+            { id: 'reativado', label: 'Reativados' },
+          ].map((st) => (
             <button
-              key={st}
-              onClick={() => setFilterStatus(st)}
+              key={st.id}
+              onClick={() => setFilterStatus(st.id as any)}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors min-h-[36px] ${
-                filterStatus === st
+                filterStatus === st.id
                   ? 'bg-[#0e4a5a] text-white shadow-xs'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               }`}
             >
-              {st === 'todos' ? 'Todos' : st === 'pendente' ? 'Pendentes' : 'Reativados'}
+              {st.label}
             </button>
           ))}
         </div>
@@ -414,6 +425,11 @@ export function CanceladosIndevidosView({ user }: CanceladosIndevidosViewProps) 
                                 {item.policyNumber && (
                                   <span className="text-[10px] font-bold bg-blue-50 text-blue-800 border border-blue-200 px-1.5 py-0.5 rounded-md">
                                     {item.policyNumber}
+                                  </span>
+                                )}
+                                {item.isDaListaOficial && (
+                                  <span className="text-[10px] font-bold bg-amber-50 text-amber-900 border border-amber-300 px-1.5 py-0.5 rounded-md">
+                                    Lista Oficial
                                   </span>
                                 )}
                               </div>
