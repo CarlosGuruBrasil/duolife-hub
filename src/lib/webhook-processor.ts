@@ -7,6 +7,7 @@ import { findPartnerByWixCode, logSyncEvent, normalizeWixRecord } from '@/lib/wi
 import { parseJsonbField } from '@/lib/json-safe';
 import { identificarRequisitosAssinatura } from '@/lib/assinatura-status';
 import { getZapSignConfig, sanitizeApiToken } from '@/lib/system-settings';
+import { runWithSideEffectsSuppressed } from '@/lib/side-effects-guard';
 
 // ==========================================
 // Helpers Asaas
@@ -1319,7 +1320,18 @@ export async function processWixPayload(rawPayload: any): Promise<{ success: boo
 // Reprocessamento Individual
 // =========================================================================
 
-export async function reprocessWebhookEvent(id: string): Promise<{
+/**
+ * Reexecuta um evento de webhook já registrado.
+ *
+ * REGRA: só pode ser chamado por decisão explícita de um administrador (botão "Executar"
+ * na Auditoria de Webhooks). Não existe reprocessamento automático nem em lote.
+ * Por padrão roda em modo seguro: atualiza estado interno, mas NÃO envia e-mails,
+ * NÃO dispara gatilhos e NÃO gera cobranças. `allowSideEffects` libera esses efeitos.
+ */
+export async function reprocessWebhookEvent(
+  id: string,
+  options: { allowSideEffects?: boolean } = {}
+): Promise<{
   success: boolean;
   message?: string;
   event?: any;
@@ -1425,12 +1437,17 @@ export async function reprocessWebhookEvent(id: string): Promise<{
 
     let result: { success: boolean; message?: string };
 
+    const runProcessor = (fn: () => Promise<{ success: boolean; message?: string }>) =>
+      options.allowSideEffects
+        ? fn()
+        : runWithSideEffectsSuppressed('reprocessamento administrativo sem disparos', fn);
+
     if (provider === 'asaas') {
-      result = await processAsaasPayload(rawPayload);
+      result = await runProcessor(() => processAsaasPayload(rawPayload));
     } else if (provider === 'zapsign') {
-      result = await processZapSignPayload(rawPayload);
+      result = await runProcessor(() => processZapSignPayload(rawPayload));
     } else if (provider === 'wix') {
-      result = await processWixPayload(rawPayload);
+      result = await runProcessor(() => processWixPayload(rawPayload));
     } else {
       result = {
         success: false,
@@ -1521,59 +1538,5 @@ export async function reprocessWebhookEvent(id: string): Promise<{
   }
 }
 
-// =========================================================================
-// Reprocessamento em Lote
-// =========================================================================
-
-export async function reprocessBatchWebhookEvents(ids?: string[]): Promise<{
-  processed: number;
-  succeeded: number;
-  failed: number;
-  results: Array<{ id: string; success: boolean; error?: string }>;
-}> {
-  let targetIds: string[] = [];
-
-  if (ids && Array.isArray(ids) && ids.length > 0) {
-    targetIds = ids;
-  } else {
-    const rows = await sql<{ id: string }[]>`
-      SELECT id
-      FROM webhook_events
-      WHERE processed = false OR (error_message IS NOT NULL AND error_message != '')
-      ORDER BY created_at DESC
-      LIMIT 100
-    `;
-    targetIds = rows.map((r) => r.id);
-  }
-
-  const results: Array<{ id: string; success: boolean; error?: string }> = [];
-  let succeeded = 0;
-  let failed = 0;
-
-  for (const id of targetIds) {
-    try {
-      const res = await reprocessWebhookEvent(id);
-      if (res.success) {
-        succeeded++;
-        results.push({ id, success: true });
-      } else {
-        failed++;
-        results.push({ id, success: false, error: res.message });
-      }
-    } catch (err: any) {
-      failed++;
-      results.push({
-        id,
-        success: false,
-        error: err instanceof Error ? err.message : 'Erro desconhecido',
-      });
-    }
-  }
-
-  return {
-    processed: results.length,
-    succeeded,
-    failed,
-    results,
-  };
-}
+// Reprocessamento em lote foi REMOVIDO de propósito: webhooks antigos, pendentes ou com
+// erro só podem ser reexecutados um a um, por decisão de um administrador.

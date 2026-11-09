@@ -201,8 +201,16 @@ export async function POST(req: NextRequest) {
       ${JSON.stringify(requestHeaders)}::jsonb,
       false
     )
+    ON CONFLICT (provider, external_id) DO NOTHING
     RETURNING id
   `;
+
+  // Evento já registrado anteriormente (pendente, com erro ou em processamento):
+  // NUNCA reexecuta pelo fluxo automático. Reexecução só por decisão de um administrador.
+  if (!eventRow) {
+    logger.info({ eventUniqueKey }, 'ZapSign Webhook reenviado descartado (evento já registrado)');
+    return NextResponse.json({ ok: true, ignored: true, message: 'Evento já registrado; reexecução apenas manual pelo administrador' });
+  }
 
   try {
     // 1. Localização em cascata do Documento e da Cotação correspondente

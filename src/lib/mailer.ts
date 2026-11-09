@@ -1,3 +1,4 @@
+import { getSideEffectsSuppression } from '@/lib/side-effects-guard';
 import nodemailer from 'nodemailer';
 import { logger } from './logger';
 import { isNet4LifeInfoEnabled } from './system-settings';
@@ -50,6 +51,12 @@ export async function sendMail({
   fromName,
   replyTo,
 }: SendMailOptions): Promise<SendMailResult> {
+  const suppression = getSideEffectsSuppression();
+  if (suppression) {
+    logger.warn({ to, subject, templateId, reason: suppression.reason }, 'sendMail: envio suprimido (reprocessamento administrativo sem disparos)');
+    return { success: false, error: `Suprimido: ${suppression.reason}` };
+  }
+
   const isDev = process.env.NODE_ENV !== 'production';
 
   // 1. Provedor Primário Oficial: API Net4Life Info / FluxoSend

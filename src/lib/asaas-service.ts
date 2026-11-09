@@ -1,4 +1,5 @@
 import { sql } from './pg';
+import { getSideEffectsSuppression } from '@/lib/side-effects-guard';
 import { logger } from './logger';
 import { parseJsonbField } from './json-safe';
 import { calcularPrecoServidor } from './pricing';
@@ -65,6 +66,11 @@ export async function generateAsaasPaymentForQuote(
   cotacaoId: string,
   options?: GeneratePaymentOptions
 ): Promise<GeneratePaymentResult> {
+  const suppression = getSideEffectsSuppression();
+  if (suppression) {
+    return { ok: false, error: `Geração de cobrança suprimida: ${suppression.reason}` };
+  }
+
   // 1. Single-flight mutex in-process: se já houver uma geração em andamento para esta mesma cotação,
   // reutiliza a promessa em voo para evitar concorrência e cobranças duplicadas no gateway
   if (!options?.forceRecreate) {

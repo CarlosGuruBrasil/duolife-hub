@@ -3,6 +3,7 @@ import { logger } from '../logger';
 import { sendTemplatedEmail } from '../email-service';
 import { resolveWhiteLabelForContext, buildEmailWhiteLabelVariables } from '@/lib/email-whitelabel';
 import { evaluateDecisionTree } from './engine';
+import { getSideEffectsSuppression } from '@/lib/side-effects-guard';
 import type {
   AutomationTriggerRecord,
   NoArvore,
@@ -30,6 +31,13 @@ export async function dispatchDomainEvent(
     actionsExecutedCount: 0,
     errors: [],
   };
+
+  const suppression = getSideEffectsSuppression();
+  if (suppression) {
+    logger.warn({ eventType, reason: suppression.reason }, 'dispatchDomainEvent: gatilhos suprimidos (reprocessamento administrativo sem disparos)');
+    result.errors.push(`Suprimido: ${suppression.reason}`);
+    return result;
+  }
 
   try {
     // 1. Busca todas as árvores de decisão ativas configuradas para este evento

@@ -39,8 +39,10 @@ export async function POST(
     const body = await req.json().catch(() => ({}));
     const clientData = parseJsonbField<Record<string, any>>(cotacao.client_data);
 
+    // Forma de pagamento solicitada explicitamente pelo Wix (aceita `billingType` ou `formaPagamento`)
+    const requestedBillingType = body.billingType || body.formaPagamento || null;
     const rawBillingType =
-      body.billingType || clientData.formaPagamento || clientData.billingType || 'BOLETO';
+      requestedBillingType || clientData.formaPagamento || clientData.billingType || 'BOLETO';
     let billingType = 'UNDEFINED';
     if (rawBillingType) {
       const upper = String(rawBillingType).toUpperCase();
@@ -49,7 +51,38 @@ export async function POST(
       }
     }
 
-    const forceRecreate = Boolean(body.forceRecreate);
+    let forceRecreate = Boolean(body.forceRecreate);
+
+    // Troca de forma de pagamento (ex.: BOLETO -> CREDIT_CARD ou o inverso):
+    // o Hub mantém uma cobrança por cotação, então cancela a pendente e emite nova no método escolhido.
+    // BOLETO, PIX e UNDEFINED são tratados como compatíveis entre si (a fatura de boleto já oferece PIX).
+    if (requestedBillingType && !forceRecreate) {
+      const [currentOrder] = await sql<any[]>`
+        SELECT billing_type, status
+        FROM payment_orders
+        WHERE cotacao_id = ${cotacao.id}
+        ORDER BY created_at DESC
+        LIMIT 1
+      `;
+      const currentType = String(currentOrder?.billing_type || '').toUpperCase();
+      const isPaid = ['paid', 'received', 'confirmed', 'RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'].includes(
+        currentOrder?.status
+      );
+      const envolveCartao = billingType === 'CREDIT_CARD' || currentType === 'CREDIT_CARD';
+      if (currentOrder && currentType && currentType !== billingType && envolveCartao) {
+        if (isPaid) {
+          return NextResponse.json(
+            { success: false, error: 'Esta cotação já possui cobrança paga; não é possível trocar a forma de pagamento.' },
+            { status: 409 }
+          );
+        }
+        forceRecreate = true;
+        logger.info(
+          { cotacaoId: cotacao.id, de: currentType, para: billingType },
+          'wix.gerar_pagamento.troca_forma_pagamento'
+        );
+      }
+    }
 
     const paymentResult = await generateAsaasPaymentForQuote(cotacao.id, {
       isManualAdmin: false,
@@ -84,7 +117,7 @@ export async function POST(
 
     // Recupera dados salvos da ordem de pagamento
     const [order] = await sql<any[]>`
-      SELECT external_payment_id, invoice_url, bank_slip_url, due_date::text AS due_date, pix_qr_code_url, status
+      SELECT external_payment_id, invoice_url, bank_slip_url, due_date::text AS due_date, pix_qr_code_url, status, billing_type
       FROM payment_orders
       WHERE cotacao_id = ${cotacao.id}
       ORDER BY created_at DESC
@@ -104,7 +137,8 @@ export async function POST(
       order?.due_date || paymentResult.dueDate || clientData.dataVencimento || null;
     let pixQrCode = order?.pix_qr_code_url || null;
 
-    if (!pixQrCode && checkoutId) {
+    // Cobrança de cartão não possui QR Code PIX
+    if (!pixQrCode && checkoutId && billingType !== 'CREDIT_CARD') {
       try {
         const { apiKey, baseUrl } = await getAsaasConfig();
         if (apiKey) {
@@ -145,6 +179,7 @@ export async function POST(
       invoiceUrl,
       pixQrCode,
       dueDate,
+      billingType: order?.billing_type || billingType,
       status: 'pagamento_gerado',
       alreadyExisted: paymentResult.alreadyExisted || false,
     });

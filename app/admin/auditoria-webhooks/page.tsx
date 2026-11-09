@@ -127,8 +127,11 @@ export default function AuditoriaWebhooksPage() {
 
   // Estados de Ação
   const [reprocessingId, setReprocessingId] = useState<string | null>(null);
-  const [batchModalOpen, setBatchModalOpen] = useState(false);
-  const [batchReprocessing, setBatchReprocessing] = useState(false);
+  // Confirmação de execução manual (somente administrador, um evento por vez)
+  const [confirmTarget, setConfirmTarget] = useState<WebhookLog | null>(null);
+  const [confirmReason, setConfirmReason] = useState('');
+  const [confirmAllowSideEffects, setConfirmAllowSideEffects] = useState(false);
+  const [confirmAlreadyProcessed, setConfirmAlreadyProcessed] = useState(false);
 
   // Modal de Inspeção
   const [selectedLog, setSelectedLog] = useState<WebhookLog | null>(null);
@@ -137,14 +140,14 @@ export default function AuditoriaWebhooksPage() {
   const [copiedHeaders, setCopiedHeaders] = useState(false);
 
   // Trava de Scroll do Body quando modal estiver aberto
-  useBodyScrollLock(!!selectedLog || batchModalOpen);
+  useBodyScrollLock(!!selectedLog || !!confirmTarget);
 
   // Listener para fechar modal com tecla ESC
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
-        if (batchModalOpen) {
-          setBatchModalOpen(false);
+        if (confirmTarget) {
+          setConfirmTarget(null);
         } else if (selectedLog) {
           setSelectedLog(null);
         }
@@ -152,7 +155,7 @@ export default function AuditoriaWebhooksPage() {
     }
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedLog, batchModalOpen]);
+  }, [selectedLog, confirmTarget]);
 
   // Carregar dados de auditoria
   const loadData = useCallback(async () => {
@@ -206,54 +209,45 @@ export default function AuditoriaWebhooksPage() {
     setPage(1);
   }
 
-  // Reprocessar evento único
-  async function handleReprocessSingle(id: string) {
-    if (reprocessingId) return;
-    setReprocessingId(id);
+  // Abre a confirmação de execução manual de um evento
+  function openReprocessConfirm(log: WebhookLog) {
+    setConfirmTarget(log);
+    setConfirmReason('');
+    setConfirmAllowSideEffects(false);
+    setConfirmAlreadyProcessed(false);
+  }
+
+  // Executa um único evento, após confirmação explícita do administrador
+  async function handleReprocessSingle() {
+    const target = confirmTarget;
+    if (!target || reprocessingId) return;
+    setReprocessingId(target.id);
     try {
-      const res = await fetch(`/api/admin/webhooks/${id}/reprocessar`, {
+      const res = await fetch(`/api/admin/webhooks/${target.id}/reprocessar`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          confirm: true,
+          reason: confirmReason.trim(),
+          allowSideEffects: confirmAllowSideEffects,
+          confirmAlreadyProcessed,
+        }),
       });
       const data = await res.json();
 
       if (data.ok && data.success) {
-        toast.success(data.message || 'Webhook reprocessado com sucesso!');
-        await loadData();
+        toast.success(
+          `${data.message || 'Webhook executado com sucesso!'} (disparos ${data.sideEffects === 'liberados' ? 'liberados' : 'suprimidos'})`
+        );
+        setConfirmTarget(null);
       } else {
-        toast.error(data.message || data.error || 'Falha ao reprocessar webhook');
-        await loadData();
+        toast.error(data.message || data.error || 'Falha ao executar webhook');
       }
+      await loadData();
     } catch (err: any) {
-      toast.error(err?.message || 'Erro ao comunicar reprocessamento');
+      toast.error(err?.message || 'Erro ao comunicar execução');
     } finally {
       setReprocessingId(null);
-    }
-  }
-
-  // Reprocessar em lote
-  async function handleReprocessBatch() {
-    setBatchReprocessing(true);
-    try {
-      const res = await fetch('/api/admin/webhooks/reprocessar-lote', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-      });
-      const data = await res.json();
-
-      if (data.ok) {
-        toast.success(
-          `Reprocessamento concluído: ${data.succeeded} sucesso(s), ${data.failed} falha(s) de ${data.processed} processados.`
-        );
-        setBatchModalOpen(false);
-        await loadData();
-      } else {
-        toast.error(data.error || 'Erro ao executar reprocessamento em lote');
-      }
-    } catch (err: any) {
-      toast.error(err?.message || 'Erro de rede no reprocessamento em lote');
-    } finally {
-      setBatchReprocessing(false);
     }
   }
 
@@ -308,16 +302,6 @@ export default function AuditoriaWebhooksPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {stats && stats.failed > 0 && (
-            <button
-              type="button"
-              onClick={() => setBatchModalOpen(true)}
-              className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-bold text-rose-800 shadow-xs hover:bg-rose-100 transition-colors"
-            >
-              <RotateCw className="h-4 w-4 text-rose-600" />
-              Reprocessar Falhas ({stats.failed})
-            </button>
-          )}
 
           <button
             type="button"
@@ -681,15 +665,15 @@ export default function AuditoriaWebhooksPage() {
 
                           <button
                             type="button"
-                            onClick={() => handleReprocessSingle(log.id)}
+                            onClick={() => openReprocessConfirm(log)}
                             disabled={isReprocessing}
                             className="inline-flex min-h-[36px] items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 shadow-2xs hover:bg-gray-50 hover:text-primary transition-colors disabled:opacity-50"
-                            title="Reprocessar este evento"
+                            title="Executar manualmente (somente administrador)"
                           >
                             <RotateCw
                               className={`h-3.5 w-3.5 ${isReprocessing ? 'animate-spin text-primary' : 'text-gray-500'}`}
                             />
-                            Reprocessar
+                            Executar
                           </button>
                         </div>
                       </td>
@@ -995,14 +979,14 @@ export default function AuditoriaWebhooksPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => handleReprocessSingle(selectedLog.id)}
+                  onClick={() => openReprocessConfirm(selectedLog)}
                   disabled={reprocessingId === selectedLog.id}
                   className="min-h-[44px] inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-white hover:bg-primary/90 transition-colors disabled:opacity-50"
                 >
                   <RotateCw
                     className={`h-4 w-4 ${reprocessingId === selectedLog.id ? 'animate-spin' : ''}`}
                   />
-                  Reprocessar Este Evento Agora
+                  Executar Este Evento
                 </button>
               </div>
             </div>
@@ -1010,62 +994,92 @@ export default function AuditoriaWebhooksPage() {
         </div>
       )}
 
-      {/* 7. Modal de Confirmação de Reprocessamento em Lote */}
-      {batchModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+      {/* 7. Modal de Confirmação de Execução Manual (somente administrador) */}
+      {confirmTarget && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
           <div className="relative w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-gray-200 p-6 space-y-4 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-gray-200 pb-3">
               <div className="flex items-center gap-2 text-rose-700">
-                <RotateCw className="h-5 w-5" />
-                <h3 className="font-bold text-gray-900 text-base">Reprocessamento de Falhas em Lote</h3>
+                <AlertTriangle className="h-5 w-5" />
+                <h3 className="font-bold text-gray-900 text-base">Executar webhook manualmente</h3>
               </div>
               <button
                 type="button"
-                onClick={() => setBatchModalOpen(false)}
+                onClick={() => setConfirmTarget(null)}
                 className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <p className="text-xs text-gray-600 leading-relaxed">
-              Você está prestes a reprocessar <strong>todos os webhooks que apresentaram falha ou estão pendentes</strong> no sistema ({stats?.failed ?? 0} eventos com erro detectados).
-            </p>
+            <div className="text-xs text-gray-700 space-y-1">
+              <p><strong>Provedor:</strong> {confirmTarget.provider} · <strong>Evento:</strong> {confirmTarget.event_type || '-'}</p>
+              <p>
+                <strong>Recebido em:</strong> {new Date(confirmTarget.created_at).toLocaleString('pt-BR')} (
+                {Math.max(0, Math.floor((Date.now() - new Date(confirmTarget.created_at).getTime()) / 3600000))}h atrás)
+              </p>
+              <p><strong>Status:</strong> {confirmTarget.processed ? 'Já processado' : 'Pendente / com erro'} · <strong>Execuções manuais anteriores:</strong> {confirmTarget.retry_count}</p>
+              {confirmTarget.error_message && <p className="text-rose-700"><strong>Erro:</strong> {confirmTarget.error_message}</p>}
+            </div>
 
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-3.5 text-xs text-amber-900 flex items-start gap-2.5">
               <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold">Aviso de Operação:</p>
-                <p className="mt-0.5 text-amber-800">
-                  Os eventos serão reexecutados individualmente contra as regras de negócio de pagamentos, contratos e cotações. Os contadores de retentativa serão incrementados.
-                </p>
-              </div>
+              <p>
+                Por padrão a execução apenas atualiza o estado interno (pagamento, assinatura, cotação) e <strong>não envia e-mails, não dispara gatilhos e não gera cobranças</strong>. A ação fica registrada na auditoria com o seu usuário.
+              </p>
             </div>
+
+            <label className="block text-xs font-semibold text-gray-700">
+              Motivo (obrigatório, mín. 10 caracteres)
+              <textarea
+                value={confirmReason}
+                onChange={(e) => setConfirmReason(e.target.value)}
+                rows={2}
+                className="mt-1 w-full rounded-lg border border-gray-300 p-2 text-xs font-normal"
+                placeholder="Ex.: pagamento confirmado no Asaas e não refletido na venda"
+              />
+            </label>
+
+            {confirmTarget.processed && (
+              <label className="flex items-start gap-2 text-xs text-gray-700">
+                <input type="checkbox" checked={confirmAlreadyProcessed} onChange={(e) => setConfirmAlreadyProcessed(e.target.checked)} className="mt-0.5" />
+                Entendo que este evento já foi processado e quero executá-lo novamente.
+              </label>
+            )}
+
+            <label className="flex items-start gap-2 text-xs text-rose-800">
+              <input type="checkbox" checked={confirmAllowSideEffects} onChange={(e) => setConfirmAllowSideEffects(e.target.checked)} className="mt-0.5" />
+              Permitir disparos (e-mails, gatilhos e geração de cobranças).
+            </label>
 
             <div className="flex items-center justify-end gap-2 pt-2 border-t border-gray-100">
               <button
                 type="button"
-                onClick={() => setBatchModalOpen(false)}
-                disabled={batchReprocessing}
+                onClick={() => setConfirmTarget(null)}
+                disabled={!!reprocessingId}
                 className="min-h-[44px] rounded-xl border border-gray-300 bg-white px-4 py-2 font-semibold text-gray-700 hover:bg-gray-50 text-xs"
               >
                 Cancelar
               </button>
               <button
                 type="button"
-                onClick={handleReprocessBatch}
-                disabled={batchReprocessing}
+                onClick={handleReprocessSingle}
+                disabled={
+                  !!reprocessingId ||
+                  confirmReason.trim().length < 10 ||
+                  (confirmTarget.processed && !confirmAlreadyProcessed)
+                }
                 className="min-h-[44px] inline-flex items-center gap-2 rounded-xl bg-rose-600 px-4 py-2 font-bold text-white hover:bg-rose-700 text-xs disabled:opacity-50"
               >
-                {batchReprocessing ? (
+                {reprocessingId === confirmTarget.id ? (
                   <>
                     <RefreshCw className="h-4 w-4 animate-spin" />
-                    Reprocessando em lote...
+                    Executando...
                   </>
                 ) : (
                   <>
                     <RotateCw className="h-4 w-4" />
-                    Confirmar Reprocessamento
+                    Confirmar execução
                   </>
                 )}
               </button>

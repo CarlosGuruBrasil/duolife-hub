@@ -21,6 +21,8 @@ import { verifyAuth, verifyPartnerAuth } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { saveRascunho } from '@/lib/cotacao-rascunhos-service';
 
+const mockSql = vi.mocked(sql as any);
+
 const broker = {
   userId: 'user-1',
   partnerId: 'partner-1',
@@ -40,10 +42,10 @@ function putReq(body: unknown) {
 
 /** Valores interpolados na chamada N do tagged template `sql`. */
 function sqlValues(call: number) {
-  return vi.mocked(sql).mock.calls[call].slice(1);
+  return (mockSql.mock.calls[call] as any[]).slice(1);
 }
 function sqlText(call: number) {
-  return (vi.mocked(sql).mock.calls[call][0] as unknown as string[]).join('?');
+  return ((mockSql.mock.calls[call][0] as unknown as string[]) || []).join('?');
 }
 
 describe('Rascunhos de cotação (TD-009)', () => {
@@ -72,8 +74,8 @@ describe('Rascunhos de cotação (TD-009)', () => {
   });
 
   it('cria rascunho com o parceiro do próprio corretor, ignorando partnerId enviado', async () => {
-    vi.mocked(sql).mockResolvedValueOnce([{ id: 'r-1', updated_at: '2026-11-09' }] as any); // INSERT
-    vi.mocked(sql).mockResolvedValueOnce([] as any); // limpeza dos excedentes
+    mockSql.mockResolvedValueOnce([{ id: 'r-1', updated_at: '2026-11-09' }] as any); // INSERT
+    mockSql.mockResolvedValueOnce([] as any); // limpeza dos excedentes
     const saved = await saveRascunho(broker, {
       step: 3,
       partnerId: 'outro-parceiro',
@@ -92,7 +94,7 @@ describe('Rascunhos de cotação (TD-009)', () => {
   });
 
   it('atualização é sempre restrita ao autor (user_id na cláusula WHERE)', async () => {
-    vi.mocked(sql).mockResolvedValueOnce([{ id: 'r-1', updated_at: 'x' }] as any); // UPDATE
+    mockSql.mockResolvedValueOnce([{ id: 'r-1', updated_at: 'x' }] as any); // UPDATE
     await saveRascunho(broker, { id: 'r-1', step: 4, payload: {} });
     expect(sqlText(0)).toContain('UPDATE cotacao_rascunhos');
     expect(sqlText(0)).toMatch(/WHERE id = \? AND user_id = \?/);
@@ -102,7 +104,7 @@ describe('Rascunhos de cotação (TD-009)', () => {
   it('GET/DELETE de rascunho de outro usuário retornam 404', async () => {
     vi.mocked(verifyAuth).mockResolvedValue(broker);
     vi.mocked(verifyPartnerAuth).mockResolvedValue(broker);
-    vi.mocked(sql).mockResolvedValue([] as any);
+    mockSql.mockResolvedValue([] as any);
     const params = Promise.resolve({ id: 'r-de-outro' });
 
     const resGet = await GET_ONE(new NextRequest('http://localhost/x'), { params });
@@ -116,7 +118,7 @@ describe('Rascunhos de cotação (TD-009)', () => {
   it('usuário interno (staff) também pode ter rascunhos', async () => {
     const staff = { ...broker, userId: 'staff-1', partnerId: null, role: 'duolife_staff' };
     vi.mocked(verifyAuth).mockResolvedValueOnce(staff);
-    vi.mocked(sql).mockResolvedValueOnce([] as any);
+    mockSql.mockResolvedValueOnce([] as any);
     const res = await LIST();
     expect(res.status).toBe(200);
     expect(verifyPartnerAuth).not.toHaveBeenCalled();
