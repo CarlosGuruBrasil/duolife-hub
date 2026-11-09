@@ -6,6 +6,7 @@ import { dispatchDomainEvent } from './triggers/dispatcher';
 import { parseCurrencyToNumber } from './format';
 import { isInstallmentPastCancellationDeadline } from './business-days';
 import { cancelSaleAndQuoteForDelinquency } from './insurance-ops';
+import { purgeExpiredRascunhos } from '@/lib/cotacao-rascunhos-service';
 
 export interface LifecycleConfig {
   renewalWindows: number[];
@@ -829,6 +830,16 @@ export async function runFullLifecycleScan(options?: {
 
   if (selectedModule === 'all' || selectedModule === 'delinquency' || selectedModule === 'cancellation') {
     cancellations = await runDelinquencyCancellationScan({ targetDate, dryRun });
+  }
+
+  // Purga de rascunhos de cotação expirados (TD-009 / LGPD). Best-effort: não afeta o status do job.
+  if (!dryRun && selectedModule === 'all') {
+    try {
+      const purged = await purgeExpiredRascunhos();
+      if (purged > 0) logger.info({ purged }, 'lifecycle.rascunhos.purged');
+    } catch (purgeErr) {
+      logger.error({ purgeErr }, 'Falha ao purgar rascunhos de cotação expirados');
+    }
   }
 
   const durationMs = Date.now() - startTime;

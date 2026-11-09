@@ -16,6 +16,7 @@ function AdminNovaCotacaoContent() {
   const searchParams = useSearchParams();
   const cotacaoId = searchParams.get('cotacaoId') || undefined;
   const paramProductId = searchParams.get('productId') || searchParams.get('product') || undefined;
+  const rascunhoId = searchParams.get('rascunho') || undefined;
 
   const [partners, setPartners] = useState<PartnerOption[]>([]);
   const [selectedPartnerId, setSelectedPartnerId] = useState<string | null>(null);
@@ -47,6 +48,20 @@ function AdminNovaCotacaoContent() {
             }
           } catch (e) {
             console.error('Erro ao buscar cotação inicial:', e);
+          }
+        }
+
+        // Retomada de rascunho: restaura parceiro simulado e produto do rascunho
+        if (!cotacaoId && rascunhoId) {
+          try {
+            const resDraft = await fetch(`/api/portal/rascunhos/${encodeURIComponent(rascunhoId)}`);
+            const dataDraft = await resDraft.json();
+            if (resDraft.ok && dataDraft.rascunho) {
+              if (dataDraft.rascunho.partner_id) partnerIdFromCotacao = dataDraft.rascunho.partner_id;
+              if (dataDraft.rascunho.product_id && !paramProductId) setSelectedProductId(dataDraft.rascunho.product_id);
+            }
+          } catch (e) {
+            console.error('Erro ao buscar rascunho:', e);
           }
         }
 
@@ -82,7 +97,7 @@ function AdminNovaCotacaoContent() {
       }
     }
     init();
-  }, [cotacaoId, paramProductId]);
+  }, [cotacaoId, paramProductId, rascunhoId]);
 
   if (loading) {
     return <div className="p-8 text-center text-slate-500">Carregando dados...</div>;

@@ -15,6 +15,7 @@ import { calculateMatrixStatus, getCotacaoMatrixFilterSql } from '@/lib/status-m
 import { getCotacaoAssinaturaInfo } from '@/lib/assinatura-status';
 import { ContratoActionButton } from '@/components/cotacoes/ContratoActionButton';
 import { safeExternalUrl } from '@/lib/safe-url';
+import RascunhosEmAndamento from '@/components/cotacoes/RascunhosEmAndamento';
 
 export const dynamic = 'force-dynamic';
 
@@ -410,6 +411,8 @@ export default async function CotacoesPage({
           </Link>
         </div>
       </div>
+
+      <RascunhosEmAndamento basePath="/portal/cotacoes/nova" productParam="product" />
 
       {/* Barra de Filtros Reativa e Inteligente */}
       <PortalCotacoesFilterSection

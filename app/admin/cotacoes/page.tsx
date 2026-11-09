@@ -8,6 +8,7 @@ import { ExcluirCotacaoButton } from '@/components/dev';
 import { ESTADOS_TERMINAIS } from '@/lib/cotacao-status';
 import { formatCurrency, formatDateTime, formatStatusLabel, formatarDocumento } from '@/lib/format';
 import { safeExternalUrl } from '@/lib/safe-url';
+import RascunhosEmAndamento from '@/components/cotacoes/RascunhosEmAndamento';
 
 import { CotacoesFilterSection } from './_components/CotacoesFilterSection';
 import { CotacoesPagination } from './_components/CotacoesPagination';
@@ -442,6 +443,8 @@ export default async function AdminCotacoesPage({
           </Link>
         </div>
       </section>
+
+      <RascunhosEmAndamento basePath="/admin/cotacoes/nova" productParam="productId" showPartner />
 
       {/* Seção de Filtros Reativos */}
       <CotacoesFilterSection

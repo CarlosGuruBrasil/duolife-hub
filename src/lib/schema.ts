@@ -44,6 +44,7 @@ export const EXPECTED_TABLES = [
   'mcp_audit_logs',
   'action_audit_logs',
   'contract_templates',
+  'cotacao_rascunhos',
 ] as const;
 
 export const REQUIRED_TABLES = EXPECTED_TABLES;
@@ -848,6 +849,25 @@ async function runRuntimeSchemaSetup(): Promise<void> {
   await sql`CREATE INDEX IF NOT EXISTS idx_sale_link_access_logs_token      ON sale_link_access_logs (token)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_sale_link_access_logs_partner_id ON sale_link_access_logs (partner_id)`;
   await sql`CREATE INDEX IF NOT EXISTS idx_sale_link_access_logs_link_ip    ON sale_link_access_logs (link_id, ip_hash)`;
+
+  // Rascunhos de cotação do fluxo interno (migração 031)
+  await sql`
+    CREATE TABLE IF NOT EXISTS cotacao_rascunhos (
+      id              TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+      user_id         TEXT NOT NULL,
+      partner_id      TEXT REFERENCES partners(id) ON DELETE CASCADE,
+      product_id      TEXT,
+      step            INT NOT NULL DEFAULT 1,
+      client_name     TEXT,
+      client_cpf_cnpj TEXT,
+      payload         JSONB NOT NULL DEFAULT '{}',
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at      TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '30 days')
+    )
+  `;
+  await sql`CREATE INDEX IF NOT EXISTS idx_cotacao_rascunhos_user_updated ON cotacao_rascunhos (user_id, updated_at DESC)`;
+  await sql`CREATE INDEX IF NOT EXISTS idx_cotacao_rascunhos_expires_at   ON cotacao_rascunhos (expires_at)`;
 
   // Documentos de assinatura eletrônica
   await sql`

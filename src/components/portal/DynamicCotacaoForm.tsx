@@ -57,6 +57,7 @@ import {
   getClientSessionToken,
   setClientSessionToken,
 } from '@/lib/client-draft-storage';
+import { useServerCotacaoDraft } from '@/hooks/useServerCotacaoDraft';
 import {
   findMatchingPlanoInLists,
   reconciliarPlanoComCatalogo,
@@ -473,6 +474,51 @@ export default function DynamicCotacaoForm({
       setParcelaSel(null);
       toast.info('Rascunho local removido.');
     }
+  };
+
+  // Rascunho no servidor para o fluxo interno (corretor/admin) — TD-009
+  const isInternalDraftFlow = !publicToken && !initialCotacaoId;
+  const serverDraft = useServerCotacaoDraft({
+    active: isInternalDraftFlow,
+    step,
+    productId: productId || null,
+    partnerId: adminSelectedPartnerId || null,
+    clientName: form.nome,
+    clientCpfCnpj: form.cpfCnpj,
+    payload: { form: form as unknown as Record<string, unknown>, planoSel, parcelaSel, formaPagamento, descontoPercentual },
+    onRestore: (draft, draftStep) => {
+      if (draft.form) setForm((prev) => ({ ...prev, ...(draft.form as Partial<DynamicFormState>) }));
+      if (draftStep > 1 && draftStep <= 5) setStep(draftStep);
+      if (draft.planoSel) setPlanoSel(draft.planoSel as Plano);
+      if (draft.parcelaSel) setParcelaSel(draft.parcelaSel as { qtd: number; valor: number });
+      if (draft.formaPagamento) setFormaPagamento(draft.formaPagamento as any);
+      if (typeof draft.descontoPercentual === 'number') {
+        setDescontoPercentual(Math.min(40, Math.max(0, draft.descontoPercentual)));
+      }
+    },
+  });
+
+  const handleDiscardServerDraft = async () => {
+    await serverDraft.discard();
+    setForm({
+      ...initialFormState,
+      grupoTarifario: resolvedRamoConfig.gruposTarifarios ? 'G5' : '',
+      dataInicioVigencia: getTodayIsoDate(),
+    });
+    setStep(1);
+    setPlanoSel(null);
+    setParcelaSel(null);
+    setFormaPagamento('UNDEFINED');
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has('rascunho')) {
+        url.searchParams.delete('rascunho');
+        window.history.replaceState(null, '', url.toString());
+      }
+    } catch {
+      // ignore
+    }
+    toast.info('Rascunho descartado.');
   };
 
   const setError = useCallback((msg: string) => {
@@ -1478,6 +1524,8 @@ export default function DynamicCotacaoForm({
       if (publicToken) {
         clearLocalDraft(publicToken);
       }
+      // A cotação real passa a existir: o rascunho do servidor deixa de ser necessário.
+      serverDraft.close();
 
       // Se houver conflito de duplicidade cadastral, interrompe o avanço e exibe tela de segurança LGPD
       if (data.duplicateConflict || data.cotacao?.status === 'pendente_duplicidade') {
@@ -1745,6 +1793,25 @@ export default function DynamicCotacaoForm({
                 className="text-[11px] font-bold text-blue-700 hover:text-blue-900 underline underline-offset-2 self-start sm:self-auto cursor-pointer"
               >
                 Limpar rascunho e recomeçar
+              </button>
+            </div>
+          )}
+
+          {isInternalDraftFlow && !cotacaoId && step >= 2 && step <= 5 && (serverDraft.lastSavedAt || serverDraft.restored) && (
+            <div className="mb-6 p-3 rounded-xl bg-gray-50 border border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-gray-700">
+              <span>
+                {serverDraft.restored ? <strong>Rascunho retomado.</strong> : <strong>Rascunho salvo.</strong>}{' '}
+                {serverDraft.lastSavedAt && (
+                  <>Última gravação às {serverDraft.lastSavedAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}. </>
+                )}
+                Você pode sair e continuar depois em Cotações.
+              </span>
+              <button
+                type="button"
+                onClick={handleDiscardServerDraft}
+                className="text-[11px] font-bold text-gray-600 hover:text-red-700 underline underline-offset-2 self-start sm:self-auto cursor-pointer"
+              >
+                Descartar rascunho
               </button>
             </div>
           )}

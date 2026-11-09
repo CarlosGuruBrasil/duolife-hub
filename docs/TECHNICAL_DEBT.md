@@ -91,13 +91,15 @@ Este documento reúne débitos técnicos arquiteturais, de banco de dados, front
 
 ---
 
-### TD-009 — Cotações sem Salvamento de Rascunho nas Etapas Iniciais (1 a 4)
-- **Descrição:** O formulário dinâmico só executa a requisição `POST /api/cotacoes` para persistir os dados no banco na Etapa 5 (ao clicar em "Ir para Assinatura").
-- **Impacto:** Se o corretor preencher os dados do proponente, especialidades e declarações de risco (etapas 2, 3 e 4) e a página for recarregada ou fechar acidentalmente, todo o trabalho é perdido.
-- **Risco:** **Médio (Fricção de UX e Perda de Conversão)**
-- **Arquivos Envolvidos:** `src/components/portal/DynamicCotacaoForm.tsx`, `app/api/cotacoes/route.ts`.
-- **Prioridade:** **Média**
-- **Sugestão Futura:** Implementar salvamento automático de rascunho com debounce a partir do preenchimento da Etapa 2.
+### TD-009 — Cotações sem Salvamento de Rascunho nas Etapas Iniciais (1 a 4) [RESOLVIDO]
+- **Status:** **Resolvido em 09/11/2026**
+- **Descrição original:** O formulário dinâmico só persistia dados via `POST /api/cotacoes` na Etapa 5; recarregar a página nas etapas 2 a 4 perdia o preenchimento.
+- **Solução Implementada:**
+  - **Link público (`/contratar/[token]`):** já salvava rascunho em `localStorage` (`src/lib/client-draft-storage.ts`) — mantido sem alterações.
+  - **Fluxo interno (portal/admin):** rascunho no servidor em tabela isolada `cotacao_rascunhos` (migração `031`), sem criar cliente, sem entrar no funil e sem disparar gatilhos/webhooks. Autosave com debounce de 2s entre as etapas 2 e 5 (`src/hooks/useServerCotacaoDraft.ts`), retomada por `?rascunho=<id>`, exclusão automática quando a cotação real é criada e bloco "Rascunhos em andamento" em `/portal/cotacoes` e `/admin/cotacoes`.
+  - Rascunhos são pessoais (apenas o autor lista/retoma/descarta), limitados a 50 por usuário e 200 KB, e expiram em 30 dias (purga no cron lifecycle).
+- **Arquivos Envolvidos:** `db/migrations/031-cotacao-rascunhos.sql`, `src/lib/cotacao-rascunhos-service.ts`, `app/api/portal/rascunhos/**`, `src/hooks/useServerCotacaoDraft.ts`, `src/components/portal/DynamicCotacaoForm.tsx`, `src/components/cotacoes/RascunhosEmAndamento.tsx`, `src/lib/lifecycle-service.ts`.
+- **Testes:** `tests/unit/cotacao-rascunhos.test.ts`.
 
 ---
 
