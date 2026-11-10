@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { verifyAdminAuth, unauthorized, isDevUser } from '@/lib/auth';
 import { sql } from '@/lib/pg';
 import { logger } from '@/lib/logger';
-import { deleteAsaasPayment } from '@/lib/asaas-charges';
+import { deleteAsaasPayment, getAsaasPayment } from '@/lib/asaas-charges';
 
 const PAID_STATUSES = ['paid', 'received', 'confirmed', 'RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'];
 
@@ -56,6 +56,31 @@ export async function DELETE(
       `;
 
       if (!order) {
+        // Cobrança órfã: existe só no Asaas (ex.: duplicada), sem registro local
+        if (id.startsWith('pay_')) {
+          const remote = await getAsaasPayment(id);
+          if (!remote.ok || !remote.charge) {
+            return Response.json(
+              { error: remote.error || 'Cobrança não encontrada no Asaas' },
+              { status: 404 }
+            );
+          }
+          if (PAID_STATUSES.includes(remote.charge.status)) {
+            return Response.json(
+              { error: 'Não é possível excluir uma cobrança que já foi compensada/paga.' },
+              { status: 400 }
+            );
+          }
+          const asaasRes = await deleteAsaasPayment(id);
+          if (!asaasRes.ok) {
+            return Response.json(
+              { error: `Falha ao cancelar no Asaas: ${asaasRes.error}` },
+              { status: 400 }
+            );
+          }
+          logger.warn({ externalPaymentId: id, adminId: admin.userId }, 'admin.boletos.orphan_asaas_deleted');
+          return Response.json({ ok: true, deletedExternalPaymentId: id, orphan: true });
+        }
         return Response.json({ error: 'Boleto/Cobrança não encontrada' }, { status: 404 });
       }
 
