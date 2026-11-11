@@ -48,7 +48,7 @@ describe('Task 5: Validação de Autorização para Desconto Manual Comercial (V
     vi.clearAllMocks();
   });
 
-  it('deve ZERAR o desconto manual quando enviado por um corretor comum (partner_broker)', async () => {
+  it('deve PERMITIR o desconto manual quando enviado por um vendedor (partner_broker)', async () => {
     vi.mocked(verifyAuth).mockResolvedValue({
       userId: 'broker-user-01',
       partnerId: 'partner-01',
@@ -96,7 +96,7 @@ describe('Task 5: Validação de Autorização para Desconto Manual Comercial (V
         clientData: {
           tipoDePlano: 'advogado-anual',
           parcela: 1,
-          descontoManualPercent: 35, // Injeção de 35% de desconto manual
+          descontoManualPercent: 35, // Desconto aplicado pelo vendedor no DescontoDrawer
         },
       }),
     });
@@ -107,8 +107,14 @@ describe('Task 5: Validação de Autorização para Desconto Manual Comercial (V
     expect(calcularPrecoServidor).toHaveBeenCalled();
     const calledParams = vi.mocked(calcularPrecoServidor).mock.calls[0][0];
 
-    // O descontoManualPercent repassado ao motor DEVE ser 0, pois o corretor comum não tem permissão
-    expect(calledParams.descontoManualPercent).toBe(0);
+    // O desconto do vendedor DEVE chegar ao motor de preço (teto de 40% é aplicado lá)
+    expect(calledParams.descontoManualPercent).toBe(35);
+  });
+
+  it('NÃO deve permitir desconto manual para operação da corretora (corretora_staff) nem sem usuário', async () => {
+    const { canApplyManualDiscount } = await vi.importActual<typeof import('@/lib/auth')>('@/lib/auth');
+    expect(canApplyManualDiscount({ userId: 'staff-corr-01', role: 'corretora_staff' } as any)).toBe(false);
+    expect(canApplyManualDiscount(null)).toBe(false);
   });
 
   it('deve PERMITIR o desconto manual quando enviado por um Diretor ou Administrador da Corretora', async () => {

@@ -216,10 +216,14 @@ export function canManageCorretoraWide(user: AuthUser): boolean {
   return roleIsCorretoraManagement(user.role) || isInternalUser(user);
 }
 
-// Permissão para conceder descontos manuais discricionários comerciais
+// Permissão para conceder descontos manuais discricionários comerciais.
+// Regra comercial: vendedores (broker/partner), gestores e diretores do parceiro podem aplicar
+// desconto manual na cotação. O teto de 40% (BR-001) continua imposto em calcularPrecoServidor,
+// então o valor enviado pelo cliente nunca ultrapassa o limite.
+// Operação da corretora (corretora_staff) segue sem permissão.
 export function canApplyManualDiscount(user?: AuthUser | null): boolean {
   if (!user) return false;
-  return isInternalUser(user) || roleIsCorretoraManagement(user.role) || user.partnerRole === 'director';
+  return isInternalUser(user) || roleIsCorretoraManagement(user.role) || Boolean(user.partnerRole);
 }
 
 // Diretor/Gerente de um Parceiro Individual: restrito estritamente ao seu próprio user.partnerId
