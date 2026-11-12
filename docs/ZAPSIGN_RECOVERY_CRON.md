@@ -6,7 +6,7 @@ webhook (`processZapSignPayload`) um payload equivalente ao evento `doc_signed`.
 
 ## Como funciona
 
-1. `GET|POST /api/cron/zapsign-recovery` (autenticado) abre uma execução em `zapsign_recovery_runs`.
+1. `GET|POST /api/cron/zapsign-recovery` abre uma execução em `zapsign_recovery_runs`.
 2. Seleciona documentos em `signature_documents` que:
    - são da ZapSign e foram criados nos **últimos 5 dias úteis** (fuso de Brasília, feriados nacionais);
    - não estão `signed`, `cancelled`, `refused` ou `expired` no sistema;
@@ -51,16 +51,23 @@ Em ambientes sem esse fluxo, rodar manualmente:
 node scripts/migrate.mjs
 ```
 
-### 2. Segredo e intervalo
+### 2. Acesso, segredo e intervalo
 
+> **Fase de testes: a rota está PÚBLICA por padrão.** Pode ser aberta direto no navegador, sem
+> segredo, inclusive com `force`. As travas de negócio continuam ativas: uma execução por vez,
+> intervalo mínimo e claim por documento (sem cobrança ou e-mail duplicado).
+
+- `ZAPSIGN_RECOVERY_REQUIRE_AUTH` — `true` passa a exigir `CRON_SECRET` (cabeçalho) ou sessão de
+  administrador. Padrão: desligado. Variável de ambiente ou chave em `system_settings`.
 - `CRON_SECRET` — o mesmo do cron de lifecycle (Admin → Chaves de API, ou variável de ambiente).
+  Só é exigido com a proteção ligada, mas o agendador já pode enviá-lo desde agora.
 - `ZAPSIGN_RECOVERY_INTERVAL_MINUTES` — intervalo mínimo em minutos (padrão `15`). Pode ser definido
   como variável de ambiente ou como chave em `system_settings` (o banco tem prioridade).
 
 ### 3. Agendar a chamada
 
 O agendador deve chamar **pelo menos** na frequência desejada; o endpoint respeita o intervalo mínimo.
-O segredo vai sempre em cabeçalho (query string é rejeitada).
+O segredo vai sempre em cabeçalho (query string não vale como autenticação).
 
 crontab (a cada 15 minutos):
 
@@ -72,14 +79,21 @@ Coolify / Railway / outro agendador: criar uma tarefa agendada com o mesmo coman
 
 ### 4. Testar com segurança
 
-Simulação (consulta a ZapSign, não altera nada nem dispara e-mails/cobranças):
+Pelo navegador (com a rota pública):
+
+- Simulação, não altera nada: `https://SEU_DOMINIO/api/cron/zapsign-recovery?dryRun=1`
+- Execução real, ignorando o intervalo: `https://SEU_DOMINIO/api/cron/zapsign-recovery?force=1`
+- Lote menor: acrescente `&limit=5`
+
+Por linha de comando, simulação (consulta a ZapSign, não altera nada nem dispara e-mails/cobranças):
 
 ```bash
 curl -s -X POST -H "Authorization: Bearer $CRON_SECRET" -H "Content-Type: application/json" -d '{"dryRun":true}' https://SEU_DOMINIO/api/cron/zapsign-recovery
 ```
 
-Parâmetros: `dryRun` (simulação), `limit` (lote, máx. 500) e `force` (ignora o intervalo — **só com
-sessão de administrador**; vindo do agendador é ignorado).
+Parâmetros: `dryRun` (simulação), `limit` (lote, máx. 500) e `force` (ignora o intervalo — com a rota
+pública, qualquer chamada sem credencial pode usar; com `ZAPSIGN_RECOVERY_REQUIRE_AUTH=true`, **só com
+sessão de administrador**, e vindo do agendador é ignorado).
 
 ### 5. Acompanhar
 

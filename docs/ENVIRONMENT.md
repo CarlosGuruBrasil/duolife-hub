@@ -27,6 +27,7 @@
 | `ZAPSIGN_API_TOKEN` | Token de autorização Bearer para a API de assinatura digital ZapSign. | **SIM** | `src/lib/zapsign-direct-docs.ts` | Token de API da ZapSign |
 | `ZAPSIGN_BASE_URL` | URL base da API da ZapSign. | Não (default prod) | `src/lib/zapsign-direct-docs.ts` | `https://api.zapsign.com.br/api/v1` |
 | `ZAPSIGN_WEBHOOK_SECRET` | Segredo de verificação para as notificações da ZapSign. | Opcional | `app/api/webhook/zapsign/route.ts` | String alfanumérica |
+| `ZAPSIGN_RECOVERY_REQUIRE_AUTH` | `true` exige `CRON_SECRET` ou sessão de administrador na rota `/api/cron/zapsign-recovery`. Desligado = rota pública (fase de testes). Também configurável em `system_settings`. | Não (padrão desligado) | `app/api/cron/zapsign-recovery/route.ts` | `true` |
 | `ZAPSIGN_RECOVERY_INTERVAL_MINUTES` | Intervalo mínimo (min) entre execuções da contingência de webhooks ZapSign perdidos. Também configurável em `system_settings`. Ver `docs/ZAPSIGN_RECOVERY_CRON.md`. | Não (padrão 15) | `src/lib/zapsign-signature-recovery.ts` | `15` |
 | `WIX_API_KEY` | Chave de autorização para consumo das APIs de dados do Wix (Data API v2). | **SIM** | `src/lib/wix-client.ts` | Chave de API gerada no Wix Studio / Developer |
 | `WIX_SITE_ID` | Identificador único do site/MetaSite da Net4Life no Wix. | **SIM** | `src/lib/wix-client.ts` | UUID do MetaSite Wix |

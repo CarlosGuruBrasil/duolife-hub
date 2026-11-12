@@ -10,15 +10,29 @@ import { runZapSignSignatureRecovery } from '@/lib/zapsign-signature-recovery';
  * Contingência de webhooks ZapSign perdidos.
  *
  * Acionado periodicamente por um agendador externo (crontab, Coolify, GitHub Actions etc.).
- * Autenticação: `Authorization: Bearer <CRON_SECRET>` ou `x-cron-secret: <CRON_SECRET>`
+ *
+ * FASE DE TESTES: por padrão a rota é PÚBLICA (acessível pelo navegador, sem segredo).
+ * Para exigir autenticação, defina ZAPSIGN_RECOVERY_REQUIRE_AUTH=true (env ou system_settings).
+ * Com a proteção ativa: `Authorization: Bearer <CRON_SECRET>` ou `x-cron-secret: <CRON_SECRET>`
  * (nunca por query string), ou sessão de administrador para disparo manual.
+ *
+ * Mesmo pública, a rota mantém as travas: uma execução por vez, intervalo mínimo entre
+ * execuções e claim por documento (sem cobrança ou e-mail duplicado).
  *
  * Parâmetros (query ou corpo JSON no POST):
  *   dryRun=true   → apenas consulta a ZapSign e relata o que seria recuperado.
- *   force=true    → ignora o intervalo mínimo entre execuções (somente administrador).
+ *   force=true    → ignora o intervalo mínimo entre execuções
+ *                   (com proteção ativa, somente administrador).
  *   limit=N       → tamanho do lote (padrão 100, máx. 500).
  */
 export const dynamic = 'force-dynamic';
+
+async function isAuthRequired(): Promise<boolean> {
+  const raw = (await getSystemSetting('ZAPSIGN_RECOVERY_REQUIRE_AUTH', process.env.ZAPSIGN_RECOVERY_REQUIRE_AUTH || ''))
+    .trim()
+    .toLowerCase();
+  return raw === 'true' || raw === '1';
+}
 
 async function authorize(req: NextRequest): Promise<{ authorized: boolean; triggeredBy: string; isAdmin: boolean }> {
   const cronSecret = (await getSystemSetting('CRON_SECRET', process.env.CRON_SECRET || '')).trim();
@@ -32,6 +46,11 @@ async function authorize(req: NextRequest): Promise<{ authorized: boolean; trigg
 
   const admin = await verifyAdminAuth();
   if (admin) return { authorized: true, triggeredBy: `admin:${admin.email}`, isAdmin: true };
+
+  if (!(await isAuthRequired())) {
+    // Fase de testes: rota aberta. Quem chama sem credencial pode inclusive usar `force`.
+    return { authorized: true, triggeredBy: 'public', isAdmin: true };
+  }
 
   return { authorized: false, triggeredBy: 'unauthorized', isAdmin: false };
 }
@@ -65,7 +84,7 @@ async function handle(req: NextRequest) {
     const result = await runZapSignSignatureRecovery({
       triggeredBy,
       dryRun,
-      // O agendador não pode furar o intervalo mínimo; só o administrador, manualmente.
+      // Com proteção ativa, o agendador não fura o intervalo mínimo; só o administrador.
       force: isAdmin && force,
       batchSize: limit,
     });

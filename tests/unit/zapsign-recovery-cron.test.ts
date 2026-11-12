@@ -25,12 +25,17 @@ vi.mock('@/lib/pg', () => ({
     return [];
   }),
 }));
+const routeAuth = vi.hoisted(() => ({ required: false }));
 vi.mock('@/lib/logger', () => ({ logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() } }));
 vi.mock('@/lib/schema', () => ({ ensureSchema: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/lib/system-settings', () => ({
   getZapSignConfig: vi.fn().mockResolvedValue({ apiToken: 'zap-token', baseUrl: 'https://zapsign.test/api/v1' }),
   sanitizeApiToken: (v: string) => (v || '').trim(),
-  getSystemSetting: vi.fn(async (key: string, fallback?: string) => (key === 'CRON_SECRET' ? 'cron-secret-123' : fallback || '')),
+  getSystemSetting: vi.fn(async (key: string, fallback?: string) => {
+    if (key === 'CRON_SECRET') return 'cron-secret-123';
+    if (key === 'ZAPSIGN_RECOVERY_REQUIRE_AUTH') return routeAuth.required ? 'true' : '';
+    return fallback || '';
+  }),
 }));
 vi.mock('@/lib/webhook-processor', () => ({
   processZapSignPayload: vi.fn().mockResolvedValue({ success: true, details: { effects: 'executed', todasAssinadas: true } }),
@@ -201,15 +206,37 @@ describe('rota /api/cron/zapsign-recovery', () => {
     state.runOpen = true;
     state.candidates = [];
     vi.mocked(verifyAdminAuth).mockResolvedValue(null);
+    routeAuth.required = false;
   });
 
-  it('rejeita chamadas sem segredo do cron', async () => {
+  it('fase de testes: aceita chamada do navegador sem credencial', async () => {
+    const { GET } = await import('@/../app/api/cron/zapsign-recovery/route');
+    const res = await GET(new NextRequest('http://localhost/api/cron/zapsign-recovery?dryRun=1'));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.dryRun).toBe(true);
+  });
+
+  it('fase de testes: chamada pública pode usar force, mas a trava de execução única continua valendo', async () => {
+    state.recentRun = true;
+    const { GET } = await import('@/../app/api/cron/zapsign-recovery/route');
+    const forced = await GET(new NextRequest('http://localhost/api/cron/zapsign-recovery?force=1'));
+    expect((await forced.json()).skippedReason).toBeUndefined();
+
+    state.runOpen = false;
+    const busy = await GET(new NextRequest('http://localhost/api/cron/zapsign-recovery?force=1'));
+    expect((await busy.json()).skippedReason).toBe('already_running');
+  });
+
+  it('com ZAPSIGN_RECOVERY_REQUIRE_AUTH: rejeita chamadas sem segredo do cron', async () => {
+    routeAuth.required = true;
     const { GET } = await import('@/../app/api/cron/zapsign-recovery/route');
     const res = await GET(new NextRequest('http://localhost/api/cron/zapsign-recovery'));
     expect(res.status).toBe(401);
   });
 
-  it('rejeita segredo incorreto e não aceita segredo por query string', async () => {
+  it('com ZAPSIGN_RECOVERY_REQUIRE_AUTH: rejeita segredo incorreto e não aceita segredo por query string', async () => {
+    routeAuth.required = true;
     const { GET } = await import('@/../app/api/cron/zapsign-recovery/route');
     const wrong = await GET(
       new NextRequest('http://localhost/api/cron/zapsign-recovery', { headers: { authorization: 'Bearer errado' } })
@@ -220,6 +247,7 @@ describe('rota /api/cron/zapsign-recovery', () => {
   });
 
   it('aceita o CRON_SECRET e não permite ao agendador forçar o intervalo', async () => {
+    routeAuth.required = true;
     state.recentRun = true;
     const { POST } = await import('@/../app/api/cron/zapsign-recovery/route');
     const res = await POST(
