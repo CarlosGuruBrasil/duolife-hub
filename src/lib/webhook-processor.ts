@@ -7,7 +7,12 @@ import { findPartnerByWixCode, logSyncEvent, normalizeWixRecord } from '@/lib/wi
 import { parseJsonbField } from '@/lib/json-safe';
 import { identificarRequisitosAssinatura } from '@/lib/assinatura-status';
 import { getZapSignConfig, sanitizeApiToken } from '@/lib/system-settings';
-import { runWithSideEffectsSuppressed } from '@/lib/side-effects-guard';
+import { getSideEffectsSuppression, runWithSideEffectsSuppressed } from '@/lib/side-effects-guard';
+import {
+  claimSignatureCompletionEffects,
+  shouldRunCompletionEffects,
+  type SignatureCompletionSource,
+} from '@/lib/signature-completion-claim';
 
 // ==========================================
 // Helpers Asaas
@@ -720,7 +725,65 @@ export async function processAsaasPayload(rawPayload: any): Promise<{ success: b
 // Processador de Payloads ZapSign
 // =========================================================================
 
-export async function processZapSignPayload(rawPayload: any): Promise<{ success: boolean; message?: string }> {
+export interface ProcessZapSignOptions {
+  /** Origem do processamento, registrada na trava de conclusão. Padrão: 'webhook'. */
+  source?: SignatureCompletionSource;
+  /**
+   * Se a trava de conclusão falhar (ex.: tabela indisponível): `fail_open` executa os efeitos
+   * (comportamento histórico); `fail_closed` não executa (usado pelo cron de contingência).
+   */
+  claimFailureMode?: 'fail_open' | 'fail_closed';
+}
+
+export interface ProcessZapSignResult {
+  success: boolean;
+  message?: string;
+  details?: {
+    cotacaoId?: string;
+    statusAssinatura?: string;
+    todasAssinadas?: boolean;
+    /** executed = e-mails/cobrança disparados por esta chamada; skipped_* = não disparados. */
+    effects?: 'executed' | 'skipped_already_processed' | 'not_applicable';
+  };
+}
+
+async function resolveZapSignCompletionEffects(input: {
+  signatureDocumentId: string;
+  cotacaoId: string;
+  externalDocumentId?: string | null;
+  options: ProcessZapSignOptions;
+}): Promise<boolean> {
+  // Reprocessamento administrativo em modo seguro: gatilhos e cobrança já são suprimidos pela
+  // guarda de efeitos colaterais. Não reivindica, para não bloquear o disparo real futuro.
+  if (getSideEffectsSuppression()) return true;
+
+  const source = input.options.source || 'webhook';
+  const outcome = await claimSignatureCompletionEffects({
+    signatureDocumentId: input.signatureDocumentId,
+    cotacaoId: input.cotacaoId,
+    externalDocumentId: input.externalDocumentId,
+    source,
+  });
+
+  // Reexecução administrativa COM disparos é decisão explícita do admin: registra a trava,
+  // mas não bloqueia (mantém o comportamento existente da Auditoria de Webhooks).
+  if (source === 'webhook_reprocess') return true;
+
+  const allowed = shouldRunCompletionEffects(outcome, input.options.claimFailureMode || 'fail_open');
+  if (!allowed) {
+    logger.info(
+      { cotacaoId: input.cotacaoId, signatureDocumentId: input.signatureDocumentId, source, outcome },
+      'processZapSignPayload: efeitos de conclusão não executados (já processado ou trava indisponível)'
+    );
+  }
+  return allowed;
+}
+
+export async function processZapSignPayload(
+  rawPayload: any,
+  options: ProcessZapSignOptions = {}
+): Promise<ProcessZapSignResult> {
+  let effectsOutcome: 'executed' | 'skipped_already_processed' | 'not_applicable' = 'not_applicable';
   try {
     const payload = normalizeWebhookPayload(rawPayload);
 
@@ -1025,129 +1088,141 @@ export async function processZapSignPayload(rawPayload: any): Promise<{ success:
         `;
       }
 
-      try {
-        const [cotacaoCompleta] = await sql<{ client_id: string | null; partner_id: string; partner_user_id: string | null; client_name: string; premio_final: number | null; premio_calculado: number | null; importancia_segurada: number }[]>`
-          SELECT client_id, partner_id, partner_user_id, client_name, premio_final, premio_calculado, importancia_segurada
-          FROM cotacoes
-          WHERE id = ${cotacaoId}
+      // Idempotência entre webhook, reprocessamento, verificação manual e cron de recuperação:
+      // somente quem reivindicar a conclusão deste documento dispara e-mails e cobrança.
+      const effectsAllowed = await resolveZapSignCompletionEffects({
+        signatureDocumentId: documentRow.id,
+        cotacaoId,
+        externalDocumentId: docToken || externalDocumentId,
+        options,
+      });
+      effectsOutcome = effectsAllowed ? 'executed' : 'skipped_already_processed';
+
+      if (effectsAllowed) {
+        try {
+          const [cotacaoCompleta] = await sql<{ client_id: string | null; partner_id: string; partner_user_id: string | null; client_name: string; premio_final: number | null; premio_calculado: number | null; importancia_segurada: number }[]>`
+            SELECT client_id, partner_id, partner_user_id, client_name, premio_final, premio_calculado, importancia_segurada
+            FROM cotacoes
+            WHERE id = ${cotacaoId}
+            LIMIT 1
+          `;
+
+          const [clientRow] = cotacaoCompleta?.client_id ? await sql<{ full_name: string; email: string; document_number: string; phone: string }[]>`
+            SELECT full_name, email, document_number, phone FROM insurance_clients WHERE id = ${cotacaoCompleta.client_id} LIMIT 1
+          ` : [];
+
+          const [vendedorRow] = cotacaoCompleta?.partner_user_id ? await sql<{ id: string; nome: string; email: string }[]>`
+            SELECT id, name AS nome, email
+            FROM partner_users
+            WHERE id = ${cotacaoCompleta.partner_user_id}
+            LIMIT 1
+          ` : [];
+
+          const [partnerRow] = cotacaoCompleta?.partner_id ? await sql<{ nome: string; email: string; codigo_venda?: string }[]>`
+            SELECT
+              COALESCE(p.nome_fantasia, p.razao_social) AS nome,
+              COALESCE(NULLIF(p.email, ''), pu.email) AS email,
+              p.metadata->'whiteLabel'->>'wixCode' AS codigo_venda
+            FROM partners p
+            LEFT JOIN partner_users pu ON pu.partner_id = p.id AND pu.is_active = true
+            WHERE p.id = ${cotacaoCompleta.partner_id}
+            ORDER BY pu.created_at ASC
+            LIMIT 1
+          ` : [];
+
+          await dispatchDomainEvent('CONTRATO_ASSINADO', {
+            eventType: 'CONTRATO_ASSINADO',
+            contextId: cotacaoId,
+            cliente: {
+              nome: clientRow?.full_name || cotacaoCompleta?.client_name,
+              email: clientRow?.email || clientData.email,
+              documento: clientRow?.document_number || clientData.cpf || clientData.cnpj,
+              telefone: clientRow?.phone || clientData.telefone,
+            },
+            vendedor: vendedorRow
+              ? {
+                  id: vendedorRow.id,
+                  nome: vendedorRow.nome,
+                  email: vendedorRow.email,
+                }
+              : partnerRow
+              ? {
+                  id: cotacaoCompleta.partner_user_id || cotacaoCompleta.partner_id,
+                  nome: partnerRow.nome,
+                  email: partnerRow.email,
+                }
+              : undefined,
+            parceiro: partnerRow ? {
+              id: cotacaoCompleta.partner_id,
+              nome: partnerRow.nome,
+              email: partnerRow.email,
+              codigoVenda: partnerRow.codigo_venda,
+            } : undefined,
+            cotacao: {
+              id: cotacaoId,
+              status: 'assinado',
+              premio_final: Number(cotacaoCompleta?.premio_final || cotacaoCompleta?.premio_calculado) || 0,
+              cobertura: Number(cotacaoCompleta?.importancia_segurada) || 0,
+            },
+            dados: {
+              contratoPdf: canonicalSignedFile,
+              assinadoEm: clientData.assinadoEm,
+            },
+          });
+        } catch (dispatchErr) {
+          logger.error({ dispatchErr, cotacaoId }, 'processZapSignPayload: Falha ao despachar CONTRATO_ASSINADO');
+        }
+
+        const [existingOrder] = await sql<{ id: string; status: string }[]>`
+          SELECT id, status FROM payment_orders
+          WHERE cotacao_id = ${cotacaoId}
+            AND status IN ('pending', 'partially_paid', 'paid')
           LIMIT 1
         `;
 
-        const [clientRow] = cotacaoCompleta?.client_id ? await sql<{ full_name: string; email: string; document_number: string; phone: string }[]>`
-          SELECT full_name, email, document_number, phone FROM insurance_clients WHERE id = ${cotacaoCompleta.client_id} LIMIT 1
-        ` : [];
-
-        const [vendedorRow] = cotacaoCompleta?.partner_user_id ? await sql<{ id: string; nome: string; email: string }[]>`
-          SELECT id, name AS nome, email
-          FROM partner_users
-          WHERE id = ${cotacaoCompleta.partner_user_id}
-          LIMIT 1
-        ` : [];
-
-        const [partnerRow] = cotacaoCompleta?.partner_id ? await sql<{ nome: string; email: string; codigo_venda?: string }[]>`
-          SELECT
-            COALESCE(p.nome_fantasia, p.razao_social) AS nome,
-            COALESCE(NULLIF(p.email, ''), pu.email) AS email,
-            p.metadata->'whiteLabel'->>'wixCode' AS codigo_venda
-          FROM partners p
-          LEFT JOIN partner_users pu ON pu.partner_id = p.id AND pu.is_active = true
-          WHERE p.id = ${cotacaoCompleta.partner_id}
-          ORDER BY pu.created_at ASC
-          LIMIT 1
-        ` : [];
-
-        await dispatchDomainEvent('CONTRATO_ASSINADO', {
-          eventType: 'CONTRATO_ASSINADO',
-          contextId: cotacaoId,
-          cliente: {
-            nome: clientRow?.full_name || cotacaoCompleta?.client_name,
-            email: clientRow?.email || clientData.email,
-            documento: clientRow?.document_number || clientData.cpf || clientData.cnpj,
-            telefone: clientRow?.phone || clientData.telefone,
-          },
-          vendedor: vendedorRow
-            ? {
-                id: vendedorRow.id,
-                nome: vendedorRow.nome,
-                email: vendedorRow.email,
-              }
-            : partnerRow
-            ? {
-                id: cotacaoCompleta.partner_user_id || cotacaoCompleta.partner_id,
-                nome: partnerRow.nome,
-                email: partnerRow.email,
-              }
-            : undefined,
-          parceiro: partnerRow ? {
-            id: cotacaoCompleta.partner_id,
-            nome: partnerRow.nome,
-            email: partnerRow.email,
-            codigoVenda: partnerRow.codigo_venda,
-          } : undefined,
-          cotacao: {
-            id: cotacaoId,
-            status: 'assinado',
-            premio_final: Number(cotacaoCompleta?.premio_final || cotacaoCompleta?.premio_calculado) || 0,
-            cobertura: Number(cotacaoCompleta?.importancia_segurada) || 0,
-          },
-          dados: {
-            contratoPdf: canonicalSignedFile,
-            assinadoEm: clientData.assinadoEm,
-          },
-        });
-      } catch (dispatchErr) {
-        logger.error({ dispatchErr, cotacaoId }, 'processZapSignPayload: Falha ao despachar CONTRATO_ASSINADO');
-      }
-
-      const [existingOrder] = await sql<{ id: string; status: string }[]>`
-        SELECT id, status FROM payment_orders
-        WHERE cotacao_id = ${cotacaoId}
-          AND status IN ('pending', 'partially_paid', 'paid')
-        LIMIT 1
-      `;
-
-      if (existingOrder) {
-        logger.info(
-          { cotacaoId, orderId: existingOrder.id, status: existingOrder.status },
-          'processZapSignPayload: Ordem de pagamento Asaas existente mantida'
-        );
-      } else {
-        try {
-          const rawBillingType =
-            clientData.formaPagamentoPreferida ||
-            clientData.formaPagamento ||
-            clientData.billingType ||
-            (cotacao as any).payment_method;
-
-          let billingType = 'UNDEFINED';
-          if (rawBillingType) {
-            const upper = String(rawBillingType).toUpperCase();
-            if (['BOLETO', 'PIX', 'CREDIT_CARD', 'UNDEFINED'].includes(upper)) {
-              billingType = upper;
-            }
-          }
-
-          const paymentResult = await generateAsaasPaymentForQuote(cotacaoId, {
-            isManualAdmin: true,
-            customValues: { billingType },
-          });
-
-          if (paymentResult.ok) {
-            logger.info(
-              { cotacaoId, checkoutId: paymentResult.checkoutId, linkBoleto: paymentResult.linkBoleto },
-              'processZapSignPayload: Cobrança Asaas gerada com sucesso'
-            );
-          } else {
-            logger.warn(
-              { cotacaoId, reason: paymentResult.error },
-              'processZapSignPayload: Cobrança Asaas retida ou rejeitada'
-            );
-          }
-        } catch (paymentErr) {
-          logger.error(
-            { paymentErr, cotacaoId },
-            'processZapSignPayload: Erro na geração automática de cobrança Asaas'
+        if (existingOrder) {
+          logger.info(
+            { cotacaoId, orderId: existingOrder.id, status: existingOrder.status },
+            'processZapSignPayload: Ordem de pagamento Asaas existente mantida'
           );
+        } else {
+          try {
+            const rawBillingType =
+              clientData.formaPagamentoPreferida ||
+              clientData.formaPagamento ||
+              clientData.billingType ||
+              (cotacao as any).payment_method;
+
+            let billingType = 'UNDEFINED';
+            if (rawBillingType) {
+              const upper = String(rawBillingType).toUpperCase();
+              if (['BOLETO', 'PIX', 'CREDIT_CARD', 'UNDEFINED'].includes(upper)) {
+                billingType = upper;
+              }
+            }
+
+            const paymentResult = await generateAsaasPaymentForQuote(cotacaoId, {
+              isManualAdmin: true,
+              customValues: { billingType },
+            });
+
+            if (paymentResult.ok) {
+              logger.info(
+                { cotacaoId, checkoutId: paymentResult.checkoutId, linkBoleto: paymentResult.linkBoleto },
+                'processZapSignPayload: Cobrança Asaas gerada com sucesso'
+              );
+            } else {
+              logger.warn(
+                { cotacaoId, reason: paymentResult.error },
+                'processZapSignPayload: Cobrança Asaas retida ou rejeitada'
+              );
+            }
+          } catch (paymentErr) {
+            logger.error(
+              { paymentErr, cotacaoId },
+              'processZapSignPayload: Erro na geração automática de cobrança Asaas'
+            );
+          }
         }
       }
     } else if (statusAssinatura === 'falta_corretora' || statusAssinatura === 'falta_cliente') {
@@ -1209,7 +1284,11 @@ export async function processZapSignPayload(rawPayload: any): Promise<{ success:
       logger.info({ cotacaoId }, 'processZapSignPayload: Cotação recusada');
     }
 
-    return { success: true, message: `Payload ZapSign processado com sucesso (${statusAssinatura})` };
+    return {
+      success: true,
+      message: `Payload ZapSign processado com sucesso (${statusAssinatura})`,
+      details: { cotacaoId, statusAssinatura, todasAssinadas, effects: effectsOutcome },
+    };
   } catch (err: any) {
     logger.error({ err }, 'webhook.processor.zapsign.error');
     return {
@@ -1445,7 +1524,7 @@ export async function reprocessWebhookEvent(
     if (provider === 'asaas') {
       result = await runProcessor(() => processAsaasPayload(rawPayload));
     } else if (provider === 'zapsign') {
-      result = await runProcessor(() => processZapSignPayload(rawPayload));
+      result = await runProcessor(() => processZapSignPayload(rawPayload, { source: 'webhook_reprocess' }));
     } else if (provider === 'wix') {
       result = await runProcessor(() => processWixPayload(rawPayload));
     } else {

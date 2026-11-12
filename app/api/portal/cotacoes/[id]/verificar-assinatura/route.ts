@@ -8,6 +8,7 @@ import { getZapSignConfig, sanitizeApiToken } from '@/lib/system-settings';
 import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
 import { generateAsaasPaymentForQuote } from '@/lib/asaas-service';
 import { identificarRequisitosAssinatura } from '@/lib/assinatura-status';
+import { claimSignatureCompletionEffects, shouldRunCompletionEffects } from '@/lib/signature-completion-claim';
 
 export async function POST(
   req: NextRequest,
@@ -339,7 +340,7 @@ export async function POST(
         `;
       }
 
-      await sql`
+      const [sigDocRow] = await sql<{ id: string }[]>`
         UPDATE signature_documents
         SET
           status = 'signed',
@@ -351,81 +352,96 @@ export async function POST(
         WHERE cotacao_id = ${cotacao.id}
           AND provider = 'zapsign'
           AND external_document_id = ${docToken}
+        RETURNING id
       `;
 
+      // Idempotência: se o webhook ou o cron de recuperação já concluíram este documento,
+      // não reenvia e-mails nem gera nova cobrança. Fail-open se a trava estiver indisponível.
+      const completionClaim = sigDocRow
+        ? await claimSignatureCompletionEffects({
+            signatureDocumentId: sigDocRow.id,
+            cotacaoId: cotacao.id,
+            externalDocumentId: docToken,
+            source: 'portal_verificar',
+          })
+        : 'error';
+      const effectsAllowed = shouldRunCompletionEffects(completionClaim, 'fail_open');
+
       // Dispara gatilho de Contrato Assinado
-      try {
-        const [cotacaoCompleta] = await sql<{ client_id: string | null; partner_id: string; partner_user_id: string | null; client_name: string; premio_final: number; importancia_segurada: number }[]>`
-          SELECT client_id, partner_id, partner_user_id, client_name, premio_final, importancia_segurada
-          FROM cotacoes
-          WHERE id = ${cotacao.id}
-          LIMIT 1
-        `;
+      if (effectsAllowed) {
+        try {
+          const [cotacaoCompleta] = await sql<{ client_id: string | null; partner_id: string; partner_user_id: string | null; client_name: string; premio_final: number; importancia_segurada: number }[]>`
+            SELECT client_id, partner_id, partner_user_id, client_name, premio_final, importancia_segurada
+            FROM cotacoes
+            WHERE id = ${cotacao.id}
+            LIMIT 1
+          `;
 
-        const [clientRow] = cotacaoCompleta?.client_id ? await sql<{ full_name: string; email: string; document_number: string; phone: string }[]>`
-          SELECT full_name, email, document_number, phone FROM insurance_clients WHERE id = ${cotacaoCompleta.client_id} LIMIT 1
-        ` : [];
+          const [clientRow] = cotacaoCompleta?.client_id ? await sql<{ full_name: string; email: string; document_number: string; phone: string }[]>`
+            SELECT full_name, email, document_number, phone FROM insurance_clients WHERE id = ${cotacaoCompleta.client_id} LIMIT 1
+          ` : [];
 
-        const [vendedorRow] = cotacaoCompleta?.partner_user_id ? await sql<{ id: string; nome: string; email: string }[]>`
-          SELECT id, name AS nome, email
-          FROM partner_users
-          WHERE id = ${cotacaoCompleta.partner_user_id}
-          LIMIT 1
-        ` : [];
+          const [vendedorRow] = cotacaoCompleta?.partner_user_id ? await sql<{ id: string; nome: string; email: string }[]>`
+            SELECT id, name AS nome, email
+            FROM partner_users
+            WHERE id = ${cotacaoCompleta.partner_user_id}
+            LIMIT 1
+          ` : [];
 
-        const [partnerRow] = cotacaoCompleta?.partner_id ? await sql<{ nome: string; email: string; codigo_venda?: string }[]>`
-          SELECT
-            COALESCE(p.nome_fantasia, p.razao_social) AS nome,
-            COALESCE(NULLIF(p.email, ''), pu.email) AS email,
-            p.metadata->'whiteLabel'->>'wixCode' AS codigo_venda
-          FROM partners p
-          LEFT JOIN partner_users pu ON pu.partner_id = p.id AND pu.is_active = true
-          WHERE p.id = ${cotacaoCompleta.partner_id}
-          ORDER BY pu.created_at ASC
-          LIMIT 1
-        ` : [];
+          const [partnerRow] = cotacaoCompleta?.partner_id ? await sql<{ nome: string; email: string; codigo_venda?: string }[]>`
+            SELECT
+              COALESCE(p.nome_fantasia, p.razao_social) AS nome,
+              COALESCE(NULLIF(p.email, ''), pu.email) AS email,
+              p.metadata->'whiteLabel'->>'wixCode' AS codigo_venda
+            FROM partners p
+            LEFT JOIN partner_users pu ON pu.partner_id = p.id AND pu.is_active = true
+            WHERE p.id = ${cotacaoCompleta.partner_id}
+            ORDER BY pu.created_at ASC
+            LIMIT 1
+          ` : [];
 
-        await dispatchDomainEvent('CONTRATO_ASSINADO', {
-          eventType: 'CONTRATO_ASSINADO',
-          contextId: cotacao.id,
-          cliente: {
-            nome: clientRow?.full_name || cotacaoCompleta?.client_name,
-            email: clientRow?.email || clientData.email,
-            documento: clientRow?.document_number || clientData.cpf || clientData.cnpj,
-            telefone: clientRow?.phone || clientData.telefone,
-          },
-          vendedor: vendedorRow
-            ? {
-                id: vendedorRow.id,
-                nome: vendedorRow.nome,
-                email: vendedorRow.email,
-              }
-            : partnerRow
-            ? {
-                id: cotacaoCompleta.partner_user_id || cotacaoCompleta.partner_id,
-                nome: partnerRow.nome,
-                email: partnerRow.email,
-              }
-            : undefined,
-          parceiro: partnerRow ? {
-            id: cotacaoCompleta.partner_id,
-            nome: partnerRow.nome,
-            email: partnerRow.email,
-            codigoVenda: partnerRow.codigo_venda,
-          } : undefined,
-          cotacao: {
-            id: cotacao.id,
-            status: 'assinado',
-            premio_final: Number(cotacaoCompleta?.premio_final) || 0,
-            cobertura: Number(cotacaoCompleta?.importancia_segurada) || 0,
-          },
-          dados: {
-            contratoPdf: pdfLink,
-            assinadoEm: clientData.assinadoEm,
-          },
-        });
-      } catch (dispatchErr) {
-        logger.error({ dispatchErr, cotacaoId: cotacao.id }, 'api.portal.verificar-assinatura.dispatch_event_failed');
+          await dispatchDomainEvent('CONTRATO_ASSINADO', {
+            eventType: 'CONTRATO_ASSINADO',
+            contextId: cotacao.id,
+            cliente: {
+              nome: clientRow?.full_name || cotacaoCompleta?.client_name,
+              email: clientRow?.email || clientData.email,
+              documento: clientRow?.document_number || clientData.cpf || clientData.cnpj,
+              telefone: clientRow?.phone || clientData.telefone,
+            },
+            vendedor: vendedorRow
+              ? {
+                  id: vendedorRow.id,
+                  nome: vendedorRow.nome,
+                  email: vendedorRow.email,
+                }
+              : partnerRow
+              ? {
+                  id: cotacaoCompleta.partner_user_id || cotacaoCompleta.partner_id,
+                  nome: partnerRow.nome,
+                  email: partnerRow.email,
+                }
+              : undefined,
+            parceiro: partnerRow ? {
+              id: cotacaoCompleta.partner_id,
+              nome: partnerRow.nome,
+              email: partnerRow.email,
+              codigoVenda: partnerRow.codigo_venda,
+            } : undefined,
+            cotacao: {
+              id: cotacao.id,
+              status: 'assinado',
+              premio_final: Number(cotacaoCompleta?.premio_final) || 0,
+              cobertura: Number(cotacaoCompleta?.importancia_segurada) || 0,
+            },
+            dados: {
+              contratoPdf: pdfLink,
+              assinadoEm: clientData.assinadoEm,
+            },
+          });
+        } catch (dispatchErr) {
+          logger.error({ dispatchErr, cotacaoId: cotacao.id }, 'api.portal.verificar-assinatura.dispatch_event_failed');
+        }
       }
 
       // Emissão automática da fatura Asaas assim que o contrato estiver formalizado
@@ -437,7 +453,7 @@ export async function POST(
         LIMIT 1
       `;
 
-      if (!existingOrder) {
+      if (effectsAllowed && !existingOrder) {
         try {
           const rawBillingType =
             clientData.formaPagamentoPreferida ||
