@@ -37,6 +37,13 @@ describe('ppe-contrato — declaração PPE no contrato', () => {
       expect(parsePpeCargoIds(undefined)).toEqual([]);
       expect(parsePpeCargoIds('')).toEqual([]);
     });
+
+    it('lê de volta o formato gravado pela edição da proposta (array unido por ", ")', () => {
+      // app/api/cotacoes/[id]/route.ts grava ppeCargoSelect como texto; o modal de edição
+      // precisa reconstruir a seleção a partir dele ao reabrir a proposta.
+      const gravado = ['1', '5'].map(String).join(', ');
+      expect(parsePpeCargoIds(gravado)).toEqual(['1', '5']);
+    });
   });
 
   describe('normalizarSimNaoPpe', () => {

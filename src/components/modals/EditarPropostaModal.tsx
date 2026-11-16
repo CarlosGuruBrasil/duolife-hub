@@ -48,6 +48,7 @@ import {
   type RamoConfig,
 } from '@/lib/product-schemas';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
+import { normalizarSimNaoPpe, parsePpeCargoIds } from '@/lib/ppe-utils';
 
 export interface EditarPropostaModalProps {
   isOpen: boolean;
@@ -612,9 +613,10 @@ export default function EditarPropostaModal({
       setDataRetroativa(formatDateToInput(cd.dataRetroativa || ''));
 
       // Pessoa Politicamente Exposta (PPE)
-      setPpeCargos(cd.ppeCargos === 'Sim' ? 'Sim' : 'Não');
-      setPpeRepresenta(cd.ppeRepresenta === 'Sim' ? 'Sim' : 'Não');
-      setPpeCargoSelect(Array.isArray(cd.ppeCargoSelect) ? cd.ppeCargoSelect : []);
+      // A API grava ppeCargoSelect como texto ("1, 3"); o portal/Wix podem gravar array.
+      setPpeCargos(normalizarSimNaoPpe(cd.ppeCargos, cd.ppe, cd.tem_cargos));
+      setPpeRepresenta(normalizarSimNaoPpe(cd.ppeRepresenta, cd.ppeRelacionado, cd.representante_legal));
+      setPpeCargoSelect(parsePpeCargoIds(cd.ppeCargoSelect));
 
       setErrorMessage(null);
       setSuccessMessage(null);
