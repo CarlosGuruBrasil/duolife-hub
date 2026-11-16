@@ -44,8 +44,18 @@ export interface DataCidadeData {
   ano?: string | number;
 }
 
+export interface PpeContratoData {
+  /** Desempenha ou desempenhou cargo PPE nos últimos 5 anos. */
+  ppeCargos?: 'Sim' | 'Não';
+  /** É representante legal, familiar ou estreito colaborador de PPE. */
+  ppeRepresenta?: 'Sim' | 'Não';
+  /** Descrições dos cargos PPE declarados. */
+  cargos?: string[];
+}
+
 export interface ContractData {
   proponente?: ProponenteData;
+  ppe?: PpeContratoData;
   condicoes?: CondicoesComercializacaoData;
   corretora?: CorretoraContratoData;
   dataCidade?: DataCidadeData;

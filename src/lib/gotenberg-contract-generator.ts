@@ -12,6 +12,7 @@ import {
 import type { ContractData } from '@/types/contract';
 import { calculatePolicyExpiryDate } from './format';
 import { parseVigenciaDate } from './insurance-ops';
+import { resolverPpeContrato } from './ppe-contrato';
 import {
   gerarContratoPdfBuffer,
   determinarTipoContrato,
@@ -172,6 +173,21 @@ export function renderRcAdvogadoInnerHtml(dados: ContractData): string {
   const pInicio = escapeHtml(dados.proponente?.inicioProfissional || 'Não informado');
   const pOab = escapeHtml(dados.proponente?.oab || 'Não informado');
 
+  const ppeCargos = escapeHtml(dados.ppe?.ppeCargos || 'Não');
+  const ppeRepresenta = escapeHtml(dados.ppe?.ppeRepresenta || 'Não');
+  const ppeCargosLista = (dados.ppe?.cargos ?? []).filter(Boolean);
+  const ppeCargosHtml = ppeCargosLista.length > 0
+    ? `
+          <div class="flex border-t border-slate-300">
+            <div class="w-[115px] bg-slate-100 font-bold px-2 py-1 border-r border-slate-300 flex items-center shrink-0">
+              Cargos declarados:
+            </div>
+            <div class="flex-1 px-2 py-1 leading-[1.3]">
+              ${ppeCargosLista.map((c) => escapeHtml(c)).join('<br />')}
+            </div>
+          </div>`
+    : '';
+
   const cImportancia = escapeHtml(dados.condicoes?.importanciaSegurada || 'R$ 100.000,00');
   const cFranquia = escapeHtml(dados.condicoes?.franquia || 'Não há aplicação de franquia');
   const cPremio = escapeHtml(dados.condicoes?.valorPremio || 'R$ 790,00');
@@ -267,6 +283,29 @@ export function renderRcAdvogadoInnerHtml(dados: ContractData): string {
               ${pOab}
             </div>
           </div>
+        </div>
+      </section>
+
+      <!-- 2b. SEÇÃO PPE – PESSOA POLITICAMENTE EXPOSTA (Circular SUSEP 612/20) -->
+      <section class="w-full" data-section="ppe">
+        <div class="bg-slate-100 border border-slate-300 font-bold px-2 py-0.5 text-[8.5px] uppercase tracking-wider text-slate-900">
+          PPE – PESSOA POLITICAMENTE EXPOSTA
+        </div>
+        <div class="border-x border-b border-slate-300 bg-white text-[8px] flex flex-col">
+          <div class="flex">
+            <div class="flex-1 bg-slate-100 font-bold px-2 py-1 border-r border-slate-300 leading-[1.25]">
+              Desempenha ou já desempenhou algum dos cargos relacionados a PPE, nos últimos 5 anos?
+            </div>
+            <div class="w-[50px] px-2 py-1 font-bold text-center border-r border-slate-300 flex items-center justify-center shrink-0">
+              ${ppeCargos}
+            </div>
+            <div class="flex-1 bg-slate-100 font-bold px-2 py-1 border-r border-slate-300 leading-[1.25]">
+              É representante legal, familiar ou estreito colaborador de ocupante de cargo PPE, nos últimos 5 anos?
+            </div>
+            <div class="w-[50px] px-2 py-1 font-bold text-center flex items-center justify-center shrink-0">
+              ${ppeRepresenta}
+            </div>
+          </div>${ppeCargosHtml}
         </div>
       </section>
 
@@ -491,7 +530,10 @@ export async function buildContractDataForQuote(cotacaoId: string): Promise<{
     ? `${formatData(inicioVigenciaIso)} a ${formatData(fimVigenciaIso)} (1 ano)`
     : '1 ano';
 
+  const ppe = await resolverPpeContrato(clientData);
+
   const contractData: ContractData = {
+    ppe,
     proponente: {
       nome: cotacao.client_name,
       dataNascimento: formatData(clientData.dataNascto || clientData.nascimento) || 'Não informado',

@@ -646,10 +646,12 @@ export async function POST(
     let signUrlCorretora = '';
     let signUrlProponente = '';
     let resJson: any = null;
+    let contratoEngine: string | null = null;
 
     if (isDynamicPdf) {
       // 6a. Geração de contrato dinâmico em PDF com marca e dados da corretora (Gotenberg com fallback transparente)
       const pdfData = await gerarContratoPdfGotenberg(cotacao.id);
+      contratoEngine = pdfData.engine ?? null;
 
       const signatarioProponente = {
         nome: pdfData.signatarioProponente?.nome || cotacao.client_name,
@@ -770,6 +772,12 @@ export async function POST(
     clientData.contratoGeradoEm = new Date().toISOString();
     clientData.contratoPrazoLimite = deadlineIso;
     clientData.contratoModo = isDynamicPdf ? 'dynamic_pdf' : 'template';
+    // Auditoria: motor que gerou o PDF ('gotenberg' | 'pdflib_fallback'); ausente no modo template.
+    if (contratoEngine) {
+      clientData.contratoEngine = contratoEngine;
+    } else {
+      delete clientData.contratoEngine;
+    }
     clientData.contratoTemplateId = isDynamicPdf ? 'dynamic_pdf' : templateId;
     clientData.contratoTipo = tipoContrato;
     // Limpa estado de desatualização da minuta

@@ -10,6 +10,7 @@ import { logger } from './logger';
 import { getRamoConfig, rcAdvogadosConfig, rcMedicosConfig, GRUPOS_TARIFARIOS_SAUDE, type RamoConfig } from './product-schemas';
 import { calculatePolicyExpiryDate } from './format';
 import { parseVigenciaDate } from './insurance-ops';
+import { resolverPpeContrato, resolverPpeContratoPadrao, type PpeContratoInfo } from './ppe-contrato';
 
 export interface ContratoPdfResult {
   buffer: Buffer;
@@ -55,6 +56,8 @@ export interface RenderContratoPdfParams {
   qtdParcelas: number;
   valorParcela: number;
   valorTotalComJuros: number;
+  /** Declaração PPE pré-resolvida (com descrições do catálogo Wix). Se ausente, usa o catálogo padrão. */
+  ppe?: PpeContratoInfo;
 }
 
 /**
@@ -924,6 +927,73 @@ function drawSeguroAnterior(
   return currY + 6.0;
 }
 
+const TEXTO_SUSEP_PPE =
+  'Conforme o Art. 4º da Circular SUSEP 612/20, consideram-se expostas politicamente as pessoas naturais que ocupem ou tenham ocupado, nos 5 (cinco) anos anteriores, empregos ou funções públicas relevantes, assim como funções relevantes em organizações internacionais, para fins de classificação, conforme o Art. 23, também serão consideradas expostas politicamente os representantes legais, familiares ou estreitos colaboradores dessas pessoas.';
+
+/**
+ * Renderiza o bloco "PPE – Pessoa Politicamente Exposta" (cabeçalho, perguntas Sim/Não
+ * e cargos declarados com altura dinâmica). Retorna o Y logo abaixo do bloco.
+ */
+function drawPpeBlock(
+  page: PDFPage,
+  pageHeight: number,
+  x: number,
+  yTop: number,
+  w: number,
+  ppe: PpeContratoInfo,
+  fontRegular: PDFFont,
+  fontBold: PDFFont,
+  colorGrayHeader: Color,
+  colorWhite: Color,
+  colorBorder: Color,
+  options: { incluirTextoSusep?: boolean } = {}
+): number {
+  let y = drawSectionHeader(page, pageHeight, x, yTop, w, 'PPE – PESSOA POLITICAMENTE EXPOSTA', fontBold, colorGrayHeader, colorBorder);
+
+  if (options.incluirTextoSusep) {
+    y = drawTextCard(page, pageHeight, x, y, w, 44.0, TEXTO_SUSEP_PPE, fontRegular, 6.8, 9.5, rgb(0.97, 0.97, 0.97), colorBorder, rgb(0.2, 0.2, 0.2));
+  }
+
+  const colW = w / 2;
+  const headerH = 24.0;
+  const valH = 15.0;
+  const perguntas: Array<[string, string]> = [
+    ['Desempenha ou já desempenhou algum dos cargos relacionados a PPE, nos últimos 5 anos?', ppe.ppeCargos],
+    ['É representante legal, familiar ou estreito colaborador de ocupante de algum cargo relacionado a PPE, nos últimos 5 anos?', ppe.ppeRepresenta],
+  ];
+  perguntas.forEach(([pergunta, resposta], i) => {
+    const colX = x + colW * i;
+    drawCell(page, pageHeight, {
+      x: colX, y, w: colW, h: headerH, text: pergunta, font: fontBold, fontSize: 6.9, lineHeight: 8.5,
+      paddingX: 6, paddingY: 3, bgColor: colorGrayHeader, borderColor: colorBorder,
+    });
+    drawCell(page, pageHeight, {
+      x: colX, y: y + headerH, w: colW, h: valH, text: resposta, font: fontRegular, fontSize: 7.6,
+      bgColor: colorWhite, borderColor: colorBorder, align: 'center',
+    });
+  });
+  y += headerH + valH + 4.0;
+
+  // Cargos declarados: uma linha por cargo, com quebra automática e altura dinâmica
+  const labelW = 130.0;
+  const fontSize = 7.4;
+  const lineHeight = 9.4;
+  const textoCargos = ppe.cargos.length > 0 ? ppe.cargos : ['Nenhum'];
+  const linhas = textoCargos.flatMap((c) => wrapText(c, fontRegular, fontSize, w - labelW - 8));
+  const cargosH = Math.max(16.0, (linhas.length - 1) * lineHeight + fontSize + 8.0);
+
+  drawCell(page, pageHeight, {
+    x, y, w: labelW, h: cargosH, text: 'Cargos PPE declarados:', font: fontBold, fontSize: 7.7,
+    bgColor: colorGrayHeader, borderColor: colorBorder,
+  });
+  drawCell(page, pageHeight, {
+    x: x + labelW, y, w: w - labelW, h: cargosH, text: linhas.join('\n'), font: fontRegular, fontSize,
+    lineHeight, valign: 'top', bgColor: colorWhite, borderColor: colorBorder,
+  });
+
+  return y + cargosH + 6.0;
+}
+
 // =========================================================================
 // RENDERIZADOR 1: PROPOSTA RC ADVOGADO FACILITIES - SITE RC - 100k (1 PÁGINA)
 // =========================================================================
@@ -939,6 +1009,7 @@ function renderProposta100kNovo(
     condicoes: any;
     cidadeDataStr: string;
     proponenteData: any;
+    ppe: PpeContratoInfo;
   },
   fontRegular: PDFFont,
   fontBold: PDFFont,
@@ -957,6 +1028,9 @@ function renderProposta100kNovo(
   y = drawTitleBlock(page, pageWidth, pageHeight, y, fontRegular, fontBold);
   y = drawSectionHeader(page, pageHeight, contentX, y, contentW, 'PROPONENTE', fontBold, colorGrayHeader, colorBorder);
   y = drawProponenteBlock(page, pageHeight, contentX, y, contentW, params.proponenteData, fontRegular, fontBold, colorGrayHeader, colorWhite, colorBorder);
+
+  y += 4.0;
+  y = drawPpeBlock(page, pageHeight, contentX, y, contentW, params.ppe, fontRegular, fontBold, colorGrayHeader, colorWhite, colorBorder);
 
   y += 6.0;
   y = drawSectionHeader(page, pageHeight, contentX, y, contentW, 'DECLARAÇÃO DO PROPONENTE', fontBold, colorGrayHeader, colorBorder);
@@ -1013,6 +1087,7 @@ function renderProposta100kRenovacao(
     condicoes: any;
     cidadeDataStr: string;
     proponenteData: any;
+    ppe: PpeContratoInfo;
     seguroAnterior: any;
   },
   fontRegular: PDFFont,
@@ -1032,6 +1107,9 @@ function renderProposta100kRenovacao(
   y = drawTitleBlock(page, pageWidth, pageHeight, y, fontRegular, fontBold);
   y = drawSectionHeader(page, pageHeight, contentX, y, contentW, 'PROPONENTE', fontBold, colorGrayHeader, colorBorder);
   y = drawProponenteBlock(page, pageHeight, contentX, y, contentW, params.proponenteData, fontRegular, fontBold, colorGrayHeader, colorWhite, colorBorder);
+
+  y += 2.0;
+  y = drawPpeBlock(page, pageHeight, contentX, y, contentW, params.ppe, fontRegular, fontBold, colorGrayHeader, colorWhite, colorBorder);
 
   y += 4.0;
   y = drawSectionHeader(page, pageHeight, contentX, y, contentW, 'INFORMAÇÕES DO SEGURO DE RESPONSABILIDADE CIVIL ANTERIOR', fontBold, colorGrayHeader, colorBorder);
@@ -1485,11 +1563,7 @@ function renderPropostaOficial(
       faturamentoDepois: string;
     };
     areasAtuacao: string[];
-    ppe: {
-      ppeCargos: string;
-      ppeRepresenta: string;
-      ppeCargoSelect: string;
-    };
+    ppe: PpeContratoInfo;
     questionario: {
       propostaRecusada: string;
       propostaDetalhe: string;
@@ -1751,112 +1825,7 @@ function renderPropostaOficial(
   y1 += 6.0;
 
   // PPE - Pessoa Politicamente Exposta
-  y1 = drawSectionHeader(page1, pageHeight, contentX, y1, contentW, 'PPE – PESSOA POLITICAMENTE EXPOSTA', fontBold, colorGrayHeader, colorBorder);
-
-  const textoSusepPpe =
-    'Conforme o Art. 4º da Circular SUSEP 612/20, consideram-se expostas politicamente as pessoas naturais que ocupem ou tenham ocupado, nos 5 (cinco) anos anteriores, empregos ou funções públicas relevantes, assim como funções relevantes em organizações internacionais, para fins de classificação, conforme o Art. 23, também serão consideradas expostas politicamente os representantes legais, familiares ou estreitos colaboradores dessas pessoas.';
-
-  y1 = drawTextCard(
-    page1,
-    pageHeight,
-    contentX,
-    y1,
-    contentW,
-    44.0,
-    textoSusepPpe,
-    fontRegular,
-    6.8,
-    9.5,
-    rgb(0.97, 0.97, 0.97),
-    colorBorder,
-    rgb(0.2, 0.2, 0.2)
-  );
-
-  // Perguntas PPE (2 colunas)
-  const ppeColW = contentW / 2;
-  const ppeHeaderH = 24.0;
-  const ppeValH = 15.0;
-
-  // Coluna 1
-  drawCell(page1, pageHeight, {
-    x: contentX,
-    y: y1,
-    w: ppeColW,
-    h: ppeHeaderH,
-    text: 'Desempenha ou já desempenhou algum dos cargos relacionados a PPE, nos últimos 5 anos?',
-    font: fontBold,
-    fontSize: 6.9,
-    lineHeight: 8.5,
-    paddingX: 6,
-    paddingY: 3,
-    bgColor: colorGrayHeader,
-    borderColor: colorBorder,
-  });
-  drawCell(page1, pageHeight, {
-    x: contentX,
-    y: y1 + ppeHeaderH,
-    w: ppeColW,
-    h: ppeValH,
-    text: params.ppe.ppeCargos,
-    font: fontRegular,
-    fontSize: 7.6,
-    bgColor: colorWhite,
-    borderColor: colorBorder,
-    align: 'center',
-  });
-
-  // Coluna 2
-  drawCell(page1, pageHeight, {
-    x: contentX + ppeColW,
-    y: y1,
-    w: ppeColW,
-    h: ppeHeaderH,
-    text: 'É representante legal, familiar ou estreito colaborador de ocupante de algum cargo relacionado a PPE, nos últimos 5 anos?',
-    font: fontBold,
-    fontSize: 6.9,
-    lineHeight: 8.5,
-    paddingX: 6,
-    paddingY: 3,
-    bgColor: colorGrayHeader,
-    borderColor: colorBorder,
-  });
-  drawCell(page1, pageHeight, {
-    x: contentX + ppeColW,
-    y: y1 + ppeHeaderH,
-    w: ppeColW,
-    h: ppeValH,
-    text: params.ppe.ppeRepresenta,
-    font: fontRegular,
-    fontSize: 7.6,
-    bgColor: colorWhite,
-    borderColor: colorBorder,
-    align: 'center',
-  });
-  y1 += ppeHeaderH + ppeValH + 4.0;
-
-  // Cargos PPE selecionados
-  drawCell(page1, pageHeight, {
-    x: contentX,
-    y: y1,
-    w: 130.0,
-    h: 16.0,
-    text: 'Cargos PPE selecionados:',
-    font: fontBold,
-    fontSize: 7.7,
-    bgColor: colorGrayHeader,
-    borderColor: colorBorder,
-  });
-  drawCell(page1, pageHeight, {
-    x: contentX + 130.0,
-    y: y1,
-    w: contentW - 130.0,
-    h: 16.0,
-    text: params.ppe.ppeCargoSelect,
-    font: fontRegular,
-    fontSize: 7.7,
-    bgColor: colorWhite,
-    borderColor: colorBorder,
-  });
+  y1 = drawPpeBlock(page1, pageHeight, contentX, y1, contentW, params.ppe, fontRegular, fontBold, colorGrayHeader, colorWhite, colorBorder, { incluirTextoSusep: true });
 
   // =======================================================================
   // --- PÁGINA 2: SEGURO ANTERIOR, HISTÓRICO, DECLARAÇÃO, CONDIÇÕES, ASSINATURAS ---
@@ -2398,6 +2367,7 @@ export async function renderContratoPdf(params: RenderContratoPdfParams): Promis
 
   // --- SELEÇÃO DO MODELO DE CONTRATO ---
   const tipoContrato = determinarTipoContrato(clientData, cotacao);
+  const ppeInfo: PpeContratoInfo = params.ppe ?? resolverPpeContratoPadrao(clientData);
 
   if (tipoContrato === 'termo_saude') {
     renderTermoSaude(
@@ -2434,6 +2404,7 @@ export async function renderContratoPdf(params: RenderContratoPdfParams): Promis
         condicoes,
         cidadeDataStr,
         proponenteData,
+        ppe: ppeInfo,
       },
       fontRegular,
       fontBold,
@@ -2454,6 +2425,7 @@ export async function renderContratoPdf(params: RenderContratoPdfParams): Promis
         condicoes,
         cidadeDataStr,
         proponenteData,
+        ppe: ppeInfo,
         seguroAnterior,
       },
       fontRegular,
@@ -2465,16 +2437,6 @@ export async function renderContratoPdf(params: RenderContratoPdfParams): Promis
   } else {
     // OFICIAL: 300k, 500k, 1mi, 1,5mi, 2mi, 3mi ou superior (4 Páginas)
     const areasAtuacao = parseAtuacaoList(clientData.atuacao || clientData.especialidades);
-
-    // Resolução de descrição de cargos PPE
-    let ppeDescricao = 'Nenhum';
-    if (clientData.ppeCargoSelect) {
-      if (Array.isArray(clientData.ppeCargoSelect)) {
-        ppeDescricao = clientData.ppeCargoSelect.join(', ');
-      } else {
-        ppeDescricao = String(clientData.ppeCargoSelect);
-      }
-    }
 
     const questionarioRisco = (clientData.questionarioRisco && typeof clientData.questionarioRisco === 'object'
       ? clientData.questionarioRisco
@@ -2539,11 +2501,7 @@ export async function renderContratoPdf(params: RenderContratoPdfParams): Promis
           faturamentoDepois: clientData.faturamentoDepois || 'Não informado',
         },
         areasAtuacao,
-        ppe: {
-          ppeCargos: resolveSimNaoPdf(clientData.ppeCargos, clientData.ppe),
-          ppeRepresenta: resolveSimNaoPdf(clientData.ppeRepresenta, clientData.ppeRelacionado),
-          ppeCargoSelect: ppeDescricao,
-        },
+        ppe: ppeInfo,
         questionario: {
           propostaRecusada: resolveSimNaoPdf(clientData.propostaRecusada, questionarioRisco.propostaRecusada),
           propostaDetalhe: resolveDetalhePdf(clientData.propostaDetalhe, questionarioRisco.propostaDetalhe),
@@ -2659,6 +2617,8 @@ export async function gerarContratoPdfBuffer(cotacaoId: string): Promise<Contrat
   const valorParcela = preco?.valorParcela ?? valorTotal;
   const valorTotalComJuros = qtdParcelas > 1 ? valorParcela * qtdParcelas : valorTotal;
 
+  const ppe = await resolverPpeContrato(clientData);
+
   return renderContratoPdf({
     cotacao,
     clientData,
@@ -2667,5 +2627,6 @@ export async function gerarContratoPdfBuffer(cotacaoId: string): Promise<Contrat
     qtdParcelas,
     valorParcela,
     valorTotalComJuros,
+    ppe,
   });
 }
