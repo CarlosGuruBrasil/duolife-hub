@@ -123,15 +123,37 @@ export interface CargoPPE {
   text: string;
 }
 
+/**
+ * Catálogo oficial de cargos PPE (mesma numeração da coleção Wix PPECARGOS).
+ * A fonte principal em runtime é a coleção Wix (/api/portal/ppe-cargos); esta lista é a
+ * reserva quando o catálogo não está disponível e PRECISA manter os mesmos IDs, pois o
+ * client_data grava apenas o ID e o contrato traduz o ID pelo catálogo.
+ */
 export const CARGOS_PPE_PADRAO: CargoPPE[] = [
   { id: '1', text: 'Detentores de mandatos eletivos dos Poderes Executivo e Legislativo da União' },
-  { id: '2', text: 'Ocupantes de cargo, no Poder Executivo da União (Ministro, Secretário Especial, DAS-6/NES)' },
-  { id: '3', text: 'Membros do STF, Tribunais Superiores, TRFs, TRTs, TREs, STM e MPU' },
-  { id: '4', text: 'Membros do TCU e da AGU' },
-  { id: '5', text: 'Presidentes e diretores de órgãos da administração pública indireta, empresas públicas ou SEMs' },
-  { id: '6', text: 'Governadores, Vice-Governadores, Secretários de Estado e do DF, Deputados Estaduais/Distritais' },
-  { id: '7', text: 'Prefeitos, Vice-Prefeitos, Vereadores, Presidentes de Câmaras Municipais' },
-  { id: '8', text: 'Dirigentes de partidos políticos nacionais e membros de conselhos de estatais' },
+  { id: '2', text: 'Ministro de Estado ou equiparado' },
+  { id: '3', text: 'Natureza especial ou equivalente' },
+  { id: '4', text: 'Presidente, vice-presidente e diretor, ou equivalentes, de entidades da administração pública indireta' },
+  { id: '5', text: 'Grupo Direção e Assessoramento Superiores – DAS, nível 6, e equivalentes' },
+  { id: '6', text: 'Membros do Conselho Nacional de Justiça, do Supremo Tribunal Federal e dos Tribunais Superiores' },
+  {
+    id: '7',
+    text: 'Membros do Conselho Nacional do Ministério Público, o Procurador-Geral da República, o Vice-Procurador-Geral da República, o Procurador-Geral do Trabalho, o Procurador-Geral da Justiça Militar, os Subprocuradores-Gerais da República e os Procuradores-Gerais de Justiça dos Estados do Distrito Federal',
+  },
+  { id: '8', text: 'Membros do Tribunal de Contas da União e o Procurador-Geral do Ministério Público junto ao Tribunal de Contas da União' },
+  { id: '9', text: 'Presidentes e tesoureiro nacional, ou equivalentes, de partidos políticos' },
+  {
+    id: '10',
+    text: 'Governadores e secretários de Estado e do Distrito Federal, os Deputados Estaduais e Distritais, os presidentes, ou equivalentes, de entidades da administração pública indireta estadual e distrital e os presidentes de Tribunais de Justiça, Militares, de Contas ou equivalente de Estado e do Distrito Federal',
+  },
+  {
+    id: '11',
+    text: 'Prefeitos, Vereadores, Secretários Municipais, presidentes, ou equivalentes, de entidades da administração pública indireta municipal e os Presidentes de Tribunais de Contas ou equivalente dos Municípios',
+  },
+  {
+    id: '12',
+    text: 'Também são consideradas pessoas expostas politicamente aquelas que, no exterior, sejam chefes de estado ou de governo, políticos de escalões superiores, ocupantes de cargos governamentais de escalões superiores, oficiais generais e membros de escalões superiores do poder judiciário, executivos de escalões superiores de empresas públicas, ou dirigentes de partidos políticos',
+  },
 ];
 
 export interface MultiRamoFormState {

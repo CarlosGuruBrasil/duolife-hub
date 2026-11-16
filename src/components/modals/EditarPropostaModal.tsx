@@ -45,6 +45,7 @@ import {
   getRamoConfig,
   rcAdvogadosConfig,
   CARGOS_PPE_PADRAO,
+  type CargoPPE,
   type RamoConfig,
 } from '@/lib/product-schemas';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
@@ -292,6 +293,8 @@ export default function EditarPropostaModal({
   const [ppeCargos, setPpeCargos] = useState<'Sim' | 'Não'>('Não');
   const [ppeRepresenta, setPpeRepresenta] = useState<'Sim' | 'Não'>('Não');
   const [ppeCargoSelect, setPpeCargoSelect] = useState<string[]>([]);
+  // Catálogo de cargos: mesma fonte do formulário de cotação e do contrato (coleção Wix PPECARGOS)
+  const [cargosPpe, setCargosPpe] = useState<CargoPPE[]>(CARGOS_PPE_PADRAO);
 
   // Controles de feedback e busca
   const [loadingCep, setLoadingCep] = useState(false);
@@ -388,6 +391,30 @@ export default function EditarPropostaModal({
       isCancelled = true;
     };
   }, [isOpen, cotacao.product_id, cotacao.product_flow_key, cotacao.partner_id]);
+
+  // Carrega o catálogo de cargos PPE (Wix) para que os IDs marcados correspondam ao texto do contrato
+  useEffect(() => {
+    if (!isOpen) return;
+    let isCancelled = false;
+
+    async function carregarCargosPpe() {
+      try {
+        const res = await fetch('/api/portal/ppe-cargos');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.ok && Array.isArray(data.cargos) && data.cargos.length > 0 && !isCancelled) {
+          setCargosPpe(data.cargos as CargoPPE[]);
+        }
+      } catch {
+        // Mantém CARGOS_PPE_PADRAO (mesma numeração do catálogo Wix)
+      }
+    }
+
+    carregarCargosPpe();
+    return () => {
+      isCancelled = true;
+    };
+  }, [isOpen]);
 
   // Carrega e preenche todos os estados a partir da cotação
   useEffect(() => {
@@ -2551,7 +2578,7 @@ export default function EditarPropostaModal({
                           Selecione as funções públicas ocupadas:
                         </span>
                         <div className="space-y-1.5 bg-white border border-gray-200 rounded-xl p-3">
-                          {CARGOS_PPE_PADRAO.map((cargo) => (
+                          {cargosPpe.map((cargo) => (
                             <label
                               key={cargo.id}
                               className="flex items-start gap-2.5 p-1.5 rounded-lg hover:bg-gray-50 cursor-pointer text-xs text-gray-700 select-none min-h-[36px]"

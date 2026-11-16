@@ -17,6 +17,7 @@ import {
   resolverPpeContratoPadrao,
 } from '@/lib/ppe-contrato';
 import { renderRcAdvogadoInnerHtml } from '@/lib/gotenberg-contract-generator';
+import { CARGOS_PPE_PADRAO } from '@/lib/product-schemas/types';
 
 const wixRow = (id: string, text: string) => ({
   payload: JSON.stringify({ item: { data: { id_: id, text } } }),
@@ -74,7 +75,9 @@ describe('ppe-contrato — declaração PPE no contrato', () => {
 
       const ppe = await resolverPpeContrato({ ppeCargos: 'Sim', ppeCargoSelect: '4' });
 
-      expect(ppe.cargos).toEqual(['Membros do TCU e da AGU']);
+      expect(ppe.cargos).toEqual([
+        'Presidente, vice-presidente e diretor, ou equivalentes, de entidades da administração pública indireta',
+      ]);
     });
 
     it('mantém o valor bruto para IDs desconhecidos', async () => {
@@ -90,6 +93,13 @@ describe('ppe-contrato — declaração PPE no contrato', () => {
 
       expect(ppe).toEqual({ ppeCargos: 'Não', ppeRepresenta: 'Não', cargos: [] });
       expect(sql).not.toHaveBeenCalled();
+    });
+
+    it('catálogo padrão segue a numeração oficial do Wix (12 cargos)', () => {
+      expect(CARGOS_PPE_PADRAO.map((c) => c.id)).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']);
+      // ID 5 no Wix = DAS nível 6 (o modal antigo exibia outro texto para o mesmo ID)
+      expect(CARGOS_PPE_PADRAO.find((c) => c.id === '5')?.text).toContain('DAS, nível 6');
+      expect(resolverPpeContratoPadrao({ ppeCargos: 'Sim', ppeCargoSelect: '12' }).cargos[0]).toMatch(/^Também são consideradas/);
     });
 
     it('versão síncrona resolve apenas pelo catálogo padrão', () => {
