@@ -1342,7 +1342,8 @@ export default function EditarPropostaModal({
         )}
 
         {/* Navegação por 4 Abas Estilizadas */}
-        <div className="px-6 pt-4 border-b border-gray-200 bg-white overflow-x-auto no-scrollbar">
+        {/* shrink-0: com overflow-x a barra vira contêiner de rolagem (min-height 0) e o flex a esmagava */}
+        <div className="shrink-0 px-6 pt-4 border-b border-gray-200 bg-white overflow-x-auto overflow-y-hidden no-scrollbar">
           <div className="flex gap-2 min-w-max pb-0.5">
             <button
               type="button"

@@ -13,6 +13,15 @@
   --color-border: var(--border);
 }
 
+/* Barras de abas com rolagem horizontal: rola por toque/trackpad sem exibir a barra de rolagem */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
 :root {
   color-scheme: light;
   --primary: #0e4a5a;
