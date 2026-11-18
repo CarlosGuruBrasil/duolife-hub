@@ -6,6 +6,12 @@ import { ensureSaleForPaidQuote, handleAsaasPaymentRefund } from '@/lib/insuranc
 import { verifyWebhookToken } from '@/lib/webhook-auth';
 import { dispatchDomainEvent } from '@/lib/triggers/dispatcher';
 import { getAsaasConfig } from '@/lib/system-settings';
+import {
+  buildHeldMessage,
+  getWebhookReplayCutoff,
+  isBeforeReplayCutoff,
+  parseAsaasEventDate,
+} from '@/lib/webhook-replay-guard';
 
 /**
  * Executa tarefas em background desacopladas da resposta HTTP ao Asaas.
@@ -182,6 +188,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, ignored: true, message: 'Evento já processado com sucesso' });
     }
 
+    // Trava de reexecução: eventos ocorridos antes do marco da correção dos webhooks (falharam
+    // com 500 e voltam ao reativar a fila do Asaas) são apenas registrados, nunca executados.
+    const replayCutoff = await getWebhookReplayCutoff();
+    const eventDate = parseAsaasEventDate(payload?.dateCreated);
+    const heldMessage =
+      eventDate && replayCutoff && isBeforeReplayCutoff(eventDate, replayCutoff)
+        ? buildHeldMessage(eventDate, replayCutoff)
+        : null;
+
     const [webhookEvent] = await sql<{ id: string }[]>`
       INSERT INTO webhook_events (
         provider,
@@ -190,7 +205,8 @@ export async function POST(req: NextRequest) {
         signature_valid,
         payload,
         request_headers,
-        processed
+        processed,
+        error_message
       )
       VALUES (
         'asaas',
@@ -199,9 +215,12 @@ export async function POST(req: NextRequest) {
         true,
         ${JSON.stringify(payload)}::jsonb,
         ${JSON.stringify(requestHeaders)}::jsonb,
-        false
+        false,
+        ${heldMessage}
       )
-      ON CONFLICT (provider, external_id) DO NOTHING
+      -- O índice único idx_webhook_events_provider_external_id é PARCIAL (WHERE external_id IS NOT NULL):
+      -- sem o mesmo predicado aqui, o PostgreSQL não infere o índice e o INSERT falha (42P10).
+      ON CONFLICT (provider, external_id) WHERE external_id IS NOT NULL DO NOTHING
       RETURNING id
     `;
 
@@ -211,6 +230,14 @@ export async function POST(req: NextRequest) {
     }
 
     webhookEventId = webhookEvent.id;
+
+    if (heldMessage) {
+      logger.warn(
+        { eventKey, event, paymentId: payment.id, eventDate, replayCutoff },
+        'asaas.webhook.held_before_cutoff'
+      );
+      return NextResponse.json({ ok: true, held: true, message: heldMessage });
+    }
 
     const paymentStatus = normalizeAsaasStatus(payment.status);
 

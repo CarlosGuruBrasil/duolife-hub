@@ -3,6 +3,7 @@ import { logger } from '@/lib/logger';
 import { getSystemSetting, getZapSignConfig, sanitizeApiToken } from '@/lib/system-settings';
 import { getTodayISODate, isBusinessDay, parseDateSafe, formatToISODate } from '@/lib/business-days';
 import { processZapSignPayload } from '@/lib/webhook-processor';
+import { getWebhookReplayCutoff, isBeforeReplayCutoff, resolveZapSignCompletionDate } from '@/lib/webhook-replay-guard';
 
 /**
  * Contingência para webhooks ZapSign perdidos.
@@ -36,6 +37,7 @@ export type RecoveryItemAction =
   | 'ignored_refused'
   | 'ignored_expired'
   | 'not_found'
+  | 'held_before_cutoff'
   | 'error'
   | 'aborted';
 
@@ -387,6 +389,9 @@ export async function runZapSignSignatureRecovery(options: RecoveryOptions): Pro
 
   try {
     const candidates = await loadCandidates(windowStart, batchSize);
+    // Assinaturas concluídas antes do marco da correção dos webhooks ficam sem execução
+    // (decisão do negócio: os webhooks que falharam não podem ser executados).
+    const replayCutoff = await getWebhookReplayCutoff();
     let cursor = 0;
     let consecutiveApiFailures = 0;
     let circuitOpen = false;
@@ -449,6 +454,11 @@ export async function runZapSignSignatureRecovery(options: RecoveryOptions): Pro
       }
       if (classification !== 'signed') {
         record({ ...base, zapStatus, action: `ignored_${classification}` as RecoveryItemAction });
+        return;
+      }
+
+      if (isBeforeReplayCutoff(resolveZapSignCompletionDate(fetched.doc), replayCutoff)) {
+        record({ ...base, zapStatus, action: 'held_before_cutoff' });
         return;
       }
 

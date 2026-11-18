@@ -10,6 +10,12 @@ import { getZapSignConfig, sanitizeApiToken } from '@/lib/system-settings';
 import { generateAsaasPaymentForQuote } from '@/lib/asaas-service';
 import { identificarRequisitosAssinatura } from '@/lib/assinatura-status';
 import { claimSignatureCompletionEffects, shouldRunCompletionEffects } from '@/lib/signature-completion-claim';
+import {
+  buildHeldMessage,
+  getWebhookReplayCutoff,
+  isBeforeReplayCutoff,
+  resolveZapSignEventDate,
+} from '@/lib/webhook-replay-guard';
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -183,6 +189,15 @@ export async function POST(req: NextRequest) {
     }
   });
 
+  // Trava de reexecução: eventos ocorridos antes do marco da correção dos webhooks (falharam
+  // com 500 e podem ser reenviados pela ZapSign) são apenas registrados, nunca executados.
+  const replayCutoff = await getWebhookReplayCutoff();
+  const eventDate = resolveZapSignEventDate(payload);
+  const heldMessage =
+    eventDate && replayCutoff && isBeforeReplayCutoff(eventDate, replayCutoff)
+      ? buildHeldMessage(eventDate, replayCutoff)
+      : null;
+
   const [eventRow] = await sql<{ id: string }[]>`
     INSERT INTO webhook_events (
       provider,
@@ -191,7 +206,8 @@ export async function POST(req: NextRequest) {
       signature_valid,
       payload,
       request_headers,
-      processed
+      processed,
+      error_message
     )
     VALUES (
       'zapsign',
@@ -200,9 +216,12 @@ export async function POST(req: NextRequest) {
       true,
       ${JSON.stringify(payload)}::jsonb,
       ${JSON.stringify(requestHeaders)}::jsonb,
-      false
+      false,
+      ${heldMessage}
     )
-    ON CONFLICT (provider, external_id) DO NOTHING
+    -- O índice único idx_webhook_events_provider_external_id é PARCIAL (WHERE external_id IS NOT NULL):
+    -- sem o mesmo predicado aqui, o PostgreSQL não infere o índice e o INSERT falha (42P10).
+    ON CONFLICT (provider, external_id) WHERE external_id IS NOT NULL DO NOTHING
     RETURNING id
   `;
 
@@ -211,6 +230,14 @@ export async function POST(req: NextRequest) {
   if (!eventRow) {
     logger.info({ eventUniqueKey }, 'ZapSign Webhook reenviado descartado (evento já registrado)');
     return NextResponse.json({ ok: true, ignored: true, message: 'Evento já registrado; reexecução apenas manual pelo administrador' });
+  }
+
+  if (heldMessage) {
+    logger.warn(
+      { eventUniqueKey, eventType, externalDocumentId, eventDate, replayCutoff },
+      'zapsign.webhook.held_before_cutoff'
+    );
+    return NextResponse.json({ ok: true, held: true, message: heldMessage });
   }
 
   try {

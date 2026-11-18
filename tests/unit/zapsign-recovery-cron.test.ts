@@ -7,6 +7,7 @@ const state = vi.hoisted(() => ({
   runOpen: true,
   candidates: [] as Array<{ signature_document_id: string; cotacao_id: string; external_document_id: string }>,
   closedRun: null as null | unknown[],
+  replayCutoff: null as null | string,
 }));
 
 vi.mock('@/lib/pg', () => ({
@@ -22,6 +23,7 @@ vi.mock('@/lib/pg', () => ({
       return [];
     }
     if (text.includes('FROM signature_documents sd')) return state.candidates;
+    if (text.includes('FROM system_settings')) return state.replayCutoff ? [{ value: state.replayCutoff }] : [];
     return [];
   }),
 }));
@@ -52,6 +54,7 @@ import {
   runZapSignSignatureRecovery,
   MAX_CONSECUTIVE_API_FAILURES,
 } from '@/lib/zapsign-signature-recovery';
+import { resetWebhookReplayCutoffCache } from '@/lib/webhook-replay-guard';
 
 const cand = (n: number) => ({ signature_document_id: `sd-${n}`, cotacao_id: `cot-${n}`, external_document_id: `tok-${n}` });
 
@@ -97,9 +100,49 @@ describe('runZapSignSignatureRecovery', () => {
     state.runOpen = true;
     state.candidates = [];
     state.closedRun = null;
+    state.replayCutoff = null;
+    resetWebhookReplayCutoffCache();
     vi.mocked(processZapSignPayload).mockClear();
   });
   afterEach(() => vi.unstubAllGlobals());
+
+  it('não executa contratos assinados antes do marco da correção dos webhooks', async () => {
+    state.replayCutoff = '2026-11-18T15:00:00.000Z';
+    state.candidates = [cand(1), cand(2)];
+    vi.stubGlobal(
+      'fetch',
+      zapResponses({
+        // Assinado durante a pane (webhook falhou) — PDF regerado depois não conta como nova assinatura
+        'tok-1': {
+          status: 200,
+          body: { ...signedDoc, last_update_at: '2026-11-19T08:00:00Z', signers: [{ status: 'signed', signed_at: '2026-11-10T12:00:00Z' }] },
+        },
+        // Assinado depois da correção
+        'tok-2': { status: 200, body: { ...signedDoc, signers: [{ status: 'signed', signed_at: '2026-11-18T16:00:00Z' }] } },
+      })
+    );
+
+    const res = await runZapSignSignatureRecovery({ triggeredBy: 'cron', requestDelayMs: 0, concurrency: 1 });
+
+    expect(res.items.find((i) => i.cotacaoId === 'cot-1')?.action).toBe('held_before_cutoff');
+    expect(res.items.find((i) => i.cotacaoId === 'cot-2')?.action).toBe('recovered');
+    expect(processZapSignPayload).toHaveBeenCalledTimes(1);
+    expect(processZapSignPayload).toHaveBeenCalledWith(expect.objectContaining({ doc_token: 'tok-2' }), expect.anything());
+  });
+
+  it('dryRun também mostra os retidos pelo marco, sem processar', async () => {
+    state.replayCutoff = '2026-11-18T15:00:00.000Z';
+    state.candidates = [cand(1)];
+    vi.stubGlobal(
+      'fetch',
+      zapResponses({ 'tok-1': { status: 200, body: { ...signedDoc, signers: [{ status: 'signed', signed_at: '2026-11-10T12:00:00Z' }] } } })
+    );
+
+    const res = await runZapSignSignatureRecovery({ triggeredBy: 'admin:x', dryRun: true, requestDelayMs: 0 });
+    expect(res.items[0].action).toBe('held_before_cutoff');
+    expect(res.recovered).toBe(0);
+    expect(processZapSignPayload).not.toHaveBeenCalled();
+  });
 
   it('recupera assinados, ignora cancelados, mantém pendentes e segue após erro da API', async () => {
     state.candidates = [cand(1), cand(2), cand(3), cand(4)];
